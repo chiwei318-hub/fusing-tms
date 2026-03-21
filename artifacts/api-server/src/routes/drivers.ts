@@ -70,6 +70,10 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("driverType" in body) updates.driverType = body.driverType ?? null;
     if ("username" in body) updates.username = body.username ?? null;
     if ("password" in body) updates.password = body.password ?? null;
+    if ("engineCc" in body) updates.engineCc = (body as any).engineCc ?? null;
+    if ("vehicleYear" in body) updates.vehicleYear = (body as any).vehicleYear ?? null;
+    if ("vehicleTonnage" in body) updates.vehicleTonnage = (body as any).vehicleTonnage ?? null;
+    if ("vehicleBodyType" in body) updates.vehicleBodyType = (body as any).vehicleBodyType ?? null;
 
     const [driver] = await db
       .update(driversTable)

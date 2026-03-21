@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -19,6 +19,10 @@ export const driversTable = pgTable("drivers", {
   username: text("username"),
   password: text("password"),
   lineUserId: text("line_user_id"),
+  engineCc: integer("engine_cc"),
+  vehicleYear: integer("vehicle_year"),
+  vehicleTonnage: text("vehicle_tonnage"),
+  vehicleBodyType: text("vehicle_body_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

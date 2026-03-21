@@ -5,6 +5,7 @@ import driversRouter from "./drivers";
 import lineRouter from "./line";
 import customersRouter from "./customers";
 import vehicleTypesRouter from "./vehicleTypes";
+import licensesRouter from "./licenses";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(driversRouter);
 router.use(lineRouter);
 router.use(customersRouter);
 router.use(vehicleTypesRouter);
+router.use(licensesRouter);
 
 export default router;

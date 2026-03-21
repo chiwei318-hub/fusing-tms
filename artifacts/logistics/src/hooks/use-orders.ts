@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   useListOrders, 
   useCreateOrder, 
@@ -37,5 +37,17 @@ export function useUpdateOrderMutation() {
         queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(variables.id) });
       },
     },
+  });
+}
+
+export function useOrders() {
+  return useQuery({
+    queryKey: ["orders-all"],
+    queryFn: async () => {
+      const res = await fetch("/api/orders");
+      if (!res.ok) throw new Error("Failed to fetch orders");
+      return res.json() as Promise<any[]>;
+    },
+    refetchInterval: 30_000,
   });
 }
