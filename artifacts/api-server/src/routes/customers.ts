@@ -73,6 +73,27 @@ router.patch("/customers/:id", async (req, res) => {
   }
 });
 
+router.post("/customers/login", async (req, res) => {
+  try {
+    const { phone, password } = req.body as { phone: string; password: string };
+    if (!phone || !password) {
+      return res.status(400).json({ error: "請提供電話與密碼" });
+    }
+    const results = await db
+      .select()
+      .from(customersTable)
+      .where(eq(customersTable.phone, phone));
+    const customer = results[0];
+    if (!customer || customer.password !== password) {
+      return res.status(401).json({ error: "電話或密碼不正確" });
+    }
+    res.json({ id: customer.id, name: customer.name, phone: customer.phone, username: customer.username });
+  } catch (err) {
+    req.log.error({ err }, "Failed customer login");
+    res.status(500).json({ error: "登入失敗" });
+  }
+});
+
 router.delete("/customers/:id", async (req, res) => {
   try {
     const { id } = DeleteCustomerParams.parse(req.params);
