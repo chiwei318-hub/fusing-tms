@@ -74,10 +74,24 @@ export interface Order {
   id: number;
   customerName: string;
   customerPhone: string;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  requiredLicense?: string | null;
+  pickupContactName?: string | null;
   pickupAddress: string;
+  pickupContactPerson?: string | null;
+  deliveryDate?: string | null;
+  deliveryTime?: string | null;
+  deliveryContactName?: string | null;
   deliveryAddress: string;
+  deliveryContactPerson?: string | null;
   cargoDescription: string;
+  cargoQuantity?: string | null;
   cargoWeight?: number | null;
+  requiredVehicleType?: string | null;
+  needTailgate?: string | null;
+  needHydraulicPallet?: string | null;
+  specialRequirements?: string | null;
   status: OrderStatus;
   driverId?: number | null;
   driver?: Driver | null;
@@ -99,10 +113,24 @@ export interface Order {
 export interface CreateOrderInput {
   customerName: string;
   customerPhone: string;
+  pickupDate?: string | null;
+  pickupTime?: string | null;
+  requiredLicense?: string | null;
+  pickupContactName?: string | null;
   pickupAddress: string;
+  pickupContactPerson?: string | null;
+  deliveryDate?: string | null;
+  deliveryTime?: string | null;
+  deliveryContactName?: string | null;
   deliveryAddress: string;
+  deliveryContactPerson?: string | null;
   cargoDescription: string;
+  cargoQuantity?: string | null;
   cargoWeight?: number | null;
+  requiredVehicleType?: string | null;
+  needTailgate?: string | null;
+  needHydraulicPallet?: string | null;
+  specialRequirements?: string | null;
   notes?: string | null;
 }
 

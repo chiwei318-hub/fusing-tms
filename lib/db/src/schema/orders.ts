@@ -11,12 +11,32 @@ export type FeeStatus = typeof feeStatusEnum[number];
 
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
+  // 委託方
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
+  // 收貨方
+  pickupDate: text("pickup_date"),
+  pickupTime: text("pickup_time"),
+  requiredLicense: text("required_license"),
+  pickupContactName: text("pickup_contact_name"),
   pickupAddress: text("pickup_address").notNull(),
+  pickupContactPerson: text("pickup_contact_person"),
+  // 到貨方
+  deliveryDate: text("delivery_date"),
+  deliveryTime: text("delivery_time"),
+  deliveryContactName: text("delivery_contact_name"),
   deliveryAddress: text("delivery_address").notNull(),
+  deliveryContactPerson: text("delivery_contact_person"),
+  // 貨物
   cargoDescription: text("cargo_description").notNull(),
+  cargoQuantity: text("cargo_quantity"),
   cargoWeight: real("cargo_weight"),
+  // 車輛需求
+  requiredVehicleType: text("required_vehicle_type"),
+  needTailgate: text("need_tailgate"),
+  needHydraulicPallet: text("need_hydraulic_pallet"),
+  specialRequirements: text("special_requirements"),
+  // 系統
   status: text("status").notNull().default("pending"),
   driverId: integer("driver_id").references(() => driversTable.id),
   notes: text("notes"),

@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
-  Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff,
+  Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info,
 } from "lucide-react";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderStatus, DriverStatus, Driver, Customer } from "@workspace/api-client-react";
+import type { OrderStatus, DriverStatus, Driver, Customer, Order } from "@workspace/api-client-react";
 
 const DRIVER_TYPE_LABELS: Record<string, string> = {
   self: "自有司機",
@@ -228,6 +228,7 @@ export default function Admin() {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [reportRange, setReportRange] = useState<"today" | "week" | "month" | "all">("today");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
@@ -476,6 +477,9 @@ export default function Admin() {
                       <td className="px-3 py-3">
                         <div className="font-mono font-semibold text-foreground">#{order.id}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(order.createdAt), "MM/dd HH:mm")}</div>
+                        <button onClick={() => setSelectedOrder(order as Order)} className="text-xs text-primary hover:underline flex items-center gap-0.5 mt-1">
+                          <Info className="w-3 h-3" /> 詳情
+                        </button>
                       </td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-foreground">{order.customerName}</div>
@@ -528,6 +532,74 @@ export default function Admin() {
               </table>
             </div>
           </Card>
+
+          {/* Order Detail Dialog */}
+          <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
+            <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>訂單詳情 #{selectedOrder?.id}</DialogTitle>
+                <DialogDescription>完整訂單資訊</DialogDescription>
+              </DialogHeader>
+              {selectedOrder && (
+                <div className="space-y-4 text-sm py-2">
+                  <div className="space-y-1">
+                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">委託方</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      <span className="text-muted-foreground">姓名</span><span className="font-medium">{selectedOrder.customerName}</span>
+                      <span className="text-muted-foreground">電話</span><span className="font-mono">{selectedOrder.customerPhone}</span>
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-1">
+                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">收貨資訊</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {selectedOrder.pickupDate && <><span className="text-muted-foreground">收貨日期</span><span>{selectedOrder.pickupDate}</span></>}
+                      {selectedOrder.pickupTime && <><span className="text-muted-foreground">收貨時間</span><span>{selectedOrder.pickupTime}</span></>}
+                      {selectedOrder.requiredLicense && <><span className="text-muted-foreground">所需證照</span><span>{selectedOrder.requiredLicense}</span></>}
+                      {selectedOrder.pickupContactName && <><span className="text-muted-foreground">客戶名稱</span><span className="font-medium">{selectedOrder.pickupContactName}</span></>}
+                      <span className="text-muted-foreground">地址</span><span className="font-medium col-span-1">{selectedOrder.pickupAddress}</span>
+                      {selectedOrder.pickupContactPerson && <><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.pickupContactPerson}</span></>}
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-1">
+                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">到貨資訊</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {selectedOrder.deliveryDate && <><span className="text-muted-foreground">到貨日期</span><span>{selectedOrder.deliveryDate}</span></>}
+                      {selectedOrder.deliveryTime && <><span className="text-muted-foreground">到貨時間</span><span>{selectedOrder.deliveryTime}</span></>}
+                      {selectedOrder.deliveryContactName && <><span className="text-muted-foreground">客戶名稱</span><span className="font-medium">{selectedOrder.deliveryContactName}</span></>}
+                      <span className="text-muted-foreground">地址</span><span className="font-medium">{selectedOrder.deliveryAddress}</span>
+                      {selectedOrder.deliveryContactPerson && <><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.deliveryContactPerson}</span></>}
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-1">
+                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">貨物資訊</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      <span className="text-muted-foreground">貨物描述</span><span className="font-medium">{selectedOrder.cargoDescription}</span>
+                      {selectedOrder.cargoQuantity && <><span className="text-muted-foreground">數量</span><span>{selectedOrder.cargoQuantity}</span></>}
+                      {selectedOrder.cargoWeight != null && <><span className="text-muted-foreground">重量</span><span>{selectedOrder.cargoWeight} kg</span></>}
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-1">
+                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">車輛需求</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {selectedOrder.requiredVehicleType && <><span className="text-muted-foreground">車型</span><span>{selectedOrder.requiredVehicleType}</span></>}
+                      {selectedOrder.needTailgate && <><span className="text-muted-foreground">需尾門</span><span>{selectedOrder.needTailgate === "yes" ? "需要" : "不需要"}</span></>}
+                      {selectedOrder.needHydraulicPallet && <><span className="text-muted-foreground">需油壓板車</span><span>{selectedOrder.needHydraulicPallet === "yes" ? "需要" : "不需要"}</span></>}
+                      {selectedOrder.specialRequirements && <><span className="text-muted-foreground">特殊要求</span><span>{selectedOrder.specialRequirements}</span></>}
+                    </div>
+                  </div>
+                  {selectedOrder.notes && (
+                    <div className="border-t pt-3">
+                      <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-1">備註</p>
+                      <p>{selectedOrder.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSelectedOrder(null)}>關閉</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* ===== 司機 TAB ===== */}
