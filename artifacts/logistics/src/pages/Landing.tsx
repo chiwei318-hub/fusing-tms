@@ -30,11 +30,11 @@ export default function Landing() {
         </div>
 
         {/* Role Cards */}
-        <div className="w-full max-w-sm space-y-3">
+        <div className="w-full max-w-sm md:max-w-2xl md:grid md:grid-cols-3 md:gap-4 space-y-3 md:space-y-0">
           {/* Customer */}
           <Link href="/customer">
-            <div className="group relative overflow-hidden bg-white rounded-2xl p-5 flex items-center gap-4 cursor-pointer shadow-xl shadow-black/20 active:scale-[0.98] transition-transform">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="group relative overflow-hidden bg-white rounded-2xl p-5 md:p-6 flex items-center md:flex-col md:items-start gap-4 cursor-pointer shadow-xl shadow-black/20 active:scale-[0.98] transition-transform h-full">
+              <div className="absolute inset-0 bg-gradient-to-r md:bg-gradient-to-b from-blue-50 to-white opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="bg-blue-600 p-3.5 rounded-xl shadow-lg shadow-blue-600/30 shrink-0 z-10">
                 <Package className="w-7 h-7 text-white" />
               </div>
@@ -42,7 +42,7 @@ export default function Landing() {
                 <p className="font-black text-gray-900 text-lg leading-tight">客戶下單</p>
                 <p className="text-gray-500 text-sm mt-0.5">取送貨 · 查訂單 · 付款回報</p>
               </div>
-              <div className="bg-blue-600 w-8 h-8 rounded-full flex items-center justify-center shadow shrink-0 z-10 group-hover:bg-blue-700 transition-colors">
+              <div className="bg-blue-600 w-8 h-8 rounded-full flex items-center justify-center shadow shrink-0 z-10 group-hover:bg-blue-700 transition-colors md:mt-auto md:self-end">
                 <ArrowRight className="w-4 h-4 text-white" />
               </div>
             </div>
@@ -50,7 +50,7 @@ export default function Landing() {
 
           {/* Driver */}
           <Link href="/driver">
-            <div className="group relative overflow-hidden bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-5 flex items-center gap-4 cursor-pointer shadow-xl shadow-orange-500/30 active:scale-[0.98] transition-transform">
+            <div className="group relative overflow-hidden bg-gradient-to-r md:bg-gradient-to-b from-orange-500 to-orange-600 rounded-2xl p-5 md:p-6 flex items-center md:flex-col md:items-start gap-4 cursor-pointer shadow-xl shadow-orange-500/30 active:scale-[0.98] transition-transform h-full">
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10" />
               <div className="bg-white/20 p-3.5 rounded-xl shrink-0 z-10">
                 <Truck className="w-7 h-7 text-white" />
@@ -59,7 +59,7 @@ export default function Landing() {
                 <p className="font-black text-white text-lg leading-tight">司機接單</p>
                 <p className="text-orange-100 text-sm mt-0.5">接單 · 導航 · 打卡 · 簽收</p>
               </div>
-              <div className="bg-white/25 w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10">
+              <div className="bg-white/25 w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 md:mt-auto md:self-end">
                 <ArrowRight className="w-4 h-4 text-white" />
               </div>
             </div>
@@ -67,7 +67,7 @@ export default function Landing() {
 
           {/* Admin */}
           <Link href="/admin">
-            <div className="group bg-white/10 backdrop-blur border border-white/20 hover:border-white/40 rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all active:scale-[0.98]">
+            <div className="group bg-white/10 backdrop-blur border border-white/20 hover:border-white/40 rounded-2xl p-5 md:p-6 flex items-center md:flex-col md:items-start gap-4 cursor-pointer transition-all active:scale-[0.98] h-full">
               <div className="bg-white/15 p-3.5 rounded-xl shrink-0">
                 <Shield className="w-7 h-7 text-white" />
               </div>
@@ -75,13 +75,13 @@ export default function Landing() {
                 <p className="font-black text-white text-lg leading-tight">後台管理</p>
                 <p className="text-blue-200 text-sm mt-0.5">派車 · 司機 · 費用 · 報表</p>
               </div>
-              <ArrowRight className="w-4 h-4 text-blue-300 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-4 h-4 text-blue-300 group-hover:translate-x-1 transition-transform md:mt-auto md:self-end" />
             </div>
           </Link>
         </div>
 
         {/* Trust bar */}
-        <div className="mt-10 grid grid-cols-3 gap-4 w-full max-w-sm">
+        <div className="mt-10 grid grid-cols-3 gap-4 w-full max-w-sm md:max-w-2xl md:gap-8">
           {[
             { icon: CheckCircle, label: "準時率", value: "98%" },
             { icon: Truck, label: "合作車輛", value: "50+" },

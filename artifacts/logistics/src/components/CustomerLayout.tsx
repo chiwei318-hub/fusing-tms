@@ -9,17 +9,17 @@ export function CustomerLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col">
       <header className="bg-white border-b shadow-sm sticky top-0 z-30">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
           {isHome ? (
-            <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2" title="回首頁功能表">
+            <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2 w-10 h-10" title="回首頁功能表">
               <Link href="/">
-                <Home className="w-4 h-4 text-muted-foreground" />
+                <Home className="w-5 h-5 text-muted-foreground" />
               </Link>
             </Button>
           ) : (
-            <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2">
+            <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2 w-10 h-10">
               <Link href="/customer">
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
           )}
@@ -29,12 +29,12 @@ export function CustomerLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="leading-tight">
               <p className="font-bold text-sm text-foreground">富詠運輸</p>
-              <p className="text-xs text-muted-foreground">客戶服務</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">客戶服務</p>
             </div>
           </div>
         </div>
       </header>
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
         {children}
       </main>
       <footer className="py-4 text-center text-xs text-muted-foreground border-t bg-white">

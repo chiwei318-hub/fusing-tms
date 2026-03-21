@@ -639,47 +639,59 @@ export default function Admin() {
           <Truck className="w-4 h-4 text-primary" />
           <span className="text-xs font-semibold text-primary">富詠運輸</span>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2.5">
-          <Settings2 className="w-6 h-6 text-primary" />
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2.5">
+          <Settings2 className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
           後台管理中心
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">訂單調派、司機管理、客戶管理、營運報表</p>
+        <p className="text-muted-foreground mt-1 text-xs sm:text-sm hidden sm:block">訂單調派、司機管理、客戶管理、營運報表</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-5 w-full">
-          <TabsTrigger value="home" className="gap-1 text-xs flex-1 min-w-[70px]">
-            🏠 首頁
+          <TabsTrigger value="home" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <span className="text-base leading-none sm:hidden">🏠</span>
+            <span className="hidden sm:inline">🏠</span>
+            <span className="text-[10px] sm:text-xs leading-tight">首頁</span>
           </TabsTrigger>
-          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <ClipboardList className="w-3.5 h-3.5" /> 訂單
+          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <ClipboardList className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">訂單</span>
           </TabsTrigger>
-          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Truck className="w-3.5 h-3.5" /> 司機
+          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">司機</span>
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Users className="w-3.5 h-3.5" /> 客戶
+          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Users className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">客戶</span>
           </TabsTrigger>
-          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <BarChart2 className="w-3.5 h-3.5" /> 報表
+          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <BarChart2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">報表</span>
           </TabsTrigger>
-          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Truck className="w-3.5 h-3.5" /> 車型庫
+          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">車型庫</span>
           </TabsTrigger>
-          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Layers className="w-3.5 h-3.5" /> 智慧調度
+          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Layers className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">智慧調度</span>
           </TabsTrigger>
-          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Map className="w-3.5 h-3.5" /> 熱區地圖
+          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Map className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">熱區圖</span>
           </TabsTrigger>
-          <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Navigation className="w-3.5 h-3.5" /> 車隊地圖
+          <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Navigation className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">車隊圖</span>
           </TabsTrigger>
-          <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Car className="w-3.5 h-3.5" /> 拼車
+          <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Car className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">拼車</span>
           </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[70px]">
-            <Brain className="w-3.5 h-3.5" /> AI 分析
+          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <Brain className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">AI 分析</span>
           </TabsTrigger>
         </TabsList>
 
@@ -695,15 +707,15 @@ export default function Admin() {
           </div>
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left min-w-[600px]">
+              <table className="w-full text-sm text-left min-w-[340px]">
                 <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
                   <tr>
                     <th className="px-3 py-3 font-semibold">單號</th>
-                    <th className="px-3 py-3 font-semibold">客戶 / 電話</th>
-                    <th className="px-3 py-3 font-semibold">貨物 / 金額</th>
+                    <th className="px-3 py-3 font-semibold hidden sm:table-cell">客戶 / 電話</th>
+                    <th className="px-3 py-3 font-semibold hidden md:table-cell">貨物 / 金額</th>
                     <th className="px-3 py-3 font-semibold">狀態</th>
                     <th className="px-3 py-3 font-semibold">指派司機</th>
-                    <th className="px-3 py-3 font-semibold text-right">更改狀態</th>
+                    <th className="px-3 py-3 font-semibold text-right hidden sm:table-cell">更改狀態</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
@@ -716,6 +728,8 @@ export default function Admin() {
                       <td className="px-3 py-3">
                         <div className="font-mono font-semibold text-foreground">#{order.id}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(order.createdAt), "MM/dd HH:mm")}</div>
+                        {/* Mobile: show customer name inline */}
+                        <div className="sm:hidden text-xs font-medium text-foreground mt-0.5">{order.customerName}</div>
                         <div className="flex items-center gap-2 mt-1">
                           <button onClick={() => setSelectedOrder(order as Order)} className="text-xs text-primary hover:underline flex items-center gap-0.5">
                             <Info className="w-3 h-3" /> 詳情
@@ -727,11 +741,11 @@ export default function Admin() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 hidden sm:table-cell">
                         <div className="font-medium text-foreground">{order.customerName}</div>
                         <div className="text-xs text-muted-foreground font-mono mt-0.5">{order.customerPhone}</div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 hidden md:table-cell">
                         <div className="text-foreground text-xs truncate max-w-[120px]">{order.cargoDescription}</div>
                         {order.totalFee != null ? (
                           <div className="text-xs font-semibold text-primary mt-0.5">NT${order.totalFee.toLocaleString()}</div>
@@ -747,18 +761,25 @@ export default function Admin() {
                       </td>
                       <td className="px-3 py-3">
                         <OrderStatusBadge status={order.status} />
+                        {/* Mobile: quote button */}
+                        <button
+                          onClick={() => openQuoteDialog(order as Order)}
+                          className="mt-1.5 md:hidden text-xs text-orange-600 hover:underline flex items-center gap-0.5 font-medium"
+                        >
+                          <Calculator className="w-3 h-3" /> 估價
+                        </button>
                       </td>
                       <td className="px-3 py-3">
                         {order.status === "pending" && !order.driverId && (
                           <button
                             onClick={() => handleSmartDispatch(order.id)}
-                            className="mb-1.5 flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white font-bold px-2.5 py-1.5 rounded-lg shadow-sm"
+                            className="mb-1.5 flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1.5 rounded-lg shadow-sm"
                           >
-                            <Zap className="w-3 h-3" /> 一鍵派車
+                            <Zap className="w-3 h-3" /> <span className="hidden sm:inline">一鍵</span>派車
                           </button>
                         )}
                         <Select value={order.driverId?.toString() || "none"} onValueChange={(val) => handleOrderAssign(order.id, val)}>
-                          <SelectTrigger className="h-8 text-xs w-[130px]">
+                          <SelectTrigger className="h-8 text-xs w-[110px] sm:w-[130px]">
                             <SelectValue placeholder="選擇司機" />
                           </SelectTrigger>
                           <SelectContent>
@@ -771,8 +792,23 @@ export default function Admin() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* Mobile: status change inline */}
+                        <div className="sm:hidden mt-1.5">
+                          <Select value={order.status} onValueChange={(val) => handleOrderStatus(order.id, val as OrderStatus)}>
+                            <SelectTrigger className="h-7 text-xs w-[110px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">待派車</SelectItem>
+                              <SelectItem value="assigned">已派車</SelectItem>
+                              <SelectItem value="in_transit">運送中</SelectItem>
+                              <SelectItem value="delivered">已完成</SelectItem>
+                              <SelectItem value="cancelled">已取消</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </td>
-                      <td className="px-3 py-3 text-right">
+                      <td className="px-3 py-3 text-right hidden sm:table-cell">
                         <Select value={order.status} onValueChange={(val) => handleOrderStatus(order.id, val as OrderStatus)}>
                           <SelectTrigger className="h-8 text-xs w-[100px] ml-auto">
                             <SelectValue />
@@ -1250,14 +1286,14 @@ export default function Admin() {
 
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="w-full text-sm text-left min-w-[300px]">
                 <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
                   <tr>
                     <th className="px-4 py-3 font-semibold">姓名 / 電話</th>
-                    <th className="px-4 py-3 font-semibold">類型</th>
+                    <th className="px-4 py-3 font-semibold hidden sm:table-cell">類型</th>
                     <th className="px-4 py-3 font-semibold">車型 / 車牌</th>
-                    <th className="px-4 py-3 font-semibold">帳號</th>
-                    <th className="px-4 py-3 font-semibold">LINE</th>
+                    <th className="px-4 py-3 font-semibold hidden md:table-cell">帳號</th>
+                    <th className="px-4 py-3 font-semibold hidden md:table-cell">LINE</th>
                     <th className="px-4 py-3 font-semibold">狀態</th>
                     <th className="px-4 py-3 font-semibold text-right">操作</th>
                   </tr>
@@ -1272,8 +1308,10 @@ export default function Admin() {
                       <td className="px-4 py-3">
                         <div className="font-bold text-foreground">{driver.name}</div>
                         <div className="text-muted-foreground font-mono text-xs mt-0.5">{driver.phone}</div>
+                        {/* Mobile: show vehicle info inline */}
+                        <div className="sm:hidden text-xs text-muted-foreground mt-0.5">{driver.vehicleType} · <span className="font-mono uppercase">{driver.licensePlate}</span></div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden sm:table-cell">
                         {driver.driverType ? (
                           <Badge variant="outline" className="text-xs whitespace-nowrap">
                             {DRIVER_TYPE_LABELS[driver.driverType] ?? driver.driverType}
@@ -1283,17 +1321,18 @@ export default function Admin() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm">{driver.vehicleType}</div>
-                        <span className="font-mono text-xs bg-muted border px-1.5 py-0.5 rounded uppercase">{driver.licensePlate}</span>
+                        <div className="text-sm hidden sm:block">{driver.vehicleType}</div>
+                        <span className="font-mono text-xs bg-muted border px-1.5 py-0.5 rounded uppercase hidden sm:inline">{driver.licensePlate}</span>
+                        <span className="sm:hidden text-xs text-muted-foreground">—</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden md:table-cell">
                         {driver.username ? (
                           <span className="text-xs font-mono text-foreground">{driver.username}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden md:table-cell">
                         {driver.lineUserId ? (
                           <span title={driver.lineUserId} className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
                             <MessageCircle className="w-3.5 h-3.5" /> 已綁定
@@ -1306,7 +1345,7 @@ export default function Admin() {
                       </td>
                       <td className="px-4 py-3">
                         <Select value={driver.status} onValueChange={(val) => handleDriverStatus(driver.id, val as DriverStatus)}>
-                          <SelectTrigger className="h-8 w-[110px] border-0 shadow-none p-1 hover:bg-muted/50">
+                          <SelectTrigger className="h-8 w-[100px] sm:w-[110px] border-0 shadow-none p-1 hover:bg-muted/50">
                             <DriverStatusBadge status={driver.status} />
                           </SelectTrigger>
                           <SelectContent>
@@ -1319,11 +1358,11 @@ export default function Admin() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => openEditDriverDialog(driver)}
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
+                            className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteDriver(driver.id)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8">
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-9 w-9">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
