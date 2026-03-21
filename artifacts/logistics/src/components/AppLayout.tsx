@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Package, Truck, LayoutDashboard, DollarSign, ClipboardList, Home } from "lucide-react";
+import { Package, LayoutDashboard, DollarSign, ClipboardList, Home } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -25,22 +25,8 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarContent>
-        {/* Brand Header */}
-        <div className="p-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-500 p-2 rounded-xl shadow-lg shadow-blue-500/30">
-              <Truck className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-base leading-tight text-sidebar-foreground tracking-wide">
-                富詠運輸
-              </h1>
-              <p className="text-xs text-sidebar-foreground/50 mt-0.5">派車管理系統</p>
-            </div>
-          </div>
-        </div>
-
+      {/* pt-14 offsets the fixed GlobalHeader */}
+      <SidebarContent className="pt-14">
         <SidebarGroup className="mt-3">
           <SidebarGroupLabel className="text-xs uppercase tracking-widest text-sidebar-foreground/40 font-semibold px-4 mb-1">
             功能選單
@@ -101,12 +87,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="h-14 flex items-center gap-4 px-4 md:px-6 bg-card border-b sticky top-0 z-30 shadow-sm">
+          <header className="h-14 flex items-center gap-4 px-4 md:px-6 bg-card border-b sticky top-14 z-30 shadow-sm">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
-            <div className="flex items-center gap-2">
-              <Truck className="w-4 h-4 text-primary md:hidden" />
-              <span className="font-semibold text-sm text-foreground md:hidden">富詠運輸</span>
-            </div>
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto">

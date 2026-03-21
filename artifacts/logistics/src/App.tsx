@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { CustomerLayout } from "@/components/CustomerLayout";
 import { DriverLayout } from "@/components/DriverLayout";
+import { GlobalHeader } from "@/components/GlobalHeader";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import OrderForm from "@/pages/OrderForm";
@@ -30,43 +31,58 @@ const queryClient = new QueryClient({
 
 function CustomerPortal() {
   return (
-    <CustomerLayout>
-      <Switch>
-        <Route path="/customer" component={CustomerHome} />
-        <Route path="/customer/order" component={CustomerOrder} />
-        <Route path="/customer/track" component={CustomerTrack} />
-        <Route component={NotFound} />
-      </Switch>
-    </CustomerLayout>
+    <>
+      <GlobalHeader />
+      <div className="pt-14">
+        <CustomerLayout>
+          <Switch>
+            <Route path="/customer" component={CustomerHome} />
+            <Route path="/customer/order" component={CustomerOrder} />
+            <Route path="/customer/track" component={CustomerTrack} />
+            <Route component={NotFound} />
+          </Switch>
+        </CustomerLayout>
+      </div>
+    </>
   );
 }
 
 function DriverPortal() {
   return (
-    <DriverLayout>
-      <Switch>
-        <Route path="/driver" component={DriverHome} />
-        <Route path="/driver/tasks" component={DriverTasks} />
-        <Route path="/driver/tasks/:id" component={DriverTaskDetail} />
-        <Route component={NotFound} />
-      </Switch>
-    </DriverLayout>
+    <>
+      <GlobalHeader />
+      <div className="pt-14">
+        <DriverLayout>
+          <Switch>
+            <Route path="/driver" component={DriverHome} />
+            <Route path="/driver/tasks" component={DriverTasks} />
+            <Route path="/driver/tasks/:id" component={DriverTaskDetail} />
+            <Route component={NotFound} />
+          </Switch>
+        </DriverLayout>
+      </div>
+    </>
   );
 }
 
 function AdminPortal() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={() => <Redirect to="/order-form" />} />
-        <Route path="/order-form" component={OrderForm} />
-        <Route path="/orders" component={OrderList} />
-        <Route path="/orders/:id" component={OrderDetail} />
-        <Route path="/fees" component={Fees} />
-        <Route path="/admin" component={Admin} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <>
+      <GlobalHeader />
+      <div className="pt-14">
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={() => <Redirect to="/order-form" />} />
+            <Route path="/order-form" component={OrderForm} />
+            <Route path="/orders" component={OrderList} />
+            <Route path="/orders/:id" component={OrderDetail} />
+            <Route path="/fees" component={Fees} />
+            <Route path="/admin" component={Admin} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </div>
+    </>
   );
 }
 

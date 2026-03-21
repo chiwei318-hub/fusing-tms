@@ -13,7 +13,7 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0 md:flex-row">
       {/* Top header on mobile / Left sidebar on desktop */}
-      <header className="bg-primary text-primary-foreground sticky top-0 z-30 shadow-md md:sticky md:top-0 md:h-screen md:w-56 md:flex md:flex-col md:shadow-xl md:shrink-0">
+      <header className="bg-primary text-primary-foreground sticky top-14 z-30 shadow-md md:sticky md:top-14 md:h-[calc(100svh-3.5rem)] md:w-56 md:flex md:flex-col md:shadow-xl md:shrink-0">
         <div className="max-w-xl mx-auto md:mx-0 px-4 md:px-5 h-14 md:h-auto md:pt-6 md:pb-4 flex items-center gap-3 border-b border-white/10">
           <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
             <Truck className="w-4 h-4 text-white" />
