@@ -14,21 +14,15 @@ const router: IRouter = Router();
 router.get("/orders", async (req, res) => {
   try {
     const query = ListOrdersQueryParams.parse(req.query);
-    let orders;
+    let qb = db
+      .select()
+      .from(ordersTable)
+      .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
+      .$dynamic();
     if (query.status) {
-      orders = await db
-        .select()
-        .from(ordersTable)
-        .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
-        .where(eq(ordersTable.status, query.status))
-        .orderBy(ordersTable.createdAt);
-    } else {
-      orders = await db
-        .select()
-        .from(ordersTable)
-        .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
-        .orderBy(ordersTable.createdAt);
+      qb = qb.where(eq(ordersTable.status, query.status));
     }
+    const orders = await qb.orderBy(ordersTable.createdAt);
     const result = orders.map((row) => ({
       ...row.orders,
       driver: row.drivers ?? null,
@@ -54,6 +48,7 @@ router.post("/orders", async (req, res) => {
         cargoWeight: body.cargoWeight ?? null,
         notes: body.notes ?? null,
         status: "pending",
+        feeStatus: "unpaid",
       })
       .returning();
     res.status(201).json({ ...order, driver: null });
@@ -102,10 +97,14 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.notes !== undefined) updates.notes = body.notes ?? null;
     if (body.driverId !== undefined) {
       updates.driverId = body.driverId ?? null;
-      if (body.driverId && !body.status) {
+      if (body.driverId && body.status === undefined) {
         updates.status = "assigned";
       }
     }
+    if (body.basePrice !== undefined) updates.basePrice = body.basePrice ?? null;
+    if (body.extraFee !== undefined) updates.extraFee = body.extraFee ?? null;
+    if (body.totalFee !== undefined) updates.totalFee = body.totalFee ?? null;
+    if (body.feeStatus !== undefined) updates.feeStatus = body.feeStatus;
 
     const [updated] = await db
       .update(ordersTable)

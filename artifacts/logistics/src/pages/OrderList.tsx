@@ -1,15 +1,25 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Search, Filter, ChevronRight, InboxIcon } from "lucide-react";
+import { Filter, ChevronRight, InboxIcon, Truck } from "lucide-react";
 import { useOrdersData } from "@/hooks/use-orders";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { OrderStatus } from "@workspace/api-client-react/src/generated/api.schemas";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const feeStatusLabel: Record<string, string> = {
+  unpaid: "未收款",
+  paid: "已收款",
+  invoiced: "已開票",
+};
+
+const feeStatusColor: Record<string, string> = {
+  unpaid: "text-orange-600",
+  paid: "text-green-600",
+  invoiced: "text-blue-600",
+};
 
 export default function OrderList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -18,17 +28,23 @@ export default function OrderList() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="space-y-5 pb-12">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">訂單列表</h1>
-          <p className="text-slate-500 mt-2">檢視與追蹤所有物流派車訂單狀態。</p>
+          <div className="flex items-center gap-2 mb-1">
+            <Truck className="w-4 h-4 text-primary" />
+            <span className="text-xs font-semibold text-primary">富詠運輸</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">訂單列表</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            共 {isLoading ? "…" : (orders?.length ?? 0)} 筆訂單
+          </p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] bg-white">
-              <Filter className="w-4 h-4 mr-2 text-slate-500" />
+            <SelectTrigger className="w-[150px] bg-card">
+              <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
               <SelectValue placeholder="篩選狀態" />
             </SelectTrigger>
             <SelectContent>
@@ -43,75 +59,91 @@ export default function OrderList() {
         </div>
       </div>
 
-      <Card className="border-0 shadow-md ring-1 ring-slate-200 dark:ring-slate-800 overflow-hidden">
+      <Card className="border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 bg-slate-50/80 dark:bg-slate-900/80 uppercase border-b border-slate-200 dark:border-slate-800">
+            <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
               <tr>
-                <th className="px-6 py-4 font-semibold">單號</th>
-                <th className="px-6 py-4 font-semibold">客戶 / 聯絡電話</th>
-                <th className="px-6 py-4 font-semibold">路線</th>
-                <th className="px-6 py-4 font-semibold">狀態</th>
-                <th className="px-6 py-4 font-semibold">負責司機</th>
-                <th className="px-6 py-4 font-semibold text-right">操作</th>
+                <th className="px-4 py-3 font-semibold">單號</th>
+                <th className="px-4 py-3 font-semibold">客戶</th>
+                <th className="px-4 py-3 font-semibold hidden md:table-cell">路線</th>
+                <th className="px-4 py-3 font-semibold">狀態</th>
+                <th className="px-4 py-3 font-semibold hidden sm:table-cell">司機</th>
+                <th className="px-4 py-3 font-semibold hidden lg:table-cell">運費</th>
+                <th className="px-4 py-3 font-semibold hidden lg:table-cell">收款</th>
+                <th className="px-4 py-3 font-semibold text-right">詳情</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
+            <tbody className="divide-y bg-card">
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4"><Skeleton className="h-4 w-12" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-4 w-32 mb-2" /><Skeleton className="h-3 w-24" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-4 w-40" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
-                    <td className="px-6 py-4"><Skeleton className="h-8 w-8 ml-auto rounded-md" /></td>
+                    {Array.from({ length: 6 }).map((__, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <Skeleton className="h-4 w-24" />
+                      </td>
+                    ))}
                   </tr>
                 ))
               ) : orders?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    <InboxIcon className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                    <p className="text-base font-medium">目前沒有訂單</p>
-                    <p className="text-sm">尚未有符合此條件的訂單記錄</p>
+                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                    <InboxIcon className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
+                    <p className="font-medium">目前沒有訂單</p>
+                    <p className="text-xs mt-1">尚未有符合此條件的訂單記錄</p>
                   </td>
                 </tr>
               ) : (
                 orders?.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors group">
-                    <td className="px-6 py-4 font-mono font-medium text-slate-900 dark:text-slate-100">
+                  <tr key={order.id} className="hover:bg-muted/30 transition-colors group">
+                    <td className="px-4 py-3 font-mono font-medium text-foreground">
                       #{order.id}
+                      <div className="text-xs text-muted-foreground mt-0.5 md:hidden">
+                        {format(new Date(order.createdAt), "MM/dd HH:mm")}
+                      </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{order.customerName}</div>
-                      <div className="text-slate-500 text-xs mt-0.5">{order.customerPhone}</div>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-foreground">{order.customerName}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{order.customerPhone}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1 text-xs">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                          <span className="truncate max-w-[200px]">{order.pickupAddress}</span>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <div className="flex flex-col gap-1 text-xs max-w-[200px]">
+                        <div className="flex items-center gap-1.5 text-foreground/80">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0"></div>
+                          <span className="truncate">{order.pickupAddress}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                          <span className="truncate max-w-[200px]">{order.deliveryAddress}</span>
+                        <div className="flex items-center gap-1.5 text-foreground/80">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></div>
+                          <span className="truncate">{order.deliveryAddress}</span>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       <OrderStatusBadge status={order.status} />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3 hidden sm:table-cell">
                       {order.driver ? (
-                        <div className="text-sm font-medium">{order.driver.name}</div>
+                        <div className="font-medium text-foreground text-sm">{order.driver.name}</div>
                       ) : (
-                        <span className="text-slate-400 italic text-xs">尚未指派</span>
+                        <span className="text-muted-foreground italic text-xs">尚未指派</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <Button variant="ghost" size="icon" asChild className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      {order.totalFee != null ? (
+                        <span className="font-semibold text-foreground">NT${order.totalFee.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs italic">未設定</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <span className={`text-xs font-medium ${feeStatusColor[order.feeStatus ?? "unpaid"] ?? "text-muted-foreground"}`}>
+                        {feeStatusLabel[order.feeStatus ?? "unpaid"] ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="ghost" size="icon" asChild className="opacity-60 group-hover:opacity-100 transition-opacity h-8 w-8">
                         <Link href={`/orders/${order.id}`}>
-                          <ChevronRight className="w-5 h-5 text-slate-400 hover:text-primary" />
+                          <ChevronRight className="w-4 h-4" />
                         </Link>
                       </Button>
                     </td>

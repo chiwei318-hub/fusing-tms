@@ -8,12 +8,13 @@ import OrderForm from "@/pages/OrderForm";
 import OrderList from "@/pages/OrderList";
 import OrderDetail from "@/pages/OrderDetail";
 import Admin from "@/pages/Admin";
+import Fees from "@/pages/Fees";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5,
+      staleTime: 1000 * 60 * 2,
     },
   },
 });
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/order-form" component={OrderForm} />
       <Route path="/orders" component={OrderList} />
       <Route path="/orders/:id" component={OrderDetail} />
+      <Route path="/fees" component={Fees} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
