@@ -16,7 +16,9 @@ const orderFormSchema = z.object({
   customerName: z.string().min(2, "請輸入完整的客戶名稱"),
   customerPhone: z.string().min(8, "請輸入有效的聯絡電話"),
   pickupAddress: z.string().min(5, "請輸入詳細的取貨地址"),
+  pickupContactPerson: z.string().optional().nullable(),
   deliveryAddress: z.string().min(5, "請輸入詳細的送貨地址"),
+  deliveryContactPerson: z.string().optional().nullable(),
   cargoDescription: z.string().min(2, "請描述貨物內容"),
   cargoWeight: z.coerce.number().optional().nullable(),
   notes: z.string().optional().nullable(),
@@ -35,7 +37,9 @@ export default function OrderForm() {
       customerName: "",
       customerPhone: "",
       pickupAddress: "",
+      pickupContactPerson: "",
       deliveryAddress: "",
+      deliveryContactPerson: "",
       cargoDescription: "",
       cargoWeight: undefined,
       notes: "",
@@ -44,7 +48,13 @@ export default function OrderForm() {
 
   const onSubmit = async (data: OrderFormValues) => {
     try {
-      const result = await createOrder({ data });
+      const result = await createOrder({
+        data: {
+          ...data,
+          pickupContactPerson: data.pickupContactPerson || null,
+          deliveryContactPerson: data.deliveryContactPerson || null,
+        } as any,
+      });
       setSuccessOrderId(result.id);
       form.reset();
     } catch {
@@ -173,27 +183,51 @@ export default function OrderForm() {
                   運送地址
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                  <FormField control={form.control} name="pickupAddress" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>取貨地址 <span className="text-destructive">*</span></FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="請輸入完整的取貨地址" className="resize-none h-24" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                  <div className="space-y-3">
+                    <FormField control={form.control} name="pickupAddress" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>取貨地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="請輸入完整的取貨地址" className="resize-none h-24" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="pickupContactPerson" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-1">
+                          <User className="w-3.5 h-3.5 text-muted-foreground" /> 取貨聯絡人
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="姓名 + 電話，例：王先生 0912-345-678" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
                   <div className="hidden md:flex absolute left-1/2 top-9 -translate-x-1/2 w-7 h-7 bg-muted rounded-full items-center justify-center border z-10">
                     <span className="text-muted-foreground text-xs font-bold">至</span>
                   </div>
-                  <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>送貨地址 <span className="text-destructive">*</span></FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="請輸入完整的送貨地址" className="resize-none h-24" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                  <div className="space-y-3">
+                    <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>送貨地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="請輸入完整的送貨地址" className="resize-none h-24" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="deliveryContactPerson" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-1">
+                          <User className="w-3.5 h-3.5 text-muted-foreground" /> 送貨聯絡人
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="姓名 + 電話，例：李小姐 0988-765-432" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
                 </div>
               </div>
 
