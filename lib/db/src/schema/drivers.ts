@@ -5,6 +5,9 @@ import { z } from "zod/v4";
 export const driverStatusEnum = ["available", "busy", "offline"] as const;
 export type DriverStatus = typeof driverStatusEnum[number];
 
+export const driverTypeEnum = ["self", "affiliated", "external"] as const;
+export type DriverType = typeof driverTypeEnum[number];
+
 export const driversTable = pgTable("drivers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -12,6 +15,9 @@ export const driversTable = pgTable("drivers", {
   vehicleType: text("vehicle_type").notNull(),
   licensePlate: text("license_plate").notNull(),
   status: text("status").notNull().default("available"),
+  driverType: text("driver_type"),
+  username: text("username"),
+  password: text("password"),
   lineUserId: text("line_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

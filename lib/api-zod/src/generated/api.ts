@@ -194,6 +194,9 @@ export const CreateDriverBody = zod.object({
   vehicleType: zod.string(),
   licensePlate: zod.string(),
   lineUserId: zod.string().nullish(),
+  driverType: zod.string().nullish(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
 });
 
 /**
@@ -210,6 +213,9 @@ export const UpdateDriverBody = zod.object({
   licensePlate: zod.string().optional(),
   status: zod.enum(["available", "busy", "offline"]).optional(),
   lineUserId: zod.string().nullish(),
+  driverType: zod.string().nullish(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
 });
 
 export const UpdateDriverResponse = zod.object({
@@ -227,5 +233,49 @@ export const UpdateDriverResponse = zod.object({
  * @summary Delete a driver
  */
 export const DeleteDriverParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List all customers
+ */
+export const ListCustomersResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  phone: zod.string(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+  createdAt: zod.date(),
+});
+export const ListCustomersResponse = zod.array(ListCustomersResponseItem);
+
+/**
+ * @summary Create a new customer
+ */
+export const CreateCustomerBody = zod.object({
+  name: zod.string(),
+  phone: zod.string(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+});
+
+/**
+ * @summary Update customer
+ */
+export const UpdateCustomerParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCustomerBody = zod.object({
+  name: zod.string().optional(),
+  phone: zod.string().optional(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete a customer
+ */
+export const DeleteCustomerParams = zod.object({
   id: zod.coerce.number(),
 });

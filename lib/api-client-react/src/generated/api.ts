@@ -17,8 +17,10 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  CreateCustomerInput,
   CreateDriverInput,
   CreateOrderInput,
+  Customer,
   Driver,
   DriverActionInput,
   ErrorResponse,
@@ -27,6 +29,7 @@ import type {
   Order,
   PaymentConfirmInput,
   TrackOrderParams,
+  UpdateCustomerInput,
   UpdateDriverInput,
   UpdateOrderInput,
 } from "./api.schemas";
@@ -1003,4 +1006,74 @@ export const useConfirmPayment = <
   TContext
 > => {
   return useMutation(getConfirmPaymentMutationOptions(options));
+};
+
+// ===== CUSTOMERS =====
+
+export const getListCustomersUrl = () => `/api/customers`;
+export const getListCustomersQueryKey = () => [`/api/customers`] as const;
+
+export const listCustomers = async (options?: RequestInit): Promise<Customer[]> =>
+  customFetch<Customer[]>(getListCustomersUrl(), { ...options, method: "GET" });
+
+export const useListCustomers = <TData = Customer[], TError = ErrorType<unknown>>(options?: {
+  query?: UseQueryOptions<Customer[], TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getListCustomersQueryKey();
+  const queryFn: QueryFunction<Customer[]> = ({ signal }) => listCustomers({ signal, ...requestOptions });
+  return useQuery({ queryKey, queryFn, ...queryOptions } as UseQueryOptions<Customer[], TError, TData>);
+};
+
+export const createCustomer = async (data: BodyType<CreateCustomerInput>, options?: RequestInit): Promise<Customer> =>
+  customFetch<Customer>(getListCustomersUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const useCreateCustomer = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Customer, TError, { data: BodyType<CreateCustomerInput> }, TContext>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<Customer, TError, { data: BodyType<CreateCustomerInput> }, TContext> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationFn: MutationFunction<Customer, { data: BodyType<CreateCustomerInput> }> = ({ data }) =>
+    createCustomer(data, requestOptions);
+  return useMutation({ mutationFn, ...mutationOptions });
+};
+
+export const getUpdateCustomerUrl = (id: number) => `/api/customers/${id}`;
+
+export const updateCustomer = async (id: number, data: BodyType<UpdateCustomerInput>, options?: RequestInit): Promise<Customer> =>
+  customFetch<Customer>(getUpdateCustomerUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const useUpdateCustomer = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Customer, TError, { id: number; data: BodyType<UpdateCustomerInput> }, TContext>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<Customer, TError, { id: number; data: BodyType<UpdateCustomerInput> }, TContext> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationFn: MutationFunction<Customer, { id: number; data: BodyType<UpdateCustomerInput> }> = ({ id, data }) =>
+    updateCustomer(id, data, requestOptions);
+  return useMutation({ mutationFn, ...mutationOptions });
+};
+
+export const getDeleteCustomerUrl = (id: number) => `/api/customers/${id}`;
+
+export const deleteCustomer = async (id: number, options?: RequestInit): Promise<void> =>
+  customFetch<void>(getDeleteCustomerUrl(id), { ...options, method: "DELETE" });
+
+export const useDeleteCustomer = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<void, TError, { id: number }, TContext>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<void, TError, { id: number }, TContext> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationFn: MutationFunction<void, { id: number }> = ({ id }) => deleteCustomer(id, requestOptions);
+  return useMutation({ mutationFn, ...mutationOptions });
 };

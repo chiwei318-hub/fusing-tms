@@ -48,6 +48,14 @@ export const DriverActionType = {
   complete: "complete",
 } as const;
 
+export type DriverType = (typeof DriverType)[keyof typeof DriverType];
+
+export const DriverType = {
+  self: "self",
+  affiliated: "affiliated",
+  external: "external",
+} as const;
+
 export interface Driver {
   id: number;
   name: string;
@@ -55,6 +63,9 @@ export interface Driver {
   vehicleType: string;
   licensePlate: string;
   status: DriverStatus;
+  driverType?: string | null;
+  username?: string | null;
+  password?: string | null;
   lineUserId?: string | null;
   createdAt: string;
 }
@@ -121,6 +132,9 @@ export interface CreateDriverInput {
   vehicleType: string;
   licensePlate: string;
   lineUserId?: string | null;
+  driverType?: string | null;
+  username?: string | null;
+  password?: string | null;
 }
 
 export interface UpdateDriverInput {
@@ -130,6 +144,32 @@ export interface UpdateDriverInput {
   licensePlate?: string;
   status?: DriverStatus;
   lineUserId?: string | null;
+  driverType?: string | null;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  phone: string;
+  username?: string | null;
+  password?: string | null;
+  createdAt: string;
+}
+
+export interface CreateCustomerInput {
+  name: string;
+  phone: string;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface UpdateCustomerInput {
+  name?: string;
+  phone?: string;
+  username?: string | null;
+  password?: string | null;
 }
 
 export type ListOrdersParams = {
