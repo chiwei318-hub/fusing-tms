@@ -1,68 +1,95 @@
 import { Link } from "wouter";
-import { Package, Search, ArrowRight, CheckCircle, Truck, Clock } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Package, Search, ArrowRight, Truck, Clock, CheckCircle, Phone } from "lucide-react";
 
 export default function CustomerHome() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">您好！</h1>
-        <p className="text-muted-foreground text-sm mt-1">請選擇您需要的服務</p>
+    <div className="space-y-5">
+      {/* Hero Banner */}
+      <div className="bg-gradient-to-r from-blue-700 to-blue-900 rounded-2xl p-5 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-8 -mt-8" />
+        <div className="absolute bottom-0 left-0 w-20 h-20 bg-orange-500/20 rounded-full -ml-6 -mb-6" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-2">
+            <Truck className="w-5 h-5 text-orange-400" />
+            <span className="text-orange-300 text-xs font-semibold uppercase tracking-wide">富詠運輸</span>
+          </div>
+          <h1 className="text-2xl font-black leading-tight">快速、安全<br />的物流服務</h1>
+          <p className="text-blue-200 text-sm mt-2">24小時全台配送，準時到達</p>
+        </div>
       </div>
 
+      {/* Main CTAs */}
       <div className="space-y-3">
         <Link href="/customer/order">
-          <Card className="border-2 border-primary/20 hover:border-primary hover:shadow-md transition-all cursor-pointer group bg-white">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="bg-primary/10 p-3 rounded-xl group-hover:bg-primary/20 transition-colors">
-                <Package className="w-7 h-7 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-foreground text-lg">立即下單</p>
-                <p className="text-muted-foreground text-sm">填寫取送資訊建立訂單</p>
-              </div>
-              <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
-            </CardContent>
-          </Card>
+          <div className="bg-orange-500 hover:bg-orange-600 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg shadow-orange-500/30">
+            <div className="bg-white/20 p-3 rounded-xl shrink-0">
+              <Package className="w-7 h-7 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-black text-white text-xl">立即下單</p>
+              <p className="text-orange-100 text-sm mt-0.5">填寫取送資訊，快速建立訂單</p>
+            </div>
+            <div className="bg-white/20 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+              <ArrowRight className="w-4.5 h-4.5 text-white" />
+            </div>
+          </div>
         </Link>
 
         <Link href="/customer/track">
-          <Card className="border hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group bg-white">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="bg-blue-50 p-3 rounded-xl group-hover:bg-blue-100 transition-colors">
-                <Search className="w-7 h-7 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-foreground text-lg">查詢訂單</p>
-                <p className="text-muted-foreground text-sm">輸入電話或單號查看狀態</p>
-              </div>
-              <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-            </CardContent>
-          </Card>
+          <div className="bg-white border-2 border-blue-100 hover:border-blue-300 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-sm">
+            <div className="bg-blue-50 p-3 rounded-xl shrink-0">
+              <Search className="w-7 h-7 text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-black text-gray-900 text-xl">查詢訂單</p>
+              <p className="text-gray-500 text-sm mt-0.5">輸入電話或單號查看狀態</p>
+            </div>
+            <div className="bg-blue-600 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+              <ArrowRight className="w-4 h-4 text-white" />
+            </div>
+          </div>
         </Link>
       </div>
 
-      {/* How it works */}
+      {/* Service steps */}
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">服務流程</p>
-        <div className="space-y-2.5">
-          {[
-            { icon: Package, label: "填寫下單表單", sub: "提供取送地址與貨物資訊", color: "text-primary bg-primary/10" },
-            { icon: Truck, label: "等待派車通知", sub: "系統指派司機為您服務", color: "text-blue-600 bg-blue-50" },
-            { icon: Clock, label: "追蹤運送狀態", sub: "隨時查詢您的訂單進度", color: "text-amber-600 bg-amber-50" },
-            { icon: CheckCircle, label: "簽收確認付款", sub: "完成配送後回報付款", color: "text-emerald-600 bg-emerald-50" },
-          ].map((step, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-white rounded-xl border">
-              <div className={`${step.color} p-2 rounded-lg shrink-0`}>
-                <step.icon className="w-4 h-4" />
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">服務流程</p>
+        <div className="relative">
+          {/* Connecting line */}
+          <div className="absolute left-6 top-8 bottom-8 w-px bg-gradient-to-b from-orange-400 via-blue-400 to-green-400 opacity-30" />
+          <div className="space-y-1">
+            {[
+              { icon: Package, label: "填寫下單表單", sub: "取送地址與貨物資訊", color: "bg-orange-500", num: "1" },
+              { icon: Truck, label: "系統指派司機", sub: "即時派車通知確認", color: "bg-blue-600", num: "2" },
+              { icon: Clock, label: "追蹤運送狀態", sub: "隨時查詢訂單進度", color: "bg-amber-500", num: "3" },
+              { icon: CheckCircle, label: "簽收確認付款", sub: "完成配送回報付款", color: "bg-emerald-500", num: "4" },
+            ].map((step, i) => (
+              <div key={i} className="flex items-center gap-4 p-3 bg-white rounded-xl border border-gray-100 relative">
+                <div className={`${step.color} w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white font-black text-sm shadow-sm z-10`}>
+                  {step.num}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{step.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{step.sub}</p>
+                </div>
               </div>
-              <div>
-                <p className="font-medium text-foreground text-sm">{step.label}</p>
-                <p className="text-xs text-muted-foreground">{step.sub}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+      </div>
+
+      {/* Contact */}
+      <div className="bg-gray-50 rounded-2xl p-4 flex items-center gap-3 border border-gray-100">
+        <div className="bg-blue-100 p-2.5 rounded-xl shrink-0">
+          <Phone className="w-5 h-5 text-blue-600" />
+        </div>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-900 text-sm">客服專線</p>
+          <p className="text-gray-500 text-xs">週一至週六 08:00–20:00</p>
+        </div>
+        <a href="tel:0800000000" className="bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl">
+          聯絡我們
+        </a>
       </div>
     </div>
   );

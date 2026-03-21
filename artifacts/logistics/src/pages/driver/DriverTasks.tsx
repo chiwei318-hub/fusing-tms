@@ -1,131 +1,216 @@
 import { Link } from "wouter";
-import { format } from "date-fns";
-import { Truck, MapPin, Package, Clock, ChevronRight, AlertCircle, User } from "lucide-react";
+import { format, isToday } from "date-fns";
+import { Truck, MapPin, Package, Clock, ChevronRight, AlertCircle, User, CheckCircle, Zap } from "lucide-react";
 import { useListOrders } from "@workspace/api-client-react";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocalStorage } from "@/hooks/use-mobile";
 import { useDriversData } from "@/hooks/use-drivers";
+import { useState } from "react";
 
-const STATUS_PRIORITY: Record<string, number> = {
-  assigned: 0,
-  in_transit: 1,
-  pending: 2,
-  delivered: 3,
-  cancelled: 4,
+type Tab = "active" | "done";
+
+const STATUS_LABEL: Record<string, string> = {
+  assigned: "待接單",
+  in_transit: "運送中",
+  delivered: "已完成",
+  cancelled: "已取消",
+  pending: "待派車",
 };
 
 export default function DriverTasks() {
+  const [tab, setTab] = useState<Tab>("active");
   const [selectedId] = useLocalStorage<number | null>("driver-session-id", null);
   const { data: drivers } = useDriversData();
   const selectedDriver = drivers?.find(d => d.id === selectedId);
 
   const { data: orders, isLoading } = useListOrders(
     selectedId ? { driverId: selectedId } : undefined,
-    { query: { enabled: !!selectedId, refetchInterval: 30000 } }
+    { query: { enabled: !!selectedId, refetchInterval: 20000 } }
   );
-
-  const sortedOrders = orders
-    ? [...orders].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99))
-    : [];
 
   if (!selectedId) {
     return (
-      <div className="text-center py-12">
-        <User className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
-        <p className="font-semibold text-foreground">請先選擇身份</p>
+      <div className="text-center py-16">
+        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <User className="w-8 h-8 text-gray-400" />
+        </div>
+        <p className="font-bold text-foreground text-lg">請先選擇身份</p>
         <p className="text-sm text-muted-foreground mt-1">返回首頁選擇您的司機帳號</p>
         <Link href="/driver">
-          <div className="mt-4 inline-flex items-center px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium gap-2">
-            <User className="w-4 h-4" /> 前往選擇
+          <div className="mt-5 inline-flex items-center px-5 py-3 rounded-xl bg-orange-500 text-white text-sm font-bold gap-2 shadow-lg shadow-orange-500/30">
+            <User className="w-4 h-4" /> 選擇帳號
           </div>
         </Link>
       </div>
     );
   }
 
+  const allOrders = orders ?? [];
+  const activeOrders = allOrders
+    .filter(o => o.status === "assigned" || o.status === "in_transit")
+    .sort((a, b) => {
+      if (a.status === "in_transit" && b.status !== "in_transit") return -1;
+      if (a.status !== "in_transit" && b.status === "in_transit") return 1;
+      return 0;
+    });
+
+  const doneOrders = allOrders
+    .filter(o => o.status === "delivered" || o.status === "cancelled")
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  const todayDone = doneOrders.filter(o => isToday(new Date(o.updatedAt)));
+  const todayEarnings = todayDone.reduce((sum, o) => sum + (o.totalFee ?? 0), 0);
+
+  const displayOrders = tab === "active" ? activeOrders : doneOrders;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">我的任務</h1>
+          <h1 className="text-xl font-black text-foreground">任務中心</h1>
           {selectedDriver && (
-            <p className="text-sm text-muted-foreground mt-0.5">{selectedDriver.name} 的派車紀錄</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{selectedDriver.name}</p>
           )}
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-primary">{sortedOrders.length}</p>
-          <p className="text-xs text-muted-foreground">筆任務</p>
+      </div>
+
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+          <Zap className="w-4 h-4 text-orange-500 mx-auto mb-1" />
+          <p className="text-xl font-black text-orange-600">{activeOrders.length}</p>
+          <p className="text-xs text-orange-500 font-medium">進行中</p>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
+          <CheckCircle className="w-4 h-4 text-emerald-600 mx-auto mb-1" />
+          <p className="text-xl font-black text-emerald-700">{todayDone.length}</p>
+          <p className="text-xs text-emerald-600 font-medium">今日完成</p>
+        </div>
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+          <Package className="w-4 h-4 text-blue-600 mx-auto mb-1" />
+          <p className="text-base font-black text-blue-700">{todayEarnings > 0 ? `$${todayEarnings.toLocaleString()}` : "—"}</p>
+          <p className="text-xs text-blue-600 font-medium">今日收入</p>
         </div>
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: "待接單", count: sortedOrders.filter(o => o.status === "assigned").length, color: "bg-blue-50 text-blue-700" },
-          { label: "運送中", count: sortedOrders.filter(o => o.status === "in_transit").length, color: "bg-amber-50 text-amber-700" },
-          { label: "已完成", count: sortedOrders.filter(o => o.status === "delivered").length, color: "bg-emerald-50 text-emerald-700" },
-        ].map(({ label, count, color }) => (
-          <div key={label} className={`${color} rounded-xl p-3 text-center`}>
-            <p className="text-xl font-bold">{count}</p>
-            <p className="text-xs font-medium">{label}</p>
-          </div>
-        ))}
+      {/* Tabs */}
+      <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
+        <button
+          onClick={() => setTab("active")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            tab === "active"
+              ? "bg-white text-blue-700 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          進行中 {activeOrders.length > 0 && (
+            <span className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs
+              ${tab === "active" ? "bg-orange-500 text-white" : "bg-gray-300 text-gray-600"}`}>
+              {activeOrders.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab("done")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
+            tab === "done"
+              ? "bg-white text-blue-700 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          歷史紀錄
+        </button>
       </div>
 
+      {/* Order list */}
       {isLoading ? (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
-      ) : sortedOrders.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-2xl border">
-          <Truck className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
-          <p className="font-semibold text-foreground">目前沒有派車任務</p>
-          <p className="text-sm text-muted-foreground mt-1">等待後台分配訂單給您</p>
+      ) : displayOrders.length === 0 ? (
+        <div className="text-center py-14 bg-white rounded-2xl border">
+          {tab === "active" ? (
+            <>
+              <Truck className="w-12 h-12 mx-auto text-gray-200 mb-3" />
+              <p className="font-bold text-gray-700">目前沒有進行中任務</p>
+              <p className="text-sm text-gray-400 mt-1">等待後台指派訂單給您</p>
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-12 h-12 mx-auto text-gray-200 mb-3" />
+              <p className="font-bold text-gray-700">尚無歷史紀錄</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {sortedOrders.map(order => (
-            <Link key={order.id} href={`/driver/tasks/${order.id}`}>
-              <Card className={`border cursor-pointer hover:shadow-md transition-all
-                ${order.status === "assigned" ? "border-blue-200 bg-blue-50/30" :
-                  order.status === "in_transit" ? "border-amber-200 bg-amber-50/30" :
-                  "border bg-white"}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <span className="font-mono font-bold text-foreground">訂單 #{order.id}</span>
-                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {format(new Date(order.createdAt), "MM/dd HH:mm")}
-                      </p>
+          {displayOrders.map(order => {
+            const isActive = order.status === "assigned" || order.status === "in_transit";
+            const isInTransit = order.status === "in_transit";
+            return (
+              <Link key={order.id} href={`/driver/tasks/${order.id}`}>
+                <Card className={`border-2 cursor-pointer active:scale-[0.98] transition-all shadow-sm
+                  ${isInTransit ? "border-orange-300 bg-orange-50/50 shadow-orange-100" :
+                    order.status === "assigned" ? "border-blue-200 bg-blue-50/30" :
+                    order.status === "delivered" ? "border-emerald-100 bg-white" :
+                    "border-gray-100 bg-white"}`}>
+                  <CardContent className="p-4">
+                    {/* Top row */}
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-foreground text-base">#{order.id}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full
+                            ${isInTransit ? "bg-orange-100 text-orange-700" :
+                              order.status === "assigned" ? "bg-blue-100 text-blue-700" :
+                              order.status === "delivered" ? "bg-emerald-100 text-emerald-700" :
+                              "bg-gray-100 text-gray-600"}`}>
+                            {STATUS_LABEL[order.status]}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {order.pickupDate ? `${order.pickupDate} ${order.pickupTime ?? ""}` : format(new Date(order.createdAt), "MM/dd HH:mm")}
+                        </p>
+                      </div>
+                      {order.totalFee != null && (
+                        <span className="font-black text-orange-600 text-base">NT${order.totalFee.toLocaleString()}</span>
+                      )}
                     </div>
-                    <OrderStatusBadge status={order.status} />
-                  </div>
 
-                  <div className="space-y-1.5 text-sm mb-3">
-                    <div className="flex gap-2 items-start">
-                      <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                      <span className="text-muted-foreground line-clamp-1">{order.pickupAddress}</span>
+                    {/* Route */}
+                    <div className="space-y-1.5 text-sm mb-3">
+                      <div className="flex gap-2 items-start">
+                        <div className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />
+                        <span className="text-gray-700 line-clamp-1">
+                          {order.pickupContactName ? `${order.pickupContactName}｜` : ""}{order.pickupAddress}
+                        </span>
+                      </div>
+                      <div className="ml-[3px] w-px h-2 bg-gray-200 ml-[3.5px]" />
+                      <div className="flex gap-2 items-start">
+                        <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1.5" />
+                        <span className="text-gray-700 line-clamp-1">
+                          {order.deliveryContactName ? `${order.deliveryContactName}｜` : ""}{order.deliveryAddress}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex gap-2 items-start">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="text-muted-foreground line-clamp-1">{order.deliveryAddress}</span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Package className="w-3 h-3" />
-                      <span className="truncate max-w-[160px]">{order.cargoDescription}</span>
+                    {/* Bottom row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Package className="w-3 h-3" />
+                        <span className="truncate max-w-[180px]">{order.cargoDescription}{order.cargoQuantity ? ` · ${order.cargoQuantity}` : ""}</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
-  Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info,
+  Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
 } from "lucide-react";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -28,6 +28,23 @@ const DRIVER_TYPE_LABELS: Record<string, string> = {
   affiliated: "靠行司機",
   external: "外車司機",
 };
+
+function calculateAutoQuote(order: Order): number {
+  let total = 1500;
+  const vehicleFees: Record<string, number> = {
+    "小貨車": 0, "中型貨車": 800, "大貨車": 2000,
+    "曳引車": 5000, "冷藏車": 3000, "不限": 0,
+  };
+  total += vehicleFees[order.requiredVehicleType ?? ""] ?? 0;
+  const w = order.cargoWeight ?? 0;
+  if (w > 300) total += 4000;
+  else if (w > 100) total += 2000;
+  else if (w > 50) total += 1000;
+  else if (w > 10) total += 500;
+  if (order.needTailgate === "yes") total += 500;
+  if (order.needHydraulicPallet === "yes") total += 800;
+  return total;
+}
 
 const driverFormSchema = z.object({
   name: z.string().min(2, "名稱必填"),
@@ -229,6 +246,8 @@ export default function Admin() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [reportRange, setReportRange] = useState<"today" | "week" | "month" | "all">("today");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [quoteOrder, setQuoteOrder] = useState<Order | null>(null);
+  const [quoteAmount, setQuoteAmount] = useState<number>(0);
 
   const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
@@ -388,6 +407,37 @@ export default function Admin() {
     }
   };
 
+  const handleSmartDispatch = async (orderId: number) => {
+    const available = drivers?.filter(d => d.status === "available");
+    if (!available || available.length === 0) {
+      toast({ title: "無可用司機", description: "目前所有司機皆忙碌或離線", variant: "destructive" });
+      return;
+    }
+    const best = available[0];
+    try {
+      await updateOrder({ id: orderId, data: { driverId: best.id, status: "assigned" } });
+      toast({ title: `⚡ 已派車給 ${best.name}`, description: `${best.vehicleType} · ${best.licensePlate}` });
+    } catch {
+      toast({ title: "派車失敗", variant: "destructive" });
+    }
+  };
+
+  const openQuoteDialog = (order: Order) => {
+    setQuoteOrder(order);
+    setQuoteAmount(calculateAutoQuote(order));
+  };
+
+  const applyQuote = async () => {
+    if (!quoteOrder) return;
+    try {
+      await updateOrder({ id: quoteOrder.id, data: { totalFee: quoteAmount, feeStatus: "unpaid" } });
+      toast({ title: "✅ 運費已套用", description: `NT$${quoteAmount.toLocaleString()}` });
+      setQuoteOrder(null);
+    } catch {
+      toast({ title: "套用失敗", variant: "destructive" });
+    }
+  };
+
   const handleDriverStatus = async (driverId: number, status: DriverStatus) => {
     try {
       await updateDriver({ id: driverId, data: { status } });
@@ -492,11 +542,25 @@ export default function Admin() {
                         ) : (
                           <div className="text-xs text-muted-foreground mt-0.5">未設定運費</div>
                         )}
+                        <button
+                          onClick={() => openQuoteDialog(order as Order)}
+                          className="mt-1 text-xs text-orange-600 hover:underline flex items-center gap-0.5 font-medium"
+                        >
+                          <Calculator className="w-3 h-3" /> 自動估價
+                        </button>
                       </td>
                       <td className="px-3 py-3">
                         <OrderStatusBadge status={order.status} />
                       </td>
                       <td className="px-3 py-3">
+                        {order.status === "pending" && !order.driverId && (
+                          <button
+                            onClick={() => handleSmartDispatch(order.id)}
+                            className="mb-1.5 flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white font-bold px-2.5 py-1.5 rounded-lg shadow-sm"
+                          >
+                            <Zap className="w-3 h-3" /> 一鍵派車
+                          </button>
+                        )}
                         <Select value={order.driverId?.toString() || "none"} onValueChange={(val) => handleOrderAssign(order.id, val)}>
                           <SelectTrigger className="h-8 text-xs w-[130px]">
                             <SelectValue placeholder="選擇司機" />
@@ -532,6 +596,63 @@ export default function Admin() {
               </table>
             </div>
           </Card>
+
+          {/* Auto-quote Dialog */}
+          <Dialog open={!!quoteOrder} onOpenChange={(o) => !o && setQuoteOrder(null)}>
+            <DialogContent className="sm:max-w-[360px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Calculator className="w-5 h-5 text-orange-500" /> 自動報價
+                </DialogTitle>
+                <DialogDescription>依貨物資訊自動計算建議運費</DialogDescription>
+              </DialogHeader>
+              {quoteOrder && (
+                <div className="space-y-4 py-2">
+                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">基本費</span><span>NT$1,500</span>
+                    </div>
+                    {quoteOrder.requiredVehicleType && quoteOrder.requiredVehicleType !== "不限" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">車型（{quoteOrder.requiredVehicleType}）</span>
+                        <span>+NT${({ "小貨車": 0, "中型貨車": 800, "大貨車": 2000, "曳引車": 5000, "冷藏車": 3000 }[quoteOrder.requiredVehicleType] ?? 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(quoteOrder.cargoWeight ?? 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">重量（{quoteOrder.cargoWeight}kg）</span>
+                        <span>+NT${quoteOrder.cargoWeight! > 300 ? "4,000" : quoteOrder.cargoWeight! > 100 ? "2,000" : quoteOrder.cargoWeight! > 50 ? "1,000" : quoteOrder.cargoWeight! > 10 ? "500" : "0"}</span>
+                      </div>
+                    )}
+                    {quoteOrder.needTailgate === "yes" && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">尾門費</span><span>+NT$500</span></div>
+                    )}
+                    {quoteOrder.needHydraulicPallet === "yes" && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">油壓板車費</span><span>+NT$800</span></div>
+                    )}
+                    <div className="border-t pt-2 flex justify-between font-black text-orange-600 text-base">
+                      <span>建議總費</span><span>NT${quoteAmount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">調整金額（NT$）</label>
+                    <Input
+                      type="number"
+                      value={quoteAmount}
+                      onChange={e => setQuoteAmount(Number(e.target.value))}
+                      className="mt-1.5 h-12 text-lg font-bold"
+                    />
+                  </div>
+                </div>
+              )}
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setQuoteOrder(null)}>取消</Button>
+                <Button className="bg-orange-500 hover:bg-orange-600" onClick={applyQuote}>
+                  套用報價 NT${quoteAmount.toLocaleString()}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Order Detail Dialog */}
           <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
