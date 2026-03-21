@@ -7,6 +7,7 @@ import {
   Building2, Phone, AlertTriangle, Calculator, ChevronDown, Info,
   Plus, Trash2,
 } from "lucide-react";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -147,14 +148,17 @@ function AddressSection({
           )} />
         </div>
 
-        <FormField control={control} name={addrField} render={({ field }) => (
+        <FormField control={control} name={addrField} render={({ field, fieldState }) => (
           <FormItem>
             <FormLabel className="text-sm">完整地址 <span className="text-destructive">*</span></FormLabel>
             <FormControl>
-              <Input
-                className="h-12 text-base"
-                placeholder="○○縣○○區○○路○段○○號○樓"
-                {...field}
+              <TaiwanAddressInput
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                historyKey={prefix}
+                placeholder="輸入郵遞區號或縣市，例：100 或 台北市"
+                error={fieldState.error?.message}
               />
             </FormControl>
             <FormMessage />
@@ -229,11 +233,18 @@ function ExtraStopCard({
         </button>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-3">
-        <FormField control={control} name={`${base}.address`} render={({ field }) => (
+        <FormField control={control} name={`${base}.address`} render={({ field, fieldState }) => (
           <FormItem>
             <FormLabel className="text-sm">完整地址 <span className="text-destructive">*</span></FormLabel>
             <FormControl>
-              <Input className="h-11 text-base" placeholder="○○縣○○區○○路○段○○號" {...field} />
+              <TaiwanAddressInput
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                historyKey={`extra-${colorClass}`}
+                placeholder="輸入郵遞區號或縣市，例：220 或 新北市"
+                error={fieldState.error?.message}
+              />
             </FormControl>
             <FormMessage />
           </FormItem>
