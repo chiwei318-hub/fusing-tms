@@ -1,0 +1,15 @@
+packages:
+  "date-fns": "For formatting dates in order history and tables"
+  "framer-motion": "For page transitions and interactive elements"
+  "@hookform/resolvers": "Zod resolver for form validation"
+  "react-hook-form": "Form state management"
+  "zod": "Schema validation for forms"
+
+images:
+  - path: "artifacts/logistics/public/images/logistics-hero.png"
+    description: "Abstract modern 3D illustration of interconnected logistics network, clean white and corporate blue background, subtle floating geometric shapes"
+    aspect_ratio: "16:9"
+
+notes:
+  - Using generated Orval hooks from @workspace/api-client-react
+  - Using Shadcn UI components provided in the workspace
