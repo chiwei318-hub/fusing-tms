@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Truck, Package, Search, ArrowLeft } from "lucide-react";
+import { Truck, ArrowLeft, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function CustomerLayout({ children }: { children: React.ReactNode }) {
@@ -10,7 +10,13 @@ export function CustomerLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col">
       <header className="bg-white border-b shadow-sm sticky top-0 z-30">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
-          {!isHome && (
+          {isHome ? (
+            <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2" title="回首頁功能表">
+              <Link href="/">
+                <Home className="w-4 h-4 text-muted-foreground" />
+              </Link>
+            </Button>
+          ) : (
             <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2">
               <Link href="/customer">
                 <ArrowLeft className="w-4 h-4" />

@@ -1,12 +1,13 @@
 import { Link, useLocation } from "wouter";
-import { Truck, ClipboardList, Home } from "lucide-react";
+import { Truck, ClipboardList, Home, LayoutGrid } from "lucide-react";
 
 export function DriverLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/driver", icon: Home, label: "首頁" },
-    { href: "/driver/tasks", icon: ClipboardList, label: "任務" },
+    { href: "/driver", icon: Home, label: "首頁", exact: true },
+    { href: "/driver/tasks", icon: ClipboardList, label: "任務", exact: false },
+    { href: "/", icon: LayoutGrid, label: "功能表", exact: true },
   ];
 
   return (
@@ -30,11 +31,14 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-30">
         <div className="max-w-lg mx-auto flex">
           {navItems.map((item) => {
-            const active = location === item.href || location.startsWith(item.href + "/");
+            const active = item.exact
+              ? location === item.href
+              : location === item.href || location.startsWith(item.href + "/");
+            const isHome = item.href === "/";
             return (
               <Link key={item.href} href={item.href} className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs font-medium transition-colors
-                ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                <item.icon className={`w-5 h-5 ${active ? "text-primary" : ""}`} />
+                ${isHome ? "text-orange-500 hover:text-orange-600" : active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                <item.icon className={`w-5 h-5 ${isHome ? "text-orange-500" : active ? "text-primary" : ""}`} />
                 {item.label}
               </Link>
             );

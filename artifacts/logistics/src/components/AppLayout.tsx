@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Package, Truck, LayoutDashboard, Menu, DollarSign, ClipboardList } from "lucide-react";
+import { Package, Truck, LayoutDashboard, DollarSign, ClipboardList, Home } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -69,9 +69,19 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Footer */}
-        <div className="mt-auto p-4 border-t border-sidebar-border">
-          <p className="text-xs text-sidebar-foreground/30 text-center">
+        {/* Footer — back to landing */}
+        <div className="mt-auto border-t border-sidebar-border">
+          <SidebarMenu className="px-2 py-2">
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="回首頁功能表">
+                <Link href="/" className="flex items-center gap-3 px-4 py-2.5 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors">
+                  <Home className="w-4 h-4" />
+                  <span className="font-medium text-sm">回首頁功能表</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <p className="text-xs text-sidebar-foreground/30 text-center pb-3">
             © 富詠運輸股份有限公司
           </p>
         </div>
