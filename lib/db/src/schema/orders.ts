@@ -31,6 +31,10 @@ export const ordersTable = pgTable("orders", {
   cargoDescription: text("cargo_description").notNull(),
   cargoQuantity: text("cargo_quantity"),
   cargoWeight: real("cargo_weight"),
+  cargoLengthM: real("cargo_length_m"),
+  cargoWidthM: real("cargo_width_m"),
+  cargoHeightM: real("cargo_height_m"),
+  region: text("region"),
   // 車輛需求
   requiredVehicleType: text("required_vehicle_type"),
   needTailgate: text("need_tailgate"),

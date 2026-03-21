@@ -45,6 +45,22 @@ A logistics dispatch management system with:
 - **訂單詳情** — Order detail with transport status timeline
 - **後台管理** — Admin panel with order dispatch and driver management
 
+### Admin Tabs (8 total)
+- **訂單** — Order dispatch with ⚡ 一鍵派車 + 💰 自動估價
+- **司機** — Driver CRUD and status management
+- **客戶** — Customer CRUD
+- **報表** — Revenue and operational reports
+- **車型庫** — Vehicle type database (specs, CRUD, auto-match tool)
+- **智慧調度** — LTL consolidation (混載拼車) + return trip recommendation (回頭車)
+- **熱區地圖** — Taiwan region heat map, hourly distribution, driver guidance
+- **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
+
+### DB Tables
+- `orders` — Full order lifecycle with cargo dimensions + region
+- `drivers` — Driver profiles with LINE user ID
+- `customers` — Customer accounts
+- `vehicle_types` — Vehicle spec database
+
 ### Routes
 - `/` — Customer order form (客戶下單)
 - `/orders` — Order list (訂單列表)

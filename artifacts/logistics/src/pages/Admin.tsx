@@ -7,7 +7,12 @@ import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
+  Layers, Map, Brain,
 } from "lucide-react";
+import VehicleTypeTab from "./admin/VehicleTypeTab";
+import SmartDispatchTab from "./admin/SmartDispatchTab";
+import HeatMapTab from "./admin/HeatMapTab";
+import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
@@ -484,18 +489,30 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue="orders" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 max-w-md mb-5">
-          <TabsTrigger value="orders" className="gap-1 text-xs md:text-sm">
+        <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-5 w-full">
+          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[80px]">
             <ClipboardList className="w-3.5 h-3.5" /> 訂單
           </TabsTrigger>
-          <TabsTrigger value="drivers" className="gap-1 text-xs md:text-sm">
+          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[80px]">
             <Truck className="w-3.5 h-3.5" /> 司機
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1 text-xs md:text-sm">
+          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[80px]">
             <Users className="w-3.5 h-3.5" /> 客戶
           </TabsTrigger>
-          <TabsTrigger value="report" className="gap-1 text-xs md:text-sm">
+          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[80px]">
             <BarChart2 className="w-3.5 h-3.5" /> 報表
+          </TabsTrigger>
+          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[80px]">
+            <Truck className="w-3.5 h-3.5" /> 車型庫
+          </TabsTrigger>
+          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[80px]">
+            <Layers className="w-3.5 h-3.5" /> 智慧調度
+          </TabsTrigger>
+          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[80px]">
+            <Map className="w-3.5 h-3.5" /> 熱區地圖
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[80px]">
+            <Brain className="w-3.5 h-3.5" /> AI 分析
           </TabsTrigger>
         </TabsList>
 
@@ -1060,6 +1077,26 @@ export default function Admin() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ===== 車型庫 TAB ===== */}
+        <TabsContent value="vehicles" className="outline-none">
+          <VehicleTypeTab />
+        </TabsContent>
+
+        {/* ===== 智慧調度 TAB ===== */}
+        <TabsContent value="smart" className="outline-none">
+          <SmartDispatchTab />
+        </TabsContent>
+
+        {/* ===== 熱區地圖 TAB ===== */}
+        <TabsContent value="heatmap" className="outline-none">
+          <HeatMapTab />
+        </TabsContent>
+
+        {/* ===== AI 分析 TAB ===== */}
+        <TabsContent value="ai" className="outline-none">
+          <AIAnalyticsTab />
         </TabsContent>
       </Tabs>
     </div>
