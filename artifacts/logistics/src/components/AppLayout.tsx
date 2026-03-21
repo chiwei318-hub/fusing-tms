@@ -87,8 +87,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="h-14 flex items-center gap-4 px-4 md:px-6 bg-card border-b sticky top-14 z-30 shadow-sm">
+          <header className="h-12 flex items-center gap-3 px-4 md:px-6 bg-card border-b sticky top-14 z-30">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+            <span className="text-sm font-semibold text-foreground hidden md:block">後台管理</span>
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto">

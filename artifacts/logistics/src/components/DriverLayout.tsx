@@ -12,20 +12,22 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0 md:flex-row">
-      {/* Top header on mobile / Left sidebar on desktop */}
-      <header className="bg-primary text-primary-foreground sticky top-14 z-30 shadow-md md:sticky md:top-14 md:h-[calc(100svh-3.5rem)] md:w-56 md:flex md:flex-col md:shadow-xl md:shrink-0">
-        <div className="max-w-xl mx-auto md:mx-0 px-4 md:px-5 h-14 md:h-auto md:pt-6 md:pb-4 flex items-center gap-3 border-b border-white/10">
-          <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
-            <Truck className="w-4 h-4 text-white" />
-          </div>
-          <div className="leading-tight">
-            <p className="font-bold text-sm">富詠運輸</p>
-            <p className="text-xs opacity-75 hidden sm:block">司機作業系統</p>
-          </div>
+      {/* Mobile top bar (compact, no brand) / Desktop left sidebar */}
+      <header className="bg-primary text-primary-foreground sticky top-14 z-30 shadow-md md:sticky md:top-14 md:h-[calc(100svh-3.5rem)] md:w-52 md:flex md:flex-col md:shadow-xl md:shrink-0">
+
+        {/* Mobile: compact section label */}
+        <div className="flex items-center gap-2 px-4 h-10 md:hidden border-b border-white/10">
+          <Truck className="w-4 h-4 opacity-70" />
+          <span className="text-sm font-semibold opacity-90">司機作業系統</span>
+        </div>
+
+        {/* Desktop: nav label */}
+        <div className="hidden md:block px-5 pt-5 pb-2">
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/50">司機作業系統</p>
         </div>
 
         {/* Desktop nav items */}
-        <nav className="hidden md:flex md:flex-col md:flex-1 md:p-3 md:gap-1 md:mt-2">
+        <nav className="hidden md:flex md:flex-col md:flex-1 md:p-3 md:gap-1">
           {navItems.map((item) => {
             const active = item.exact
               ? location === item.href
