@@ -287,6 +287,9 @@ export const ListCustomersResponseItem = zod.object({
   phone: zod.string(),
   username: zod.string().nullish(),
   password: zod.string().nullish(),
+  address: zod.string().nullish(),
+  contactPerson: zod.string().nullish(),
+  taxId: zod.string().nullish(),
   createdAt: zod.date(),
 });
 export const ListCustomersResponse = zod.array(ListCustomersResponseItem);
@@ -299,6 +302,9 @@ export const CreateCustomerBody = zod.object({
   phone: zod.string(),
   username: zod.string().nullish(),
   password: zod.string().nullish(),
+  address: zod.string().nullish(),
+  contactPerson: zod.string().nullish(),
+  taxId: zod.string().nullish(),
 });
 
 /**
@@ -313,6 +319,9 @@ export const UpdateCustomerBody = zod.object({
   phone: zod.string().optional(),
   username: zod.string().nullish(),
   password: zod.string().nullish(),
+  address: zod.string().nullish(),
+  contactPerson: zod.string().nullish(),
+  taxId: zod.string().nullish(),
 });
 
 /**

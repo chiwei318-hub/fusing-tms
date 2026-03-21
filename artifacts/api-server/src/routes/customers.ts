@@ -33,6 +33,9 @@ router.post("/customers", async (req, res) => {
         phone: body.phone,
         username: body.username ?? null,
         password: body.password ?? null,
+        address: body.address ?? null,
+        contactPerson: body.contactPerson ?? null,
+        taxId: body.taxId ?? null,
       })
       .returning();
     res.status(201).json(customer);
@@ -60,6 +63,9 @@ router.patch("/customers/:id", async (req, res) => {
     if (body.phone !== undefined) updates.phone = body.phone;
     if ("username" in body) updates.username = body.username ?? null;
     if ("password" in body) updates.password = body.password ?? null;
+    if ("address" in body) updates.address = body.address ?? null;
+    if ("contactPerson" in body) updates.contactPerson = body.contactPerson ?? null;
+    if ("taxId" in body) updates.taxId = body.taxId ?? null;
 
     const [customer] = await db
       .update(customersTable)

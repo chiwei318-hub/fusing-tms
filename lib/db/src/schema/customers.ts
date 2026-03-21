@@ -8,6 +8,9 @@ export const customersTable = pgTable("customers", {
   phone: text("phone").notNull(),
   username: text("username"),
   password: text("password"),
+  address: text("address"),
+  contactPerson: text("contact_person"),
+  taxId: text("tax_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

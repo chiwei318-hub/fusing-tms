@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import HistoryInput from "@/components/HistoryInput";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderStatus, DriverStatus, Driver, Customer, Order } from "@workspace/api-client-react";
 
@@ -69,6 +70,9 @@ type DriverFormValues = z.infer<typeof driverFormSchema>;
 const customerFormSchema = z.object({
   name: z.string().min(2, "名稱必填"),
   phone: z.string().min(8, "電話必填"),
+  address: z.string().optional(),
+  contactPerson: z.string().optional(),
+  taxId: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
 });
@@ -205,32 +209,64 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
     <div className="grid grid-cols-2 gap-4">
       <FormField control={form.control} name="name" render={({ field }) => (
         <FormItem className="col-span-2">
-          <FormLabel>姓名</FormLabel>
-          <FormControl><Input placeholder="例如：張小明" {...field} /></FormControl>
+          <FormLabel>名稱 <span className="text-destructive">*</span></FormLabel>
+          <FormControl><Input placeholder="例如：張小明 或 某某科技股份有限公司" {...field} /></FormControl>
           <FormMessage />
         </FormItem>
       )} />
       <FormField control={form.control} name="phone" render={({ field }) => (
-        <FormItem className="col-span-2">
-          <FormLabel>電話</FormLabel>
+        <FormItem>
+          <FormLabel>電話 <span className="text-destructive">*</span></FormLabel>
           <FormControl><Input placeholder="09xx-xxx-xxx" {...field} /></FormControl>
           <FormMessage />
         </FormItem>
       )} />
-      <FormField control={form.control} name="username" render={({ field }) => (
+      <FormField control={form.control} name="contactPerson" render={({ field }) => (
         <FormItem>
-          <FormLabel>帳號 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
-          <FormControl><Input placeholder="登入帳號" {...field} value={field.value ?? ""} /></FormControl>
+          <FormLabel>聯絡人 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormControl>
+            <HistoryInput fieldKey="customer-contactPerson" placeholder="聯絡人姓名" {...field} value={field.value ?? ""} />
+          </FormControl>
           <FormMessage />
         </FormItem>
       )} />
-      <FormField control={form.control} name="password" render={({ field }) => (
-        <FormItem>
-          <FormLabel>密碼 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
-          <FormControl><PasswordInput field={field} /></FormControl>
+      <FormField control={form.control} name="address" render={({ field }) => (
+        <FormItem className="col-span-2">
+          <FormLabel>地址 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormControl>
+            <HistoryInput fieldKey="customer-address" placeholder="例如：台北市中山區XX路XX號" {...field} value={field.value ?? ""} />
+          </FormControl>
           <FormMessage />
         </FormItem>
       )} />
+      <FormField control={form.control} name="taxId" render={({ field }) => (
+        <FormItem>
+          <FormLabel>統一編號 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormControl>
+            <HistoryInput fieldKey="customer-taxId" placeholder="8 位數字" maxLength={8} {...field} value={field.value ?? ""} />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <div className="col-span-2 border-t pt-3 mt-1">
+        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-3">帳號資訊（選填）</p>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField control={form.control} name="username" render={({ field }) => (
+            <FormItem>
+              <FormLabel>帳號</FormLabel>
+              <FormControl><Input placeholder="登入帳號" {...field} value={field.value ?? ""} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="password" render={({ field }) => (
+            <FormItem>
+              <FormLabel>密碼</FormLabel>
+              <FormControl><PasswordInput field={field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -263,7 +299,7 @@ export default function Admin() {
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
 
-  const customerDefaults = { name: "", phone: "", username: "", password: "" };
+  const customerDefaults = { name: "", phone: "", address: "", contactPerson: "", taxId: "", username: "", password: "" };
   const createCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
   const editCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
 
@@ -334,9 +370,12 @@ export default function Admin() {
         data: {
           name: data.name,
           phone: data.phone,
+          address: data.address || null,
+          contactPerson: data.contactPerson || null,
+          taxId: data.taxId || null,
           username: data.username || null,
           password: data.password || null,
-        },
+        } as any,
       });
       toast({ title: "成功", description: "已新增客戶" });
       setCustomerDialogOpen(false);
@@ -351,6 +390,9 @@ export default function Admin() {
     editCustomerForm.reset({
       name: customer.name,
       phone: customer.phone,
+      address: (customer as any).address ?? "",
+      contactPerson: (customer as any).contactPerson ?? "",
+      taxId: (customer as any).taxId ?? "",
       username: customer.username ?? "",
       password: customer.password ?? "",
     });
@@ -364,9 +406,12 @@ export default function Admin() {
         data: {
           name: data.name,
           phone: data.phone,
+          address: data.address || null,
+          contactPerson: data.contactPerson || null,
+          taxId: data.taxId || null,
           username: data.username || null,
           password: data.password || null,
-        },
+        } as any,
       });
       toast({ title: "成功", description: "客戶資料已更新" });
       setEditingCustomer(null);
@@ -920,18 +965,20 @@ export default function Admin() {
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">姓名 / 電話</th>
+                    <th className="px-4 py-3 font-semibold">名稱 / 電話</th>
+                    <th className="px-4 py-3 font-semibold">聯絡人</th>
+                    <th className="px-4 py-3 font-semibold">地址</th>
+                    <th className="px-4 py-3 font-semibold">統編</th>
                     <th className="px-4 py-3 font-semibold">帳號</th>
-                    <th className="px-4 py-3 font-semibold">密碼</th>
                     <th className="px-4 py-3 font-semibold">建立時間</th>
                     <th className="px-4 py-3 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
                   {customersLoading ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
                   ) : customers?.length === 0 ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">尚無客戶資料，請新增</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">尚無客戶資料，請新增</td></tr>
                   ) : customers?.map((customer) => (
                     <tr key={customer.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3">
@@ -939,15 +986,29 @@ export default function Admin() {
                         <div className="text-muted-foreground font-mono text-xs mt-0.5">{customer.phone}</div>
                       </td>
                       <td className="px-4 py-3">
-                        {customer.username ? (
-                          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{customer.username}</span>
+                        {(customer as any).contactPerson ? (
+                          <span className="text-sm">{(customer as any).contactPerson}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 max-w-[160px]">
+                        {(customer as any).address ? (
+                          <span className="text-xs truncate block" title={(customer as any).address}>{(customer as any).address}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {customer.password ? (
-                          <span className="text-xs font-mono text-muted-foreground">••••••••</span>
+                        {(customer as any).taxId ? (
+                          <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{(customer as any).taxId}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {customer.username ? (
+                          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{customer.username}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}

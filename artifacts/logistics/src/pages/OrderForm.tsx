@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import HistoryInput from "@/components/HistoryInput";
 import { Button } from "@/components/ui/button";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
 import { useToast } from "@/hooks/use-toast";
@@ -135,7 +136,7 @@ export default function OrderForm() {
                     <FormItem>
                       <FormLabel>客戶名稱 <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <Input placeholder="例如：王小明 或 某某科技公司" {...field} />
+                        <HistoryInput fieldKey="order-customerName" placeholder="例如：王小明 或 某某科技公司" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -144,7 +145,7 @@ export default function OrderForm() {
                     <FormItem>
                       <FormLabel>聯絡電話 <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <Input placeholder="0912-345-678" {...field} />
+                        <HistoryInput fieldKey="order-customerPhone" placeholder="0912-345-678" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -199,7 +200,7 @@ export default function OrderForm() {
                           <User className="w-3.5 h-3.5 text-muted-foreground" /> 取貨聯絡人
                         </FormLabel>
                         <FormControl>
-                          <Input placeholder="姓名 + 電話，例：王先生 0912-345-678" {...field} value={field.value ?? ""} />
+                          <HistoryInput fieldKey="order-pickupContact" placeholder="姓名 + 電話，例：王先生 0912-345-678" {...field} value={field.value ?? ""} />
                         </FormControl>
                       </FormItem>
                     )} />
@@ -223,7 +224,7 @@ export default function OrderForm() {
                           <User className="w-3.5 h-3.5 text-muted-foreground" /> 送貨聯絡人
                         </FormLabel>
                         <FormControl>
-                          <Input placeholder="姓名 + 電話，例：李小姐 0988-765-432" {...field} value={field.value ?? ""} />
+                          <HistoryInput fieldKey="order-deliveryContact" placeholder="姓名 + 電話，例：李小姐 0988-765-432" {...field} value={field.value ?? ""} />
                         </FormControl>
                       </FormItem>
                     )} />
