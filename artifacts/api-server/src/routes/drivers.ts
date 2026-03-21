@@ -33,6 +33,7 @@ router.post("/drivers", async (req, res) => {
         phone: body.phone,
         vehicleType: body.vehicleType,
         licensePlate: body.licensePlate,
+        lineUserId: body.lineUserId ?? null,
         status: "available",
       })
       .returning();
@@ -62,6 +63,7 @@ router.patch("/drivers/:id", async (req, res) => {
     if (body.vehicleType !== undefined) updates.vehicleType = body.vehicleType;
     if (body.licensePlate !== undefined) updates.licensePlate = body.licensePlate;
     if (body.status !== undefined) updates.status = body.status;
+    if ("lineUserId" in body) updates.lineUserId = body.lineUserId ?? null;
 
     const [driver] = await db
       .update(driversTable)

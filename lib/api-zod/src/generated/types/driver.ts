@@ -14,5 +14,6 @@ export interface Driver {
   vehicleType: string;
   licensePlate: string;
   status: DriverStatus;
+  lineUserId?: string | null;
   createdAt: Date;
 }

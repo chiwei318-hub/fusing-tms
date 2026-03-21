@@ -9,6 +9,7 @@ import {
   UpdateOrderParams,
   ListOrdersQueryParams,
 } from "@workspace/api-zod";
+import { sendDispatchNotification } from "../lib/line.js";
 
 const router: IRouter = Router();
 
@@ -139,6 +140,29 @@ router.patch("/orders/:id", async (req, res) => {
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
     res.json(order);
+
+    const willBeAssigned = body.driverId != null && updates.status === "assigned";
+    if (willBeAssigned && body.driverId && order) {
+      const driverId = body.driverId;
+      const log = req.log;
+      setImmediate(async () => {
+        try {
+          const driverRows = await db.select().from(driversTable).where(eq(driversTable.id, driverId));
+          const driver = driverRows[0];
+          if (driver?.lineUserId) {
+            await sendDispatchNotification(driver.lineUserId, {
+              id: order.id,
+              pickupAddress: order.pickupAddress,
+              deliveryAddress: order.deliveryAddress,
+              cargoDescription: order.cargoDescription,
+              customerName: order.customerName,
+            });
+          }
+        } catch (err) {
+          log.warn({ err }, "Failed to send LINE dispatch notification");
+        }
+      });
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to update order");
     res.status(500).json({ error: "Failed to update order" });

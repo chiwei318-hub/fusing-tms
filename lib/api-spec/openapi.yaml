@@ -496,6 +496,9 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DriverStatus"
+        lineUserId:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -519,6 +522,9 @@ components:
           type: string
         licensePlate:
           type: string
+        lineUserId:
+          type: string
+          nullable: true
       required: [name, phone, vehicleType, licensePlate]
 
     UpdateDriverInput:
@@ -534,3 +540,6 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/DriverStatus"
+        lineUserId:
+          type: string
+          nullable: true

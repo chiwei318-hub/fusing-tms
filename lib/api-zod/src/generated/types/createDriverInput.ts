@@ -11,4 +11,5 @@ export interface CreateDriverInput {
   phone: string;
   vehicleType: string;
   licensePlate: string;
+  lineUserId?: string | null;
 }

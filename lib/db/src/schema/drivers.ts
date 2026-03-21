@@ -12,6 +12,7 @@ export const driversTable = pgTable("drivers", {
   vehicleType: text("vehicle_type").notNull(),
   licensePlate: text("license_plate").notNull(),
   status: text("status").notNull().default("available"),
+  lineUserId: text("line_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

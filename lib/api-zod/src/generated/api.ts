@@ -180,6 +180,7 @@ export const ListDriversResponseItem = zod.object({
   vehicleType: zod.string(),
   licensePlate: zod.string(),
   status: zod.enum(["available", "busy", "offline"]),
+  lineUserId: zod.string().nullish(),
   createdAt: zod.date(),
 });
 export const ListDriversResponse = zod.array(ListDriversResponseItem);
@@ -192,6 +193,7 @@ export const CreateDriverBody = zod.object({
   phone: zod.string(),
   vehicleType: zod.string(),
   licensePlate: zod.string(),
+  lineUserId: zod.string().nullish(),
 });
 
 /**
@@ -207,6 +209,7 @@ export const UpdateDriverBody = zod.object({
   vehicleType: zod.string().optional(),
   licensePlate: zod.string().optional(),
   status: zod.enum(["available", "busy", "offline"]).optional(),
+  lineUserId: zod.string().nullish(),
 });
 
 export const UpdateDriverResponse = zod.object({
@@ -216,6 +219,7 @@ export const UpdateDriverResponse = zod.object({
   vehicleType: zod.string(),
   licensePlate: zod.string(),
   status: zod.enum(["available", "busy", "offline"]),
+  lineUserId: zod.string().nullish(),
   createdAt: zod.date(),
 });
 

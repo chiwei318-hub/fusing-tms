@@ -13,4 +13,5 @@ export interface UpdateDriverInput {
   vehicleType?: string;
   licensePlate?: string;
   status?: DriverStatus;
+  lineUserId?: string | null;
 }

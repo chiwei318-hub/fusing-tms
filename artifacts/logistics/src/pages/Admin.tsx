@@ -5,7 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
-  TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList
+  TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
+  Pencil, MessageCircle, MessageCircleOff
 } from "lucide-react";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -16,16 +17,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { OrderStatus, DriverStatus } from "@workspace/api-client-react/src/generated/api.schemas";
+import { OrderStatus, DriverStatus, Driver } from "@workspace/api-client-react/src/generated/api.schemas";
 
 const driverFormSchema = z.object({
   name: z.string().min(2, "名稱必填"),
   phone: z.string().min(8, "電話必填"),
   vehicleType: z.string().min(2, "車型必填"),
   licensePlate: z.string().min(3, "車牌必填"),
+  lineUserId: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof driverFormSchema>;
 
@@ -67,20 +69,69 @@ function StatCard({ title, value, sub, icon: Icon, color }: {
   );
 }
 
+function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<DriverFormValues>>; isEdit?: boolean }) {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <FormField control={form.control} name="name" render={({ field }) => (
+        <FormItem className="col-span-2">
+          <FormLabel>姓名</FormLabel>
+          <FormControl><Input placeholder="例如：陳大文" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="phone" render={({ field }) => (
+        <FormItem className="col-span-2">
+          <FormLabel>電話</FormLabel>
+          <FormControl><Input placeholder="09xx-xxx-xxx" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="vehicleType" render={({ field }) => (
+        <FormItem>
+          <FormLabel>車型</FormLabel>
+          <FormControl><Input placeholder="3.5噸貨車" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="licensePlate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>車牌</FormLabel>
+          <FormControl><Input placeholder="ABC-1234" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="lineUserId" render={({ field }) => (
+        <FormItem className="col-span-2">
+          <FormLabel>LINE User ID <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormControl><Input placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} value={field.value ?? ""} /></FormControl>
+          <FormDescription className="text-xs">綁定後，派車時自動透過 LINE 通知司機接單</FormDescription>
+          <FormMessage />
+        </FormItem>
+      )} />
+    </div>
+  );
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const { data: orders, isLoading: ordersLoading } = useOrdersData();
   const { data: drivers, isLoading: driversLoading } = useDriversData();
   const { mutateAsync: updateOrder } = useUpdateOrderMutation();
   const { mutateAsync: createDriver, isPending: creatingDriver } = useCreateDriverMutation();
-  const { mutateAsync: updateDriver } = useUpdateDriverMutation();
+  const { mutateAsync: updateDriver, isPending: updatingDriver } = useUpdateDriverMutation();
   const { mutateAsync: deleteDriver } = useDeleteDriverMutation();
   const [driverDialogOpen, setDriverDialogOpen] = useState(false);
+  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [reportRange, setReportRange] = useState<"today" | "week" | "month" | "all">("today");
 
-  const driverForm = useForm<DriverFormValues>({
+  const createForm = useForm<DriverFormValues>({
     resolver: zodResolver(driverFormSchema),
-    defaultValues: { name: "", phone: "", vehicleType: "", licensePlate: "" },
+    defaultValues: { name: "", phone: "", vehicleType: "", licensePlate: "", lineUserId: "" },
+  });
+
+  const editForm = useForm<DriverFormValues>({
+    resolver: zodResolver(driverFormSchema),
+    defaultValues: { name: "", phone: "", vehicleType: "", licensePlate: "", lineUserId: "" },
   });
 
   // --- Derived stats ---
@@ -109,14 +160,53 @@ export default function Admin() {
 
   const availableDrivers = drivers?.filter((d) => d.status === "available") || [];
 
-  const onDriverSubmit = async (data: DriverFormValues) => {
+  const onCreateDriverSubmit = async (data: DriverFormValues) => {
     try {
-      await createDriver({ data });
+      await createDriver({
+        data: {
+          name: data.name,
+          phone: data.phone,
+          vehicleType: data.vehicleType,
+          licensePlate: data.licensePlate,
+          lineUserId: data.lineUserId || null,
+        },
+      });
       toast({ title: "成功", description: "已新增司機" });
       setDriverDialogOpen(false);
-      driverForm.reset();
+      createForm.reset();
     } catch {
       toast({ title: "失敗", description: "無法新增司機", variant: "destructive" });
+    }
+  };
+
+  const openEditDialog = (driver: Driver) => {
+    setEditingDriver(driver);
+    editForm.reset({
+      name: driver.name,
+      phone: driver.phone,
+      vehicleType: driver.vehicleType,
+      licensePlate: driver.licensePlate,
+      lineUserId: driver.lineUserId ?? "",
+    });
+  };
+
+  const onEditDriverSubmit = async (data: DriverFormValues) => {
+    if (!editingDriver) return;
+    try {
+      await updateDriver({
+        id: editingDriver.id,
+        data: {
+          name: data.name,
+          phone: data.phone,
+          vehicleType: data.vehicleType,
+          licensePlate: data.licensePlate,
+          lineUserId: data.lineUserId || null,
+        },
+      });
+      toast({ title: "成功", description: "司機資料已更新" });
+      setEditingDriver(null);
+    } catch {
+      toast({ title: "失敗", description: "無法更新司機資料", variant: "destructive" });
     }
   };
 
@@ -284,38 +374,9 @@ export default function Admin() {
                   <DialogTitle>新增司機資料</DialogTitle>
                   <DialogDescription>填寫司機基本資料與車輛資訊</DialogDescription>
                 </DialogHeader>
-                <Form {...driverForm}>
-                  <form onSubmit={driverForm.handleSubmit(onDriverSubmit)} className="space-y-4 py-2">
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField control={driverForm.control} name="name" render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>姓名</FormLabel>
-                          <FormControl><Input placeholder="例如：陳大文" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={driverForm.control} name="phone" render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>電話</FormLabel>
-                          <FormControl><Input placeholder="09xx-xxx-xxx" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={driverForm.control} name="vehicleType" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>車型</FormLabel>
-                          <FormControl><Input placeholder="3.5噸貨車" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={driverForm.control} name="licensePlate" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>車牌</FormLabel>
-                          <FormControl><Input placeholder="ABC-1234" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                    </div>
+                <Form {...createForm}>
+                  <form onSubmit={createForm.handleSubmit(onCreateDriverSubmit)} className="space-y-4 py-2">
+                    <DriverFormFields form={createForm} />
                     <DialogFooter className="pt-2">
                       <Button type="submit" disabled={creatingDriver} className="w-full">
                         {creatingDriver ? "儲存中..." : "建立司機檔案"}
@@ -327,6 +388,26 @@ export default function Admin() {
             </Dialog>
           </div>
 
+          {/* Edit Driver Dialog */}
+          <Dialog open={!!editingDriver} onOpenChange={(open) => { if (!open) setEditingDriver(null); }}>
+            <DialogContent className="sm:max-w-[420px]">
+              <DialogHeader>
+                <DialogTitle>編輯司機資料</DialogTitle>
+                <DialogDescription>修改司機基本資料與車輛資訊</DialogDescription>
+              </DialogHeader>
+              <Form {...editForm}>
+                <form onSubmit={editForm.handleSubmit(onEditDriverSubmit)} className="space-y-4 py-2">
+                  <DriverFormFields form={editForm} isEdit />
+                  <DialogFooter className="pt-2">
+                    <Button type="submit" disabled={updatingDriver} className="w-full">
+                      {updatingDriver ? "儲存中..." : "儲存變更"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -335,15 +416,16 @@ export default function Admin() {
                     <th className="px-4 py-3 font-semibold">姓名 / 電話</th>
                     <th className="px-4 py-3 font-semibold">車型</th>
                     <th className="px-4 py-3 font-semibold">車牌</th>
+                    <th className="px-4 py-3 font-semibold">LINE</th>
                     <th className="px-4 py-3 font-semibold">狀態</th>
                     <th className="px-4 py-3 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
                   {driversLoading ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
+                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
                   ) : drivers?.length === 0 ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">尚無司機資料，請新增</td></tr>
+                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">尚無司機資料，請新增</td></tr>
                   ) : drivers?.map((driver) => (
                     <tr key={driver.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3">
@@ -353,6 +435,17 @@ export default function Admin() {
                       <td className="px-4 py-3 text-sm">{driver.vehicleType}</td>
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs bg-muted border px-2 py-0.5 rounded uppercase">{driver.licensePlate}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {driver.lineUserId ? (
+                          <span title={driver.lineUserId} className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <MessageCircle className="w-3.5 h-3.5" /> 已綁定
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <MessageCircleOff className="w-3.5 h-3.5" /> 未綁定
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Select value={driver.status} onValueChange={(val) => handleDriverStatus(driver.id, val as DriverStatus)}>
@@ -367,10 +460,16 @@ export default function Admin() {
                         </Select>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteDriver(driver.id)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(driver)}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteDriver(driver.id)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -471,54 +570,12 @@ export default function Admin() {
                     <div className="text-2xl font-bold">
                       {drivers?.filter(d => d.status === key).length ?? 0}
                     </div>
-                    <div className="text-xs font-medium mt-1">{label}</div>
+                    <div className="text-xs font-medium mt-0.5">{label}</div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          {/* Recent orders in range */}
-          {stats && stats.filtered.length > 0 && (
-            <Card className="border shadow-sm overflow-hidden">
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-primary" />
-                  {rangeLabels[reportRange]}訂單明細
-                </CardTitle>
-              </CardHeader>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left min-w-[500px]">
-                  <thead className="text-xs text-muted-foreground bg-muted/50 border-b uppercase">
-                    <tr>
-                      <th className="px-4 py-2.5 font-semibold">單號</th>
-                      <th className="px-4 py-2.5 font-semibold">客戶</th>
-                      <th className="px-4 py-2.5 font-semibold">司機</th>
-                      <th className="px-4 py-2.5 font-semibold">狀態</th>
-                      <th className="px-4 py-2.5 font-semibold text-right">金額</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y bg-card">
-                    {stats.filtered.map((order) => (
-                      <tr key={order.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-2.5 font-mono font-medium">#{order.id}</td>
-                        <td className="px-4 py-2.5">{order.customerName}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground">
-                          {order.driver?.name ?? <span className="italic text-xs">未指派</span>}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <OrderStatusBadge status={order.status} />
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-semibold">
-                          {order.totalFee != null ? `NT$${order.totalFee.toLocaleString()}` : <span className="text-muted-foreground text-xs italic">未設定</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
         </TabsContent>
       </Tabs>
     </div>

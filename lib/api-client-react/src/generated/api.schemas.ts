@@ -55,6 +55,7 @@ export interface Driver {
   vehicleType: string;
   licensePlate: string;
   status: DriverStatus;
+  lineUserId?: string | null;
   createdAt: string;
 }
 
@@ -119,6 +120,7 @@ export interface CreateDriverInput {
   phone: string;
   vehicleType: string;
   licensePlate: string;
+  lineUserId?: string | null;
 }
 
 export interface UpdateDriverInput {
@@ -127,6 +129,7 @@ export interface UpdateDriverInput {
   vehicleType?: string;
   licensePlate?: string;
   status?: DriverStatus;
+  lineUserId?: string | null;
 }
 
 export type ListOrdersParams = {

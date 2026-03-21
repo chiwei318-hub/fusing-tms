@@ -55,15 +55,24 @@ A logistics dispatch management system with:
 - `GET /api/orders` — List orders (filter by status)
 - `POST /api/orders` — Create order
 - `GET /api/orders/:id` — Get order
-- `PATCH /api/orders/:id` — Update order (assign driver, change status)
+- `PATCH /api/orders/:id` — Update order (assign driver, change status); triggers LINE push notification if driver has lineUserId
 - `GET /api/drivers` — List drivers
-- `POST /api/drivers` — Create driver
-- `PATCH /api/drivers/:id` — Update driver
+- `POST /api/drivers` — Create driver (with optional lineUserId)
+- `PATCH /api/drivers/:id` — Update driver (with optional lineUserId)
 - `DELETE /api/drivers/:id` — Delete driver
+- `POST /api/line/webhook` — LINE Messaging API webhook (handles postback accept/reject actions)
 
 ### Database Tables
 - `orders` — Order records with status, pickup/delivery addresses, cargo info
-- `drivers` — Driver records with vehicle info and availability status
+- `drivers` — Driver records with vehicle info, availability status, and optional `line_user_id`
+
+### LINE Integration
+- Uses `@line/bot-sdk` for LINE Messaging API
+- Flex Message with accept/reject buttons sent on dispatch
+- Webhook at `/api/line/webhook` handles postback events
+- Required env secrets: `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`
+- Optional env: `APP_BASE_URL` (for driver task URL in LINE message)
+- If `lineUserId` is not set on a driver, notification is silently skipped
 
 ### Order Status
 - `pending` → 待處理
@@ -108,7 +117,8 @@ React + Vite frontend for the logistics management system.
 Express 5 API server.
 
 - Entry: `src/index.ts`
-- Routes: `src/routes/` — health, orders, drivers
+- Routes: `src/routes/` — health, orders, drivers, line (webhook)
+- LINE service: `src/lib/line.ts` — sendDispatchNotification(), getLineMiddleware()
 - Depends on: `@workspace/db`, `@workspace/api-zod`
 
 ### `lib/db` (`@workspace/db`)
