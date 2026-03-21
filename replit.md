@@ -45,15 +45,37 @@ A logistics dispatch management system with:
 - **訂單詳情** — Order detail with transport status timeline
 - **後台管理** — Admin panel with order dispatch and driver management
 
-### Admin Tabs (8 total)
-- **訂單** — Order dispatch with ⚡ 一鍵派車 + 💰 自動估價
+### Admin Tabs (10 total)
+- **訂單** — Order dispatch with ⚡ 一鍵派車 + 💰 自動估價 + ✏️ 編輯對話框（分欄聯絡人/電話 + 多站下貨編輯）
 - **司機** — Driver CRUD and status management
 - **客戶** — Customer CRUD
 - **報表** — Revenue and operational reports
 - **車型庫** — Vehicle type database (specs, CRUD, auto-match tool)
 - **智慧調度** — LTL consolidation (混載拼車) + return trip recommendation (回頭車)
 - **熱區地圖** — Taiwan region heat map, hourly distribution, driver guidance
+- **車隊地圖** — Real-time fleet map
+- **拼車** — Carpool dispatch panel: AI compatibility score, one-click merge, merged group management, driver assignment per group
 - **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
+
+### Multi-Stop Delivery (一取多卸)
+- Customer order form supports up to 5 extra delivery stops (address, contact, phone, quantity, weight, notes)
+- Admin order edit dialog allows adding/removing extra delivery stops inline (up to 5 stops)
+- Admin order detail dialog shows full route with numbered stops, signed status, quantity/weight per stop
+- Driver task detail shows per-stop signing card with navigate + sign/unsign buttons per stop
+- Stop sign status stored as JSON in `extraDeliveryAddresses` column
+
+### Order Editing (預約訂單可編輯)
+- Admin edit dialog: pickup/delivery date, time, address, company name, separate contact name + phone
+- Can add/edit/remove extra delivery stops (一取多卸)
+- Vehicle type, weight, dimensions (L×W×H), special requirements, notes
+- All changes sync to driver app and admin detail view immediately
+
+### Carpool Panel (拼車調度)
+- Groups pending orders by delivery region + pickup date
+- AI compatibility score between order pairs (0-100%) based on region/date/time match
+- Remaining capacity display (weight kg + volume m³) with vehicle suggestion
+- One-click merge: creates shared `orderGroupId` across selected orders
+- Merged group management: view route list, assign driver to all orders in group, dissolve group
 
 ### DB Tables
 - `orders` — Full order lifecycle with cargo dimensions + region

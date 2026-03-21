@@ -1,13 +1,13 @@
 import { useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
-  Layers, Map, Brain, Navigation, Car, Save,
+  Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
@@ -80,15 +80,30 @@ const customerFormSchema = z.object({
 });
 type CustomerFormValues = z.infer<typeof customerFormSchema>;
 
+const extraStopEditSchema = z.object({
+  address:     z.string().min(3, "請填寫地址"),
+  contactName: z.string().optional(),
+  phone:       z.string().optional(),
+  company:     z.string().optional(),
+  notes:       z.string().optional(),
+  quantity:    z.string().optional(),
+  weight:      z.coerce.number().optional(),
+  signStatus:  z.enum(["pending", "signed"]).optional(),
+});
+
 const orderEditSchema = z.object({
   pickupDate: z.string().optional(),
   pickupTime: z.string().optional(),
   pickupAddress: z.string().min(5, "請填寫取貨地址"),
-  pickupContactPerson: z.string().optional(),
+  pickupCompany: z.string().optional(),
+  pickupContactPersonName: z.string().optional(),
+  pickupContactPersonPhone: z.string().optional(),
   deliveryDate: z.string().optional(),
   deliveryTime: z.string().optional(),
   deliveryAddress: z.string().min(5, "請填寫送貨地址"),
-  deliveryContactPerson: z.string().optional(),
+  deliveryCompany: z.string().optional(),
+  deliveryContactPersonName: z.string().optional(),
+  deliveryContactPersonPhone: z.string().optional(),
   requiredVehicleType: z.string().optional(),
   cargoWeight: z.coerce.number().optional(),
   cargoLengthM: z.coerce.number().optional(),
@@ -96,8 +111,27 @@ const orderEditSchema = z.object({
   cargoHeightM: z.coerce.number().optional(),
   specialRequirements: z.string().optional(),
   notes: z.string().optional(),
+  extraDeliveryStops: z.array(extraStopEditSchema).optional(),
 });
 type OrderEditValues = z.infer<typeof orderEditSchema>;
+
+function parseContactPerson(cp: string | null | undefined): { name: string; phone: string } {
+  if (!cp) return { name: "", phone: "" };
+  const parts = cp.trim().split(/\s+/);
+  const last = parts[parts.length - 1];
+  if (parts.length > 1 && /^0\d{7,9}$/.test(last.replace(/-/g, ""))) {
+    return { name: parts.slice(0, -1).join(" "), phone: last };
+  }
+  return { name: cp, phone: "" };
+}
+
+function parseExtraStops(raw: unknown): Array<{ address: string; contactName?: string; phone?: string; company?: string; notes?: string; quantity?: string; weight?: number; signStatus?: "pending" | "signed" }> {
+  if (!raw) return [];
+  try {
+    const v = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(v) ? v : [];
+  } catch { return []; }
+}
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待派車",
@@ -326,10 +360,14 @@ export default function Admin() {
   const editCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
 
   const editOrderForm = useForm<OrderEditValues>({ resolver: zodResolver(orderEditSchema), defaultValues: {
-    pickupDate: "", pickupTime: "", pickupAddress: "", pickupContactPerson: "",
-    deliveryDate: "", deliveryTime: "", deliveryAddress: "", deliveryContactPerson: "",
+    pickupDate: "", pickupTime: "", pickupAddress: "",
+    pickupCompany: "", pickupContactPersonName: "", pickupContactPersonPhone: "",
+    deliveryDate: "", deliveryTime: "", deliveryAddress: "",
+    deliveryCompany: "", deliveryContactPersonName: "", deliveryContactPersonPhone: "",
     requiredVehicleType: "", specialRequirements: "", notes: "",
+    extraDeliveryStops: [],
   }});
+  const editStopsField = useFieldArray({ control: editOrderForm.control, name: "extraDeliveryStops" });
 
   const availableDrivers = drivers?.filter((d) => d.status === "available") || [];
 
@@ -529,15 +567,22 @@ export default function Admin() {
 
   const openEditOrderDialog = (order: Order) => {
     setEditingOrder(order);
+    const pickup = parseContactPerson(order.pickupContactPerson);
+    const delivery = parseContactPerson(order.deliveryContactPerson);
+    const stops = parseExtraStops((order as any).extraDeliveryAddresses);
     editOrderForm.reset({
       pickupDate: order.pickupDate ?? "",
       pickupTime: order.pickupTime ?? "",
       pickupAddress: order.pickupAddress,
-      pickupContactPerson: order.pickupContactPerson ?? "",
+      pickupCompany: order.pickupContactName ?? "",
+      pickupContactPersonName: pickup.name,
+      pickupContactPersonPhone: pickup.phone,
       deliveryDate: order.deliveryDate ?? "",
       deliveryTime: order.deliveryTime ?? "",
       deliveryAddress: order.deliveryAddress,
-      deliveryContactPerson: order.deliveryContactPerson ?? "",
+      deliveryCompany: order.deliveryContactName ?? "",
+      deliveryContactPersonName: delivery.name,
+      deliveryContactPersonPhone: delivery.phone,
       requiredVehicleType: order.requiredVehicleType ?? "",
       cargoWeight: order.cargoWeight ?? undefined,
       cargoLengthM: order.cargoLengthM ?? undefined,
@@ -545,11 +590,17 @@ export default function Admin() {
       cargoHeightM: order.cargoHeightM ?? undefined,
       specialRequirements: order.specialRequirements ?? "",
       notes: order.notes ?? "",
+      extraDeliveryStops: stops,
     });
   };
 
   const onEditOrderSubmit = async (data: OrderEditValues) => {
     if (!editingOrder) return;
+    const pickupCP = [data.pickupContactPersonName, data.pickupContactPersonPhone].filter(Boolean).join(" ");
+    const deliveryCP = [data.deliveryContactPersonName, data.deliveryContactPersonPhone].filter(Boolean).join(" ");
+    const extraDeliveryJson = data.extraDeliveryStops?.length
+      ? JSON.stringify(data.extraDeliveryStops)
+      : null;
     try {
       await updateOrder({
         id: editingOrder.id,
@@ -557,11 +608,13 @@ export default function Admin() {
           pickupDate: data.pickupDate || null,
           pickupTime: data.pickupTime || null,
           pickupAddress: data.pickupAddress,
-          pickupContactPerson: data.pickupContactPerson || null,
+          pickupContactName: data.pickupCompany || null,
+          pickupContactPerson: pickupCP || null,
           deliveryDate: data.deliveryDate || null,
           deliveryTime: data.deliveryTime || null,
           deliveryAddress: data.deliveryAddress,
-          deliveryContactPerson: data.deliveryContactPerson || null,
+          deliveryContactName: data.deliveryCompany || null,
+          deliveryContactPerson: deliveryCP || null,
           requiredVehicleType: data.requiredVehicleType || null,
           cargoWeight: data.cargoWeight || null,
           cargoLengthM: data.cargoLengthM || null,
@@ -569,6 +622,7 @@ export default function Admin() {
           cargoHeightM: data.cargoHeightM || null,
           specialRequirements: data.specialRequirements || null,
           notes: data.notes || null,
+          extraDeliveryAddresses: extraDeliveryJson,
         } as any,
       });
       toast({ title: "✅ 訂單已更新", description: `訂單 #${editingOrder.id} 資料已修改` });
@@ -798,106 +852,184 @@ export default function Admin() {
 
           {/* Order Edit Dialog */}
           <Dialog open={!!editingOrder} onOpenChange={(o) => !o && setEditingOrder(null)}>
-            <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Pencil className="w-5 h-5 text-orange-500" /> 編輯訂單 #{editingOrder?.id}
                 </DialogTitle>
-                <DialogDescription>修改預約訂單資訊，儲存後即時更新</DialogDescription>
+                <DialogDescription>修改預約訂單資訊，儲存後即時同步司機端與客戶端</DialogDescription>
               </DialogHeader>
               <Form {...editOrderForm}>
                 <form onSubmit={editOrderForm.handleSubmit(onEditOrderSubmit)} className="space-y-4 py-2">
-                  {/* 取貨 */}
-                  <div className="border rounded-xl p-3 space-y-3">
-                    <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">取貨資訊</p>
+
+                  {/* 取貨資訊 */}
+                  <div className="border border-orange-200 rounded-xl p-3 space-y-3 bg-orange-50/30">
+                    <p className="text-xs font-bold text-orange-600 uppercase tracking-wide flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" /> 取貨資訊
+                    </p>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={editOrderForm.control} name="pickupDate" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">取貨日期</FormLabel>
-                          <FormControl><Input type="date" {...field} /></FormControl>
-                        </FormItem>
+                        <FormItem><FormLabel className="text-xs">取貨日期</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl></FormItem>
                       )} />
                       <FormField control={editOrderForm.control} name="pickupTime" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">取貨時段</FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl>
-                        </FormItem>
+                        <FormItem><FormLabel className="text-xs">時段</FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl></FormItem>
                       )} />
                     </div>
                     <FormField control={editOrderForm.control} name="pickupAddress" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">取貨地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl><Input placeholder="○○縣○○市○○路…" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
+                      <FormItem><FormLabel className="text-xs">取貨地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input placeholder="○○縣○○市○○路○段○號" {...field} /></FormControl>
+                        <FormMessage /></FormItem>
                     )} />
-                    <FormField control={editOrderForm.control} name="pickupContactPerson" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">取貨聯絡人/電話</FormLabel>
-                        <FormControl><Input placeholder="王先生 0912-345-678" {...field} /></FormControl>
-                      </FormItem>
+                    <FormField control={editOrderForm.control} name="pickupCompany" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">公司名稱（選填）</FormLabel>
+                        <FormControl><Input placeholder="○○股份有限公司" {...field} /></FormControl></FormItem>
                     )} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={editOrderForm.control} name="pickupContactPersonName" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs">聯絡人姓名</FormLabel>
+                          <FormControl><Input placeholder="王先生" {...field} /></FormControl></FormItem>
+                      )} />
+                      <FormField control={editOrderForm.control} name="pickupContactPersonPhone" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs">聯絡電話</FormLabel>
+                          <FormControl><Input type="tel" placeholder="0912-345-678" {...field} /></FormControl></FormItem>
+                      )} />
+                    </div>
                   </div>
-                  {/* 送貨 */}
-                  <div className="border rounded-xl p-3 space-y-3">
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wide">送貨資訊</p>
+
+                  {/* 主要送貨地點 */}
+                  <div className="border border-blue-200 rounded-xl p-3 space-y-3 bg-blue-50/30">
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wide flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" /> 主要送達地點
+                    </p>
                     <div className="grid grid-cols-2 gap-3">
                       <FormField control={editOrderForm.control} name="deliveryDate" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">送達日期</FormLabel>
-                          <FormControl><Input type="date" {...field} /></FormControl>
-                        </FormItem>
+                        <FormItem><FormLabel className="text-xs">送達日期</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl></FormItem>
                       )} />
                       <FormField control={editOrderForm.control} name="deliveryTime" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">送達時段</FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl>
-                        </FormItem>
+                        <FormItem><FormLabel className="text-xs">時段</FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl></FormItem>
                       )} />
                     </div>
                     <FormField control={editOrderForm.control} name="deliveryAddress" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">送達地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl><Input placeholder="○○縣○○市○○路…" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
+                      <FormItem><FormLabel className="text-xs">送達地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input placeholder="○○縣○○市○○路○段○號" {...field} /></FormControl>
+                        <FormMessage /></FormItem>
                     )} />
-                    <FormField control={editOrderForm.control} name="deliveryContactPerson" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">送達聯絡人/電話</FormLabel>
-                        <FormControl><Input placeholder="李小姐 0988-765-432" {...field} /></FormControl>
-                      </FormItem>
+                    <FormField control={editOrderForm.control} name="deliveryCompany" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">公司名稱（選填）</FormLabel>
+                        <FormControl><Input placeholder="○○股份有限公司" {...field} /></FormControl></FormItem>
                     )} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={editOrderForm.control} name="deliveryContactPersonName" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs">聯絡人姓名</FormLabel>
+                          <FormControl><Input placeholder="李小姐" {...field} /></FormControl></FormItem>
+                      )} />
+                      <FormField control={editOrderForm.control} name="deliveryContactPersonPhone" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs">聯絡電話</FormLabel>
+                          <FormControl><Input type="tel" placeholder="0988-765-432" {...field} /></FormControl></FormItem>
+                      )} />
+                    </div>
                   </div>
+
+                  {/* 多站下貨點 (一取多卸) */}
+                  <div className="border border-violet-200 rounded-xl p-3 space-y-3 bg-violet-50/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5" /> 額外下貨站點（一取多卸）
+                        {editStopsField.fields.length > 0 && (
+                          <span className="font-normal text-violet-500">共 {editStopsField.fields.length} 站</span>
+                        )}
+                      </p>
+                      {editStopsField.fields.length < 5 && (
+                        <button type="button"
+                          onClick={() => editStopsField.append({ address: "", contactName: "", phone: "", company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending" })}
+                          className="text-xs text-violet-700 border border-violet-300 rounded-lg px-2 py-1 hover:bg-violet-100 flex items-center gap-1 font-medium">
+                          <Plus className="w-3 h-3" /> 新增站點
+                        </button>
+                      )}
+                    </div>
+                    {editStopsField.fields.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">尚未設定額外下貨站點，點右上角「新增站點」即可加入</p>
+                    )}
+                    {editStopsField.fields.map((sf, idx) => (
+                      <div key={sf.id} className="border border-violet-100 rounded-xl p-3 space-y-2.5 bg-white">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+                            <span className="w-5 h-5 bg-violet-600 text-white rounded-full flex items-center justify-center text-[10px] font-black">{idx + 1}</span>
+                            站點 {idx + 1}
+                          </span>
+                          <button type="button" onClick={() => editStopsField.remove(idx)}
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-destructive hover:bg-destructive/10">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.address` as any} render={({ field }) => (
+                          <FormItem><FormLabel className="text-xs">地址 <span className="text-destructive">*</span></FormLabel>
+                            <FormControl><Input placeholder="完整地址" {...field} /></FormControl>
+                            <FormMessage /></FormItem>
+                        )} />
+                        <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.company` as any} render={({ field }) => (
+                          <FormItem><FormLabel className="text-xs">公司（選填）</FormLabel>
+                            <FormControl><Input placeholder="公司名稱" {...field} /></FormControl></FormItem>
+                        )} />
+                        <div className="grid grid-cols-2 gap-2">
+                          <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.contactName` as any} render={({ field }) => (
+                            <FormItem><FormLabel className="text-xs">聯絡人</FormLabel>
+                              <FormControl><Input placeholder="姓名" {...field} /></FormControl></FormItem>
+                          )} />
+                          <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.phone` as any} render={({ field }) => (
+                            <FormItem><FormLabel className="text-xs">電話</FormLabel>
+                              <FormControl><Input type="tel" placeholder="09xx-xxx-xxx" {...field} /></FormControl></FormItem>
+                          )} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.quantity` as any} render={({ field }) => (
+                            <FormItem><FormLabel className="text-xs">件數</FormLabel>
+                              <FormControl><Input placeholder="如：3件" {...field} /></FormControl></FormItem>
+                          )} />
+                          <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.weight` as any} render={({ field }) => (
+                            <FormItem><FormLabel className="text-xs">重量 (kg)</FormLabel>
+                              <FormControl><Input type="number" min={0} step={0.1} placeholder="0.0" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></FormControl></FormItem>
+                          )} />
+                        </div>
+                        <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.notes` as any} render={({ field }) => (
+                          <FormItem><FormLabel className="text-xs">備註（樓層、搬運需求等）</FormLabel>
+                            <FormControl><Textarea className="resize-none text-xs" rows={1} placeholder="例：3樓無電梯" {...field} /></FormControl></FormItem>
+                        )} />
+                      </div>
+                    ))}
+                  </div>
+
                   {/* 車輛 + 貨物 */}
                   <div className="border rounded-xl p-3 space-y-3">
-                    <p className="text-xs font-bold text-primary uppercase tracking-wide">車輛與貨物</p>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5" /> 車輛與貨物
+                    </p>
                     <FormField control={editOrderForm.control} name="requiredVehicleType" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">車型需求</FormLabel>
+                      <FormItem><FormLabel className="text-xs">車型需求</FormLabel>
                         <Select value={field.value ?? ""} onValueChange={field.onChange}>
                           <FormControl>
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="選擇車型" />
-                            </SelectTrigger>
+                            <SelectTrigger className="h-9"><SelectValue placeholder="選擇車型" /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {["廂型1.5T","廂型3.5T","廂型5T","平斗5T","廂型8T","廂型11T","廂型17T","不限"].map(v => (
                               <SelectItem key={v} value={v}>{v}</SelectItem>
                             ))}
                           </SelectContent>
-                        </Select>
-                      </FormItem>
+                        </Select></FormItem>
                     )} />
                     <div className="grid grid-cols-4 gap-2">
                       <FormField control={editOrderForm.control} name="cargoWeight" render={({ field }) => (
                         <FormItem className="col-span-2">
-                          <FormLabel className="text-xs">重量 (kg)</FormLabel>
+                          <FormLabel className="text-xs">總重量 (kg)</FormLabel>
                           <FormControl><Input type="number" min={0} step={0.1} placeholder="0.0" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></FormControl>
                         </FormItem>
                       )} />
-                      {(["cargoLengthM","cargoWidthM","cargoHeightM"] as const).map((name, i) => (
-                        <FormField key={name} control={editOrderForm.control} name={name} render={({ field }) => (
+                      {(["cargoLengthM","cargoWidthM","cargoHeightM"] as const).map((nm, i) => (
+                        <FormField key={nm} control={editOrderForm.control} name={nm} render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-xs">{["長","寬","高"][i]}(m)</FormLabel>
                             <FormControl><Input type="number" min={0} step={0.01} className="px-2" placeholder="0" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></FormControl>
@@ -906,25 +1038,23 @@ export default function Admin() {
                       ))}
                     </div>
                   </div>
+
                   {/* 備註 */}
                   <div className="grid grid-cols-1 gap-3">
                     <FormField control={editOrderForm.control} name="specialRequirements" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">特殊需求</FormLabel>
-                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl>
-                      </FormItem>
+                      <FormItem><FormLabel className="text-xs">特殊需求</FormLabel>
+                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl></FormItem>
                     )} />
                     <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">備註</FormLabel>
-                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl>
-                      </FormItem>
+                      <FormItem><FormLabel className="text-xs">備註</FormLabel>
+                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl></FormItem>
                     )} />
                   </div>
+
                   <DialogFooter className="gap-2 pt-2">
                     <Button variant="outline" type="button" onClick={() => setEditingOrder(null)}>取消</Button>
                     <Button type="submit" className="gap-2 bg-orange-500 hover:bg-orange-600">
-                      <Save className="w-4 h-4" /> 儲存變更
+                      <Save className="w-4 h-4" /> 儲存所有變更
                     </Button>
                   </DialogFooter>
                 </form>
@@ -934,67 +1064,136 @@ export default function Admin() {
 
           {/* Order Detail Dialog */}
           <Dialog open={!!selectedOrder} onOpenChange={(o) => !o && setSelectedOrder(null)}>
-            <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[540px] max-h-[92vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>訂單詳情 #{selectedOrder?.id}</DialogTitle>
-                <DialogDescription>完整訂單資訊</DialogDescription>
+                <DialogTitle className="flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-primary" /> 訂單詳情 #{selectedOrder?.id}
+                </DialogTitle>
+                <DialogDescription className="flex items-center gap-2">
+                  {selectedOrder && <OrderStatusBadge status={selectedOrder.status} />}
+                  {selectedOrder && ` · 建立於 ${format(new Date(selectedOrder.createdAt), "yyyy/MM/dd HH:mm")}`}
+                </DialogDescription>
               </DialogHeader>
-              {selectedOrder && (
-                <div className="space-y-4 text-sm py-2">
-                  <div className="space-y-1">
-                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">委託方</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      <span className="text-muted-foreground">姓名</span><span className="font-medium">{selectedOrder.customerName}</span>
-                      <span className="text-muted-foreground">電話</span><span className="font-mono">{selectedOrder.customerPhone}</span>
+              {selectedOrder && (() => {
+                const extraStops = parseExtraStops((selectedOrder as any).extraDeliveryAddresses);
+                const totalStops = 1 + extraStops.length;
+                const signedCount = extraStops.filter((s: any) => s.signStatus === "signed").length;
+                return (
+                  <div className="space-y-4 text-sm py-2">
+
+                    {/* 委託方 */}
+                    <div className="bg-muted/30 rounded-xl p-3 space-y-1.5">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">委託方</p>
+                      <div className="flex justify-between"><span className="text-muted-foreground">姓名</span><span className="font-semibold">{selectedOrder.customerName}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">電話</span><a href={`tel:${selectedOrder.customerPhone}`} className="font-mono text-blue-600 font-bold">{selectedOrder.customerPhone}</a></div>
                     </div>
+
+                    {/* 取貨 */}
+                    <div className="border border-orange-200 rounded-xl p-3 space-y-1.5 bg-orange-50/40">
+                      <p className="text-xs font-bold text-orange-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5" /> 取貨地點
+                      </p>
+                      {(selectedOrder.pickupDate || selectedOrder.pickupTime) && (
+                        <div className="flex justify-between"><span className="text-muted-foreground">日期/時段</span><span className="font-medium">{selectedOrder.pickupDate} {selectedOrder.pickupTime}</span></div>
+                      )}
+                      {selectedOrder.pickupContactName && <div className="flex justify-between"><span className="text-muted-foreground">公司</span><span className="font-medium">{selectedOrder.pickupContactName}</span></div>}
+                      <div className="flex justify-between gap-4"><span className="text-muted-foreground shrink-0">地址</span><span className="font-semibold text-right">{selectedOrder.pickupAddress}</span></div>
+                      {selectedOrder.pickupContactPerson && <div className="flex justify-between"><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.pickupContactPerson}</span></div>}
+                    </div>
+
+                    {/* 路線圖：主送達 + 多站 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-blue-600 uppercase tracking-wide flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5" /> 送達路線
+                        </p>
+                        {totalStops > 1 && (
+                          <span className="text-xs bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5 font-medium">
+                            共 {totalStops} 站 · 已簽收 {signedCount + (selectedOrder.status === "delivered" ? 1 : 0)}/{totalStops}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Main stop */}
+                      <div className="border border-blue-200 rounded-xl p-3 space-y-1.5 bg-blue-50/40">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black shrink-0">主</span>
+                          <span className="text-xs font-bold text-blue-700">主要送達地點</span>
+                          {selectedOrder.status === "delivered" && <span className="ml-auto text-xs text-emerald-600 font-medium flex items-center gap-1"><CheckCircle className="w-3 h-3" /> 已完成</span>}
+                        </div>
+                        {(selectedOrder.deliveryDate || selectedOrder.deliveryTime) && (
+                          <div className="flex justify-between"><span className="text-muted-foreground">日期/時段</span><span className="font-medium">{selectedOrder.deliveryDate} {selectedOrder.deliveryTime}</span></div>
+                        )}
+                        {selectedOrder.deliveryContactName && <div className="flex justify-between"><span className="text-muted-foreground">公司</span><span className="font-medium">{selectedOrder.deliveryContactName}</span></div>}
+                        <div className="flex justify-between gap-4"><span className="text-muted-foreground shrink-0">地址</span><span className="font-semibold text-right">{selectedOrder.deliveryAddress}</span></div>
+                        {selectedOrder.deliveryContactPerson && <div className="flex justify-between"><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.deliveryContactPerson}</span></div>}
+                      </div>
+
+                      {/* Extra stops */}
+                      {extraStops.map((stop: any, idx: number) => {
+                        const signed = stop.signStatus === "signed";
+                        return (
+                          <div key={idx} className={`mt-2 border rounded-xl p-3 space-y-1.5 ${signed ? "bg-emerald-50/50 border-emerald-200" : "border-violet-200 bg-violet-50/30"}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 text-white ${signed ? "bg-emerald-500" : "bg-violet-600"}`}>{idx + 1}</span>
+                              <span className="text-xs font-bold text-violet-700">站點 {idx + 1}</span>
+                              {signed && <span className="ml-auto text-xs text-emerald-600 font-medium flex items-center gap-1"><CheckCircle className="w-3 h-3" /> 已簽收</span>}
+                            </div>
+                            <div className="flex justify-between gap-4"><span className="text-muted-foreground shrink-0">地址</span><span className={`font-semibold text-right ${signed ? "line-through opacity-60" : ""}`}>{stop.address}</span></div>
+                            {stop.company && <div className="flex justify-between"><span className="text-muted-foreground">公司</span><span>{stop.company}</span></div>}
+                            {stop.contactName && <div className="flex justify-between"><span className="text-muted-foreground">聯絡人</span><span>{stop.contactName}{stop.phone ? ` · ${stop.phone}` : ""}</span></div>}
+                            {(stop.quantity || stop.weight) && (
+                              <div className="flex gap-2 mt-1">
+                                {stop.quantity && <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium border border-blue-100">{stop.quantity}</span>}
+                                {stop.weight && <span className="text-xs bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded font-medium border border-orange-100">{stop.weight} kg</span>}
+                              </div>
+                            )}
+                            {stop.notes && <p className="text-xs text-muted-foreground">📝 {stop.notes}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 貨物 + 車輛 */}
+                    <div className="border rounded-xl p-3 space-y-1.5">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">貨物 / 車輛</p>
+                      <div className="flex justify-between"><span className="text-muted-foreground">貨物描述</span><span className="font-medium">{selectedOrder.cargoDescription}</span></div>
+                      {selectedOrder.cargoQuantity && <div className="flex justify-between"><span className="text-muted-foreground">總件數</span><span>{selectedOrder.cargoQuantity}</span></div>}
+                      {selectedOrder.cargoWeight != null && <div className="flex justify-between"><span className="text-muted-foreground">總重量</span><span>{selectedOrder.cargoWeight} kg</span></div>}
+                      {(selectedOrder.cargoLengthM || selectedOrder.cargoWidthM || selectedOrder.cargoHeightM) && (
+                        <div className="flex justify-between"><span className="text-muted-foreground">材積</span>
+                          <span>{selectedOrder.cargoLengthM?.toFixed(2)}×{selectedOrder.cargoWidthM?.toFixed(2)}×{selectedOrder.cargoHeightM?.toFixed(2)} m
+                            {selectedOrder.cargoLengthM && selectedOrder.cargoWidthM && selectedOrder.cargoHeightM
+                              ? ` (${(selectedOrder.cargoLengthM * selectedOrder.cargoWidthM * selectedOrder.cargoHeightM).toFixed(2)} m³)` : ""}</span>
+                        </div>
+                      )}
+                      {selectedOrder.requiredVehicleType && <div className="flex justify-between"><span className="text-muted-foreground">車型需求</span><span className="font-medium">{selectedOrder.requiredVehicleType}</span></div>}
+                      {selectedOrder.needTailgate === "yes" && <div className="flex justify-between"><span className="text-muted-foreground">需尾門</span><span className="text-amber-600">✔ 需要</span></div>}
+                      {selectedOrder.needHydraulicPallet === "yes" && <div className="flex justify-between"><span className="text-muted-foreground">需油壓板車</span><span className="text-amber-600">✔ 需要</span></div>}
+                    </div>
+
+                    {(selectedOrder.specialRequirements || selectedOrder.notes) && (
+                      <div className="border rounded-xl p-3 space-y-2">
+                        {selectedOrder.specialRequirements && (
+                          <div><p className="text-xs font-bold text-muted-foreground mb-1">特殊需求</p>
+                            <p className="text-xs bg-blue-50 border border-blue-100 rounded p-2 text-blue-900">{selectedOrder.specialRequirements}</p></div>
+                        )}
+                        {selectedOrder.notes && (
+                          <div><p className="text-xs font-bold text-muted-foreground mb-1">備註</p>
+                            <p className="text-xs bg-amber-50 border border-amber-100 rounded p-2 text-amber-900">{selectedOrder.notes}</p></div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="border-t pt-3 space-y-1">
-                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">收貨資訊</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      {selectedOrder.pickupDate && <><span className="text-muted-foreground">收貨日期</span><span>{selectedOrder.pickupDate}</span></>}
-                      {selectedOrder.pickupTime && <><span className="text-muted-foreground">收貨時間</span><span>{selectedOrder.pickupTime}</span></>}
-                      {selectedOrder.requiredLicense && <><span className="text-muted-foreground">所需證照</span><span>{selectedOrder.requiredLicense}</span></>}
-                      {selectedOrder.pickupContactName && <><span className="text-muted-foreground">客戶名稱</span><span className="font-medium">{selectedOrder.pickupContactName}</span></>}
-                      <span className="text-muted-foreground">地址</span><span className="font-medium col-span-1">{selectedOrder.pickupAddress}</span>
-                      {selectedOrder.pickupContactPerson && <><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.pickupContactPerson}</span></>}
-                    </div>
-                  </div>
-                  <div className="border-t pt-3 space-y-1">
-                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">到貨資訊</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      {selectedOrder.deliveryDate && <><span className="text-muted-foreground">到貨日期</span><span>{selectedOrder.deliveryDate}</span></>}
-                      {selectedOrder.deliveryTime && <><span className="text-muted-foreground">到貨時間</span><span>{selectedOrder.deliveryTime}</span></>}
-                      {selectedOrder.deliveryContactName && <><span className="text-muted-foreground">客戶名稱</span><span className="font-medium">{selectedOrder.deliveryContactName}</span></>}
-                      <span className="text-muted-foreground">地址</span><span className="font-medium">{selectedOrder.deliveryAddress}</span>
-                      {selectedOrder.deliveryContactPerson && <><span className="text-muted-foreground">聯絡人/電話</span><span>{selectedOrder.deliveryContactPerson}</span></>}
-                    </div>
-                  </div>
-                  <div className="border-t pt-3 space-y-1">
-                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">貨物資訊</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      <span className="text-muted-foreground">貨物描述</span><span className="font-medium">{selectedOrder.cargoDescription}</span>
-                      {selectedOrder.cargoQuantity && <><span className="text-muted-foreground">數量</span><span>{selectedOrder.cargoQuantity}</span></>}
-                      {selectedOrder.cargoWeight != null && <><span className="text-muted-foreground">重量</span><span>{selectedOrder.cargoWeight} kg</span></>}
-                    </div>
-                  </div>
-                  <div className="border-t pt-3 space-y-1">
-                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">車輛需求</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      {selectedOrder.requiredVehicleType && <><span className="text-muted-foreground">車型</span><span>{selectedOrder.requiredVehicleType}</span></>}
-                      {selectedOrder.needTailgate && <><span className="text-muted-foreground">需尾門</span><span>{selectedOrder.needTailgate === "yes" ? "需要" : "不需要"}</span></>}
-                      {selectedOrder.needHydraulicPallet && <><span className="text-muted-foreground">需油壓板車</span><span>{selectedOrder.needHydraulicPallet === "yes" ? "需要" : "不需要"}</span></>}
-                      {selectedOrder.specialRequirements && <><span className="text-muted-foreground">特殊要求</span><span>{selectedOrder.specialRequirements}</span></>}
-                    </div>
-                  </div>
-                  {selectedOrder.notes && (
-                    <div className="border-t pt-3">
-                      <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-1">備註</p>
-                      <p>{selectedOrder.notes}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-              <DialogFooter>
+                );
+              })()}
+              <DialogFooter className="gap-2">
+                {selectedOrder && (selectedOrder.status === "pending" || selectedOrder.status === "assigned") && (
+                  <Button variant="outline" className="gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
+                    onClick={() => { openEditOrderDialog(selectedOrder!); setSelectedOrder(null); }}>
+                    <Pencil className="w-3.5 h-3.5" /> 編輯
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setSelectedOrder(null)}>關閉</Button>
               </DialogFooter>
             </DialogContent>
