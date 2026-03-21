@@ -98,6 +98,8 @@ export const CreateOrderBody = zod.object({
   needHydraulicPallet: zod.string().nullish(),
   specialRequirements: zod.string().nullish(),
   notes: zod.string().nullish(),
+  extraPickupAddresses: zod.string().nullish(),
+  extraDeliveryAddresses: zod.string().nullish(),
 });
 
 /**
@@ -174,6 +176,35 @@ export const UpdateOrderBody = zod.object({
   extraFee: zod.number().nullish(),
   totalFee: zod.number().nullish(),
   feeStatus: zod.enum(["unpaid", "paid", "invoiced"]).optional(),
+  // Editable order fields
+  pickupDate: zod.string().nullish(),
+  pickupTime: zod.string().nullish(),
+  pickupAddress: zod.string().nullish(),
+  pickupContactPerson: zod.string().nullish(),
+  pickupContactName: zod.string().nullish(),
+  deliveryDate: zod.string().nullish(),
+  deliveryTime: zod.string().nullish(),
+  deliveryAddress: zod.string().nullish(),
+  deliveryContactPerson: zod.string().nullish(),
+  deliveryContactName: zod.string().nullish(),
+  requiredVehicleType: zod.string().nullish(),
+  cargoWeight: zod.number().nullish(),
+  cargoLengthM: zod.number().nullish(),
+  cargoWidthM: zod.number().nullish(),
+  cargoHeightM: zod.number().nullish(),
+  specialRequirements: zod.string().nullish(),
+  extraPickupAddresses: zod.string().nullish(),
+  extraDeliveryAddresses: zod.string().nullish(),
+  orderGroupId: zod.string().nullish(),
+});
+
+export const UpdateOrderStopsBody = zod.object({
+  extraDeliveryAddresses: zod.string(),
+});
+
+export const GroupOrdersBody = zod.object({
+  orderIds: zod.array(zod.number()),
+  groupId: zod.string().optional(),
 });
 
 export const UpdateOrderResponse = zod.object({

@@ -51,6 +51,9 @@ const extraStopSchema = z.object({
   phone:       z.string().min(8, "請填寫電話"),
   company:     z.string().optional(),
   notes:       z.string().optional(),
+  quantity:    z.string().optional(),
+  weight:      z.coerce.number().optional(),
+  signStatus:  z.enum(["pending", "signed"]).optional(),
 });
 
 const schema = z.object({
@@ -263,6 +266,26 @@ function ExtraStopCard({
             <FormControl><Input className="h-10" placeholder="○○股份有限公司" {...field} /></FormControl>
           </FormItem>
         )} />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField control={control} name={`${base}.quantity`} render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
+                <Package className="w-3 h-3" /> 件數（選填）
+              </FormLabel>
+              <FormControl><Input className="h-10" placeholder="例：3件" {...field} /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={control} name={`${base}.weight`} render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs text-muted-foreground">重量 kg（選填）</FormLabel>
+              <FormControl>
+                <Input type="number" min={0.1} step={0.1} className="h-10"
+                  placeholder="0.0" {...field} value={field.value ?? ""}
+                  onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} />
+              </FormControl>
+            </FormItem>
+          )} />
+        </div>
         <FormField control={control} name={`${base}.notes`} render={({ field }) => (
           <FormItem>
             <FormLabel className="text-xs text-muted-foreground">備註（樓層、電梯、搬運需求）</FormLabel>
@@ -498,7 +521,7 @@ export default function CustomerOrder() {
             {pickupFields.fields.length < MAX_EXTRA_PICKUP && (
               <button
                 type="button"
-                onClick={() => pickupFields.append({ address: "", contactName: "", phone: "", company: "", notes: "" })}
+                onClick={() => pickupFields.append({ address: "", contactName: "", phone: "", company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending" })}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-orange-300 text-orange-600 text-sm font-semibold hover:bg-orange-50 transition-colors"
               >
                 <Plus className="w-4 h-4" />
@@ -528,7 +551,7 @@ export default function CustomerOrder() {
             {deliveryFields.fields.length < MAX_EXTRA_DELIVERY && (
               <button
                 type="button"
-                onClick={() => deliveryFields.append({ address: "", contactName: "", phone: "", company: "", notes: "" })}
+                onClick={() => deliveryFields.append({ address: "", contactName: "", phone: "", company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending" })}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 text-sm font-semibold hover:bg-blue-50 transition-colors"
               >
                 <Plus className="w-4 h-4" />

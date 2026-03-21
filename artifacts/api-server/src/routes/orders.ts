@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, ordersTable, driversTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   CreateOrderBody,
   UpdateOrderBody,
+  UpdateOrderStopsBody,
+  GroupOrdersBody,
   GetOrderParams,
   UpdateOrderParams,
   ListOrdersQueryParams,
@@ -108,6 +110,8 @@ router.post("/orders", async (req, res) => {
         needHydraulicPallet: body.needHydraulicPallet ?? null,
         specialRequirements: body.specialRequirements ?? null,
         notes: body.notes ?? null,
+        extraPickupAddresses: body.extraPickupAddresses ?? null,
+        extraDeliveryAddresses: body.extraDeliveryAddresses ?? null,
         status: "pending",
         feeStatus: "unpaid",
       })
@@ -150,6 +154,26 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.extraFee !== undefined) updates.extraFee = body.extraFee ?? null;
     if (body.totalFee !== undefined) updates.totalFee = body.totalFee ?? null;
     if (body.feeStatus !== undefined) updates.feeStatus = body.feeStatus;
+    // Editable content fields
+    if (body.pickupDate !== undefined) updates.pickupDate = body.pickupDate ?? null;
+    if (body.pickupTime !== undefined) updates.pickupTime = body.pickupTime ?? null;
+    if (body.pickupAddress !== undefined) updates.pickupAddress = body.pickupAddress as string;
+    if (body.pickupContactPerson !== undefined) updates.pickupContactPerson = body.pickupContactPerson ?? null;
+    if (body.pickupContactName !== undefined) updates.pickupContactName = body.pickupContactName ?? null;
+    if (body.deliveryDate !== undefined) updates.deliveryDate = body.deliveryDate ?? null;
+    if (body.deliveryTime !== undefined) updates.deliveryTime = body.deliveryTime ?? null;
+    if (body.deliveryAddress !== undefined) updates.deliveryAddress = body.deliveryAddress as string;
+    if (body.deliveryContactPerson !== undefined) updates.deliveryContactPerson = body.deliveryContactPerson ?? null;
+    if (body.deliveryContactName !== undefined) updates.deliveryContactName = body.deliveryContactName ?? null;
+    if (body.requiredVehicleType !== undefined) updates.requiredVehicleType = body.requiredVehicleType ?? null;
+    if (body.cargoWeight !== undefined) updates.cargoWeight = body.cargoWeight ?? null;
+    if (body.cargoLengthM !== undefined) updates.cargoLengthM = body.cargoLengthM ?? null;
+    if (body.cargoWidthM !== undefined) updates.cargoWidthM = body.cargoWidthM ?? null;
+    if (body.cargoHeightM !== undefined) updates.cargoHeightM = body.cargoHeightM ?? null;
+    if (body.specialRequirements !== undefined) updates.specialRequirements = body.specialRequirements ?? null;
+    if (body.extraPickupAddresses !== undefined) updates.extraPickupAddresses = body.extraPickupAddresses ?? null;
+    if (body.extraDeliveryAddresses !== undefined) updates.extraDeliveryAddresses = body.extraDeliveryAddresses ?? null;
+    if (body.orderGroupId !== undefined) updates.orderGroupId = body.orderGroupId ?? null;
 
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
@@ -223,6 +247,42 @@ router.post("/orders/:id/driver-action", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to perform driver action");
     res.status(500).json({ error: "Failed to perform driver action" });
+  }
+});
+
+router.patch("/orders/:id/stops", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid order ID" });
+    const body = UpdateOrderStopsBody.parse(req.body);
+    const existing = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!existing.length) return res.status(404).json({ error: "Order not found" });
+    await db.update(ordersTable).set({
+      extraDeliveryAddresses: body.extraDeliveryAddresses,
+      updatedAt: new Date(),
+    }).where(eq(ordersTable.id, id));
+    const order = await fetchOrderWithDriver(id);
+    res.json(order);
+  } catch (err) {
+    req.log.error({ err }, "Failed to update stops");
+    res.status(500).json({ error: "Failed to update stops" });
+  }
+});
+
+router.post("/orders/group", async (req, res) => {
+  try {
+    const body = GroupOrdersBody.parse(req.body);
+    const groupId = body.groupId ?? `grp-${Date.now()}`;
+    if (!body.orderIds.length) return res.status(400).json({ error: "No order IDs provided" });
+    await db.update(ordersTable)
+      .set({ orderGroupId: groupId, updatedAt: new Date() })
+      .where(inArray(ordersTable.id, body.orderIds));
+    const orders = await db.select().from(ordersTable)
+      .where(inArray(ordersTable.id, body.orderIds));
+    res.json({ groupId, orders });
+  } catch (err) {
+    req.log.error({ err }, "Failed to group orders");
+    res.status(500).json({ error: "Failed to group orders" });
   }
 });
 

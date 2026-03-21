@@ -13,10 +13,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import type { DriverActionType } from "@workspace/api-client-react";
+
+interface ExtraStop {
+  address: string;
+  contactName?: string;
+  phone?: string;
+  company?: string;
+  notes?: string;
+  quantity?: number;
+  weight?: number;
+  signStatus?: string;
+}
+
+function parseStops(raw: unknown): ExtraStop[] {
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function DriverTaskDetail() {
   const [, params] = useRoute("/driver/tasks/:id");
@@ -28,7 +50,9 @@ export default function DriverTaskDetail() {
   const { data: order, isLoading, error } = useOrderDetail(id);
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [signingStopIdx, setSigningStopIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { mutateAsync: updateOrder } = useUpdateOrderMutation();
 
   const { mutateAsync: doDriverAction } = useDriverAction({
     mutation: {
@@ -79,10 +103,30 @@ export default function DriverTaskDetail() {
     }
   };
 
-  const openNavigation = () => {
+  const openNavigation = (addr?: string) => {
     if (!order) return;
-    const addr = order.status === "in_transit" ? order.deliveryAddress : order.pickupAddress;
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}`, "_blank");
+    const dest = addr ?? (order.status === "in_transit" ? order.deliveryAddress : order.pickupAddress);
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`, "_blank");
+  };
+
+  const handleSignStop = async (idx: number, stops: ExtraStop[]) => {
+    if (!order || signingStopIdx !== null) return;
+    setSigningStopIdx(idx);
+    try {
+      const updated = stops.map((s, i) =>
+        i === idx ? { ...s, signStatus: s.signStatus === "signed" ? "pending" : "signed" } : s
+      );
+      await updateOrder({
+        id: order.id,
+        data: { extraDeliveryAddresses: JSON.stringify(updated) } as any,
+      });
+      queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(order.id) });
+      toast({ title: updated[idx].signStatus === "signed" ? `✅ 站點 ${idx + 1} 已簽收` : `↩ 站點 ${idx + 1} 已取消簽收` });
+    } catch {
+      toast({ title: "簽收失敗", variant: "destructive" });
+    } finally {
+      setSigningStopIdx(null);
+    }
   };
 
   if (isLoading) {
@@ -163,7 +207,7 @@ export default function DriverTaskDetail() {
           )}
           <button
             className="w-full bg-white/25 hover:bg-white/35 active:scale-[0.98] transition-all rounded-xl py-3 text-white font-bold flex items-center justify-center gap-2"
-            onClick={openNavigation}
+            onClick={() => openNavigation()}
           >
             <Navigation className="w-4 h-4" />
             導航到{isInTransit ? "目的地" : "取貨地點"}
@@ -268,6 +312,78 @@ export default function DriverTaskDetail() {
           )}
         </div>
       )}
+
+      {/* Multi-stop delivery list */}
+      {(() => {
+        const extraStops = parseStops((order as any).extraDeliveryAddresses);
+        if (extraStops.length === 0) return null;
+        const signedCount = extraStops.filter(s => s.signStatus === "signed").length;
+        return (
+          <Card className="border-2 border-violet-200 bg-white">
+            <CardHeader className="pb-2 border-b border-violet-100">
+              <CardTitle className="text-sm flex items-center gap-2 text-violet-800">
+                <MapPin className="w-4 h-4 text-violet-600" /> 多站送貨清單
+                <Badge variant="outline" className="ml-auto text-xs border-violet-300 text-violet-700">
+                  {signedCount}/{extraStops.length} 已簽收
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {extraStops.map((stop, idx) => {
+                const signed = stop.signStatus === "signed";
+                return (
+                  <div key={idx} className={`p-4 flex gap-3 ${idx < extraStops.length - 1 ? "border-b" : ""} ${signed ? "bg-emerald-50/50" : ""}`}>
+                    <div className="flex flex-col items-center gap-1 shrink-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${signed ? "bg-emerald-500 text-white" : "bg-violet-100 text-violet-800"}`}>
+                        {signed ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
+                      </div>
+                      {idx < extraStops.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 min-h-[8px]" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold text-sm leading-snug ${signed ? "text-emerald-800 line-through opacity-70" : "text-foreground"}`}>
+                        {stop.address}
+                      </p>
+                      {stop.company && <p className="text-xs text-muted-foreground mt-0.5">{stop.company}</p>}
+                      {stop.contactName && (
+                        <p className="text-xs text-gray-500 mt-0.5">{stop.contactName}{stop.phone ? ` · ${stop.phone}` : ""}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {stop.quantity != null && (
+                          <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">{stop.quantity} 件</span>
+                        )}
+                        {stop.weight != null && (
+                          <span className="text-xs bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded font-medium">{stop.weight} kg</span>
+                        )}
+                        {stop.notes && (
+                          <span className="text-xs text-muted-foreground">📝 {stop.notes}</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          className="text-xs px-3 py-1.5 rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 font-medium flex items-center gap-1 active:scale-[0.97] transition-all"
+                          onClick={() => openNavigation(stop.address)}
+                        >
+                          <Navigation className="w-3 h-3" /> 導航
+                        </button>
+                        {isInTransit && (
+                          <button
+                            className={`text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 active:scale-[0.97] transition-all disabled:opacity-60 ${signed ? "border border-gray-200 text-gray-500 hover:bg-gray-50" : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm"}`}
+                            onClick={() => handleSignStop(idx, extraStops)}
+                            disabled={signingStopIdx !== null}
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            {signed ? "取消簽收" : "簽收"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Route info */}
       <Card className="border bg-white">

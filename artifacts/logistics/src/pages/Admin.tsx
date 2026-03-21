@@ -7,8 +7,9 @@ import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
-  Layers, Map, Brain, Navigation,
+  Layers, Map, Brain, Navigation, Car, Save,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
 import AdminHome from "./admin/AdminHome";
@@ -16,6 +17,7 @@ import SmartDispatchTab from "./admin/SmartDispatchTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import FleetMapTab from "./admin/FleetMapTab";
+import CarpoolTab from "./admin/CarpoolTab";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
@@ -77,6 +79,25 @@ const customerFormSchema = z.object({
   password: z.string().optional(),
 });
 type CustomerFormValues = z.infer<typeof customerFormSchema>;
+
+const orderEditSchema = z.object({
+  pickupDate: z.string().optional(),
+  pickupTime: z.string().optional(),
+  pickupAddress: z.string().min(5, "請填寫取貨地址"),
+  pickupContactPerson: z.string().optional(),
+  deliveryDate: z.string().optional(),
+  deliveryTime: z.string().optional(),
+  deliveryAddress: z.string().min(5, "請填寫送貨地址"),
+  deliveryContactPerson: z.string().optional(),
+  requiredVehicleType: z.string().optional(),
+  cargoWeight: z.coerce.number().optional(),
+  cargoLengthM: z.coerce.number().optional(),
+  cargoWidthM: z.coerce.number().optional(),
+  cargoHeightM: z.coerce.number().optional(),
+  specialRequirements: z.string().optional(),
+  notes: z.string().optional(),
+});
+type OrderEditValues = z.infer<typeof orderEditSchema>;
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "待派車",
@@ -292,6 +313,7 @@ export default function Admin() {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [quoteOrder, setQuoteOrder] = useState<Order | null>(null);
   const [quoteAmount, setQuoteAmount] = useState<number>(0);
 
@@ -302,6 +324,12 @@ export default function Admin() {
   const customerDefaults = { name: "", phone: "", address: "", contactPerson: "", taxId: "", username: "", password: "" };
   const createCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
   const editCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
+
+  const editOrderForm = useForm<OrderEditValues>({ resolver: zodResolver(orderEditSchema), defaultValues: {
+    pickupDate: "", pickupTime: "", pickupAddress: "", pickupContactPerson: "",
+    deliveryDate: "", deliveryTime: "", deliveryAddress: "", deliveryContactPerson: "",
+    requiredVehicleType: "", specialRequirements: "", notes: "",
+  }});
 
   const availableDrivers = drivers?.filter((d) => d.status === "available") || [];
 
@@ -499,6 +527,57 @@ export default function Admin() {
     }
   };
 
+  const openEditOrderDialog = (order: Order) => {
+    setEditingOrder(order);
+    editOrderForm.reset({
+      pickupDate: order.pickupDate ?? "",
+      pickupTime: order.pickupTime ?? "",
+      pickupAddress: order.pickupAddress,
+      pickupContactPerson: order.pickupContactPerson ?? "",
+      deliveryDate: order.deliveryDate ?? "",
+      deliveryTime: order.deliveryTime ?? "",
+      deliveryAddress: order.deliveryAddress,
+      deliveryContactPerson: order.deliveryContactPerson ?? "",
+      requiredVehicleType: order.requiredVehicleType ?? "",
+      cargoWeight: order.cargoWeight ?? undefined,
+      cargoLengthM: order.cargoLengthM ?? undefined,
+      cargoWidthM: order.cargoWidthM ?? undefined,
+      cargoHeightM: order.cargoHeightM ?? undefined,
+      specialRequirements: order.specialRequirements ?? "",
+      notes: order.notes ?? "",
+    });
+  };
+
+  const onEditOrderSubmit = async (data: OrderEditValues) => {
+    if (!editingOrder) return;
+    try {
+      await updateOrder({
+        id: editingOrder.id,
+        data: {
+          pickupDate: data.pickupDate || null,
+          pickupTime: data.pickupTime || null,
+          pickupAddress: data.pickupAddress,
+          pickupContactPerson: data.pickupContactPerson || null,
+          deliveryDate: data.deliveryDate || null,
+          deliveryTime: data.deliveryTime || null,
+          deliveryAddress: data.deliveryAddress,
+          deliveryContactPerson: data.deliveryContactPerson || null,
+          requiredVehicleType: data.requiredVehicleType || null,
+          cargoWeight: data.cargoWeight || null,
+          cargoLengthM: data.cargoLengthM || null,
+          cargoWidthM: data.cargoWidthM || null,
+          cargoHeightM: data.cargoHeightM || null,
+          specialRequirements: data.specialRequirements || null,
+          notes: data.notes || null,
+        } as any,
+      });
+      toast({ title: "✅ 訂單已更新", description: `訂單 #${editingOrder.id} 資料已修改` });
+      setEditingOrder(null);
+    } catch {
+      toast({ title: "更新失敗", description: "請稍後再試", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-5 pb-12">
       <div>
@@ -542,6 +621,9 @@ export default function Admin() {
           <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Navigation className="w-3.5 h-3.5" /> 車隊地圖
           </TabsTrigger>
+          <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[70px]">
+            <Car className="w-3.5 h-3.5" /> 拼車
+          </TabsTrigger>
           <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Brain className="w-3.5 h-3.5" /> AI 分析
           </TabsTrigger>
@@ -580,9 +662,16 @@ export default function Admin() {
                       <td className="px-3 py-3">
                         <div className="font-mono font-semibold text-foreground">#{order.id}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(order.createdAt), "MM/dd HH:mm")}</div>
-                        <button onClick={() => setSelectedOrder(order as Order)} className="text-xs text-primary hover:underline flex items-center gap-0.5 mt-1">
-                          <Info className="w-3 h-3" /> 詳情
-                        </button>
+                        <div className="flex items-center gap-2 mt-1">
+                          <button onClick={() => setSelectedOrder(order as Order)} className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                            <Info className="w-3 h-3" /> 詳情
+                          </button>
+                          {(order.status === "pending" || order.status === "assigned") && (
+                            <button onClick={() => openEditOrderDialog(order as Order)} className="text-xs text-orange-600 hover:underline flex items-center gap-0.5">
+                              <Pencil className="w-3 h-3" /> 編輯
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-foreground">{order.customerName}</div>
@@ -704,6 +793,142 @@ export default function Admin() {
                   套用報價 NT${quoteAmount.toLocaleString()}
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Order Edit Dialog */}
+          <Dialog open={!!editingOrder} onOpenChange={(o) => !o && setEditingOrder(null)}>
+            <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-orange-500" /> 編輯訂單 #{editingOrder?.id}
+                </DialogTitle>
+                <DialogDescription>修改預約訂單資訊，儲存後即時更新</DialogDescription>
+              </DialogHeader>
+              <Form {...editOrderForm}>
+                <form onSubmit={editOrderForm.handleSubmit(onEditOrderSubmit)} className="space-y-4 py-2">
+                  {/* 取貨 */}
+                  <div className="border rounded-xl p-3 space-y-3">
+                    <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">取貨資訊</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={editOrderForm.control} name="pickupDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">取貨日期</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={editOrderForm.control} name="pickupTime" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">取貨時段</FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+                    <FormField control={editOrderForm.control} name="pickupAddress" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">取貨地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input placeholder="○○縣○○市○○路…" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={editOrderForm.control} name="pickupContactPerson" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">取貨聯絡人/電話</FormLabel>
+                        <FormControl><Input placeholder="王先生 0912-345-678" {...field} /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                  {/* 送貨 */}
+                  <div className="border rounded-xl p-3 space-y-3">
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wide">送貨資訊</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={editOrderForm.control} name="deliveryDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">送達日期</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={editOrderForm.control} name="deliveryTime" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">送達時段</FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+                    <FormField control={editOrderForm.control} name="deliveryAddress" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">送達地址 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input placeholder="○○縣○○市○○路…" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={editOrderForm.control} name="deliveryContactPerson" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">送達聯絡人/電話</FormLabel>
+                        <FormControl><Input placeholder="李小姐 0988-765-432" {...field} /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                  {/* 車輛 + 貨物 */}
+                  <div className="border rounded-xl p-3 space-y-3">
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide">車輛與貨物</p>
+                    <FormField control={editOrderForm.control} name="requiredVehicleType" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">車型需求</FormLabel>
+                        <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="選擇車型" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {["廂型1.5T","廂型3.5T","廂型5T","平斗5T","廂型8T","廂型11T","廂型17T","不限"].map(v => (
+                              <SelectItem key={v} value={v}>{v}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )} />
+                    <div className="grid grid-cols-4 gap-2">
+                      <FormField control={editOrderForm.control} name="cargoWeight" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel className="text-xs">重量 (kg)</FormLabel>
+                          <FormControl><Input type="number" min={0} step={0.1} placeholder="0.0" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></FormControl>
+                        </FormItem>
+                      )} />
+                      {(["cargoLengthM","cargoWidthM","cargoHeightM"] as const).map((name, i) => (
+                        <FormField key={name} control={editOrderForm.control} name={name} render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">{["長","寬","高"][i]}(m)</FormLabel>
+                            <FormControl><Input type="number" min={0} step={0.01} className="px-2" placeholder="0" {...field} value={field.value ?? ""} onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} /></FormControl>
+                          </FormItem>
+                        )} />
+                      ))}
+                    </div>
+                  </div>
+                  {/* 備註 */}
+                  <div className="grid grid-cols-1 gap-3">
+                    <FormField control={editOrderForm.control} name="specialRequirements" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">特殊需求</FormLabel>
+                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">備註</FormLabel>
+                        <FormControl><Textarea className="resize-none" rows={2} {...field} /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                  <DialogFooter className="gap-2 pt-2">
+                    <Button variant="outline" type="button" onClick={() => setEditingOrder(null)}>取消</Button>
+                    <Button type="submit" className="gap-2 bg-orange-500 hover:bg-orange-600">
+                      <Save className="w-4 h-4" /> 儲存變更
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
             </DialogContent>
           </Dialog>
 
@@ -1059,6 +1284,11 @@ export default function Admin() {
         {/* ===== 車隊地圖 TAB ===== */}
         <TabsContent value="fleetmap" className="outline-none">
           <FleetMapTab />
+        </TabsContent>
+
+        {/* ===== 拼車調度 TAB ===== */}
+        <TabsContent value="carpool" className="outline-none">
+          <CarpoolTab />
         </TabsContent>
 
         {/* ===== AI 分析 TAB ===== */}
