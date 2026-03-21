@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { format, isToday, isThisWeek, isThisMonth } from "date-fns";
+import { format } from "date-fns";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import {
   Layers, Map, Brain,
 } from "lucide-react";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
+import ReportCenter from "./admin/ReportCenter";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
@@ -249,7 +250,6 @@ export default function Admin() {
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [reportRange, setReportRange] = useState<"today" | "week" | "month" | "all">("today");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [quoteOrder, setQuoteOrder] = useState<Order | null>(null);
   const [quoteAmount, setQuoteAmount] = useState<number>(0);
@@ -261,29 +261,6 @@ export default function Admin() {
   const customerDefaults = { name: "", phone: "", username: "", password: "" };
   const createCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
   const editCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
-
-  const stats = useMemo(() => {
-    if (!orders) return null;
-    const filterFn = (o: typeof orders[0]) => {
-      const d = new Date(o.createdAt);
-      if (reportRange === "today") return isToday(d);
-      if (reportRange === "week") return isThisWeek(d, { weekStartsOn: 1 });
-      if (reportRange === "month") return isThisMonth(d);
-      return true;
-    };
-    const filtered = orders.filter(filterFn);
-    const byStatus = {
-      pending: filtered.filter(o => o.status === "pending").length,
-      assigned: filtered.filter(o => o.status === "assigned").length,
-      in_transit: filtered.filter(o => o.status === "in_transit").length,
-      delivered: filtered.filter(o => o.status === "delivered").length,
-      cancelled: filtered.filter(o => o.status === "cancelled").length,
-    };
-    const totalRevenue = filtered.reduce((s, o) => s + (o.totalFee ?? 0), 0);
-    const paidRevenue = filtered.filter(o => o.feeStatus === "paid").reduce((s, o) => s + (o.totalFee ?? 0), 0);
-    const unpaidRevenue = filtered.filter(o => o.feeStatus === "unpaid" && o.totalFee).reduce((s, o) => s + (o.totalFee ?? 0), 0);
-    return { total: filtered.length, byStatus, totalRevenue, paidRevenue, unpaidRevenue, filtered };
-  }, [orders, reportRange]);
 
   const availableDrivers = drivers?.filter((d) => d.status === "available") || [];
 
@@ -471,8 +448,6 @@ export default function Admin() {
       toast({ title: "失敗", variant: "destructive" });
     }
   };
-
-  const rangeLabels = { today: "今日", week: "本週", month: "本月", all: "全部" };
 
   return (
     <div className="space-y-5 pb-12">
@@ -985,98 +960,8 @@ export default function Admin() {
         </TabsContent>
 
         {/* ===== 報表 TAB ===== */}
-        <TabsContent value="report" className="outline-none space-y-5">
-          <div className="flex items-center gap-2 flex-wrap">
-            {(["today", "week", "month", "all"] as const).map((r) => (
-              <Button
-                key={r}
-                variant={reportRange === r ? "default" : "outline"}
-                size="sm"
-                onClick={() => setReportRange(r)}
-                className="text-xs"
-              >
-                {rangeLabels[r]}
-              </Button>
-            ))}
-            <span className="text-xs text-muted-foreground ml-1">統計時段</span>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard title="訂單總數" value={stats?.total ?? 0} sub="筆" icon={ClipboardList} color="bg-blue-100 text-blue-600" />
-            <StatCard title="已完成" value={stats?.byStatus.delivered ?? 0} sub="筆" icon={CheckCircle} color="bg-emerald-100 text-emerald-600" />
-            <StatCard
-              title="總運費"
-              value={`NT$${(stats?.totalRevenue ?? 0).toLocaleString()}`}
-              sub="含未收款"
-              icon={DollarSign}
-              color="bg-primary/10 text-primary"
-            />
-            <StatCard
-              title="待收款"
-              value={`NT$${(stats?.unpaidRevenue ?? 0).toLocaleString()}`}
-              sub={`${(orders?.filter(o => o.feeStatus === "unpaid" && o.totalFee).length ?? 0)} 筆`}
-              icon={Clock}
-              color="bg-orange-100 text-orange-600"
-            />
-          </div>
-
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-primary" />
-                訂單狀態分佈
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 space-y-3">
-              {stats && Object.entries(stats.byStatus).map(([status, count]) => {
-                const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
-                return (
-                  <div key={status} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status]}`}>
-                        {STATUS_LABELS[status] ?? status}
-                      </span>
-                      <span className="font-medium text-foreground">{count} 筆 <span className="text-muted-foreground">({pct}%)</span></span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {stats?.total === 0 && (
-                <p className="text-muted-foreground text-sm text-center py-4">此時段無訂單資料</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" />
-                司機狀態總覽
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                {[
-                  { label: "可接單", key: "available", color: "text-emerald-600 bg-emerald-50" },
-                  { label: "忙碌中", key: "busy", color: "text-amber-600 bg-amber-50" },
-                  { label: "下線中", key: "offline", color: "text-slate-600 bg-slate-100" },
-                ].map(({ label, key, color }) => (
-                  <div key={key} className={`rounded-xl p-3 ${color}`}>
-                    <div className="text-2xl font-bold">
-                      {drivers?.filter(d => d.status === key).length ?? 0}
-                    </div>
-                    <div className="text-xs font-medium mt-0.5">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="report" className="outline-none">
+          <ReportCenter />
         </TabsContent>
 
         {/* ===== 車型庫 TAB ===== */}

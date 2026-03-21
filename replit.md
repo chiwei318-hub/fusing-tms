@@ -123,10 +123,20 @@ React + Vite frontend for the logistics management system.
 
 - Entry: `src/main.tsx`
 - App: `src/App.tsx` — routing with wouter, React Query provider
-- Pages: `src/pages/` — OrderForm, OrderList, OrderDetail, Admin
+- Pages: `src/pages/` — OrderForm, OrderList, OrderDetail, Admin, Driver, Customer, TrackOrder
+- Admin sub-pages: `src/pages/admin/` — VehicleTypeTab, SmartDispatchTab, HeatMapTab, AIAnalyticsTab, ReportCenter
 - Components: `src/components/` — StatusBadge, AppLayout, ThemeToggle
-- Hooks: `src/hooks/` — use-orders.ts, use-drivers.ts
+- Hooks: `src/hooks/` — use-orders.ts, use-drivers.ts, use-vehicle-types.ts
 - Uses `@workspace/api-client-react` for API calls
+- Dependencies: `xlsx` (Excel export), `date-fns`, `lucide-react`
+
+**Admin tabs (8):** 訂單 | 司機 | 客戶 | 報表 | 車型庫 | 智慧調度 | 熱區地圖 | AI分析
+
+**報表中心 (ReportCenter.tsx):** Customer/Vehicle/Driver reports with date filter, keyword filter, per-row expandable detail, Excel export (xlsx), and print (A4 landscape, new window).
+
+**AI分析 sub-tabs (6):** 訂單預測 | 自動調度 | 動態運費 | 💰成本控管 | 客戶分級 | 營收預測
+
+**Cost model:** fuel (NT$2.56–9.60/km by vehicle type), tolls (region matrix), 20% driver commission, fixed depreciation per vehicle type.
 
 ### `artifacts/api-server` (`@workspace/api-server`)
 
