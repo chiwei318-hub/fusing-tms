@@ -43,6 +43,11 @@ paths:
           required: false
           schema:
             type: string
+        - name: driverId
+          in: query
+          required: false
+          schema:
+            type: integer
       responses:
         "200":
           description: List of orders
@@ -69,6 +74,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
+
+  /orders/track:
+    get:
+      operationId: trackOrder
+      tags: [orders]
+      summary: Track order by phone number and optional order ID
+      parameters:
+        - name: phone
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: orderId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of matching orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
 
   /orders/{id}:
     get:
@@ -113,6 +144,68 @@ paths:
       responses:
         "200":
           description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{id}/driver-action:
+    post:
+      operationId: driverAction
+      tags: [orders]
+      summary: Driver performs an action on an order (accept, checkin, complete)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriverActionInput"
+      responses:
+        "200":
+          description: Action performed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{id}/payment:
+    post:
+      operationId: confirmPayment
+      tags: [orders]
+      summary: Customer confirms payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentConfirmInput"
+      responses:
+        "200":
+          description: Payment confirmed
           content:
             application/json:
               schema:
@@ -234,6 +327,10 @@ components:
       type: string
       enum: [available, busy, offline]
 
+    DriverActionType:
+      type: string
+      enum: [accept, reject, checkin, complete]
+
     Order:
       type: object
       properties:
@@ -274,6 +371,28 @@ components:
           nullable: true
         feeStatus:
           $ref: "#/components/schemas/FeeStatus"
+        driverAcceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkInAt:
+          type: string
+          format: date-time
+          nullable: true
+        signaturePhotoUrl:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        paymentNote:
+          type: string
+          nullable: true
+        paymentConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -340,6 +459,27 @@ components:
           nullable: true
         feeStatus:
           $ref: "#/components/schemas/FeeStatus"
+
+    DriverActionInput:
+      type: object
+      properties:
+        action:
+          $ref: "#/components/schemas/DriverActionType"
+        signaturePhotoUrl:
+          type: string
+          nullable: true
+        completionNote:
+          type: string
+          nullable: true
+      required: [action]
+
+    PaymentConfirmInput:
+      type: object
+      properties:
+        paymentNote:
+          type: string
+          nullable: true
+      required: []
 
     Driver:
       type: object

@@ -39,6 +39,15 @@ export const DriverStatus = {
   offline: "offline",
 } as const;
 
+export type DriverActionType = (typeof DriverActionType)[keyof typeof DriverActionType];
+
+export const DriverActionType = {
+  accept: "accept",
+  reject: "reject",
+  checkin: "checkin",
+  complete: "complete",
+} as const;
+
 export interface Driver {
   id: number;
   name: string;
@@ -65,6 +74,12 @@ export interface Order {
   extraFee?: number | null;
   totalFee?: number | null;
   feeStatus: FeeStatus;
+  driverAcceptedAt?: string | null;
+  checkInAt?: string | null;
+  signaturePhotoUrl?: string | null;
+  completedAt?: string | null;
+  paymentNote?: string | null;
+  paymentConfirmedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +104,16 @@ export interface UpdateOrderInput {
   feeStatus?: FeeStatus;
 }
 
+export interface DriverActionInput {
+  action: DriverActionType;
+  signaturePhotoUrl?: string | null;
+  completionNote?: string | null;
+}
+
+export interface PaymentConfirmInput {
+  paymentNote?: string | null;
+}
+
 export interface CreateDriverInput {
   name: string;
   phone: string;
@@ -107,4 +132,10 @@ export interface UpdateDriverInput {
 export type ListOrdersParams = {
   status?: string;
   feeStatus?: string;
+  driverId?: number;
+};
+
+export type TrackOrderParams = {
+  phone: string;
+  orderId?: number;
 };

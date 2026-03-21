@@ -20,10 +20,13 @@ import type {
   CreateDriverInput,
   CreateOrderInput,
   Driver,
+  DriverActionInput,
   ErrorResponse,
   HealthStatus,
   ListOrdersParams,
   Order,
+  PaymentConfirmInput,
+  TrackOrderParams,
   UpdateDriverInput,
   UpdateOrderInput,
 } from "./api.schemas";
@@ -792,4 +795,212 @@ export const useDeleteDriver = <
   TContext
 > => {
   return useMutation(getDeleteDriverMutationOptions(options));
+};
+
+/**
+ * @summary Track order by phone number
+ */
+export const getTrackOrderUrl = (params: TrackOrderParams) => {
+  const normalizedParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+  const stringifiedParams = normalizedParams.toString();
+  return stringifiedParams.length > 0
+    ? `/api/orders/track?${stringifiedParams}`
+    : `/api/orders/track`;
+};
+
+export const trackOrder = async (
+  params: TrackOrderParams,
+  options?: RequestInit,
+): Promise<Order[]> => {
+  return customFetch<Order[]>(getTrackOrderUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getTrackOrderQueryKey = (params: TrackOrderParams) => {
+  return [`/api/orders/track`, params] as const;
+};
+
+export const getTrackOrderQueryOptions = <
+  TData = Awaited<ReturnType<typeof trackOrder>>,
+  TError = ErrorType<unknown>,
+>(
+  params: TrackOrderParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof trackOrder>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getTrackOrderQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof trackOrder>>> = ({ signal }) =>
+    trackOrder(params, { signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof trackOrder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useTrackOrder<
+  TData = Awaited<ReturnType<typeof trackOrder>>,
+  TError = ErrorType<unknown>,
+>(
+  params: TrackOrderParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof trackOrder>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getTrackOrderQueryOptions(params, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Driver action on order
+ */
+export const getDriverActionUrl = (id: number) => `/api/orders/${id}/driver-action`;
+
+export const driverAction = async (
+  id: number,
+  driverActionInput: DriverActionInput,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(getDriverActionUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(driverActionInput),
+  });
+};
+
+export const getDriverActionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof driverAction>>,
+    TError,
+    { id: number; data: BodyType<DriverActionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof driverAction>>,
+  TError,
+  { id: number; data: BodyType<DriverActionInput> },
+  TContext
+> => {
+  const mutationKey = ["driverAction"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof driverAction>>,
+    { id: number; data: BodyType<DriverActionInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+    return driverAction(id, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export const useDriverAction = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof driverAction>>,
+    TError,
+    { id: number; data: BodyType<DriverActionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof driverAction>>,
+  TError,
+  { id: number; data: BodyType<DriverActionInput> },
+  TContext
+> => {
+  return useMutation(getDriverActionMutationOptions(options));
+};
+
+/**
+ * @summary Customer confirms payment
+ */
+export const getConfirmPaymentUrl = (id: number) => `/api/orders/${id}/payment`;
+
+export const confirmPayment = async (
+  id: number,
+  paymentConfirmInput: PaymentConfirmInput,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(getConfirmPaymentUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(paymentConfirmInput),
+  });
+};
+
+export const getConfirmPaymentMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmPayment>>,
+    TError,
+    { id: number; data: BodyType<PaymentConfirmInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmPayment>>,
+  TError,
+  { id: number; data: BodyType<PaymentConfirmInput> },
+  TContext
+> => {
+  const mutationKey = ["confirmPayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmPayment>>,
+    { id: number; data: BodyType<PaymentConfirmInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+    return confirmPayment(id, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export const useConfirmPayment = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmPayment>>,
+    TError,
+    { id: number; data: BodyType<PaymentConfirmInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof confirmPayment>>,
+  TError,
+  { id: number; data: BodyType<PaymentConfirmInput> },
+  TContext
+> => {
+  return useMutation(getConfirmPaymentMutationOptions(options));
 };

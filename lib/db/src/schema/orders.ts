@@ -24,6 +24,14 @@ export const ordersTable = pgTable("orders", {
   extraFee: real("extra_fee"),
   totalFee: real("total_fee"),
   feeStatus: text("fee_status").notNull().default("unpaid"),
+  // Driver portal fields
+  driverAcceptedAt: timestamp("driver_accepted_at"),
+  checkInAt: timestamp("check_in_at"),
+  signaturePhotoUrl: text("signature_photo_url"),
+  completedAt: timestamp("completed_at"),
+  // Customer payment fields
+  paymentNote: text("payment_note"),
+  paymentConfirmedAt: timestamp("payment_confirmed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
