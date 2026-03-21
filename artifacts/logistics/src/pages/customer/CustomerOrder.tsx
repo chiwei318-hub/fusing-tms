@@ -40,15 +40,6 @@ const CARGO_TYPES = [
   "機械零件", "化工原料", "醫療器材", "電子零件", "原物料", "其他",
 ];
 const QUANTITY_OPTIONS = ["1 件", "2 件", "3 件", "4 件", "5 件", "6–10 件", "11–20 件", "21–50 件", "51 件以上"];
-const WEIGHT_OPTIONS = [
-  { label: "50 kg 以下", kg: 50 },
-  { label: "50–100 kg", kg: 100 },
-  { label: "100–300 kg", kg: 300 },
-  { label: "300–500 kg", kg: 500 },
-  { label: "500 kg–1 噸", kg: 1000 },
-  { label: "1 噸–3 噸", kg: 3000 },
-  { label: "3 噸以上", kg: 5000 },
-];
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const addrRe = /^.{10,}$/; // at least 10 chars
@@ -76,7 +67,7 @@ const schema = z.object({
   // Cargo
   cargoType:          z.string().min(1, "請選擇貨物類型"),
   cargoQuantity:      z.string().min(1, "請選擇件數"),
-  cargoWeightKg:      z.number().positive("請選擇毛重"),
+  cargoWeightKg:      z.coerce.number().positive("請輸入毛重（需大於 0）"),
   cargoLengthCm:      z.string().optional(),
   cargoWidthCm:       z.string().optional(),
   cargoHeightCm:      z.string().optional(),
@@ -449,17 +440,19 @@ export default function CustomerOrder() {
                 )} />
                 <FormField control={form.control} name="cargoWeightKg" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm">毛重 <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={v => field.onChange(WEIGHT_OPTIONS.find(w => w.label === v)?.kg)} value={WEIGHT_OPTIONS.find(w => w.kg === field.value)?.label ?? ""}>
-                      <FormControl>
-                        <SelectTrigger className="h-12"><SelectValue placeholder="選擇重量" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {WEIGHT_OPTIONS.map(w => (
-                          <SelectItem key={w.label} value={w.label}>{w.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel className="text-sm">毛重 (kg) <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0.1}
+                        step={0.1}
+                        placeholder="輸入重量，例：250.5"
+                        className="h-12"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={e => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
