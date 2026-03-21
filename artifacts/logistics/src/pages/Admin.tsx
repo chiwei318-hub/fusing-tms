@@ -7,7 +7,7 @@ import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
-  Layers, Map, Brain,
+  Layers, Map, Brain, Navigation,
 } from "lucide-react";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
@@ -15,6 +15,7 @@ import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
+import FleetMapTab from "./admin/FleetMapTab";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
@@ -492,6 +493,9 @@ export default function Admin() {
           </TabsTrigger>
           <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Map className="w-3.5 h-3.5" /> 熱區地圖
+          </TabsTrigger>
+          <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[70px]">
+            <Navigation className="w-3.5 h-3.5" /> 車隊地圖
           </TabsTrigger>
           <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Brain className="w-3.5 h-3.5" /> AI 分析
@@ -989,6 +993,11 @@ export default function Admin() {
         {/* ===== 熱區地圖 TAB ===== */}
         <TabsContent value="heatmap" className="outline-none">
           <HeatMapTab />
+        </TabsContent>
+
+        {/* ===== 車隊地圖 TAB ===== */}
+        <TabsContent value="fleetmap" className="outline-none">
+          <FleetMapTab />
         </TabsContent>
 
         {/* ===== AI 分析 TAB ===== */}
