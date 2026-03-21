@@ -53,6 +53,9 @@ export const ordersTable = pgTable("orders", {
   checkInAt: timestamp("check_in_at"),
   signaturePhotoUrl: text("signature_photo_url"),
   completedAt: timestamp("completed_at"),
+  // Multi-stop addresses (JSON array of {address,contactName,phone,company,notes})
+  extraPickupAddresses: text("extra_pickup_addresses"),
+  extraDeliveryAddresses: text("extra_delivery_addresses"),
   // Customer payment fields
   paymentNote: text("payment_note"),
   paymentConfirmedAt: timestamp("payment_confirmed_at"),

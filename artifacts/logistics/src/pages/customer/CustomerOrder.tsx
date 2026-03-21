@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Package, MapPin, User, CheckCircle, Copy, Truck, Calendar,
   Building2, Phone, AlertTriangle, Calculator, ChevronDown, Info,
+  Plus, Trash2,
 } from "lucide-react";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,15 @@ const QUANTITY_OPTIONS = ["1 件", "2 件", "3 件", "4 件", "5 件", "6–10 �
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const addrRe = /^.{10,}$/; // at least 10 chars
+
+const extraStopSchema = z.object({
+  address:     z.string().min(5, "請填寫地址"),
+  contactName: z.string().min(1, "請填寫聯絡人"),
+  phone:       z.string().min(8, "請填寫電話"),
+  company:     z.string().optional(),
+  notes:       z.string().optional(),
+});
+
 const schema = z.object({
   // Orderer
   customerName:       z.string().min(2, "請填寫委託人姓名"),
@@ -56,6 +66,7 @@ const schema = z.object({
   pickupPhone:        z.string().min(8, "請填寫取貨聯絡電話"),
   pickupCompany:      z.string().optional(),
   pickupNotes:        z.string().optional(),
+  extraPickupAddresses: z.array(extraStopSchema).default([]),
   // Delivery
   deliveryDate:       z.string().optional(),
   deliveryTime:       z.string().optional(),
@@ -64,6 +75,7 @@ const schema = z.object({
   deliveryPhone:      z.string().min(8, "請填寫送達聯絡電話"),
   deliveryCompany:    z.string().optional(),
   deliveryNotes:      z.string().optional(),
+  extraDeliveryAddresses: z.array(extraStopSchema).default([]),
   // Cargo
   cargoType:          z.string().min(1, "請選擇貨物類型"),
   cargoQuantity:      z.string().min(1, "請選擇件數"),
@@ -194,6 +206,77 @@ function AddressSection({
   );
 }
 
+// ─── Extra stop card ──────────────────────────────────────────────────────────
+function ExtraStopCard({
+  index, prefix, control, onRemove, colorClass, label,
+}: {
+  index: number; prefix: string; control: any; onRemove: () => void;
+  colorClass: string; label: string;
+}) {
+  const base = `${prefix}.${index}` as any;
+  return (
+    <Card className={`border-2 bg-white ${colorClass === "orange" ? "border-orange-200" : "border-blue-200"}`}>
+      <CardHeader className="pb-2 pt-3 px-4 flex-row items-center justify-between space-y-0">
+        <CardTitle className={`text-xs font-bold flex items-center gap-1.5 ${colorClass === "orange" ? "text-orange-600" : "text-blue-600"}`}>
+          <MapPin className="w-3.5 h-3.5" /> {label}
+        </CardTitle>
+        <button type="button" onClick={onRemove}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-3">
+        <FormField control={control} name={`${base}.address`} render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-sm">完整地址 <span className="text-destructive">*</span></FormLabel>
+            <FormControl>
+              <Input className="h-11 text-base" placeholder="○○縣○○區○○路○段○○號" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField control={control} name={`${base}.contactName`} render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm flex items-center gap-1">
+                <User className="w-3 h-3" /> 聯絡人 <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl><Input className="h-11" placeholder="王先生" {...field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={control} name={`${base}.phone`} render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm flex items-center gap-1">
+                <Phone className="w-3 h-3" /> 電話 <span className="text-destructive">*</span>
+              </FormLabel>
+              <FormControl><Input type="tel" className="h-11" placeholder="0912-345-678" {...field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        </div>
+        <FormField control={control} name={`${base}.company`} render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
+              <Building2 className="w-3 h-3" /> 公司名稱（選填）
+            </FormLabel>
+            <FormControl><Input className="h-10" placeholder="○○股份有限公司" {...field} /></FormControl>
+          </FormItem>
+        )} />
+        <FormField control={control} name={`${base}.notes`} render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs text-muted-foreground">備註（樓層、電梯、搬運需求）</FormLabel>
+            <FormControl>
+              <Textarea className="resize-none text-sm" rows={2}
+                placeholder="例：3樓無電梯、需搬運至室內" {...field} />
+            </FormControl>
+          </FormItem>
+        )} />
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function CustomerOrder() {
   const { toast } = useToast();
@@ -208,12 +291,19 @@ export default function CustomerOrder() {
       customerName: "", customerPhone: "", customerCompany: "",
       pickupDate: "", pickupTime: "", pickupAddress: "", pickupContactName: "",
       pickupPhone: "", pickupCompany: "", pickupNotes: "",
+      extraPickupAddresses: [],
       deliveryDate: "", deliveryTime: "", deliveryAddress: "", deliveryContactName: "",
       deliveryPhone: "", deliveryCompany: "", deliveryNotes: "",
+      extraDeliveryAddresses: [],
       cargoType: "", cargoQuantity: "", cargoLengthCm: "", cargoWidthCm: "", cargoHeightCm: "",
       cargoNotes: "", bodyType: "", tonnage: "", specialRequirements: "",
     },
   });
+
+  const pickupFields = useFieldArray({ control: form.control, name: "extraPickupAddresses" });
+  const deliveryFields = useFieldArray({ control: form.control, name: "extraDeliveryAddresses" });
+  const MAX_EXTRA_PICKUP = 3;
+  const MAX_EXTRA_DELIVERY = 5;
 
   const volume = useVolume(form.control);
   const weightKg = useWatch({ control: form.control, name: "cargoWeightKg" });
@@ -232,6 +322,13 @@ export default function CustomerOrder() {
       data.customerCompany ? `委託公司：${data.customerCompany}` : "",
       data.specialRequirements ?? "",
     ].filter(Boolean).join("；");
+
+    const extraPickupJson = data.extraPickupAddresses?.length
+      ? JSON.stringify(data.extraPickupAddresses)
+      : null;
+    const extraDeliveryJson = data.extraDeliveryAddresses?.length
+      ? JSON.stringify(data.extraDeliveryAddresses)
+      : null;
 
     try {
       const order = await createOrder({
@@ -255,6 +352,8 @@ export default function CustomerOrder() {
           cargoWidthM: data.cargoWidthCm ? parseFloat(data.cargoWidthCm) / 100 : null,
           cargoHeightM: data.cargoHeightCm ? parseFloat(data.cargoHeightCm) / 100 : null,
           requiredVehicleType: vehicleType,
+          extraPickupAddresses: extraPickupJson,
+          extraDeliveryAddresses: extraDeliveryJson,
           specialRequirements: [
             data.pickupNotes ? `取貨備註：${data.pickupNotes}` : "",
             data.deliveryNotes ? `送貨備註：${data.deliveryNotes}` : "",
@@ -379,18 +478,64 @@ export default function CustomerOrder() {
           </Card>
 
           {/* ── 取貨資訊 ── */}
-          <AddressSection
-            title="取貨資訊" icon={<MapPin className="w-4 h-4 text-orange-500" />}
-            prefix="pickup" control={form.control} form={form}
-            colorClass="text-orange-600"
-          />
+          <div className="space-y-2">
+            <AddressSection
+              title={`取貨地址 第1站`} icon={<MapPin className="w-4 h-4 text-orange-500" />}
+              prefix="pickup" control={form.control} form={form}
+              colorClass="text-orange-600"
+            />
+            {pickupFields.fields.map((field, idx) => (
+              <ExtraStopCard
+                key={field.id}
+                index={idx}
+                prefix="extraPickupAddresses"
+                control={form.control}
+                onRemove={() => pickupFields.remove(idx)}
+                colorClass="orange"
+                label={`取貨地址 第${idx + 2}站`}
+              />
+            ))}
+            {pickupFields.fields.length < MAX_EXTRA_PICKUP && (
+              <button
+                type="button"
+                onClick={() => pickupFields.append({ address: "", contactName: "", phone: "", company: "", notes: "" })}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-orange-300 text-orange-600 text-sm font-semibold hover:bg-orange-50 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                新增取貨地址（還可新增 {MAX_EXTRA_PICKUP - pickupFields.fields.length} 個）
+              </button>
+            )}
+          </div>
 
           {/* ── 送貨資訊 ── */}
-          <AddressSection
-            title="送貨資訊" icon={<MapPin className="w-4 h-4 text-blue-500" />}
-            prefix="delivery" control={form.control} form={form}
-            colorClass="text-blue-600"
-          />
+          <div className="space-y-2">
+            <AddressSection
+              title={`送貨地址 第1站`} icon={<MapPin className="w-4 h-4 text-blue-500" />}
+              prefix="delivery" control={form.control} form={form}
+              colorClass="text-blue-600"
+            />
+            {deliveryFields.fields.map((field, idx) => (
+              <ExtraStopCard
+                key={field.id}
+                index={idx}
+                prefix="extraDeliveryAddresses"
+                control={form.control}
+                onRemove={() => deliveryFields.remove(idx)}
+                colorClass="blue"
+                label={`送貨地址 第${idx + 2}站`}
+              />
+            ))}
+            {deliveryFields.fields.length < MAX_EXTRA_DELIVERY && (
+              <button
+                type="button"
+                onClick={() => deliveryFields.append({ address: "", contactName: "", phone: "", company: "", notes: "" })}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 text-sm font-semibold hover:bg-blue-50 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                新增送貨地址（還可新增 {MAX_EXTRA_DELIVERY - deliveryFields.fields.length} 個）
+              </button>
+            )}
+          </div>
 
           {/* ── 貨物資訊 ── */}
           <Card className="border bg-white">
