@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
+import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
@@ -246,6 +247,9 @@ export default function Admin() {
   const { mutateAsync: updateCustomer, isPending: updatingCustomer } = useUpdateCustomerMutation();
   const { mutateAsync: deleteCustomer } = useDeleteCustomerMutation();
 
+  const [activeTab, setActiveTab] = useState("home");
+  const handleTabChange = useCallback((tab: string) => setActiveTab(tab), []);
+
   const [driverDialogOpen, setDriverDialogOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -463,33 +467,41 @@ export default function Admin() {
         <p className="text-muted-foreground mt-1 text-sm">訂單調派、司機管理、客戶管理、營運報表</p>
       </div>
 
-      <Tabs defaultValue="orders" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-5 w-full">
-          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="home" className="gap-1 text-xs flex-1 min-w-[70px]">
+            🏠 首頁
+          </TabsTrigger>
+          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[70px]">
             <ClipboardList className="w-3.5 h-3.5" /> 訂單
           </TabsTrigger>
-          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Truck className="w-3.5 h-3.5" /> 司機
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Users className="w-3.5 h-3.5" /> 客戶
           </TabsTrigger>
-          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[70px]">
             <BarChart2 className="w-3.5 h-3.5" /> 報表
           </TabsTrigger>
-          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Truck className="w-3.5 h-3.5" /> 車型庫
           </TabsTrigger>
-          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Layers className="w-3.5 h-3.5" /> 智慧調度
           </TabsTrigger>
-          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Map className="w-3.5 h-3.5" /> 熱區地圖
           </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[80px]">
+          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[70px]">
             <Brain className="w-3.5 h-3.5" /> AI 分析
           </TabsTrigger>
         </TabsList>
+
+        {/* ===== 首頁 TAB ===== */}
+        <TabsContent value="home" className="outline-none">
+          <AdminHome onTabChange={handleTabChange} />
+        </TabsContent>
 
         {/* ===== 訂單 TAB ===== */}
         <TabsContent value="orders" className="outline-none space-y-3">
