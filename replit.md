@@ -45,7 +45,7 @@ A logistics dispatch management system with:
 - **訂單詳情** — Order detail with transport status timeline
 - **後台管理** — Admin panel with order dispatch and driver management
 
-### Admin Tabs (10 total)
+### Admin Tabs (11 total)
 - **訂單** — Order dispatch with ⚡ 一鍵派車 + 💰 自動估價 + ✏️ 編輯對話框（分欄聯絡人/電話 + 多站下貨編輯）
 - **司機** — Driver CRUD and status management
 - **客戶** — Customer CRUD
@@ -56,6 +56,7 @@ A logistics dispatch management system with:
 - **車隊地圖** — Real-time fleet map
 - **拼車** — Carpool dispatch panel: AI compatibility score, one-click merge, merged group management, driver assignment per group
 - **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
+- **金流** — Payment collection system (see Payment System section below)
 
 ### Multi-Stop Delivery (一取多卸)
 - Customer order form supports up to 5 extra delivery stops (address, contact, phone, quantity, weight, notes)

@@ -9,6 +9,7 @@ import licensesRouter from "./licenses";
 import enterpriseRouter from "./enterprise";
 import outsourcingRouter from "./outsourcing";
 import { pricingRouter } from "./pricing";
+import paymentsRouter from "./payments";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(licensesRouter);
 router.use(enterpriseRouter);
 router.use(outsourcingRouter);
 router.use("/orders", pricingRouter);
+router.use(paymentsRouter);
 
 export default router;
