@@ -20,6 +20,7 @@ import FleetMapTab from "./admin/FleetMapTab";
 import CarpoolTab from "./admin/CarpoolTab";
 import FleetManagementTab from "./admin/FleetManagementTab";
 import OutsourcingTab from "./admin/OutsourcingTab";
+import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
@@ -1230,6 +1231,13 @@ export default function Admin() {
                         )}
                       </div>
                     )}
+
+                    {/* Pricing Panel */}
+                    <PricingPanel
+                      order={selectedOrder as any}
+                      mode="admin"
+                      onRefresh={() => setSelectedOrder(null)}
+                    />
                   </div>
                 );
               })()}

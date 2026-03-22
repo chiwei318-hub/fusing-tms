@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { driversTable } from "./drivers";
@@ -63,6 +63,16 @@ export const ordersTable = pgTable("orders", {
   // Customer payment fields
   paymentNote: text("payment_note"),
   paymentConfirmedAt: timestamp("payment_confirmed_at"),
+  // ── Pricing & Arrival Notification ──────────────────────
+  distanceKm: real("distance_km"),                          // estimated route distance
+  pricingBreakdown: text("pricing_breakdown"),              // JSON {base,weight,volume,time,special,surcharge}
+  priceLocked: boolean("price_locked").notNull().default(false),
+  priceLockedAt: timestamp("price_locked_at"),
+  priceLockedBy: text("price_locked_by"),                   // "admin"|"driver"|"customer"
+  arrivalNotifiedAt: timestamp("arrival_notified_at"),      // when arrival notif was sent
+  waitMinutes: real("wait_minutes").default(0),             // wait time at pickup
+  surchargeAmount: real("surcharge_amount").default(0),     // anomaly surcharges total
+  surchargeReason: text("surcharge_reason"),                // comma-sep reasons
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

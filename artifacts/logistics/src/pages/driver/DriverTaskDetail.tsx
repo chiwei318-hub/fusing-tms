@@ -5,6 +5,7 @@ import {
   XCircle, Camera, AlertCircle, ChevronLeft, Phone, DollarSign,
   ImagePlus, Calendar,
 } from "lucide-react";
+import PricingPanel from "@/components/PricingPanel";
 import { useOrderDetail, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriverAction, getGetOrderQueryKey, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -491,12 +492,20 @@ export default function DriverTaskDetail() {
         </CardContent>
       </Card>
 
-      {/* Fee */}
-      {order.totalFee != null && (
+      {/* Pricing Panel */}
+      {!isDone && (
+        <PricingPanel
+          order={order as any}
+          mode="driver"
+        />
+      )}
+
+      {/* Fee summary (done state) */}
+      {isDone && order.totalFee != null && (
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-4 flex items-center justify-between text-white">
           <div className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-white/80" />
-            <span className="font-bold">應收運費</span>
+            <span className="font-bold">應收運費{order.priceLocked ? " 🔒" : ""}</span>
           </div>
           <span className="font-black text-2xl">NT${order.totalFee.toLocaleString()}</span>
         </div>
