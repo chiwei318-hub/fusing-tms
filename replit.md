@@ -77,6 +77,14 @@ A logistics dispatch management system with:
 - One-click merge: creates shared `orderGroupId` across selected orders
 - Merged group management: view route list, assign driver to all orders in group, dissolve group
 
+### Outsourcing / Monetization System (轉單變現系統)
+- Admin tab: "轉單" (`value="outsourcing"`) → `OutsourcingTab.tsx`
+- Sub-tabs: 轉單管理, 合作車隊, 自動分單設定, 利潤控管, 報表
+- DB Tables: `partner_fleets`, `outsourced_orders`, `auto_dispatch_settings`
+- API Routes: `/api/outsourcing/fleets` (CRUD), `/api/outsourcing/orders` (CRUD + notify), `/api/outsourcing/settings` (GET/PATCH), `/api/outsourcing/reports/summary|by-fleet|monthly`
+- Features: Auto price comparison, profit calculation (transferPrice - fleetPrice), profit alerts when below threshold, reliability scoring, fleet commission (% or fixed NTD), auto-assign flag, LINE notify simulation
+- Test fleets: 台灣快遞車隊 (NT$2800/趟, 12%抽成) and 南台灣物流聯盟 (NT$3500/趟, NT$300固定抽成)
+
 ### Enterprise Customer Portal (企業客戶入口)
 - Route: `/enterprise/*`
 - Login: `/enterprise/login` (accountCode + password, SHA-256+salt hash)

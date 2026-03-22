@@ -19,6 +19,7 @@ import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import FleetMapTab from "./admin/FleetMapTab";
 import CarpoolTab from "./admin/CarpoolTab";
 import FleetManagementTab from "./admin/FleetManagementTab";
+import OutsourcingTab from "./admin/OutsourcingTab";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
@@ -697,6 +698,10 @@ export default function Admin() {
           <TabsTrigger value="fleet" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
             <Bell className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">車隊</span>
+          </TabsTrigger>
+          <TabsTrigger value="outsourcing" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <DollarSign className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">轉單</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1542,6 +1547,11 @@ export default function Admin() {
         {/* ===== 車隊管理 TAB ===== */}
         <TabsContent value="fleet" className="outline-none">
           <FleetManagementTab />
+        </TabsContent>
+
+        {/* ===== 轉單變現 TAB ===== */}
+        <TabsContent value="outsourcing" className="outline-none">
+          <OutsourcingTab />
         </TabsContent>
       </Tabs>
     </div>
