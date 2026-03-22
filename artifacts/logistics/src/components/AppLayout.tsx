@@ -83,7 +83,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   } as React.CSSProperties;
 
   return (
-    <SidebarProvider style={style}>
+    <SidebarProvider style={{ ...style, minHeight: 0, height: "100%" }}>
       <div className="flex h-full w-full bg-background overflow-hidden">
         <AppSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
