@@ -91,7 +91,7 @@ function AppRouter() {
   const [location] = useLocation();
 
   if (location === "/" || location === "") {
-    return <Landing />;
+    return <div className="h-dvh overflow-y-auto"><Landing /></div>;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;

@@ -2,12 +2,11 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-/* ── Lock viewport: no external scrollbar ── */
+/* ── Base height (portals manage their own overflow) ── */
 html,
 body,
 #root {
   height: 100dvh;
-  overflow: hidden;
 }
 
 @custom-variant dark (&:is(.dark *));
