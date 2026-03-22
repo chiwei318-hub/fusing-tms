@@ -37,6 +37,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import HistoryInput from "@/components/HistoryInput";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderStatus, DriverStatus, Driver, Customer, Order } from "@workspace/api-client-react";
 
@@ -944,7 +945,15 @@ export default function Admin() {
                     </div>
                     <FormField control={editOrderForm.control} name="pickupAddress" render={({ field }) => (
                       <FormItem><FormLabel className="text-xs">取貨地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl><Input placeholder="○○縣○○市○○路○段○號" {...field} /></FormControl>
+                        <FormControl>
+                          <TaiwanAddressInput
+                            value={field.value ?? ""}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            historyKey="admin-pickup"
+                            error={editOrderForm.formState.errors.pickupAddress?.message}
+                          />
+                        </FormControl>
                         <FormMessage /></FormItem>
                     )} />
                     <FormField control={editOrderForm.control} name="pickupCompany" render={({ field }) => (
@@ -980,7 +989,15 @@ export default function Admin() {
                     </div>
                     <FormField control={editOrderForm.control} name="deliveryAddress" render={({ field }) => (
                       <FormItem><FormLabel className="text-xs">送達地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl><Input placeholder="○○縣○○市○○路○段○號" {...field} /></FormControl>
+                        <FormControl>
+                          <TaiwanAddressInput
+                            value={field.value ?? ""}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            historyKey="admin-delivery"
+                            error={editOrderForm.formState.errors.deliveryAddress?.message}
+                          />
+                        </FormControl>
                         <FormMessage /></FormItem>
                     )} />
                     <FormField control={editOrderForm.control} name="deliveryCompany" render={({ field }) => (
