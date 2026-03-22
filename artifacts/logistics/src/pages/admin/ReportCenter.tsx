@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import {
   Printer, Download, Users, Truck, UserCheck,
@@ -432,59 +432,60 @@ function buildDetailHTML(orders: Order[], groupLabel: string): string {
 }
 
 // ─── Excel export ──────────────────────────────────────────────────────────────
-function exportExcel(title: string, rows: SummaryRow[], summaryLabel: string, orders: Order[], groupLabel: string, dateRange: string) {
-  const wb = XLSX.utils.book_new();
+async function exportExcel(title: string, rows: SummaryRow[], summaryLabel: string, orders: Order[], groupLabel: string, dateRange: string) {
+  const wb = new ExcelJS.Workbook();
   const totals = sumRows(rows);
   const meta = [`${COMPANY} — ${title}`, `日期區間：${dateRange || "全部"}`, `匯出時間：${format(new Date(), "yyyy/MM/dd HH:mm")}`, ""];
 
   // Sheet 1: 總表
-  const summaryData = [
-    ...meta.map(m => [m]),
-    [summaryLabel, "趟次", "件數", "里程km", "營收(NT$)", "成本(NT$)", "毛利(NT$)", "毛利率", "平均單價(NT$)"],
-    ...rows.map(r => [
-      r.label + (r.sub ? ` (${r.sub})` : ""),
-      r.trips, r.items, Math.round(r.distKm),
-      Math.round(r.revenue), Math.round(r.cost), Math.round(r.profit),
-      r.revenue > 0 ? `${Math.round((r.profit / r.revenue) * 100)}%` : "—",
-      r.trips > 0 ? Math.round(r.revenue / r.trips) : "—",
-    ]),
-    ["合計", totals.trips, totals.items, Math.round(totals.distKm), Math.round(totals.revenue), Math.round(totals.cost), Math.round(totals.profit),
-      totals.revenue > 0 ? `${Math.round((totals.profit / totals.revenue) * 100)}%` : "—",
-      totals.trips > 0 ? Math.round(totals.revenue / totals.trips) : "—"],
-    [],
-    [`★ 排名（依營收）`],
-    [summaryLabel, "營收(NT$)", "趟次", "毛利(NT$)"],
-    ...[...rows].sort((a, b) => b.revenue - a.revenue).slice(0, 10).map((r, i) => [
-      `${i + 1}. ${r.label}`, Math.round(r.revenue), r.trips, Math.round(r.profit),
-    ]),
-  ];
-  const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
-  ws1["!cols"] = [{ wch: 22 }, { wch: 7 }, { wch: 7 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 9 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws1, "總表");
+  const ws1 = wb.addWorksheet("總表");
+  meta.forEach(m => ws1.addRow([m]));
+  ws1.addRow([summaryLabel, "趟次", "件數", "里程km", "營收(NT$)", "成本(NT$)", "毛利(NT$)", "毛利率", "平均單價(NT$)"]);
+  rows.forEach(r => ws1.addRow([
+    r.label + (r.sub ? ` (${r.sub})` : ""),
+    r.trips, r.items, Math.round(r.distKm),
+    Math.round(r.revenue), Math.round(r.cost), Math.round(r.profit),
+    r.revenue > 0 ? `${Math.round((r.profit / r.revenue) * 100)}%` : "—",
+    r.trips > 0 ? Math.round(r.revenue / r.trips) : "—",
+  ]));
+  ws1.addRow(["合計", totals.trips, totals.items, Math.round(totals.distKm), Math.round(totals.revenue), Math.round(totals.cost), Math.round(totals.profit),
+    totals.revenue > 0 ? `${Math.round((totals.profit / totals.revenue) * 100)}%` : "—",
+    totals.trips > 0 ? Math.round(totals.revenue / totals.trips) : "—"]);
+  ws1.addRow([]);
+  ws1.addRow(["★ 排名（依營收）"]);
+  ws1.addRow([summaryLabel, "營收(NT$)", "趟次", "毛利(NT$)"]);
+  [...rows].sort((a, b) => b.revenue - a.revenue).slice(0, 10).forEach((r, i) =>
+    ws1.addRow([`${i + 1}. ${r.label}`, Math.round(r.revenue), r.trips, Math.round(r.profit)])
+  );
+  ws1.columns = [{ width: 22 }, { width: 7 }, { width: 7 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 9 }, { width: 14 }];
 
   // Sheet 2: 明細表
+  const ws2 = wb.addWorksheet("明細表");
   const sorted = [...orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const detailData = [
-    ...meta.map(m => [m]),
-    ["單號", "日期時間", groupLabel, "貨物描述", "起址", "訖址", "司機", "重量kg", "件數", "里程km", "營收(NT$)", "成本(NT$)", "毛利(NT$)", "狀態"],
-    ...sorted.map(o => {
-      const { revenue, cost, profit, dist } = calcOrderCost(o);
-      const gv = groupLabel === "客戶" ? o.customerName : groupLabel === "司機" ? (o.driver?.name ?? "—") : (o.driver?.licensePlate ?? "—");
-      return [`#${o.id}`, format(new Date(o.createdAt), "yyyy/MM/dd HH:mm"), gv,
-        o.cargoDescription ?? "", o.pickupAddress ?? "", o.deliveryAddress ?? "",
-        o.driver?.name ?? "—", o.cargoWeight ?? "", o.cargoQuantity ?? "",
-        Math.round(dist), Math.round(revenue), Math.round(cost), Math.round(profit), o.status];
-    }),
-    ["合計", "", "", "", "", "", "", "", "", "",
-      Math.round(sorted.reduce((s, o) => s + (o.totalFee ?? 0), 0)),
-      Math.round(sorted.reduce((s, o) => s + calcOrderCost(o).cost, 0)),
-      Math.round(sorted.reduce((s, o) => s + calcOrderCost(o).profit, 0)), ""],
-  ];
-  const ws2 = XLSX.utils.aoa_to_sheet(detailData);
-  ws2["!cols"] = [{ wch: 8 }, { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 8 }, { wch: 6 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, ws2, "明細表");
+  meta.forEach(m => ws2.addRow([m]));
+  ws2.addRow(["單號", "日期時間", groupLabel, "貨物描述", "起址", "訖址", "司機", "重量kg", "件數", "里程km", "營收(NT$)", "成本(NT$)", "毛利(NT$)", "狀態"]);
+  sorted.forEach(o => {
+    const { revenue, cost, profit, dist } = calcOrderCost(o);
+    const gv = groupLabel === "客戶" ? o.customerName : groupLabel === "司機" ? (o.driver?.name ?? "—") : (o.driver?.licensePlate ?? "—");
+    ws2.addRow([`#${o.id}`, format(new Date(o.createdAt), "yyyy/MM/dd HH:mm"), gv,
+      o.cargoDescription ?? "", o.pickupAddress ?? "", o.deliveryAddress ?? "",
+      o.driver?.name ?? "—", o.cargoWeight ?? "", o.cargoQuantity ?? "",
+      Math.round(dist), Math.round(revenue), Math.round(cost), Math.round(profit), o.status]);
+  });
+  ws2.addRow(["合計", "", "", "", "", "", "", "", "", "",
+    Math.round(sorted.reduce((s, o) => s + (o.totalFee ?? 0), 0)),
+    Math.round(sorted.reduce((s, o) => s + calcOrderCost(o).cost, 0)),
+    Math.round(sorted.reduce((s, o) => s + calcOrderCost(o).profit, 0)), ""]);
+  ws2.columns = [{ width: 8 }, { width: 16 }, { width: 14 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 10 }, { width: 8 }, { width: 6 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 10 }];
 
-  XLSX.writeFile(wb, `${title}_${format(new Date(), "yyyyMMdd")}.xlsx`);
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title}_${format(new Date(), "yyyyMMdd")}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Per-report panel ─────────────────────────────────────────────────────────
