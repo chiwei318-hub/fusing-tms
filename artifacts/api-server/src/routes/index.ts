@@ -10,8 +10,12 @@ import enterpriseRouter from "./enterprise";
 import outsourcingRouter from "./outsourcing";
 import { pricingRouter } from "./pricing";
 import paymentsRouter from "./payments";
+import permissionsRouter from "./permissions";
+import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
+
+router.use(auditMiddleware);
 
 router.use(healthRouter);
 router.use(ordersRouter);
@@ -24,5 +28,6 @@ router.use(enterpriseRouter);
 router.use(outsourcingRouter);
 router.use("/orders", pricingRouter);
 router.use(paymentsRouter);
+router.use(permissionsRouter);
 
 export default router;

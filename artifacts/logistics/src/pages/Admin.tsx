@@ -22,6 +22,7 @@ import FleetManagementTab from "./admin/FleetManagementTab";
 import OutsourcingTab from "./admin/OutsourcingTab";
 import PaymentCenter from "./admin/PaymentCenter";
 import QuotationTab from "./admin/QuotationTab";
+import PermissionTab from "./admin/PermissionTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -715,6 +716,11 @@ export default function Admin() {
             <span className="text-base leading-none sm:hidden">🧮</span>
             <span className="hidden sm:inline">🧮</span>
             <span className="text-[10px] sm:text-xs leading-tight">報價</span>
+          </TabsTrigger>
+          <TabsTrigger value="perm" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+            <span className="text-base leading-none sm:hidden">🔐</span>
+            <span className="hidden sm:inline">🔐</span>
+            <span className="text-[10px] sm:text-xs leading-tight">權限</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1582,6 +1588,11 @@ export default function Admin() {
         {/* ===== 報價試算 TAB ===== */}
         <TabsContent value="quotation" className="outline-none">
           <QuotationTab />
+        </TabsContent>
+
+        {/* ===== 權限管理 TAB ===== */}
+        <TabsContent value="perm" className="outline-none">
+          <PermissionTab />
         </TabsContent>
       </Tabs>
     </div>

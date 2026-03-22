@@ -6,3 +6,4 @@ export * from "./vehicleLicenses";
 export * from "./enterprise";
 export * from "./outsourcing";
 export * from "./payments";
+export * from "./admin";

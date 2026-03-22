@@ -58,6 +58,18 @@ A logistics dispatch management system with:
 - **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
 - **金流** — Payment collection system (see Payment System section below)
 - **報價** — Freight quotation calculator with per-vehicle pricing rules and auto-calculation
+- **權限** — Backend permission management: admin accounts, role-based access control, custom fields, audit log
+
+### Permission Management System (後台權限管理)
+- DB Tables: `admin_roles`, `admin_users`, `custom_fields`, `audit_logs`
+- API Routes: `/api/admin/roles` (CRUD), `/api/admin/users` (CRUD + verify), `/api/admin/custom-fields` (CRUD), `/api/admin/audit-logs` (read + create), `/api/admin/verify` (login)
+- Default roles: 老闆, 主管, 調度員, 會計, 客服, 司機 (system roles, permissions editable)
+- Default superadmin: username=`admin`, password=`admin123`
+- Permission matrix: 14 menus × 5 actions (view/edit/delete/export/print)
+- Audit middleware (`src/middleware/audit.ts`): auto-logs POST/PATCH/DELETE on orders, drivers, customers, payments, outsourcing routes
+- Custom fields: per form type (customer_order | driver), supports text/number/select/date/checkbox/textarea
+- Audit log: filterable by action, resource type, operator, date range; CSV export
+- Active admin selector: switch operator identity for audit log attribution (localStorage-persisted)
 
 ### Multi-Stop Delivery (一取多卸)
 - Customer order form supports up to 5 extra delivery stops (address, contact, phone, quantity, weight, notes)
