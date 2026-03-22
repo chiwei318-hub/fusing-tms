@@ -181,7 +181,24 @@ React + Vite frontend for the logistics management system.
 - App: `src/App.tsx` — routing with wouter, React Query provider
 - Pages: `src/pages/` — OrderForm, OrderList, OrderDetail, Admin, Driver, Customer, TrackOrder
 - Admin sub-pages: `src/pages/admin/` — VehicleTypeTab, SmartDispatchTab, HeatMapTab, AIAnalyticsTab, ReportCenter
-- Components: `src/components/` — StatusBadge, AppLayout, ThemeToggle
+- Components: `src/components/` — StatusBadge, AppLayout, ThemeToggle, TaiwanAddressInput
+
+### TaiwanAddressInput Component
+File: `artifacts/logistics/src/components/TaiwanAddressInput.tsx`
+Used in: `CustomerOrder.tsx` (取貨/送貨地址), `Admin.tsx` (編輯訂單地址)
+- **Smart Search mode** (default): Single text input, shows:
+  - Postal code / city/district suggestions from taiwan-postal data
+  - Google Maps Autocomplete predictions (if `VITE_GOOGLE_MAPS_API_KEY` set)
+  - History of recent addresses
+  - Street phase: after selecting a district, enter road+number inline
+- **Structured mode** (click ≡ icon toggle): Cascading form:
+  - City dropdown → District dropdown (auto-filtered) → Road/Lane text input → House number text input
+  - Road input triggers Google Maps suggestions if API key available
+  - Auto-combines all fields into a full address string
+- Props: `value`, `onChange`, `onLocationChange?: (loc: {lat, lng, formattedAddress}) => void`, `historyKey`, `placeholder`, `error`, `onBlur`
+- Google Maps: loads dynamically from `VITE_GOOGLE_MAPS_API_KEY` env var; degrades gracefully if absent
+- Validation: `isAddressComplete()` from `src/lib/taiwan-postal.ts` (checks for road pattern + number)
+- History: saved per `historyKey` in localStorage (`addr-history-{key}`)
 - Hooks: `src/hooks/` — use-orders.ts, use-drivers.ts, use-vehicle-types.ts
 - Uses `@workspace/api-client-react` for API calls
 - Dependencies: `xlsx` (Excel export), `date-fns`, `lucide-react`

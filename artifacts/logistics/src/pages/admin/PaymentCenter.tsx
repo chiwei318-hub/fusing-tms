@@ -167,7 +167,7 @@ function RecordPaymentDialog({
   const [taxId, setTaxId] = useState("");
   const [sendNotification, setSendNotification] = useState(false);
 
-  const remaining = order ? (order.totalFee ?? 0) - (order as any).paidAmount ?? 0 : 0;
+  const remaining = order ? (order.totalFee ?? 0) - ((order as any).paidAmount ?? 0) : 0;
 
   const { data: bankInfo } = useQuery({
     queryKey: ["bank-info"],
