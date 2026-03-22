@@ -57,6 +57,7 @@ A logistics dispatch management system with:
 - **拼車** — Carpool dispatch panel: AI compatibility score, one-click merge, merged group management, driver assignment per group
 - **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
 - **金流** — Payment collection system (see Payment System section below)
+- **報價** — Freight quotation calculator with per-vehicle pricing rules and auto-calculation
 
 ### Multi-Stop Delivery (一取多卸)
 - Customer order form supports up to 5 extra delivery stops (address, contact, phone, quantity, weight, notes)
