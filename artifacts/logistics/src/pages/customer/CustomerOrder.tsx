@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Package, MapPin, User, CheckCircle, Copy, Truck, Calendar,
-  Building2, Phone, AlertTriangle, Calculator, ChevronDown, Info,
+  Building2, Phone, AlertTriangle, Calculator, Info,
   Plus, Trash2,
 } from "lucide-react";
 import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
@@ -15,7 +15,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { Order } from "@workspace/api-client-react";
@@ -28,7 +27,7 @@ const BODY_TYPES = [
   { value: "尾門", label: "尾門車", desc: "附液壓升降尾板，重物上下" },
 ];
 const TONNAGE_OPTIONS = [
-  { value: "1.5T", weight: "1,500 kg", volume: "7 m³", desc: "小型家電、文件、輕貨" },
+  { value: "1.5T", weight: "1,500 kg", volume: "7 m³",  desc: "小型家電、文件、輕貨" },
   { value: "3.5T", weight: "3,500 kg", volume: "18 m³", desc: "辦公家具、一般搬家" },
   { value: "5T",   weight: "5,000 kg", volume: "30 m³", desc: "大型設備、建材" },
   { value: "8T",   weight: "8,000 kg", volume: "40 m³", desc: "工廠貨品、大量家具" },
@@ -44,8 +43,6 @@ const CARGO_TYPES = [
 const QUANTITY_OPTIONS = ["1 件", "2 件", "3 件", "4 件", "5 件", "6–10 件", "11–20 件", "21–50 件", "51 件以上"];
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
-const addrRe = /^.{10,}$/; // at least 10 chars
-
 const extraStopSchema = z.object({
   address:     z.string().min(5, "請填寫地址"),
   contactName: z.string().min(1, "請填寫聯絡人"),
@@ -58,11 +55,9 @@ const extraStopSchema = z.object({
 });
 
 const schema = z.object({
-  // Orderer
   customerName:       z.string().min(2, "請填寫委託人姓名"),
   customerPhone:      z.string().min(8, "請填寫有效電話"),
   customerCompany:    z.string().optional(),
-  // Pickup
   pickupDate:         z.string().optional(),
   pickupTime:         z.string().optional(),
   pickupAddress:      z.string().min(10, "請填寫完整地址（含縣市區路段門牌）"),
@@ -71,7 +66,6 @@ const schema = z.object({
   pickupCompany:      z.string().optional(),
   pickupNotes:        z.string().optional(),
   extraPickupAddresses: z.array(extraStopSchema).default([]),
-  // Delivery
   deliveryDate:       z.string().optional(),
   deliveryTime:       z.string().optional(),
   deliveryAddress:    z.string().min(10, "請填寫完整地址（含縣市區路段門牌）"),
@@ -80,7 +74,6 @@ const schema = z.object({
   deliveryCompany:    z.string().optional(),
   deliveryNotes:      z.string().optional(),
   extraDeliveryAddresses: z.array(extraStopSchema).default([]),
-  // Cargo
   cargoType:          z.string().min(1, "請選擇貨物類型"),
   cargoQuantity:      z.string().min(1, "請選擇件數"),
   cargoWeightKg:      z.coerce.number().positive("請輸入毛重（需大於 0）"),
@@ -88,7 +81,6 @@ const schema = z.object({
   cargoWidthCm:       z.string().optional(),
   cargoHeightCm:      z.string().optional(),
   cargoNotes:         z.string().optional(),
-  // Vehicle
   bodyType:           z.string().optional(),
   tonnage:            z.string().optional(),
   specialRequirements:z.string().optional(),
@@ -103,52 +95,55 @@ function useVolume(control: any) {
   const lN = parseFloat(l ?? "");
   const wN = parseFloat(w ?? "");
   const hN = parseFloat(h ?? "");
-  if (!isNaN(lN) && !isNaN(wN) && !isNaN(hN) && lN > 0 && wN > 0 && hN > 0) {
-    const m3 = (lN * wN * hN) / 1_000_000;
-    return m3.toFixed(3);
-  }
+  if (!isNaN(lN) && !isNaN(wN) && !isNaN(hN) && lN > 0 && wN > 0 && hN > 0)
+    return ((lN * wN * hN) / 1_000_000).toFixed(3);
   return null;
 }
 
-// ─── Address section component ────────────────────────────────────────────────
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ icon, title, color }: { icon: React.ReactNode; title: string; color: string }) {
+  return (
+    <div className={`flex items-center gap-2 font-bold text-sm mb-4 pb-2 border-b ${color}`}>
+      {icon} {title}
+    </div>
+  );
+}
+
+// ─── Address section ──────────────────────────────────────────────────────────
 function AddressSection({
-  title, icon, prefix, control, form, colorClass,
+  title, icon, prefix, control, form, colorClass, accentColor,
 }: {
   title: string; icon: React.ReactNode; prefix: "pickup" | "delivery";
-  control: any; form: any; colorClass: string;
+  control: any; form: any; colorClass: string; accentColor: string;
 }) {
-  const dateField = `${prefix}Date` as any;
-  const timeField = `${prefix}Time` as any;
-  const addrField = `${prefix}Address` as any;
-  const contactNameField = `${prefix}ContactName` as any;
-  const phoneField = `${prefix}Phone` as any;
-  const companyField = `${prefix}Company` as any;
-  const notesField = `${prefix}Notes` as any;
-
   return (
-    <Card className="border bg-white">
+    <Card className={`border-t-4 bg-white h-full ${accentColor}`}>
       <CardHeader className="pb-3 border-b">
         <CardTitle className={`text-sm flex items-center gap-2 ${colorClass}`}>
           {icon} {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
+        {/* Date + Time */}
         <div className="grid grid-cols-2 gap-3">
-          <FormField control={control} name={dateField} render={({ field }) => (
+          <FormField control={control} name={`${prefix}Date` as any} render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-xs text-muted-foreground">期望日期</FormLabel>
-              <FormControl><Input type="date" className="h-11" {...field} /></FormControl>
+              <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> 期望日期
+              </FormLabel>
+              <FormControl><Input type="date" className="h-10" {...field} /></FormControl>
             </FormItem>
           )} />
-          <FormField control={control} name={timeField} render={({ field }) => (
+          <FormField control={control} name={`${prefix}Time` as any} render={({ field }) => (
             <FormItem>
               <FormLabel className="text-xs text-muted-foreground">期望時間</FormLabel>
-              <FormControl><Input type="time" className="h-11" {...field} /></FormControl>
+              <FormControl><Input type="time" className="h-10" {...field} /></FormControl>
             </FormItem>
           )} />
         </div>
 
-        <FormField control={control} name={addrField} render={({ field, fieldState }) => (
+        {/* Address */}
+        <FormField control={control} name={`${prefix}Address` as any} render={({ field, fieldState }) => (
           <FormItem>
             <FormLabel className="text-sm">完整地址 <span className="text-destructive">*</span></FormLabel>
             <FormControl>
@@ -157,7 +152,6 @@ function AddressSection({
                 onChange={field.onChange}
                 onBlur={field.onBlur}
                 historyKey={prefix}
-                placeholder="輸入郵遞區號或縣市，例：100 或 台北市"
                 error={fieldState.error?.message}
               />
             </FormControl>
@@ -165,46 +159,45 @@ function AddressSection({
           </FormItem>
         )} />
 
+        {/* Contact + Phone */}
         <div className="grid grid-cols-2 gap-3">
-          <FormField control={control} name={contactNameField} render={({ field }) => (
+          <FormField control={control} name={`${prefix}ContactName` as any} render={({ field }) => (
             <FormItem>
               <FormLabel className="text-sm flex items-center gap-1">
                 <User className="w-3 h-3" /> 聯絡人 <span className="text-destructive">*</span>
               </FormLabel>
-              <FormControl><Input className="h-11" placeholder="王先生" {...field} /></FormControl>
+              <FormControl><Input className="h-10" placeholder="王先生" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
-          <FormField control={control} name={phoneField} render={({ field }) => (
+          <FormField control={control} name={`${prefix}Phone` as any} render={({ field }) => (
             <FormItem>
               <FormLabel className="text-sm flex items-center gap-1">
                 <Phone className="w-3 h-3" /> 電話 <span className="text-destructive">*</span>
               </FormLabel>
-              <FormControl><Input type="tel" className="h-11" placeholder="0912-345-678" {...field} /></FormControl>
+              <FormControl><Input type="tel" className="h-10" placeholder="0912-345-678" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
         </div>
 
-        <FormField control={control} name={companyField} render={({ field }) => (
+        {/* Company */}
+        <FormField control={control} name={`${prefix}Company` as any} render={({ field }) => (
           <FormItem>
             <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
               <Building2 className="w-3 h-3" /> 公司名稱（選填）
             </FormLabel>
-            <FormControl><Input className="h-10" placeholder="○○股份有限公司" {...field} /></FormControl>
+            <FormControl><Input className="h-9" placeholder="○○股份有限公司" {...field} /></FormControl>
           </FormItem>
         )} />
 
-        <FormField control={control} name={notesField} render={({ field }) => (
+        {/* Notes */}
+        <FormField control={control} name={`${prefix}Notes` as any} render={({ field }) => (
           <FormItem>
             <FormLabel className="text-xs text-muted-foreground">備註（樓層、電梯、搬運需求）</FormLabel>
             <FormControl>
-              <Textarea
-                className="resize-none text-sm"
-                rows={2}
-                placeholder="例：3樓無電梯、需搬運至室內、大門密碼1234"
-                {...field}
-              />
+              <Textarea className="resize-none text-sm" rows={2}
+                placeholder="例：3樓無電梯、需搬運至室內、大門密碼1234" {...field} />
             </FormControl>
           </FormItem>
         )} />
@@ -215,16 +208,18 @@ function AddressSection({
 
 // ─── Extra stop card ──────────────────────────────────────────────────────────
 function ExtraStopCard({
-  index, prefix, control, onRemove, colorClass, label,
+  index, prefix, control, onRemove, isOrange, label,
 }: {
   index: number; prefix: string; control: any; onRemove: () => void;
-  colorClass: string; label: string;
+  isOrange: boolean; label: string;
 }) {
   const base = `${prefix}.${index}` as any;
+  const borderColor = isOrange ? "border-orange-300" : "border-blue-300";
+  const textColor   = isOrange ? "text-orange-600"  : "text-blue-600";
   return (
-    <Card className={`border-2 bg-white ${colorClass === "orange" ? "border-orange-200" : "border-blue-200"}`}>
+    <Card className={`border-2 bg-white ${borderColor}`}>
       <CardHeader className="pb-2 pt-3 px-4 flex-row items-center justify-between space-y-0">
-        <CardTitle className={`text-xs font-bold flex items-center gap-1.5 ${colorClass === "orange" ? "text-orange-600" : "text-blue-600"}`}>
+        <CardTitle className={`text-xs font-bold flex items-center gap-1.5 ${textColor}`}>
           <MapPin className="w-3.5 h-3.5" /> {label}
         </CardTitle>
         <button type="button" onClick={onRemove}
@@ -241,8 +236,7 @@ function ExtraStopCard({
                 value={field.value}
                 onChange={field.onChange}
                 onBlur={field.onBlur}
-                historyKey={`extra-${colorClass}`}
-                placeholder="輸入郵遞區號或縣市，例：220 或 新北市"
+                historyKey={`extra-${isOrange ? "pickup" : "delivery"}`}
                 error={fieldState.error?.message}
               />
             </FormControl>
@@ -255,7 +249,7 @@ function ExtraStopCard({
               <FormLabel className="text-sm flex items-center gap-1">
                 <User className="w-3 h-3" /> 聯絡人 <span className="text-destructive">*</span>
               </FormLabel>
-              <FormControl><Input className="h-11" placeholder="王先生" {...field} /></FormControl>
+              <FormControl><Input className="h-10" placeholder="王先生" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
@@ -264,33 +258,33 @@ function ExtraStopCard({
               <FormLabel className="text-sm flex items-center gap-1">
                 <Phone className="w-3 h-3" /> 電話 <span className="text-destructive">*</span>
               </FormLabel>
-              <FormControl><Input type="tel" className="h-11" placeholder="0912-345-678" {...field} /></FormControl>
+              <FormControl><Input type="tel" className="h-10" placeholder="0912-345-678" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
         </div>
-        <FormField control={control} name={`${base}.company`} render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
-              <Building2 className="w-3 h-3" /> 公司名稱（選填）
-            </FormLabel>
-            <FormControl><Input className="h-10" placeholder="○○股份有限公司" {...field} /></FormControl>
-          </FormItem>
-        )} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-2">
+          <FormField control={control} name={`${base}.company`} render={({ field }) => (
+            <FormItem className="col-span-1">
+              <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
+                <Building2 className="w-3 h-3" /> 公司（選填）
+              </FormLabel>
+              <FormControl><Input className="h-9" placeholder="公司名稱" {...field} /></FormControl>
+            </FormItem>
+          )} />
           <FormField control={control} name={`${base}.quantity`} render={({ field }) => (
             <FormItem>
               <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
-                <Package className="w-3 h-3" /> 件數（選填）
+                <Package className="w-3 h-3" /> 件數
               </FormLabel>
-              <FormControl><Input className="h-10" placeholder="例：3件" {...field} /></FormControl>
+              <FormControl><Input className="h-9" placeholder="3件" {...field} /></FormControl>
             </FormItem>
           )} />
           <FormField control={control} name={`${base}.weight`} render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-xs text-muted-foreground">重量 kg（選填）</FormLabel>
+              <FormLabel className="text-xs text-muted-foreground">重量 kg</FormLabel>
               <FormControl>
-                <Input type="number" min={0.1} step={0.1} className="h-10"
+                <Input type="number" min={0.1} step={0.1} className="h-9"
                   placeholder="0.0" {...field} value={field.value ?? ""}
                   onChange={e => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))} />
               </FormControl>
@@ -299,9 +293,9 @@ function ExtraStopCard({
         </div>
         <FormField control={control} name={`${base}.notes`} render={({ field }) => (
           <FormItem>
-            <FormLabel className="text-xs text-muted-foreground">備註（樓層、電梯、搬運需求）</FormLabel>
+            <FormLabel className="text-xs text-muted-foreground">備註</FormLabel>
             <FormControl>
-              <Textarea className="resize-none text-sm" rows={2}
+              <Textarea className="resize-none text-sm" rows={1}
                 placeholder="例：3樓無電梯、需搬運至室內" {...field} />
             </FormControl>
           </FormItem>
@@ -334,13 +328,13 @@ export default function CustomerOrder() {
     },
   });
 
-  const pickupFields = useFieldArray({ control: form.control, name: "extraPickupAddresses" });
+  const pickupFields   = useFieldArray({ control: form.control, name: "extraPickupAddresses" });
   const deliveryFields = useFieldArray({ control: form.control, name: "extraDeliveryAddresses" });
-  const MAX_EXTRA_PICKUP = 3;
+  const MAX_EXTRA_PICKUP   = 3;
   const MAX_EXTRA_DELIVERY = 5;
 
-  const volume = useVolume(form.control);
-  const weightKg = useWatch({ control: form.control, name: "cargoWeightKg" });
+  const volume     = useVolume(form.control);
+  const weightKg   = useWatch({ control: form.control, name: "cargoWeightKg" });
   const tonnageInfo = TONNAGE_OPTIONS.find(t => t.value === selectedTonnage);
 
   const weightWarning = useMemo(() => {
@@ -356,13 +350,6 @@ export default function CustomerOrder() {
       data.customerCompany ? `委託公司：${data.customerCompany}` : "",
       data.specialRequirements ?? "",
     ].filter(Boolean).join("；");
-
-    const extraPickupJson = data.extraPickupAddresses?.length
-      ? JSON.stringify(data.extraPickupAddresses)
-      : null;
-    const extraDeliveryJson = data.extraDeliveryAddresses?.length
-      ? JSON.stringify(data.extraDeliveryAddresses)
-      : null;
 
     try {
       const order = await createOrder({
@@ -386,19 +373,20 @@ export default function CustomerOrder() {
           cargoWidthM: data.cargoWidthCm ? parseFloat(data.cargoWidthCm) / 100 : null,
           cargoHeightM: data.cargoHeightCm ? parseFloat(data.cargoHeightCm) / 100 : null,
           requiredVehicleType: vehicleType,
-          extraPickupAddresses: extraPickupJson,
-          extraDeliveryAddresses: extraDeliveryJson,
+          extraPickupAddresses: data.extraPickupAddresses?.length
+            ? JSON.stringify(data.extraPickupAddresses) : null,
+          extraDeliveryAddresses: data.extraDeliveryAddresses?.length
+            ? JSON.stringify(data.extraDeliveryAddresses) : null,
           specialRequirements: [
-            data.pickupNotes ? `取貨備註：${data.pickupNotes}` : "",
+            data.pickupNotes   ? `取貨備註：${data.pickupNotes}`   : "",
             data.deliveryNotes ? `送貨備註：${data.deliveryNotes}` : "",
-            data.cargoNotes ? `貨物備註：${data.cargoNotes}` : "",
+            data.cargoNotes    ? `貨物備註：${data.cargoNotes}`    : "",
             extras,
           ].filter(Boolean).join("\n") || null,
         } as any,
       });
       setCreated(order);
-      // Save to localStorage for quick re-fill
-      localStorage.setItem("last-pickup-addr", data.pickupAddress);
+      localStorage.setItem("last-pickup-addr",   data.pickupAddress);
       localStorage.setItem("last-delivery-addr", data.deliveryAddress);
     } catch {
       toast({ title: "下單失敗", description: "請稍後再試或聯絡客服", variant: "destructive" });
@@ -415,15 +403,14 @@ export default function CustomerOrder() {
   // ── Success screen ────────────────────────────────────────────────────────
   if (created) {
     return (
-      <div className="space-y-5">
-        <div className="text-center py-6">
+      <div className="max-w-lg mx-auto space-y-5 py-6">
+        <div className="text-center">
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-11 h-11 text-emerald-600" />
           </div>
-          <h1 className="text-2xl font-black text-foreground">下單成功！</h1>
+          <h1 className="text-2xl font-black">下單成功！</h1>
           <p className="text-muted-foreground text-sm mt-1">富詠運輸已收到您的委託，即將安排派車</p>
         </div>
-
         <Card className="border-2 border-primary/20 bg-primary/5">
           <CardContent className="p-6 text-center">
             <p className="text-xs text-muted-foreground mb-1">您的訂單編號</p>
@@ -434,30 +421,29 @@ export default function CustomerOrder() {
             <p className="text-xs text-muted-foreground mt-3">請保存此編號以便日後查詢</p>
           </CardContent>
         </Card>
-
         <Card className="border bg-white">
           <CardContent className="p-4 text-sm space-y-2.5">
-            {[
+            {([
               ["委託人", created.customerName],
-              ["電話", created.customerPhone],
-              ["貨物", created.cargoDescription],
+              ["電話",   created.customerPhone],
+              ["貨物",   created.cargoDescription],
               ["取貨日期", created.pickupDate ? `${created.pickupDate} ${created.pickupTime ?? ""}` : null],
               ["到達日期", created.deliveryDate ? `${created.deliveryDate} ${created.deliveryTime ?? ""}` : null],
               ["狀態", "等待派車中"],
-            ].map(([k, v]) => v ? (
-              <div key={k as string} className="flex justify-between items-center">
+            ] as [string, string | null][]).map(([k, v]) => v ? (
+              <div key={k} className="flex justify-between items-center">
                 <span className="text-muted-foreground">{k}</span>
                 <span className={`font-medium ${k === "狀態" ? "text-amber-600" : ""}`}>{v}</span>
               </div>
             ) : null)}
           </CardContent>
         </Card>
-
         <div className="flex flex-col gap-2">
           <Button asChild className="w-full h-12">
             <Link href="/customer/track">查詢訂單狀態</Link>
           </Button>
-          <Button variant="outline" className="w-full h-12" onClick={() => { setCreated(null); form.reset(); setSelectedBody(""); setSelectedTonnage(""); }}>
+          <Button variant="outline" className="w-full h-12"
+            onClick={() => { setCreated(null); form.reset(); setSelectedBody(""); setSelectedTonnage(""); }}>
             再下一筆訂單
           </Button>
         </div>
@@ -467,287 +453,305 @@ export default function CustomerOrder() {
 
   // ── Form ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Page title */}
       <div>
-        <h1 className="text-xl font-black text-foreground">立即下單</h1>
+        <h1 className="text-2xl font-black text-foreground">立即下單</h1>
         <p className="text-muted-foreground text-sm mt-0.5">填寫完整資訊，安全快速配送</p>
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
 
-          {/* ── 委託方 ── */}
-          <Card className="border bg-white">
+          {/* ══ 委託方資訊 ══ (full width, 3-col grid inside on lg) */}
+          <Card className="border-t-4 border-t-primary bg-white">
             <CardHeader className="pb-3 border-b">
               <CardTitle className="text-sm flex items-center gap-2 text-primary">
                 <User className="w-4 h-4" /> 委託方資訊
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField control={form.control} name="customerName" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm">姓名 <span className="text-destructive">*</span></FormLabel>
-                    <FormControl><Input className="h-12 text-base" placeholder="王小明" {...field} /></FormControl>
+                    <FormControl><Input className="h-11" placeholder="王小明" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="customerPhone" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm">電話 <span className="text-destructive">*</span></FormLabel>
-                    <FormControl><Input type="tel" className="h-12 text-base" placeholder="0912-345-678" {...field} /></FormControl>
+                    <FormControl><Input type="tel" className="h-11" placeholder="0912-345-678" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="customerCompany" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Building2 className="w-3 h-3" /> 公司名稱（選填）
+                    </FormLabel>
+                    <FormControl><Input className="h-11" placeholder="○○股份有限公司" {...field} /></FormControl>
+                  </FormItem>
+                )} />
               </div>
-              <FormField control={form.control} name="customerCompany" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Building2 className="w-3 h-3" /> 公司名稱（選填）
-                  </FormLabel>
-                  <FormControl><Input className="h-10" placeholder="○○股份有限公司" {...field} /></FormControl>
-                </FormItem>
-              )} />
             </CardContent>
           </Card>
 
-          {/* ── 取貨資訊 ── */}
-          <div className="space-y-2">
-            <AddressSection
-              title={`取貨地址 第1站`} icon={<MapPin className="w-4 h-4 text-orange-500" />}
-              prefix="pickup" control={form.control} form={form}
-              colorClass="text-orange-600"
-            />
-            {pickupFields.fields.map((field, idx) => (
-              <ExtraStopCard
-                key={field.id}
-                index={idx}
-                prefix="extraPickupAddresses"
+          {/* ══ 取貨 + 送貨 (side by side on lg) ══ */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+            {/* 取貨欄 */}
+            <div className="space-y-3">
+              <AddressSection
+                title="取貨地址 第1站"
+                icon={<MapPin className="w-4 h-4 text-orange-500" />}
+                prefix="pickup"
                 control={form.control}
-                onRemove={() => pickupFields.remove(idx)}
-                colorClass="orange"
-                label={`取貨地址 第${idx + 2}站`}
+                form={form}
+                colorClass="text-orange-600"
+                accentColor="border-t-orange-400"
               />
-            ))}
-            {pickupFields.fields.length < MAX_EXTRA_PICKUP && (
-              <button
-                type="button"
-                onClick={() => pickupFields.append({ address: "", contactName: "", phone: "", company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending" })}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-orange-300 text-orange-600 text-sm font-semibold hover:bg-orange-50 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                新增取貨地址（還可新增 {MAX_EXTRA_PICKUP - pickupFields.fields.length} 個）
-              </button>
-            )}
+              {pickupFields.fields.map((field, idx) => (
+                <ExtraStopCard
+                  key={field.id}
+                  index={idx}
+                  prefix="extraPickupAddresses"
+                  control={form.control}
+                  onRemove={() => pickupFields.remove(idx)}
+                  isOrange
+                  label={`取貨地址 第${idx + 2}站`}
+                />
+              ))}
+              {pickupFields.fields.length < MAX_EXTRA_PICKUP && (
+                <button
+                  type="button"
+                  onClick={() => pickupFields.append({
+                    address: "", contactName: "", phone: "",
+                    company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending",
+                  })}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-orange-300 text-orange-600 text-sm font-semibold hover:bg-orange-50 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  新增取貨地址（還可新增 {MAX_EXTRA_PICKUP - pickupFields.fields.length} 個）
+                </button>
+              )}
+            </div>
+
+            {/* 送貨欄 */}
+            <div className="space-y-3">
+              <AddressSection
+                title="送貨地址 第1站"
+                icon={<MapPin className="w-4 h-4 text-blue-500" />}
+                prefix="delivery"
+                control={form.control}
+                form={form}
+                colorClass="text-blue-600"
+                accentColor="border-t-blue-400"
+              />
+              {deliveryFields.fields.map((field, idx) => (
+                <ExtraStopCard
+                  key={field.id}
+                  index={idx}
+                  prefix="extraDeliveryAddresses"
+                  control={form.control}
+                  onRemove={() => deliveryFields.remove(idx)}
+                  isOrange={false}
+                  label={`送貨地址 第${idx + 2}站`}
+                />
+              ))}
+              {deliveryFields.fields.length < MAX_EXTRA_DELIVERY && (
+                <button
+                  type="button"
+                  onClick={() => deliveryFields.append({
+                    address: "", contactName: "", phone: "",
+                    company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending",
+                  })}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 text-sm font-semibold hover:bg-blue-50 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  新增送貨地址（還可新增 {MAX_EXTRA_DELIVERY - deliveryFields.fields.length} 個）
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* ── 送貨資訊 ── */}
-          <div className="space-y-2">
-            <AddressSection
-              title={`送貨地址 第1站`} icon={<MapPin className="w-4 h-4 text-blue-500" />}
-              prefix="delivery" control={form.control} form={form}
-              colorClass="text-blue-600"
-            />
-            {deliveryFields.fields.map((field, idx) => (
-              <ExtraStopCard
-                key={field.id}
-                index={idx}
-                prefix="extraDeliveryAddresses"
-                control={form.control}
-                onRemove={() => deliveryFields.remove(idx)}
-                colorClass="blue"
-                label={`送貨地址 第${idx + 2}站`}
-              />
-            ))}
-            {deliveryFields.fields.length < MAX_EXTRA_DELIVERY && (
-              <button
-                type="button"
-                onClick={() => deliveryFields.append({ address: "", contactName: "", phone: "", company: "", notes: "", quantity: "", weight: undefined, signStatus: "pending" })}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 text-sm font-semibold hover:bg-blue-50 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                新增送貨地址（還可新增 {MAX_EXTRA_DELIVERY - deliveryFields.fields.length} 個）
-              </button>
-            )}
-          </div>
+          {/* ══ 貨物資訊 + 車輛需求 (side by side on lg) ══ */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
-          {/* ── 貨物資訊 ── */}
-          <Card className="border bg-white">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-sm flex items-center gap-2 text-emerald-700">
-                <Package className="w-4 h-4" /> 貨物資訊
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 space-y-3">
-              {/* Cargo type */}
-              <FormField control={form.control} name="cargoType" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm">貨物類型 <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+            {/* 貨物資訊 */}
+            <Card className="border-t-4 border-t-emerald-500 bg-white">
+              <CardHeader className="pb-3 border-b">
+                <CardTitle className="text-sm flex items-center gap-2 text-emerald-700">
+                  <Package className="w-4 h-4" /> 貨物資訊
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Cargo type */}
+                  <FormField control={form.control} name="cargoType" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">貨物類型 <span className="text-destructive">*</span></FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder="選擇貨物類型" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {CARGO_TYPES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  {/* Quantity */}
+                  <FormField control={form.control} name="cargoQuantity" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">件數 <span className="text-destructive">*</span></FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11"><SelectValue placeholder="選擇件數" /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {QUANTITY_OPTIONS.map(q => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+
+                  {/* Weight */}
+                  <FormField control={form.control} name="cargoWeightKg" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">毛重 (kg) <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number" min={0.1} step={0.1} className="h-11"
+                          placeholder="例：250.5"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={e => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+
+                {weightWarning && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800">{weightWarning}</p>
+                  </div>
+                )}
+
+                {/* Dimensions */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                    <Calculator className="w-3 h-3" /> 材積計算（選填，單位：公分）
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["cargoLengthCm", "cargoWidthCm", "cargoHeightCm"] as const).map((name, i) => (
+                      <FormField key={name} control={form.control} name={name} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">{["長", "寬", "高"][i]} (cm)</FormLabel>
+                          <FormControl>
+                            <Input type="number" min="1" className="h-10 text-center" placeholder="0" {...field} />
+                          </FormControl>
+                        </FormItem>
+                      )} />
+                    ))}
+                  </div>
+                  {volume && (
+                    <div className="mt-2 flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <Calculator className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-xs text-emerald-800 font-semibold">材積 = {volume} m³</span>
+                    </div>
+                  )}
+                </div>
+
+                <FormField control={form.control} name="cargoNotes" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">貨物備註（易碎、貴重、特殊需求）</FormLabel>
                     <FormControl>
-                      <SelectTrigger className="h-12 text-base">
-                        <SelectValue placeholder="選擇貨物類型" />
-                      </SelectTrigger>
+                      <Textarea className="resize-none text-sm" rows={2}
+                        placeholder="例：玻璃易碎品、請勿堆疊" {...field} />
                     </FormControl>
+                  </FormItem>
+                )} />
+              </CardContent>
+            </Card>
+
+            {/* 車輛需求 */}
+            <Card className="border-t-4 border-t-violet-400 bg-white">
+              <CardHeader className="pb-3 border-b">
+                <CardTitle className="text-sm flex items-center gap-2 text-violet-700">
+                  <Truck className="w-4 h-4" /> 車輛需求（選填）
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                {/* Body type pills */}
+                <div>
+                  <p className="text-sm font-medium mb-2">車體類型</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {BODY_TYPES.map(bt => (
+                      <button
+                        key={bt.value}
+                        type="button"
+                        onClick={() => setSelectedBody(prev => prev === bt.value ? "" : bt.value)}
+                        className={`text-left p-3 rounded-xl border-2 transition-all active:scale-[0.98]
+                          ${selectedBody === bt.value
+                            ? "border-violet-500 bg-violet-50"
+                            : "border-gray-100 bg-white hover:border-gray-200"}`}
+                      >
+                        <p className="font-bold text-sm">{bt.label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{bt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tonnage */}
+                <div>
+                  <p className="text-sm font-medium mb-2">噸數需求</p>
+                  <Select value={selectedTonnage} onValueChange={setSelectedTonnage}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="選擇噸數" />
+                    </SelectTrigger>
                     <SelectContent>
-                      {CARGO_TYPES.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      {TONNAGE_OPTIONS.map(t => (
+                        <SelectItem key={t.value} value={t.value}>
+                          <div className="flex flex-col py-0.5">
+                            <span className="font-bold">{t.value}</span>
+                            <span className="text-xs text-muted-foreground">{t.weight} · {t.volume} · {t.desc}</span>
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-
-              {/* Quantity + Weight */}
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="cargoQuantity" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm">件數 <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-12"><SelectValue placeholder="選擇件數" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {QUANTITY_OPTIONS.map(q => (
-                          <SelectItem key={q} value={q}>{q}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="cargoWeightKg" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm">毛重 (kg) <span className="text-destructive">*</span></FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={0.1}
-                        step={0.1}
-                        placeholder="輸入重量，例：250.5"
-                        className="h-12"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={e => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-
-              {/* Weight anomaly warning */}
-              {weightWarning && (
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800">{weightWarning}</p>
-                </div>
-              )}
-
-              {/* Dimensions */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                  <Calculator className="w-3 h-3" /> 材積計算（選填，單位：公分）
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["cargoLengthCm", "cargoWidthCm", "cargoHeightCm"] as const).map((name, i) => (
-                    <FormField key={name} control={form.control} name={name} render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">{["長", "寬", "高"][i]} (cm)</FormLabel>
-                        <FormControl><Input type="number" min="1" className="h-11 text-center" placeholder="0" {...field} /></FormControl>
-                      </FormItem>
-                    )} />
-                  ))}
-                </div>
-                {volume && (
-                  <div className="mt-2 flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <Calculator className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span className="text-xs text-emerald-800 font-semibold">材積 = {volume} m³</span>
-                  </div>
-                )}
-              </div>
-
-              <FormField control={form.control} name="cargoNotes" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-xs text-muted-foreground">貨物備註（易碎、貴重、特殊需求）</FormLabel>
-                  <FormControl>
-                    <Textarea className="resize-none text-sm" rows={2} placeholder="例：玻璃易碎品、請勿堆疊" {...field} />
-                  </FormControl>
-                </FormItem>
-              )} />
-            </CardContent>
-          </Card>
-
-          {/* ── 車輛需求 ── */}
-          <Card className="border bg-white">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-sm flex items-center gap-2 text-primary">
-                <Truck className="w-4 h-4" /> 車輛需求（選填）
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              {/* Body type pills */}
-              <div>
-                <p className="text-sm font-medium mb-2">車體類型</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {BODY_TYPES.map(bt => (
-                    <button
-                      key={bt.value}
-                      type="button"
-                      onClick={() => setSelectedBody(prev => prev === bt.value ? "" : bt.value)}
-                      className={`text-left p-3 rounded-xl border-2 transition-all active:scale-[0.98]
-                        ${selectedBody === bt.value
-                          ? "border-primary bg-primary/5"
-                          : "border-gray-100 bg-white hover:border-gray-200"}`}
-                    >
-                      <p className="font-bold text-sm">{bt.label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{bt.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tonnage dropdown */}
-              <div>
-                <p className="text-sm font-medium mb-2">噸數需求</p>
-                <Select value={selectedTonnage} onValueChange={setSelectedTonnage}>
-                  <SelectTrigger className="h-12">
-                    <SelectValue placeholder="選擇噸數" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TONNAGE_OPTIONS.map(t => (
-                      <SelectItem key={t.value} value={t.value}>
-                        <div className="flex flex-col py-0.5">
-                          <span className="font-bold">{t.value}</span>
-                          <span className="text-xs text-muted-foreground">{t.weight} · {t.volume} · {t.desc}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Capacity hint */}
-                {tonnageInfo && (
-                  <div className="mt-2 flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                    <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-                    <div className="text-xs text-blue-800">
-                      <span className="font-bold">{selectedTonnage}</span>：最大載重 {tonnageInfo.weight}，材積 {tonnageInfo.volume} — {tonnageInfo.desc}
+                  {tonnageInfo && (
+                    <div className="mt-2 flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                      <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                      <div className="text-xs text-blue-800">
+                        <span className="font-bold">{selectedTonnage}</span>：最大載重 {tonnageInfo.weight}，材積 {tonnageInfo.volume} — {tonnageInfo.desc}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <FormField control={form.control} name="specialRequirements" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-xs text-muted-foreground">其他特殊需求</FormLabel>
-                  <FormControl>
-                    <Textarea className="resize-none text-sm" rows={2} placeholder="例：需冷藏溫控、配合時段限制、指定路線" {...field} />
-                  </FormControl>
-                </FormItem>
-              )} />
-            </CardContent>
-          </Card>
+                <FormField control={form.control} name="specialRequirements" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">其他特殊需求</FormLabel>
+                    <FormControl>
+                      <Textarea className="resize-none text-sm" rows={3}
+                        placeholder="例：需冷藏溫控、配合時段限制、指定路線" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Submit */}
           <Button
