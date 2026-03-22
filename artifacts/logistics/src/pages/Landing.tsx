@@ -144,11 +144,19 @@ export default function Landing() {
               <p className="text-blue-300 text-[10px]">FUYI TRANSPORT</p>
             </div>
           </div>
-          <a href="tel:0800000000"
-            className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold px-3 py-2 rounded-full transition-colors">
-            <Phone className="w-3.5 h-3.5" />
-            免費客服
-          </a>
+          <div className="flex items-center gap-2">
+            <Link href="/admin">
+              <button className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold px-3 py-2 rounded-full transition-colors">
+                <Building2 className="w-3.5 h-3.5" />
+                後台管理
+              </button>
+            </Link>
+            <a href="tel:0800000000"
+              className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold px-3 py-2 rounded-full transition-colors">
+              <Phone className="w-3.5 h-3.5" />
+              免費客服
+            </a>
+          </div>
         </div>
 
         {/* Hero content */}
