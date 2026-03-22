@@ -77,11 +77,23 @@ A logistics dispatch management system with:
 - One-click merge: creates shared `orderGroupId` across selected orders
 - Merged group management: view route list, assign driver to all orders in group, dissolve group
 
+### Enterprise Customer Portal (企業客戶入口)
+- Route: `/enterprise/*`
+- Login: `/enterprise/login` (accountCode + password, SHA-256+salt hash)
+- Session: `localStorage` ("enterprise-session") or `sessionStorage` (if no remember-me)
+- Pages: Dashboard (總覽), Quick Order (快速下單), Reports (對帳報表), Account (帳戶設定)
+- DB Tables: `enterprise_accounts`, `enterprise_saved_templates`; `orders.enterprise_id` FK
+- API Routes: `POST /api/enterprise/login`, `GET /api/enterprise/:id`, `GET /api/enterprise/:id/orders`, `GET /api/enterprise/:id/monthly-summary`, `GET /api/enterprise/:id/orders/export` (CSV), `GET/POST/PATCH/DELETE /api/enterprise/:id/templates`, `POST /api/enterprise` (admin create), `PATCH /api/enterprise/:id/settings`
+- Features: Credit limit display, discount %, priority dispatch badge, CSV export, 1-click reorder templates
+- Test account: DEMO001 / demo1234 (月結, NT$50k 額度, 5% 折扣, 優先派車)
+
 ### DB Tables
 - `orders` — Full order lifecycle with cargo dimensions + region
 - `drivers` — Driver profiles with LINE user ID
 - `customers` — Customer accounts
 - `vehicle_types` — Vehicle spec database
+- `enterprise_accounts` — Enterprise company accounts (billing, credit, discounts)
+- `enterprise_saved_templates` — Saved quick-order templates per enterprise
 
 ### Routes
 - `/` — Customer order form (客戶下單)

@@ -19,6 +19,7 @@ import CustomerOrder from "@/pages/customer/CustomerOrder";
 import DriverHome from "@/pages/driver/DriverHome";
 import DriverTasks from "@/pages/driver/DriverTasks";
 import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
+import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +98,9 @@ function AppRouter() {
   }
   if (location.startsWith("/driver")) {
     return <DriverPortal />;
+  }
+  if (location.startsWith("/enterprise")) {
+    return <EnterprisePortal />;
   }
   return <AdminPortal />;
 }

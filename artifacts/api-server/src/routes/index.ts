@@ -6,6 +6,7 @@ import lineRouter from "./line";
 import customersRouter from "./customers";
 import vehicleTypesRouter from "./vehicleTypes";
 import licensesRouter from "./licenses";
+import enterpriseRouter from "./enterprise";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(lineRouter);
 router.use(customersRouter);
 router.use(vehicleTypesRouter);
 router.use(licensesRouter);
+router.use(enterpriseRouter);
 
 export default router;

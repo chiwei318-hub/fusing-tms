@@ -326,6 +326,11 @@ export default function Landing() {
                 客戶中心
               </span>
             </Link>
+            <Link href="/enterprise/login">
+              <span className="text-gray-500 hover:text-orange-400 text-xs underline underline-offset-2 transition-colors cursor-pointer">
+                企業專屬
+              </span>
+            </Link>
             <Link href="/driver">
               <span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">
                 司機接單

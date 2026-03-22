@@ -56,6 +56,8 @@ export const ordersTable = pgTable("orders", {
   // Multi-stop addresses (JSON array of {address,contactName,phone,company,notes,quantity,weight,signStatus,signedAt})
   extraPickupAddresses: text("extra_pickup_addresses"),
   extraDeliveryAddresses: text("extra_delivery_addresses"),
+  // Enterprise customer
+  enterpriseId: integer("enterprise_id"),
   // Carpool grouping
   orderGroupId: text("order_group_id"),
   // Customer payment fields
