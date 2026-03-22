@@ -84,10 +84,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider style={style}>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="flex h-full w-full bg-background overflow-hidden">
         <AppSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="h-12 flex items-center gap-3 px-4 md:px-6 bg-card border-b sticky top-14 z-30">
+          <header className="h-12 flex items-center gap-3 px-4 md:px-6 bg-card border-b shrink-0">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <span className="text-sm font-semibold text-foreground hidden md:block">後台管理</span>
           </header>

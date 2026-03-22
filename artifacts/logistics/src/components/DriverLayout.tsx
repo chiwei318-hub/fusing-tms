@@ -11,9 +11,9 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0 md:flex-row">
+    <div className="h-full bg-slate-50 flex flex-col overflow-hidden pb-16 md:pb-0 md:flex-row">
       {/* Mobile top bar (compact, no brand) / Desktop left sidebar */}
-      <header className="bg-primary text-primary-foreground sticky top-14 z-30 shadow-md md:sticky md:top-14 md:h-[calc(100svh-3.5rem)] md:w-52 md:flex md:flex-col md:shadow-xl md:shrink-0">
+      <header className="bg-primary text-primary-foreground shrink-0 z-30 shadow-md md:h-full md:w-52 md:flex md:flex-col md:shadow-xl">
 
         {/* Mobile: compact section label */}
         <div className="flex items-center gap-2 px-4 h-10 md:hidden border-b border-white/10">
@@ -49,7 +49,7 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-xl mx-auto md:mx-0 md:max-w-none px-4 sm:px-6 md:px-8 py-5 md:py-8 md:overflow-y-auto">
+      <main className="flex-1 overflow-y-auto w-full px-4 sm:px-6 md:px-8 py-5 md:py-8">
         <div className="max-w-2xl md:max-w-3xl mx-auto">
           {children}
         </div>

@@ -7,8 +7,8 @@ export function CustomerLayout({ children }: { children: React.ReactNode }) {
   const isHome = location === "/customer" || location === "/customer/";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col">
-      <header className="bg-white border-b shadow-sm sticky top-14 z-30">
+    <div className="h-full bg-gradient-to-b from-blue-50 to-white flex flex-col overflow-hidden">
+      <header className="bg-white border-b shadow-sm shrink-0">
         <div className="w-full px-4 sm:px-6 lg:px-8 h-12 flex items-center gap-3">
           {isHome ? (
             <Button variant="ghost" size="icon" asChild className="shrink-0 -ml-2 w-9 h-9" title="回首頁功能表">
@@ -29,12 +29,9 @@ export function CustomerLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
+      <main className="flex-1 overflow-y-auto w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
         {children}
       </main>
-      <footer className="py-4 text-center text-xs text-muted-foreground border-t bg-white">
-        © 富詠運輸股份有限公司 · 客服專線：0800-XXX-XXX
-      </footer>
     </div>
   );
 }

@@ -34,7 +34,7 @@ function CustomerPortal() {
   return (
     <>
       <GlobalHeader />
-      <div className="pt-14">
+      <div className="h-dvh overflow-hidden pt-14">
         <CustomerLayout>
           <Switch>
             <Route path="/customer" component={CustomerHome} />
@@ -52,7 +52,7 @@ function DriverPortal() {
   return (
     <>
       <GlobalHeader />
-      <div className="pt-14">
+      <div className="h-dvh overflow-hidden pt-14">
         <DriverLayout>
           <Switch>
             <Route path="/driver" component={DriverHome} />
@@ -70,7 +70,7 @@ function AdminPortal() {
   return (
     <>
       <GlobalHeader />
-      <div className="pt-14">
+      <div className="h-dvh overflow-hidden pt-14">
         <AppLayout>
           <Switch>
             <Route path="/" component={() => <Redirect to="/order-form" />} />
