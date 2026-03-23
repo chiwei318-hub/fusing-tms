@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import crypto from "crypto";
 import * as lineLib from "@line/bot-sdk";
 import { db, ordersTable, customersTable, driversTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -10,19 +11,46 @@ import {
 
 const router: IRouter = Router();
 
+function verifyLineSignature(rawBody: Buffer, signature: string, channelSecret: string): boolean {
+  try {
+    const hash = crypto.createHmac("SHA256", channelSecret).update(rawBody).digest("base64");
+    return hash === signature;
+  } catch {
+    return false;
+  }
+}
+
 /* ──────────────────────────────────────
    LINE Webhook (postback + message)
 ────────────────────────────────────── */
-router.post(
-  "/line/webhook",
-  (req, _res, next) => {
-    const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
-    if (!channelSecret) { next(); return; }
-    lineLib.middleware({ channelSecret })(req, _res, next);
-  },
-  async (req, res) => {
+router.post("/line/webhook", async (req, res) => {
+    // LINE requires 200 response immediately
     res.sendStatus(200);
-    const events: lineLib.WebhookEvent[] = req.body?.events ?? [];
+
+    const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
+    const rawBody = req.body as Buffer;
+    const signature = req.headers["x-line-signature"] as string | undefined;
+
+    // Validate signature if both are available
+    if (channelSecret && signature) {
+      if (!verifyLineSignature(rawBody, signature, channelSecret)) {
+        console.warn("[LINE webhook] ⚠ Signature mismatch — request rejected");
+        return;
+      }
+    } else if (channelSecret && !signature) {
+      console.warn("[LINE webhook] ⚠ No X-Line-Signature header received");
+    }
+
+    let parsed: { events?: lineLib.WebhookEvent[] };
+    try {
+      parsed = JSON.parse(rawBody.toString("utf8"));
+    } catch (err) {
+      console.error("[LINE webhook] ✗ Failed to parse body:", err);
+      return;
+    }
+
+    const events: lineLib.WebhookEvent[] = parsed?.events ?? [];
+    console.log(`[LINE webhook] ✓ Received ${events.length} event(s)`);
 
     for (const event of events) {
       /* ── postback: 司機接單/拒單 ── */
@@ -170,6 +198,21 @@ router.get("/line/bindings/drivers", async (_req, res) => {
     res.json(drivers);
   } catch {
     res.status(500).json({ error: "Failed to fetch driver bindings" });
+  }
+});
+
+// 手動設定司機 LINE User ID
+router.patch("/line/bindings/drivers/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { lineUserId } = req.body as { lineUserId: string };
+    if (!lineUserId || typeof lineUserId !== "string") {
+      return res.status(400).json({ error: "lineUserId is required" });
+    }
+    await db.update(driversTable).set({ lineUserId: lineUserId.trim() }).where(eq(driversTable.id, id));
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to set driver LINE ID" });
   }
 });
 

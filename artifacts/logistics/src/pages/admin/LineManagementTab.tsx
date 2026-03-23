@@ -17,6 +17,8 @@ import {
   Send,
   RefreshCw,
   AlertCircle,
+  Copy,
+  Link2,
 } from "lucide-react";
 
 interface LineStatus {
@@ -51,6 +53,15 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 }
 
 function SetupCard({ status }: { status: LineStatus }) {
+  const { toast } = useToast();
+  const webhookUrl = `${window.location.origin}/api/line/webhook`;
+
+  const copyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl).then(() => {
+      toast({ title: "✅ Webhook URL 已複製" });
+    });
+  };
+
   return (
     <Card className="mb-6">
       <CardHeader className="pb-3">
@@ -64,6 +75,25 @@ function SetupCard({ status }: { status: LineStatus }) {
           <StatusBadge ok={status.configured} label="API Token 已設定" />
           <StatusBadge ok={status.hasCompanyUserId} label="公司 LINE ID 已設定" />
           <StatusBadge ok={status.hasAppBaseUrl} label="App 網址已設定" />
+        </div>
+
+        {/* Webhook URL */}
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-slate-700">
+            <Link2 className="w-4 h-4" />
+            LINE Developers Console Webhook URL
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1.5 text-slate-700 break-all">
+              {webhookUrl}
+            </code>
+            <Button variant="outline" size="sm" className="shrink-0 h-7 px-2" onClick={copyWebhook}>
+              <Copy className="w-3 h-3" />
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500 mt-1.5">
+            將此 URL 填入 LINE Developers Console → Messaging API → Webhook URL，並啟用「Use webhook」
+          </p>
         </div>
 
         {!status.configured && (
@@ -234,6 +264,9 @@ function CustomerBindings() {
 function DriverBindings() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [manualId, setManualId] = useState("");
+
   const { data: drivers = [], isLoading } = useQuery<Driver[]>({
     queryKey: ["line-driver-bindings"],
     queryFn: () => fetch("/api/line/bindings/drivers").then((r) => r.json()),
@@ -248,15 +281,45 @@ function DriverBindings() {
     },
   });
 
+  const manualBindMutation = useMutation({
+    mutationFn: ({ id, lineUserId }: { id: number; lineUserId: string }) =>
+      fetch(`/api/line/bindings/drivers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineUserId }),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["line-driver-bindings"] });
+      toast({ title: "✅ LINE ID 設定成功" });
+      setExpandedId(null);
+      setManualId("");
+    },
+    onError: (e: Error) => toast({ title: `設定失敗：${e.message}`, variant: "destructive" }),
+  });
+
   const bound = drivers.filter((d) => d.lineUserId);
 
   if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">載入中...</div>;
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted-foreground">
-        已綁定 <strong className="text-emerald-600">{bound.length}</strong> 位司機 ／ 共 {drivers.length} 位
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          已綁定 <strong className="text-emerald-600">{bound.length}</strong> 位司機 ／ 共 {drivers.length} 位
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["line-driver-bindings"] })}>
+          <RefreshCw className="w-3 h-3 mr-1" /> 重新整理
+        </Button>
       </div>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+        <strong>司機自助綁定：</strong>加入 LINE 官方帳號後，傳送「<code className="bg-amber-100 px-1 rounded">綁定 {"{電話號碼}"}</code>」即可自動綁定。
+        若 webhook 無法使用，可使用下方「手動設定」輸入司機的 LINE User ID。
+      </div>
+
       <div className="rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
@@ -275,37 +338,100 @@ function DriverBindings() {
               </tr>
             )}
             {drivers.map((d) => (
-              <tr key={d.id} className="hover:bg-slate-50">
-                <td className="p-3 font-medium">{d.name}</td>
-                <td className="p-3 text-slate-600">{d.phone}</td>
-                <td className="p-3">
-                  <Badge variant="outline" className="font-mono text-xs">{d.licensePlate}</Badge>
-                </td>
-                <td className="p-3">
-                  {d.lineUserId ? (
-                    <Badge className="bg-emerald-100 text-emerald-700 border-0">
-                      <CheckCircle className="w-3 h-3 mr-1" /> 已綁定
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-orange-500 border-orange-200">
-                      未綁定
-                    </Badge>
-                  )}
-                </td>
-                <td className="p-3 text-right">
-                  {d.lineUserId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2 text-xs"
-                      onClick={() => unbindMutation.mutate(d.id)}
-                      disabled={unbindMutation.isPending}
-                    >
-                      <Unlink className="w-3 h-3 mr-1" /> 解除
-                    </Button>
-                  )}
-                </td>
-              </tr>
+              <>
+                <tr key={d.id} className="hover:bg-slate-50">
+                  <td className="p-3 font-medium">{d.name}</td>
+                  <td className="p-3 text-slate-600">{d.phone}</td>
+                  <td className="p-3">
+                    <Badge variant="outline" className="font-mono text-xs">{d.licensePlate}</Badge>
+                  </td>
+                  <td className="p-3">
+                    {d.lineUserId ? (
+                      <div className="space-y-0.5">
+                        <Badge className="bg-emerald-100 text-emerald-700 border-0">
+                          <CheckCircle className="w-3 h-3 mr-1" /> 已綁定
+                        </Badge>
+                        <div className="text-xs text-slate-400 font-mono truncate max-w-[120px]" title={d.lineUserId}>
+                          {d.lineUserId.slice(0, 8)}…
+                        </div>
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="text-orange-500 border-orange-200">
+                        未綁定
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="p-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      {!d.lineUserId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                          onClick={() => {
+                            setExpandedId(expandedId === d.id ? null : d.id);
+                            setManualId("");
+                          }}
+                        >
+                          手動設定
+                        </Button>
+                      )}
+                      {d.lineUserId && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2 text-xs"
+                          onClick={() => unbindMutation.mutate(d.id)}
+                          disabled={unbindMutation.isPending}
+                        >
+                          <Unlink className="w-3 h-3 mr-1" /> 解除
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {expandedId === d.id && (
+                  <tr key={`${d.id}-input`} className="bg-blue-50">
+                    <td colSpan={5} className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <label className="block text-xs text-blue-700 font-medium mb-1">
+                            輸入 {d.name} 的 LINE User ID
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="例：U1234abcd5678efgh..."
+                            value={manualId}
+                            onChange={(e) => setManualId(e.target.value)}
+                            className="w-full border border-blue-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                          />
+                          <p className="text-xs text-blue-500 mt-1">
+                            可在 LINE OA Manager → 用戶管理 中查詢司機的 User ID
+                          </p>
+                        </div>
+                        <div className="flex gap-1 self-end">
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3 text-xs"
+                            onClick={() => manualBindMutation.mutate({ id: d.id, lineUserId: manualId })}
+                            disabled={!manualId.trim() || manualBindMutation.isPending}
+                          >
+                            {manualBindMutation.isPending ? "儲存中..." : "儲存"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => { setExpandedId(null); setManualId(""); }}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
