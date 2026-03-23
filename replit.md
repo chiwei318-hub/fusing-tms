@@ -56,6 +56,7 @@ A logistics dispatch management system with:
 - **車隊地圖** — Real-time fleet map
 - **拼車** — Carpool dispatch panel: AI compatibility score, one-click merge, merged group management, driver assignment per group
 - **AI 分析** — 5 AI sub-tabs: order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast
+- **AI 客服** — Standalone chat page `/chat`: OpenAI-powered customer service agent that guides users step-by-step (origin → destination → vehicle → cargo → add-ons → quote → confirm dispatch). System prompt enforces pricing rules: base NT$1500 + NT$30/km + tailgate 300 + moving 800 + cold chain 1000 + urgent 500
 - **金流** — Payment collection system (see Payment System section below)
 - **報價** — Freight quotation calculator with per-vehicle pricing rules and auto-calculation
 - **權限** — Backend permission management: admin accounts, role-based access control, custom fields, audit log

@@ -21,6 +21,7 @@ import DriverTasks from "@/pages/driver/DriverTasks";
 import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
 import DriverGrab from "@/pages/driver/DriverGrab";
 import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
+import AIChat from "@/pages/AIChat";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -94,6 +95,9 @@ function AppRouter() {
 
   if (location === "/" || location === "") {
     return <div className="h-dvh overflow-y-auto"><Landing /></div>;
+  }
+  if (location === "/chat") {
+    return <AIChat />;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;

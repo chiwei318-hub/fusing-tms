@@ -228,7 +228,11 @@ export default function Landing() {
             </button>
           </Link>
           <p className="text-orange-200 text-sm font-bold mb-1">👉 免註冊・1分鐘完成下單</p>
-          <p className="text-blue-300/60 text-xs">不用先填齊所有資料，司機確認後再補</p>
+          <Link href="/chat">
+            <button className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors mt-2">
+              🤖 AI 客服報價下單
+            </button>
+          </Link>
 
           {/* Live chips */}
           <div className="mt-6 flex items-center gap-4">
@@ -387,6 +391,7 @@ export default function Landing() {
         <div className="max-w-lg mx-auto text-center">
           <p className="text-gray-600 text-xs mb-4">員工 / 司機入口</p>
           <div className="flex justify-center gap-4 flex-wrap">
+            <Link href="/chat"><span className="text-green-400 hover:text-green-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">🤖 AI 客服下單</span></Link>
             <Link href="/customer"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">客戶中心</span></Link>
             <Link href="/enterprise/login"><span className="text-gray-500 hover:text-orange-400 text-xs underline underline-offset-2 transition-colors cursor-pointer">企業專屬</span></Link>
             <Link href="/driver"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">司機接單</span></Link>
