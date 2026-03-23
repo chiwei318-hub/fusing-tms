@@ -91,24 +91,41 @@ export default function AdminHome({ onTabChange }: AdminHomeProp) {
         )}
       </div>
 
-      {/* Key metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { icon: ClipboardList, label: "本週訂單", value: orders.filter(o => isThisWeek(new Date(o.createdAt), { weekStartsOn: 1 })).length, sub: "筆", color: "text-blue-600 bg-blue-50" },
-          { icon: DollarSign, label: "本月營收", value: `NT$${(monthRevenue / 1000).toFixed(1)}k`, sub: "", color: "text-emerald-600 bg-emerald-50" },
-          { icon: Clock, label: "待派車", value: pending.length, sub: "筆", color: pending.length > 0 ? "text-orange-600 bg-orange-50" : "text-muted-foreground bg-muted/30" },
-          { icon: Truck, label: "運送中", value: inTransit.length, sub: "筆", color: "text-primary bg-primary/10" },
-        ].map(m => (
-          <Card key={m.label} className={`p-4 ${m.color.split(" ")[1]}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <m.icon className={`w-4 h-4 ${m.color.split(" ")[0]}`} />
-              <span className="text-xs text-muted-foreground">{m.label}</span>
-            </div>
-            <div className={`text-2xl font-black ${m.color.split(" ")[0]}`}>
-              {m.value}<span className="text-sm font-normal ml-0.5">{m.sub}</span>
-            </div>
-          </Card>
-        ))}
+      {/* Key metrics — 3 核心指標 */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card
+          className={`p-5 cursor-pointer hover:shadow-md transition-shadow ${pending.length > 0 ? "bg-orange-50 border-orange-200" : "bg-muted/30"}`}
+          onClick={() => onTabChange("orders")}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className={`w-5 h-5 ${pending.length > 0 ? "text-orange-500" : "text-muted-foreground"}`} />
+            <span className="text-xs text-muted-foreground font-semibold">待派車</span>
+          </div>
+          <div className={`text-4xl font-black ${pending.length > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
+            {pending.length}<span className="text-base font-normal ml-1">筆</span>
+          </div>
+        </Card>
+        <Card className="p-5 bg-emerald-50 border-emerald-200">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className="w-5 h-5 text-emerald-600" />
+            <span className="text-xs text-muted-foreground font-semibold">今日營收</span>
+          </div>
+          <div className="text-3xl font-black text-emerald-700">
+            NT${today.reduce((s, o) => s + (o.totalFee ?? 0), 0).toLocaleString()}
+          </div>
+        </Card>
+        <Card
+          className="p-5 bg-primary/5 border-primary/20 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => onTabChange("orders")}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Truck className="w-5 h-5 text-primary" />
+            <span className="text-xs text-muted-foreground font-semibold">運送中</span>
+          </div>
+          <div className="text-4xl font-black text-primary">
+            {inTransit.length}<span className="text-base font-normal ml-1">筆</span>
+          </div>
+        </Card>
       </div>
 
       {/* Driver status + Recent orders */}

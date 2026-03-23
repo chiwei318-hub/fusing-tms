@@ -355,6 +355,7 @@ export default function Admin() {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importDialogTab, setImportDialogTab] = useState<"customers" | "drivers">("customers");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -656,77 +657,91 @@ export default function Admin() {
         <p className="text-muted-foreground mt-1 text-xs sm:text-sm hidden sm:block">訂單調派、司機管理、客戶管理、營運報表</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-5 w-full">
-          <TabsTrigger value="home" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <span className="text-base leading-none sm:hidden">🏠</span>
-            <span className="hidden sm:inline">🏠</span>
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); }} className="w-full">
+        {/* ── 主要 5 大類 ── */}
+        <TabsList className="flex h-auto gap-1 p-1 mb-1 w-full">
+          <TabsTrigger value="home" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
+            <span className="text-base leading-none">🏠</span>
             <span className="text-[10px] sm:text-xs leading-tight">首頁</span>
           </TabsTrigger>
-          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <ClipboardList className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">訂單</span>
           </TabsTrigger>
-          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+          <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">司機</span>
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+          <TabsTrigger value="customers" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <Users className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">客戶</span>
           </TabsTrigger>
-          <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <BarChart2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">報表</span>
-          </TabsTrigger>
-          <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">車型庫</span>
-          </TabsTrigger>
-          <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Layers className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">智慧調度</span>
-          </TabsTrigger>
-          <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Map className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">熱區圖</span>
-          </TabsTrigger>
-          <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Navigation className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">車隊圖</span>
-          </TabsTrigger>
-          <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Car className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">拼車</span>
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Brain className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">AI 分析</span>
-          </TabsTrigger>
-          <TabsTrigger value="fleet" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <Bell className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">車隊</span>
-          </TabsTrigger>
-          <TabsTrigger value="outsourcing" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <DollarSign className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span className="text-[10px] sm:text-xs leading-tight">轉單</span>
-          </TabsTrigger>
-          <TabsTrigger value="payment" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
+          <TabsTrigger value="payment" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <span className="text-base leading-none sm:hidden">💳</span>
             <span className="hidden sm:inline">💳</span>
-            <span className="text-[10px] sm:text-xs leading-tight">金流</span>
+            <span className="text-[10px] sm:text-xs leading-tight">財務</span>
           </TabsTrigger>
-          <TabsTrigger value="quotation" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <span className="text-base leading-none sm:hidden">🧮</span>
-            <span className="hidden sm:inline">🧮</span>
-            <span className="text-[10px] sm:text-xs leading-tight">報價</span>
+          <TabsTrigger value="ai" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
+            <Brain className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">AI</span>
           </TabsTrigger>
-          <TabsTrigger value="perm" className="gap-1 text-xs flex-1 min-w-[44px] flex-col sm:flex-row sm:min-w-[70px] py-2 sm:py-1.5">
-            <span className="text-base leading-none sm:hidden">🔐</span>
-            <span className="hidden sm:inline">🔐</span>
-            <span className="text-[10px] sm:text-xs leading-tight">權限</span>
-          </TabsTrigger>
+          {/* 進階 toggle */}
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(v => !v)}
+            className={`gap-1 text-xs flex-1 flex flex-col sm:flex-row items-center justify-center py-2 sm:py-1.5 rounded-md transition-colors ${advancedOpen ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+          >
+            <Layers className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">進階{advancedOpen ? "▲" : "▼"}</span>
+          </button>
         </TabsList>
+
+        {/* ── 進階功能列（展開） ── */}
+        {advancedOpen && (
+          <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-1 w-full bg-muted/60 border border-muted rounded-xl">
+            <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">報表</span>
+            </TabsTrigger>
+            <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Layers className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">智慧調度</span>
+            </TabsTrigger>
+            <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Truck className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">車型庫</span>
+            </TabsTrigger>
+            <TabsTrigger value="fleet" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Bell className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">車隊</span>
+            </TabsTrigger>
+            <TabsTrigger value="outsourcing" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <DollarSign className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">轉單</span>
+            </TabsTrigger>
+            <TabsTrigger value="quotation" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <span className="text-sm">🧮</span>
+              <span className="text-[10px] sm:text-xs">報價</span>
+            </TabsTrigger>
+            <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Map className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">熱區圖</span>
+            </TabsTrigger>
+            <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Navigation className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">車隊圖</span>
+            </TabsTrigger>
+            <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Car className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">拼車</span>
+            </TabsTrigger>
+            <TabsTrigger value="perm" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <span className="text-sm">🔐</span>
+              <span className="text-[10px] sm:text-xs">權限</span>
+            </TabsTrigger>
+          </TabsList>
+        )}
+        <div className="mb-5" />
 
         {/* ===== 首頁 TAB ===== */}
         <TabsContent value="home" className="outline-none">
