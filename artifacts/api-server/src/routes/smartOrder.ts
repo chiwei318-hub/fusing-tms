@@ -1,16 +1,51 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, driversTable, paymentsTable } from "@workspace/db/schema";
-import { eq, and, isNull, or, ne } from "drizzle-orm";
+import { eq, and, or, ne, inArray, not } from "drizzle-orm";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import {
   sendDispatchNotification,
   sendCustomerDispatch,
-  sendCustomerStatusUpdate,
 } from "../lib/line.js";
 
 export const smartOrderRouter = Router();
+
+// ─── Constants & Types ─────────────────────────────────────────────────────────
+
+const VEHICLE_TONNAGE: Record<string, number> = {
+  "機車": 0.1, "1.75T": 1.75, "3.5T": 3.5, "5T": 5, "8.8T": 8.8,
+  "10.5T": 10.5, "15T": 15, "17T": 17, "26T": 26, "35T": 35, "43T": 43,
+  "箱型車": 3.5, "小貨車": 1.75, "貨車": 8.8,
+};
+
+const VEHICLE_BASES: Record<string, number> = {
+  "機車": 300, "1.75T": 1500, "3.5T": 2000, "5T": 2800, "8.8T": 3500,
+  "10.5T": 4200, "15T": 5500, "17T": 5000, "26T": 7000, "35T": 9000, "43T": 11000,
+  "箱型車": 2000, "小貨車": 1500, "貨車": 3500,
+};
+
+interface DriverRow {
+  id: number; name: string; phone: string; vehicleType: string;
+  licensePlate: string; status: string; lat?: number | null; lng?: number | null;
+  currentLocation?: string | null; maxLoadKg?: number | null;
+  currentLoadKg?: number | null; todayKm?: number | null; todayRevenue?: number | null;
+  lineUserId?: string | null; vehicleTonnage?: string | null;
+  driverType?: string | null;
+}
+
+interface ScoreBreakdown {
+  driverId: number; driverName: string; phone: string;
+  vehicleType: string; licensePlate: string; status: string;
+  totalScore: number;
+  distanceScore: number; vehicleScore: number; profitScore: number; timeScore: number;
+  carpoolBonus: number; returnTripBonus: number;
+  estimatedDistanceKm: number;
+  estimatedRevenue: number; estimatedCost: number; estimatedProfit: number;
+  isCarpool: boolean; isReturnTrip: boolean;
+  savingsKm: number;
+  reason: string; reasonDetail: string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -21,51 +56,230 @@ async function getConfig(): Promise<Record<string, string>> {
   return cfg;
 }
 
+/** Haversine distance in km */
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Rough geocode from address keyword (Taiwan cities) */
+function geocodeAddress(addr: string): { lat: number; lng: number } | null {
+  const locations: [string[], number, number][] = [
+    [["台北", "信義", "中正", "大安", "松山", "內湖", "南港"], 25.048, 121.517],
+    [["新北", "板橋", "中和", "永和", "新莊", "三重", "土城"], 25.010, 121.466],
+    [["桃園", "中壢", "楊梅", "平鎮"], 24.993, 121.301],
+    [["新竹", "湖口", "竹北", "竹東"], 24.803, 120.968],
+    [["台中", "西屯", "北屯", "南屯", "豐原"], 24.148, 120.674],
+    [["彰化", "員林", "鹿港"], 24.074, 120.536],
+    [["嘉義", "朴子", "水上"], 23.480, 120.449],
+    [["台南", "永康", "東區", "南區", "安平"], 22.999, 120.226],
+    [["高雄", "三民", "苓雅", "左營", "鳳山", "楠梓"], 22.627, 120.302],
+    [["屏東", "潮州", "東港"], 22.670, 120.487],
+    [["基隆", "七堵", "暖暖"], 25.128, 121.740],
+    [["宜蘭", "羅東", "礁溪"], 24.757, 121.753],
+    [["花蓮", "吉安", "壽豐"], 23.992, 121.602],
+    [["台東", "成功", "關山"], 22.755, 121.144],
+  ];
+  for (const [keywords, lat, lng] of locations) {
+    if (keywords.some(k => addr.includes(k))) return { lat, lng };
+  }
+  return null;
+}
+
 function getPeakMultiplier(cfg: Record<string, string>, pickupTime?: string): number {
   if (!pickupTime) return 1;
   const h = parseInt(pickupTime.split(":")[0] ?? "12", 10);
-  const peakHours = cfg.peak_hours ?? "7-9,17-19";
-  const nightHours = cfg.night_hours ?? "22-6";
-  for (const range of peakHours.split(",")) {
+  for (const range of (cfg.peak_hours ?? "7-9,17-19").split(",")) {
     const [s, e] = range.split("-").map(Number);
-    if (s !== undefined && e !== undefined && h >= s && h < e) return parseFloat(cfg.peak_multiplier ?? "1.2");
+    if (s !== undefined && e !== undefined && h >= s && h < e)
+      return parseFloat(cfg.peak_multiplier ?? "1.2");
   }
-  const [ns, ne2] = nightHours.split("-").map(Number);
-  if (ns !== undefined && ne2 !== undefined && (h >= ns || h < ne2)) return parseFloat(cfg.night_multiplier ?? "1.3");
+  const [ns, ne2] = (cfg.night_hours ?? "22-6").split("-").map(Number);
+  if (ns !== undefined && ne2 !== undefined && (h >= ns || h < ne2))
+    return parseFloat(cfg.night_multiplier ?? "1.3");
   return 1;
 }
 
-function calcBasePrice(params: {
-  distanceKm?: number;
-  cargoWeightKg?: number;
-  cargoVolumeCbm?: number;
-  vehicleType?: string;
-  needTailgate?: boolean;
-  needHydraulicPallet?: boolean;
-  waitingHours?: number;
-  cfg: Record<string, string>;
-}): number {
-  const dist = params.distanceKm ?? 0;
-  const weight = params.cargoWeightKg ?? 0;
-  const vol = params.cargoVolumeCbm ?? 0;
+function calcBasePrice(distanceKm: number, vehicleType: string, weightKg = 0, extras = 0): number {
+  const vBase = VEHICLE_BASES[vehicleType] ?? 2000;
+  const ton = VEHICLE_TONNAGE[vehicleType] ?? 3.5;
+  const perKm = Math.max(15, ton * 1.8);
+  let price = vBase + distanceKm * perKm;
+  if (weightKg > 1000) price += (weightKg - 1000) * 0.5;
+  return Math.round(price + extras);
+}
 
-  // Vehicle base prices
-  const vehicleBases: Record<string, number> = {
-    "1.75T": 1500, "3.5T": 2000, "5T": 2800, "8.8T": 3500,
-    "10.5T": 4200, "15T": 5500, "17T": 5000, "26T": 7000,
-    "35T": 9000, "43T": 11000,
+function calcDriverCost(distanceKm: number, vehicleType: string): number {
+  const ton = VEHICLE_TONNAGE[vehicleType] ?? 3.5;
+  const fuelPerKm = ton * 0.4; // rough L/km
+  const fuelPrice = 30; // NT$/L
+  const salaryPerKm = 8;
+  return Math.round(distanceKm * (fuelPerKm * fuelPrice + salaryPerKm) + 500);
+}
+
+/** Score a driver against an order */
+function scoreDriver(
+  driver: DriverRow,
+  order: any,
+  allOrders: any[],
+  cfg: Record<string, string>,
+  pickupLoc: { lat: number; lng: number } | null,
+): ScoreBreakdown {
+  const wDist = parseFloat(cfg.w_distance ?? "30");
+  const wVehicle = parseFloat(cfg.w_vehicle ?? "25");
+  const wProfit = parseFloat(cfg.w_profit ?? "30");
+  const wTime = parseFloat(cfg.w_time ?? "15");
+  const carpoolBonus = parseFloat(cfg.carpool_bonus ?? "25");
+  const returnBonus = parseFloat(cfg.return_bonus ?? "30");
+  const maxDispatchKm = parseFloat(cfg.max_dispatch_km ?? "80");
+  const carpoolRadiusKm = parseFloat(cfg.carpool_radius_km ?? "20");
+
+  // ── Distance Score ──
+  let estimatedDistanceKm = 25; // default estimate
+  let distanceScore = 50;
+  let savingsKm = 0;
+
+  if (driver.lat && driver.lng && pickupLoc) {
+    estimatedDistanceKm = haversine(driver.lat, driver.lng, pickupLoc.lat, pickupLoc.lng);
+    distanceScore = Math.max(0, Math.round(100 - (estimatedDistanceKm / maxDispatchKm) * 100));
+  } else if (driver.currentLocation) {
+    const driverLoc = geocodeAddress(driver.currentLocation);
+    if (driverLoc && pickupLoc) {
+      estimatedDistanceKm = haversine(driverLoc.lat, driverLoc.lng, pickupLoc.lat, pickupLoc.lng);
+      distanceScore = Math.max(0, Math.round(100 - (estimatedDistanceKm / maxDispatchKm) * 100));
+    }
+  }
+
+  // ── Vehicle Score ──
+  const requiredTon = VEHICLE_TONNAGE[order.requiredVehicleType ?? ""] ?? 0;
+  const driverTon = VEHICLE_TONNAGE[driver.vehicleTonnage ?? driver.vehicleType ?? ""] ?? 3.5;
+  let vehicleScore = 0;
+  const orderVehicle = order.requiredVehicleType ?? "";
+
+  if (!orderVehicle) {
+    vehicleScore = 80; // no requirement
+  } else if (driver.vehicleType === orderVehicle || driver.vehicleTonnage === orderVehicle) {
+    vehicleScore = 100; // exact match
+  } else if (driverTon >= requiredTon && driverTon <= requiredTon * 1.5) {
+    vehicleScore = 75; // slightly oversized (ok, small waste)
+  } else if (driverTon > requiredTon * 1.5) {
+    vehicleScore = 40; // too big (cost inefficient)
+  } else if (driverTon >= requiredTon * 0.8) {
+    vehicleScore = 30; // slightly undersized (risky)
+  } else {
+    vehicleScore = 0; // cannot do
+  }
+
+  // ── Profit Score ──
+  const orderFee = order.totalFee ?? order.suggestedPrice ?? calcBasePrice(estimatedDistanceKm, driver.vehicleType ?? "箱型車");
+  const driverCost = calcDriverCost(estimatedDistanceKm, driver.vehicleType ?? "箱型車");
+  const profit = orderFee - driverCost;
+  const profitRate = orderFee > 0 ? profit / orderFee : 0;
+  const profitScore = Math.max(0, Math.min(100, Math.round(profitRate * 200))); // 50% margin = 100 score
+
+  // ── Time Score ──
+  let timeScore = 70; // default
+  if (order.pickupDate && order.pickupTime) {
+    const pickupDt = new Date(`${order.pickupDate}T${order.pickupTime}`);
+    const now = new Date();
+    const hoursUntil = (pickupDt.getTime() - now.getTime()) / 3600000;
+    if (hoursUntil < 1) timeScore = 100;
+    else if (hoursUntil < 3) timeScore = 85;
+    else if (hoursUntil < 8) timeScore = 70;
+    else if (hoursUntil < 24) timeScore = 55;
+    else timeScore = 40;
+  }
+
+  // ── Return Trip Detection ──
+  let isReturnTrip = false;
+  let returnTripBonusScore = 0;
+  const driverActiveOrder = allOrders.find(
+    o => o.driverId === driver.id &&
+      (o.status === "assigned" || o.status === "in_transit") &&
+      o.id !== order.id
+  );
+  if (driverActiveOrder && pickupLoc) {
+    const deliveryLoc = geocodeAddress(driverActiveOrder.deliveryAddress ?? "");
+    if (deliveryLoc) {
+      const dist = haversine(deliveryLoc.lat, deliveryLoc.lng, pickupLoc.lat, pickupLoc.lng);
+      if (dist < carpoolRadiusKm) {
+        isReturnTrip = true;
+        returnTripBonusScore = returnBonus;
+        savingsKm = dist;
+      }
+    }
+  }
+
+  // ── Carpool Detection ──
+  let isCarpool = false;
+  let carpoolBonusScore = 0;
+  if (driverActiveOrder && order.deliveryAddress) {
+    const delivLoc1 = geocodeAddress(driverActiveOrder.deliveryAddress ?? "");
+    const delivLoc2 = geocodeAddress(order.deliveryAddress ?? "");
+    if (delivLoc1 && delivLoc2) {
+      const dist = haversine(delivLoc1.lat, delivLoc1.lng, delivLoc2.lat, delivLoc2.lng);
+      if (dist < carpoolRadiusKm * 1.5) {
+        const driverLoad = driver.currentLoadKg ?? 0;
+        const maxLoad = driver.maxLoadKg ?? driverTon * 1000;
+        const orderWeight = order.cargoWeight ?? 500;
+        if (driverLoad + orderWeight <= maxLoad * 0.9) {
+          isCarpool = true;
+          carpoolBonusScore = carpoolBonus;
+          savingsKm = Math.max(savingsKm, estimatedDistanceKm * 0.3);
+        }
+      }
+    }
+  }
+
+  // ── Total Score ──
+  const totalScore = Math.round(
+    (distanceScore * wDist + vehicleScore * wVehicle + profitScore * wProfit + timeScore * wTime) / 100
+    + returnTripBonusScore + carpoolBonusScore
+  );
+
+  // ── Reason text ──
+  const reasons: string[] = [];
+  if (distanceScore >= 70) reasons.push(`近距離 ${Math.round(estimatedDistanceKm)}km`);
+  if (vehicleScore === 100) reasons.push("車型完全符合");
+  else if (vehicleScore >= 75) reasons.push("車型相容");
+  if (profitScore >= 60) reasons.push(`高毛利 ${Math.round(profitRate * 100)}%`);
+  if (isReturnTrip) reasons.push(`回頭車省 ${Math.round(savingsKm)}km`);
+  if (isCarpool) reasons.push("可拼車");
+  if (timeScore >= 85) reasons.push("緊急訂單優先");
+
+  const reasonDetail = [
+    `距離評分 ${distanceScore}分（司機距取貨點約 ${Math.round(estimatedDistanceKm)}km）`,
+    `車型評分 ${vehicleScore}分（司機：${driver.vehicleType}，需求：${order.requiredVehicleType ?? "無限制"}）`,
+    `收益評分 ${profitScore}分（預估收益 NT$${Math.round(profit).toLocaleString()}，毛利率 ${Math.round(profitRate * 100)}%）`,
+    `時效評分 ${timeScore}分`,
+    isReturnTrip ? `✅ 回頭車加分 +${returnBonus}（省 ${Math.round(savingsKm)}km）` : "",
+    isCarpool ? `✅ 拼車加分 +${carpoolBonus}（可與現有訂單同路）` : "",
+  ].filter(Boolean).join("；");
+
+  return {
+    driverId: driver.id,
+    driverName: driver.name,
+    phone: driver.phone,
+    vehicleType: driver.vehicleType,
+    licensePlate: driver.licensePlate,
+    status: driver.status,
+    totalScore,
+    distanceScore, vehicleScore, profitScore, timeScore,
+    carpoolBonus: carpoolBonusScore, returnTripBonus: returnTripBonusScore,
+    estimatedDistanceKm: Math.round(estimatedDistanceKm * 10) / 10,
+    estimatedRevenue: Math.round(orderFee),
+    estimatedCost: Math.round(driverCost),
+    estimatedProfit: Math.round(profit),
+    isCarpool, isReturnTrip,
+    savingsKm: Math.round(savingsKm * 10) / 10,
+    reason: reasons.join("、") || "系統最佳配對",
+    reasonDetail,
   };
-  const vBase = params.vehicleType ? (vehicleBases[params.vehicleType] ?? 2000) : 2000;
-  const perKm = params.vehicleType?.includes("T") ? Math.max(18, parseFloat(params.vehicleType) * 1.5) : 20;
-
-  let price = vBase + dist * perKm;
-  if (weight > 1000) price += (weight - 1000) * 0.5;
-  if (vol > 5) price += (vol - 5) * 200;
-  if (params.needTailgate) price += 800;
-  if (params.needHydraulicPallet) price += 600;
-  if (params.waitingHours && params.waitingHours > 1) price += (params.waitingHours - 1) * 500;
-
-  return Math.round(price);
 }
 
 // ─── POST /api/smart-quote ─────────────────────────────────────────────────────
@@ -89,13 +303,9 @@ smartOrderRouter.post("/smart-quote", async (req, res) => {
     const p = schema.parse(req.body);
     const cfg = await getConfig();
 
-    const vol = (p.cargoLengthM ?? 0) * (p.cargoWidthM ?? 0) * (p.cargoHeightM ?? 0);
-    const baseRaw = calcBasePrice({
-      distanceKm: p.distanceKm, cargoWeightKg: p.cargoWeightKg,
-      cargoVolumeCbm: vol, vehicleType: p.vehicleType,
-      needTailgate: p.needTailgate, needHydraulicPallet: p.needHydraulicPallet,
-      waitingHours: p.waitingHours, cfg,
-    });
+    const extras = (p.needTailgate ? 800 : 0) + (p.needHydraulicPallet ? 600 : 0)
+      + (p.waitingHours && p.waitingHours > 1 ? (p.waitingHours - 1) * 500 : 0);
+    const baseRaw = calcBasePrice(p.distanceKm ?? 20, p.vehicleType ?? "箱型車", p.cargoWeightKg ?? 0, extras);
 
     const profitRate = parseFloat(cfg.base_profit_rate ?? "25") / 100;
     const minProfitRate = parseFloat(cfg.min_profit_rate ?? "10") / 100;
@@ -107,23 +317,22 @@ smartOrderRouter.post("/smart-quote", async (req, res) => {
 
     const expiresAt = new Date(Date.now() + parseInt(cfg.quote_expires_minutes ?? "30") * 60000);
 
-    const breakdown = {
-      base: baseRaw,
-      profitMargin: Math.round(baseRaw * profitRate),
-      suggested: suggestedPrice,
-      min: minPrice,
-      peak: peakPrice,
-      peakMultiplier: peakMult,
-      isPeakHour: peakMult > 1,
-      taxRate: 5,
-      withTax: Math.round(suggestedPrice * 1.05),
-      expiresAt: expiresAt.toISOString(),
-      expiresMinutes: parseInt(cfg.quote_expires_minutes ?? "30"),
-    };
-
-    return res.json({ breakdown });
+    return res.json({
+      breakdown: {
+        base: baseRaw,
+        profitMargin: Math.round(baseRaw * profitRate),
+        suggested: suggestedPrice,
+        min: minPrice,
+        peak: peakPrice,
+        peakMultiplier: peakMult,
+        isPeakHour: peakMult > 1,
+        taxRate: 5,
+        withTax: Math.round(suggestedPrice * 1.05),
+        expiresAt: expiresAt.toISOString(),
+        expiresMinutes: parseInt(cfg.quote_expires_minutes ?? "30"),
+      },
+    });
   } catch (e: any) {
-    console.error(e);
     return res.status(400).json({ error: e.message ?? "Bad request" });
   }
 });
@@ -134,9 +343,7 @@ smartOrderRouter.get("/pricing-config", async (_req, res) => {
   try {
     const rows = await db.execute(sql`SELECT id, key, value, label, updated_at FROM pricing_config ORDER BY id`);
     return res.json(rows.rows);
-  } catch (e) {
-    return res.status(500).json({ error: "Server error" });
-  }
+  } catch { return res.status(500).json({ error: "Server error" }); }
 });
 
 // ─── PUT /api/pricing-config ───────────────────────────────────────────────────
@@ -145,12 +352,33 @@ smartOrderRouter.put("/pricing-config", async (req, res) => {
   try {
     const updates = req.body as Record<string, string>;
     for (const [key, value] of Object.entries(updates)) {
-      await db.execute(sql`
-        UPDATE pricing_config SET value = ${value}, updated_at = NOW() WHERE key = ${key}
-      `);
+      await db.execute(sql`UPDATE pricing_config SET value = ${value}, updated_at = NOW() WHERE key = ${key}`);
     }
     const rows = await db.execute(sql`SELECT id, key, value, label FROM pricing_config ORDER BY id`);
     return res.json(rows.rows);
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
+});
+
+// ─── POST /api/orders/:id/analyze-dispatch ── (preview candidates) ─────────────
+
+smartOrderRouter.post("/orders/:id/analyze-dispatch", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).limit(1);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const cfg = await getConfig();
+    const { candidates, busyIds } = await findCandidates(id, order, cfg);
+
+    return res.json({
+      orderId: id,
+      candidates: candidates.slice(0, 5),
+      excluded: busyIds.length,
+      cfg: {
+        wDistance: cfg.w_distance, wVehicle: cfg.w_vehicle,
+        wProfit: cfg.w_profit, wTime: cfg.w_time,
+      },
+    });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }
@@ -173,29 +401,20 @@ smartOrderRouter.post("/orders/:id/process-payment", async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     const now = new Date();
-
-    // Record payment
     await db.insert(paymentsTable).values({
-      orderId: id,
-      amount: data.amount,
-      method: data.method,
+      orderId: id, amount: data.amount, method: data.method,
       note: data.note ?? null,
       receiptNumber: data.transactionId ?? `TXN-${Date.now()}`,
     });
-
-    // Update order payment status
     await db.update(ordersTable).set({
-      feeStatus: "paid",
-      paymentConfirmedAt: now,
+      feeStatus: "paid", paymentConfirmedAt: now,
       paymentGateway: data.method,
       paymentTransactionId: data.transactionId ?? `TXN-${Date.now()}`,
-      totalFee: data.amount,
-      updatedAt: now,
+      totalFee: data.amount, updatedAt: now,
     } as any).where(eq(ordersTable.id, id));
 
     const updatedOrder = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).limit(1).then(r => r[0]);
 
-    // Auto-dispatch if enabled
     let dispatchResult = null;
     const cfg = await getConfig();
     if (cfg.auto_dispatch === "true") {
@@ -203,14 +422,10 @@ smartOrderRouter.post("/orders/:id/process-payment", async (req, res) => {
     }
 
     return res.json({
-      success: true,
-      paymentMethod: data.method,
-      amount: data.amount,
-      confirmedAt: now.toISOString(),
-      autoDispatch: dispatchResult,
+      success: true, paymentMethod: data.method, amount: data.amount,
+      confirmedAt: now.toISOString(), autoDispatch: dispatchResult,
     });
   } catch (e: any) {
-    console.error(e);
     return res.status(400).json({ error: e.message ?? "Payment failed" });
   }
 });
@@ -220,144 +435,116 @@ smartOrderRouter.post("/orders/:id/process-payment", async (req, res) => {
 smartOrderRouter.post("/orders/:id/auto-dispatch", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    const body = req.body as { driverId?: number };
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).limit(1);
     if (!order) return res.status(404).json({ error: "Order not found" });
     const cfg = await getConfig();
+
+    // Manual override: specific driver
+    if (body.driverId) {
+      const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, body.driverId)).limit(1);
+      if (!driver) return res.status(404).json({ error: "Driver not found" });
+      const result = await assignDriver(id, order, driver as DriverRow, cfg, true);
+      return res.json(result);
+    }
+
     const result = await runAutoDispatch(id, order, cfg);
     return res.json(result);
   } catch (e: any) {
-    console.error(e);
     return res.status(500).json({ error: e.message ?? "Dispatch failed" });
   }
 });
 
-// ─── Core auto-dispatch logic ──────────────────────────────────────────────────
+// ─── GET /api/drivers/availability ────────────────────────────────────────────
 
-async function runAutoDispatch(
-  orderId: number,
-  order: any,
-  cfg: Record<string, string>,
-): Promise<{ success: boolean; driverId?: number; driverName?: string; reason?: string }> {
+smartOrderRouter.get("/drivers/availability", async (_req, res) => {
   try {
-    // Get active drivers not currently assigned
     const drivers = await db.select().from(driversTable);
+    const activeOrders = await db.select().from(ordersTable)
+      .where(or(eq(ordersTable.status, "assigned"), eq(ordersTable.status, "in_transit")));
 
-    // Find available drivers (not assigned to active orders)
-    const busyDriverIds = await db
-      .select({ driverId: ordersTable.driverId })
-      .from(ordersTable)
-      .where(and(
-        or(eq(ordersTable.status, "assigned"), eq(ordersTable.status, "in_transit")),
-        ne(ordersTable.id, orderId),
-      ))
-      .then(rows => new Set(rows.map(r => r.driverId).filter(Boolean)));
-
-    const available = drivers.filter(d => {
-      if (busyDriverIds.has(d.id)) return false;
-      if ((d as any).status === "inactive" || (d as any).status === "offline") return false;
-      return true;
-    });
-
-    if (available.length === 0) {
-      // Log failed attempt
-      await db.execute(sql`
-        INSERT INTO dispatch_log (order_id, action, reason) VALUES (${orderId}, 'failed', '無可用司機')
-      `);
-      await db.update(ordersTable).set({
-        dispatchAttempts: (order.dispatchAttempts ?? 0) + 1,
-        updatedAt: new Date(),
-      } as any).where(eq(ordersTable.id, orderId));
-      return { success: false, reason: "無可用司機，請手動指派或稍後重試" };
+    const driverOrderMap: Record<number, any[]> = {};
+    for (const o of activeOrders) {
+      if (o.driverId) {
+        if (!driverOrderMap[o.driverId]) driverOrderMap[o.driverId] = [];
+        driverOrderMap[o.driverId]!.push(o);
+      }
     }
 
-    // Score each driver
-    const required = (order.requiredVehicleType ?? "").toLowerCase();
-    const scored = available.map(d => {
-      let score = 50; // base score
-      const dType = ((d as any).vehicleType ?? "").toLowerCase();
-      if (required && dType === required) score += 40;
-      else if (required && dType.includes(required.replace(/[^0-9.]/g, ""))) score += 20;
-      else if (!required) score += 20;
-      // Prefer drivers with fewer recent orders (lower workload)
-      score += Math.random() * 10; // tie-break with small random factor
-      return { driver: d, score };
-    });
+    const result = drivers.map(d => ({
+      ...d,
+      activeOrders: driverOrderMap[d.id] ?? [],
+      isBusy: (driverOrderMap[d.id]?.length ?? 0) > 0,
+      orderCount: driverOrderMap[d.id]?.length ?? 0,
+    }));
+    return res.json(result);
+  } catch (e) { return res.status(500).json({ error: "Server error" }); }
+});
 
-    scored.sort((a, b) => b.score - a.score);
-    const best = scored[0]!;
+// ─── PUT /api/drivers/:id/location ────────────────────────────────────────────
 
-    const now = new Date();
-    await db.update(ordersTable).set({
-      driverId: best.driver.id,
-      status: "assigned",
-      autoDispatchedAt: now,
-      dispatchAttempts: (order.dispatchAttempts ?? 0) + 1,
-      updatedAt: now,
-    } as any).where(eq(ordersTable.id, orderId));
-
-    // Log success
+smartOrderRouter.put("/drivers/:id/location", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { lat, lng, currentLocation } = req.body as { lat?: number; lng?: number; currentLocation?: string };
     await db.execute(sql`
-      INSERT INTO dispatch_log (order_id, driver_id, action, reason, score)
-      VALUES (${orderId}, ${best.driver.id}, 'assigned', '自動派車', ${best.score})
+      UPDATE drivers SET lat=${lat ?? null}, lng=${lng ?? null},
+      current_location=${currentLocation ?? null} WHERE id=${id}
+    `);
+    return res.json({ success: true });
+  } catch (e: any) { return res.status(500).json({ error: e.message }); }
+});
+
+// ─── GET /api/revenue-stats ────────────────────────────────────────────────────
+
+smartOrderRouter.get("/revenue-stats", async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status NOT IN ('cancelled')) AS total_orders,
+        COUNT(*) FILTER (WHERE fee_status='paid') AS paid_orders,
+        COALESCE(SUM(total_fee) FILTER (WHERE fee_status='paid'), 0) AS total_revenue,
+        COUNT(*) FILTER (WHERE auto_dispatched_at IS NOT NULL) AS auto_dispatched,
+        COUNT(*) FILTER (WHERE driver_id IS NULL AND status NOT IN ('cancelled','delivered')) AS unassigned,
+        COUNT(DISTINCT driver_id) FILTER (WHERE driver_id IS NOT NULL) AS active_drivers
+      FROM orders
+    `);
+    const carpoolRows = await db.execute(sql`
+      SELECT COUNT(*) AS carpool_count FROM dispatch_log WHERE is_carpool=true
+    `);
+    const returnRows = await db.execute(sql`
+      SELECT COUNT(*) AS return_count FROM dispatch_log WHERE is_return_trip=true
+    `);
+    const savingsRows = await db.execute(sql`
+      SELECT COALESCE(SUM(savings_km),0) AS total_savings_km FROM dispatch_log
     `);
 
-    // Notifications (fire and forget)
-    setImmediate(async () => {
-      try {
-        const driverLineId = (best.driver as any).lineUserId;
-        if (driverLineId) {
-          await sendDispatchNotification(driverLineId, {
-            id: orderId,
-            pickupAddress: order.pickupAddress,
-            deliveryAddress: order.deliveryAddress,
-            cargoDescription: order.cargoDescription,
-            customerName: order.customerName,
-            customerPhone: order.customerPhone ?? undefined,
-          });
-        }
-        const customerLineId = null; // Would need customer LINE ID
-        if (customerLineId) {
-          await sendCustomerDispatch(customerLineId, {
-            orderId,
-            driverName: (best.driver as any).name ?? "司機",
-            driverPhone: (best.driver as any).phone ?? "",
-            vehicleType: (best.driver as any).vehicleType ?? "",
-            plateNumber: (best.driver as any).plateNumber ?? "",
-          });
-        }
-      } catch { /* LINE not configured */ }
+    const stats = rows.rows[0] as any;
+    const totalOrders = parseInt(stats.total_orders ?? "0");
+    const unassigned = parseInt(stats.unassigned ?? "0");
+    const emptyRate = totalOrders > 0 ? 0 : 0; // would need trip data for real empty rate
+
+    return res.json({
+      ...stats,
+      carpool_count: (carpoolRows.rows[0] as any)?.carpool_count ?? 0,
+      return_trip_count: (returnRows.rows[0] as any)?.return_count ?? 0,
+      total_savings_km: (savingsRows.rows[0] as any)?.total_savings_km ?? 0,
     });
+  } catch (e) { return res.status(500).json({ error: "Server error" }); }
+});
 
-    return {
-      success: true,
-      driverId: best.driver.id,
-      driverName: (best.driver as any).name ?? "司機",
-    };
-  } catch (e: any) {
-    console.error("[AutoDispatch]", e);
-    return { success: false, reason: e.message };
-  }
-}
+// ─── GET /api/smart-orders ─────────────────────────────────────────────────────
 
-// ─── GET /api/smart-orders (pipeline view) ────────────────────────────────────
-
-smartOrderRouter.get("/smart-orders", async (req, res) => {
+smartOrderRouter.get("/smart-orders", async (_req, res) => {
   try {
-    const rows = await db
-      .select()
-      .from(ordersTable)
-      .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
-      .orderBy(ordersTable.createdAt);
-
+    const rows = await db.select().from(ordersTable)
+      .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id));
     const result = rows.map(r => ({
-      ...r.orders,
-      driver: r.drivers ?? null,
+      ...r.orders, driver: r.drivers ?? null,
       pipeline: getPipelineStage(r.orders),
     }));
     return res.json(result);
-  } catch (e) {
-    return res.status(500).json({ error: "Server error" });
-  }
+  } catch { return res.status(500).json({ error: "Server error" }); }
 });
 
 // ─── GET /api/dispatch-log ─────────────────────────────────────────────────────
@@ -365,18 +552,126 @@ smartOrderRouter.get("/smart-orders", async (req, res) => {
 smartOrderRouter.get("/dispatch-log", async (_req, res) => {
   try {
     const rows = await db.execute(sql`
-      SELECT dl.*, d.name as driver_name, o.customer_name, o.pickup_address, o.delivery_address
+      SELECT dl.*, d.name AS driver_name, d.vehicle_type,
+             o.customer_name, o.pickup_address, o.delivery_address, o.total_fee
       FROM dispatch_log dl
       LEFT JOIN drivers d ON dl.driver_id = d.id
       LEFT JOIN orders o ON dl.order_id = o.id
-      ORDER BY dl.created_at DESC
-      LIMIT 100
+      ORDER BY dl.created_at DESC LIMIT 100
     `);
     return res.json(rows.rows);
-  } catch (e) {
-    return res.status(500).json({ error: "Server error" });
-  }
+  } catch { return res.status(500).json({ error: "Server error" }); }
 });
+
+// ─── Core functions ────────────────────────────────────────────────────────────
+
+async function findCandidates(
+  orderId: number,
+  order: any,
+  cfg: Record<string, string>,
+): Promise<{ candidates: ScoreBreakdown[]; busyIds: number[] }> {
+  const allDrivers = await db.select().from(driversTable);
+  const allOrders = await db.select().from(ordersTable);
+
+  const busyDriverIds = new Set(
+    allOrders
+      .filter(o => (o.status === "assigned" || o.status === "in_transit") && o.id !== orderId && o.driverId)
+      .map(o => o.driverId!)
+  );
+
+  const pickupLoc = order.pickupAddress ? geocodeAddress(order.pickupAddress) : null;
+
+  const available = allDrivers.filter(d => {
+    if (d.status === "offline") return false;
+    return true; // busy drivers can be considered (they might be doing carpool/return)
+  });
+
+  const scored = available.map(d =>
+    scoreDriver(d as DriverRow, order, allOrders, cfg, pickupLoc)
+  );
+
+  scored.sort((a, b) => b.totalScore - a.totalScore);
+  return { candidates: scored, busyIds: Array.from(busyDriverIds) };
+}
+
+async function assignDriver(
+  orderId: number,
+  order: any,
+  driver: DriverRow,
+  cfg: Record<string, string>,
+  isManual = false,
+): Promise<{ success: boolean; driverId?: number; driverName?: string; reason?: string; score?: ScoreBreakdown }> {
+  const allOrders = await db.select().from(ordersTable);
+  const pickupLoc = order.pickupAddress ? geocodeAddress(order.pickupAddress) : null;
+  const score = scoreDriver(driver, order, allOrders, cfg, pickupLoc);
+
+  const now = new Date();
+  await db.update(ordersTable).set({
+    driverId: driver.id, status: "assigned",
+    autoDispatchedAt: now, updatedAt: now,
+  } as any).where(eq(ordersTable.id, orderId));
+
+  await db.execute(sql`
+    INSERT INTO dispatch_log
+      (order_id, driver_id, action, reason, reason_detail, score,
+       score_breakdown, estimated_revenue, estimated_cost, estimated_profit,
+       is_carpool, is_return_trip, savings_km, distance_km, dispatch_weights)
+    VALUES (
+      ${orderId}, ${driver.id},
+      ${isManual ? "manual_assign" : "auto_assign"},
+      ${score.reason}, ${score.reasonDetail}, ${score.totalScore},
+      ${JSON.stringify({ dist: score.distanceScore, vehicle: score.vehicleScore, profit: score.profitScore, time: score.timeScore })},
+      ${score.estimatedRevenue}, ${score.estimatedCost}, ${score.estimatedProfit},
+      ${score.isCarpool}, ${score.isReturnTrip}, ${score.savingsKm}, ${score.estimatedDistanceKm},
+      ${JSON.stringify({ w_distance: cfg.w_distance, w_vehicle: cfg.w_vehicle, w_profit: cfg.w_profit, w_time: cfg.w_time })}
+    )
+  `);
+
+  setImmediate(async () => {
+    try {
+      if (driver.lineUserId) {
+        await sendDispatchNotification(driver.lineUserId, {
+          id: orderId, pickupAddress: order.pickupAddress,
+          deliveryAddress: order.deliveryAddress, cargoDescription: order.cargoDescription,
+          customerName: order.customerName, customerPhone: order.customerPhone ?? undefined,
+        });
+      }
+    } catch { /* silent */ }
+  });
+
+  return {
+    success: true, driverId: driver.id, driverName: driver.name,
+    reason: score.reason, score,
+  };
+}
+
+async function runAutoDispatch(
+  orderId: number,
+  order: any,
+  cfg: Record<string, string>,
+): Promise<{ success: boolean; driverId?: number; driverName?: string; reason?: string; score?: ScoreBreakdown }> {
+  try {
+    const { candidates } = await findCandidates(orderId, order, cfg);
+
+    // Filter out offline drivers for auto dispatch
+    const eligible = candidates.filter(c => c.status !== "offline" && c.vehicleScore > 0);
+    if (eligible.length === 0) {
+      await db.execute(sql`
+        INSERT INTO dispatch_log (order_id, action, reason) VALUES (${orderId}, 'failed', '無符合條件司機')
+      `);
+      return { success: false, reason: "無可用司機，請手動指派或稍後重試" };
+    }
+
+    const best = eligible[0]!;
+    const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, best.driverId)).limit(1);
+    if (!driver) return { success: false, reason: "司機資料異常" };
+
+    return await assignDriver(orderId, order, driver as DriverRow, cfg, false);
+  } catch (e: any) {
+    console.error("[AutoDispatch]", e);
+    return { success: false, reason: e.message };
+  }
+}
 
 function getPipelineStage(order: any): string {
   if (order.status === "cancelled") return "cancelled";

@@ -16,6 +16,7 @@ import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
 import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
+import DispatchOptimizerTab from "./admin/DispatchOptimizerTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import FleetMapTab from "./admin/FleetMapTab";
@@ -851,6 +852,10 @@ export default function Admin() {
             <TabsTrigger value="vehiclecost" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <span className="text-sm">💰</span>
               <span className="text-[10px] sm:text-xs">車輛成本</span>
+            </TabsTrigger>
+            <TabsTrigger value="dispatch" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">派單優化</span>
             </TabsTrigger>
             <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Map className="w-3.5 h-3.5" />
@@ -1822,6 +1827,11 @@ export default function Admin() {
         {/* ===== 車輛成本計算 TAB ===== */}
         <TabsContent value="vehiclecost" className="outline-none">
           <VehicleCostTab />
+        </TabsContent>
+
+        {/* ===== 派單優化 TAB ===== */}
+        <TabsContent value="dispatch" className="outline-none">
+          <DispatchOptimizerTab />
         </TabsContent>
 
         {/* ===== 權限管理 TAB ===== */}
