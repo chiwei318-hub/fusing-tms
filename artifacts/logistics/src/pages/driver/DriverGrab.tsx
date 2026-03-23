@@ -1,11 +1,11 @@
-import { useState } from "wouter";
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
-  Zap, MapPin, Package, Clock, Truck, User, ChevronRight,
-  RefreshCw, AlertCircle, CheckCircle, Navigation,
+  Zap, Package, Clock, Truck, User,
+  RefreshCw, Navigation,
 } from "lucide-react";
-import { useListOrders } from "@workspace/api-client-react";
+import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,8 +13,8 @@ import { useLocalStorage } from "@/hooks/use-mobile";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { getListOrdersQueryKey } from "@workspace/api-client-react";
-import { apiClient } from "@workspace/api-client";
+
+const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 export default function DriverGrab() {
   const [, navigate] = useLocation();
@@ -55,7 +55,15 @@ export default function DriverGrab() {
     if (!selectedId || grabbingId != null) return;
     setGrabbingId(orderId);
     try {
-      await apiClient.post(`/orders/${orderId}/grab`, { driverId: selectedId });
+      const res = await fetch(`${BASE_URL}/api/orders/${orderId}/grab`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: selectedId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "搶單失敗");
+      }
       toast({
         title: "搶單成功！",
         description: "訂單已指派給您，請立即前往取貨",
@@ -63,8 +71,7 @@ export default function DriverGrab() {
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       navigate(`/driver/tasks/${orderId}`);
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? "搶單失敗，訂單可能已被接走";
-      toast({ title: "無法搶單", description: msg, variant: "destructive" });
+      toast({ title: "無法搶單", description: err?.message ?? "訂單可能已被接走", variant: "destructive" });
       refetch();
     } finally {
       setGrabbingId(null);

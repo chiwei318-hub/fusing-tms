@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Truck, ClipboardList, Home, LayoutGrid } from "lucide-react";
+import { Truck, ClipboardList, Home, LayoutGrid, Zap } from "lucide-react";
 
 export function DriverLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   const navItems = [
     { href: "/driver", icon: Home, label: "首頁", exact: true },
+    { href: "/driver/grab", icon: Zap, label: "搶單", exact: false },
     { href: "/driver/tasks", icon: ClipboardList, label: "任務", exact: false },
     { href: "/", icon: LayoutGrid, label: "功能表", exact: true },
   ];
@@ -33,12 +34,16 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
               ? location === item.href
               : location === item.href || location.startsWith(item.href + "/");
             const isMenuLink = item.href === "/";
+            const isGrab = item.href === "/driver/grab";
             return (
               <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-3 rounded-xl font-medium text-sm transition-all
-                  ${isMenuLink ? "text-orange-300 hover:bg-white/10" : active ? "bg-white/20 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}>
+                  ${isMenuLink ? "text-orange-300 hover:bg-white/10"
+                  : isGrab ? active ? "bg-orange-500 text-white" : "text-orange-300 hover:bg-orange-500/20 hover:text-orange-200"
+                  : active ? "bg-white/20 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}>
                 <item.icon className="w-5 h-5 shrink-0" />
                 {item.label}
+                {isGrab && <span className="ml-auto text-[10px] font-black bg-orange-500/30 text-orange-200 px-1.5 py-0.5 rounded-full">搶</span>}
               </Link>
             );
           })}
@@ -63,11 +68,14 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
               ? location === item.href
               : location === item.href || location.startsWith(item.href + "/");
             const isMenuLink = item.href === "/";
+            const isGrab = item.href === "/driver/grab";
             return (
               <Link key={item.href} href={item.href}
                 className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs font-medium transition-colors
-                  ${isMenuLink ? "text-orange-500 hover:text-orange-600" : active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                <item.icon className={`w-5 h-5 ${isMenuLink ? "text-orange-500" : active ? "text-primary" : ""}`} />
+                  ${isMenuLink ? "text-orange-500 hover:text-orange-600"
+                  : isGrab ? active ? "text-orange-500" : "text-orange-400 hover:text-orange-500"
+                  : active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                <item.icon className={`w-5 h-5 ${isMenuLink || isGrab ? "text-orange-500" : active ? "text-primary" : ""}`} />
                 {item.label}
               </Link>
             );

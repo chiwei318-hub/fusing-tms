@@ -19,6 +19,7 @@ import CustomerOrder from "@/pages/customer/CustomerOrder";
 import DriverHome from "@/pages/driver/DriverHome";
 import DriverTasks from "@/pages/driver/DriverTasks";
 import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
+import DriverGrab from "@/pages/driver/DriverGrab";
 import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
 
 const queryClient = new QueryClient({
@@ -56,6 +57,7 @@ function DriverPortal() {
         <DriverLayout>
           <Switch>
             <Route path="/driver" component={DriverHome} />
+            <Route path="/driver/grab" component={DriverGrab} />
             <Route path="/driver/tasks" component={DriverTasks} />
             <Route path="/driver/tasks/:id" component={DriverTaskDetail} />
             <Route component={NotFound} />

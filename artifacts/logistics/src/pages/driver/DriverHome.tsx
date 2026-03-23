@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Truck, ArrowRight, User, TrendingUp, CheckCircle, DollarSign, LogIn } from "lucide-react";
+import { Truck, ArrowRight, User, TrendingUp, CheckCircle, DollarSign, LogIn, Zap } from "lucide-react";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useListOrders } from "@workspace/api-client-react";
 import { DriverStatusBadge } from "@/components/StatusBadge";
@@ -68,24 +68,40 @@ export default function DriverHome() {
         </div>
       )}
 
-      {/* Go to tasks */}
+      {/* Action buttons */}
       {selectedDriver && (
-        <Link href="/driver/tasks">
-          <div className="bg-orange-500 hover:bg-orange-600 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg shadow-orange-500/30">
-            <div className="bg-white/20 p-3 rounded-xl shrink-0">
-              <Truck className="w-7 h-7 text-white" />
+        <div className="grid grid-cols-1 gap-3">
+          <Link href="/driver/grab">
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg shadow-orange-500/30">
+              <div className="bg-white/20 p-3 rounded-xl shrink-0">
+                <Zap className="w-7 h-7 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-white text-lg">搶單中心</p>
+                <p className="text-orange-100 text-sm">查看待接訂單，主動出擊搶先接單</p>
+              </div>
+              <div className="bg-white/20 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <ArrowRight className="w-4 h-4 text-white" />
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="font-black text-white text-lg">進入任務中心</p>
-              <p className="text-orange-100 text-sm">
-                {activeTasks.length > 0 ? `${activeTasks.length} 筆任務進行中` : "查看所有派車任務"}
-              </p>
+          </Link>
+          <Link href="/driver/tasks">
+            <div className="bg-slate-700 hover:bg-slate-800 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all">
+              <div className="bg-white/10 p-3 rounded-xl shrink-0">
+                <Truck className="w-7 h-7 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-white text-lg">我的任務</p>
+                <p className="text-slate-300 text-sm">
+                  {activeTasks.length > 0 ? `${activeTasks.length} 筆任務進行中` : "查看指派的派車任務"}
+                </p>
+              </div>
+              <div className="bg-white/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
+                <ArrowRight className="w-4 h-4 text-white" />
+              </div>
             </div>
-            <div className="bg-white/20 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
-              <ArrowRight className="w-4 h-4 text-white" />
-            </div>
-          </div>
-        </Link>
+          </Link>
+        </div>
       )}
 
       {/* Driver selection */}
