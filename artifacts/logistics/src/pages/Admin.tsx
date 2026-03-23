@@ -9,7 +9,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X, Building2,
+  Search, X, Building2, Trophy,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
@@ -35,6 +35,7 @@ import SystemSettingsTab from "./admin/SystemSettingsTab";
 import InvoiceManagementTab from "./admin/InvoiceManagementTab";
 import BiddingTab from "./admin/BiddingTab";
 import FleetRegistrationTab from "./admin/FleetRegistrationTab";
+import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -906,6 +907,10 @@ export default function Admin() {
             <TabsTrigger value="fleetreg" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Building2 className="w-3.5 h-3.5 text-blue-600" />
               <span className="text-[10px] sm:text-xs">車隊入駐</span>
+            </TabsTrigger>
+            <TabsTrigger value="performance" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Trophy className="w-3.5 h-3.5 text-yellow-500" />
+              <span className="text-[10px] sm:text-xs">績效稽核</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -1902,6 +1907,11 @@ export default function Admin() {
         {/* ===== 車隊入駐 TAB ===== */}
         <TabsContent value="fleetreg" className="outline-none">
           <FleetRegistrationTab />
+        </TabsContent>
+
+        {/* ===== 績效稽核 TAB ===== */}
+        <TabsContent value="performance" className="outline-none">
+          <PerformanceAuditTab />
         </TabsContent>
       </Tabs>
 

@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiUrl } from "@/lib/api";
 import {
   TrendingUp, Star, Truck, Calendar, DollarSign,
-  BarChart2, ChevronDown, ChevronRight, Award
+  BarChart2, ChevronDown, ChevronRight, Award,
+  Trophy, CheckCircle2, XCircle, Target,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhTW } from "date-fns/locale";
@@ -251,6 +252,158 @@ export default function DriverIncome() {
           <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">{periodLabel}尚無完成訂單</p>
           <p className="text-sm mt-1">完成訂單後收入將顯示於此</p>
+        </div>
+      )}
+
+      {/* ── 達標獎金進度 ── */}
+      {user?.id && <BonusProgress driverId={user.id} />}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// 司機獎金進度區塊
+// ────────────────────────────────────────────────────────────
+const levelColors: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+  bronze:   { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200",  icon: "🥉" },
+  silver:   { bg: "bg-slate-50",   text: "text-slate-700",   border: "border-slate-300",   icon: "🥈" },
+  gold:     { bg: "bg-yellow-50",  text: "text-yellow-700",  border: "border-yellow-300",  icon: "🥇" },
+  platinum: { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-300",  icon: "💎" },
+};
+const metricLabels: Record<string, string> = {
+  completion_rate: "完成率",
+  avg_rating:      "平均評分",
+  order_count:     "接單數",
+  complaint_count: "客訴件數",
+};
+const metricUnits: Record<string, string> = {
+  completion_rate: "%", avg_rating: "星", order_count: "件", complaint_count: "件",
+};
+
+function BonusProgress({ driverId }: { driverId: number }) {
+  const now = new Date();
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["driver-my-bonus", driverId],
+    queryFn: () => fetch(`/api/performance/my-bonus/${driverId}?year=${now.getFullYear()}&month=${now.getMonth()+1}`).then(r => r.json()),
+  });
+
+  if (isLoading) return null;
+  if (!data) return null;
+
+  const { achievementData, targetsMet, overallPct, rules = [], bonuses = [] } = data;
+
+  let currentLevel: any = null;
+  let nextLevel: any = null;
+  for (const rule of [...rules].reverse()) {
+    const pct = parseFloat(rule.achievement_pct);
+    if (overallPct >= pct) { currentLevel = rule; break; }
+  }
+  for (const rule of rules) {
+    if (parseFloat(rule.achievement_pct) > overallPct) { nextLevel = rule; break; }
+  }
+
+  const lc = currentLevel ? (levelColors[currentLevel.level_color] ?? levelColors.bronze) : null;
+  const barColor = overallPct >= 100 ? "bg-emerald-500" : overallPct >= 80 ? "bg-blue-500" : overallPct >= 60 ? "bg-orange-400" : "bg-red-400";
+
+  return (
+    <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-4 mt-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Trophy className="w-5 h-5 text-yellow-600" />
+        <span className="font-black text-yellow-800">本月達標獎金進度</span>
+        <span className="text-xs text-yellow-600">{now.getFullYear()}年{now.getMonth()+1}月</span>
+      </div>
+
+      {/* 等級顯示 */}
+      <div className="flex items-center justify-between">
+        <div>
+          {currentLevel ? (
+            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl ${lc?.bg} ${lc?.border} border`}>
+              <span className="text-lg">{lc?.icon}</span>
+              <div>
+                <p className={`font-black text-sm ${lc?.text}`}>{currentLevel.level_name}達標</p>
+                <p className={`text-xs ${lc?.text} opacity-70`}>獎金 NT${Number(currentLevel.bonus_amount).toLocaleString()}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200">
+              <Target className="w-5 h-5 text-gray-500" />
+              <div>
+                <p className="font-black text-sm text-gray-600">尚未達標</p>
+                <p className="text-xs text-gray-400">繼續加油！</p>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="text-right">
+          <p className="font-black text-2xl text-yellow-700">{overallPct}%</p>
+          <p className="text-xs text-yellow-600">綜合達成率</p>
+        </div>
+      </div>
+
+      {/* 進度條 */}
+      <div>
+        <div className="flex justify-between text-xs mb-1">
+          <span className="text-muted-foreground">0%</span>
+          {rules.slice(0,3).map((r: any) => (
+            <span key={r.id} className="text-muted-foreground">{r.achievement_pct}% {levelColors[r.level_color]?.icon}</span>
+          ))}
+        </div>
+        <div className="bg-white rounded-full h-3 overflow-hidden border border-yellow-200">
+          <div className={`${barColor} h-3 rounded-full transition-all duration-500`}
+            style={{ width: `${Math.min(overallPct, 100)}%` }} />
+        </div>
+        {nextLevel && (
+          <p className="text-xs text-yellow-700 mt-1">
+            再達成 {Math.max(0, Math.round(parseFloat(nextLevel.achievement_pct)) - overallPct)}% 可達{levelColors[nextLevel.level_color]?.icon}{nextLevel.level_name}，獎金 NT${Number(nextLevel.bonus_amount).toLocaleString()}
+          </p>
+        )}
+      </div>
+
+      {/* KPI 指標格 */}
+      <div className="grid grid-cols-2 gap-2">
+        {Object.entries(achievementData ?? {}).map(([metric, actual]) => {
+          const met = (targetsMet ?? {})[metric];
+          const target = (data.targets ?? {})[metric];
+          return (
+            <div key={metric} className={`rounded-xl p-3 border ${met ? "bg-white border-emerald-200" : "bg-red-50 border-red-200"}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-muted-foreground">{metricLabels[metric] ?? metric}</span>
+                {met ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
+              </div>
+              <p className={`font-black text-lg ${met ? "text-emerald-700" : "text-red-600"}`}>
+                {typeof actual === "number" ? (actual as number).toFixed(metric === "avg_rating" ? 1 : 0) : String(actual)}
+                {metricUnits[metric] ?? ""}
+              </p>
+              {target != null && (
+                <p className="text-xs text-muted-foreground">目標：{target}{metricUnits[metric] ?? ""}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 歷史獎金 */}
+      {bonuses.length > 0 && (
+        <div>
+          <p className="font-bold text-sm text-yellow-800 mb-2">歷史獎金記錄</p>
+          <div className="space-y-2">
+            {bonuses.slice(0,3).map((b: any) => {
+              const blc = levelColors[b.level_name === "白金" ? "platinum" : b.level_name === "金牌" ? "gold" : b.level_name === "銀牌" ? "silver" : "bronze"];
+              const statusLabel: Record<string,string> = { pending:"待審", approved:"已核准", paid:"已發放", rejected:"已拒絕" };
+              return (
+                <div key={b.id} className={`${blc?.bg} ${blc?.border} border rounded-xl px-3 py-2 flex items-center justify-between`}>
+                  <div>
+                    <span className="font-bold text-sm">{blc?.icon} {b.period_year}年{b.period_month}月</span>
+                    <span className={`ml-2 text-xs ${blc?.text}`}>{b.level_name}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-black ${blc?.text}`}>NT${Number(b.total_bonus).toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">{statusLabel[b.status] ?? b.status}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

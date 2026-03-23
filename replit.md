@@ -1,18 +1,6 @@
 # Overview
 
-This project is a pnpm workspace monorepo utilizing TypeScript for a logistics dispatch management system. Its core purpose is to streamline and automate various aspects of logistics operations, from customer order placement to driver management, dispatch, and financial reporting.
-
-**Key capabilities include:**
-
-*   **Customer Order Management:** Facilitates customer order entry with detailed pickup, delivery, and cargo specifications.
-*   **Order Dispatch & Tracking:** Enables efficient assignment of orders to drivers, real-time tracking of transport status, and multi-stop delivery management.
-*   **Driver & Fleet Management:** Provides tools for managing driver profiles, vehicle types, and real-time fleet monitoring.
-*   **Admin & Backend Operations:** Offers a comprehensive admin panel for order dispatch, driver and customer CRUD, reporting, and advanced features like smart scheduling and AI-powered analytics.
-*   **Enterprise Solutions:** Includes a dedicated portal for enterprise clients with features like quick ordering, account management, and detailed reports.
-*   **Outsourcing & Monetization:** Supports outsourcing orders to partner fleets with profit management and automated dispatch settings.
-*   **Integrated Communication:** Leverages LINE for driver dispatch notifications and an AI-powered customer service chatbot.
-
-The system aims to enhance operational efficiency, reduce manual effort, and provide valuable insights through data analysis and AI, ultimately offering a competitive edge in the logistics market.
+This project is a pnpm workspace monorepo using TypeScript for a logistics dispatch management system. Its primary goal is to automate and streamline logistics operations, encompassing customer order management, driver and fleet management, dispatch, and financial reporting. Key capabilities include customer order handling, efficient order dispatch and tracking, comprehensive driver and fleet management tools, an admin panel for operational oversight, and an enterprise client portal. The system also supports outsourcing to partner fleets and integrates communication via LINE and an AI chatbot. The vision is to boost operational efficiency, minimize manual tasks, and provide insights through data analytics and AI, securing a competitive edge in the logistics sector.
 
 # User Preferences
 
@@ -25,43 +13,44 @@ The system aims to enhance operational efficiency, reduce manual effort, and pro
 
 # System Architecture
 
-The project is structured as a pnpm workspace monorepo, separating applications (`artifacts/`) from shared libraries (`lib/`) and utility scripts (`scripts/`). It uses Node.js 24, pnpm, and TypeScript 5.9.
+The project is structured as a pnpm workspace monorepo, separating applications (`artifacts/`) from shared libraries (`lib/`) and utility scripts (`scripts/`). It utilizes Node.js 24, pnpm, and TypeScript 5.9.
 
 ## UI/UX Decisions
 
-The frontend for the logistics system (`artifacts/logistics`) is built with React and Vite. It utilizes a clear, functional design with components like `StatusBadge`, `AppLayout`, and `ThemeToggle`. Admin tabs are designed for intuitive navigation and data management, featuring interactive elements for order dispatch, driver management, and reporting. The `TaiwanAddressInput` component provides a flexible and intelligent address input experience with smart search and structured input modes, integrating Google Maps for enhanced location accuracy.
+The frontend for the logistics system (`artifacts/logistics`) is built with React and Vite, emphasizing a clear, functional design. Components like `StatusBadge`, `AppLayout`, and `ThemeToggle` are used for consistent UI. Admin panels are designed for intuitive data management, featuring interactive elements for dispatch, driver management, and reporting. A specialized `TaiwanAddressInput` component integrates Google Maps for enhanced address accuracy.
 
 ## Technical Implementations
 
-*   **Monorepo Tool:** pnpm workspaces for efficient dependency management and code sharing.
-*   **Backend:** Express 5 handles API requests, integrated with Drizzle ORM for database interactions.
-*   **Database:** PostgreSQL is used as the primary data store, with schema defined and managed by Drizzle ORM.
-*   **API Design:** OpenAPI 3.1 specification defines API contracts. `Orval` is used for client-side API code generation (React Query hooks) and Zod schema generation for validation.
-*   **Authentication:** JWT-based authentication system supporting multiple user roles (customer, driver, admin, enterprise). Login mechanisms include SMS OTP, username/password, and LINE OAuth.
-*   **Type Safety:** Comprehensive TypeScript usage across the monorepo, leveraging composite projects for efficient type checking and declaration emission.
+*   **Monorepo Tool:** pnpm workspaces for efficient dependency management.
+*   **Backend:** Express 5 handles API requests, integrated with Drizzle ORM.
+*   **Database:** PostgreSQL is the primary data store, managed by Drizzle ORM.
+*   **API Design:** OpenAPI 3.1 specifications define API contracts. `Orval` generates client-side API code (React Query hooks) and Zod schemas for validation.
+*   **Authentication:** JWT-based system supporting multiple user roles (customer, driver, admin, enterprise) with SMS OTP, username/password, and LINE OAuth login.
+*   **Type Safety:** Extensive TypeScript usage across the monorepo, leveraging composite projects.
 *   **Build System:** `esbuild` for CJS bundle generation.
-*   **Error Handling:** Zod for request validation.
+*   **Error Handling:** Zod is used for request validation.
 
 ## Feature Specifications
 
-*   **Admin Panel:** Provides 11 core admin tabs including Order Dispatch, Driver/Customer Management, Reporting, Vehicle Type Database, Smart Scheduling (LTL consolidation, return trip recommendation), Heat Maps, Fleet Maps, Carpool Panel, AI Analysis (order forecast, auto-dispatch, dynamic pricing, customer grading, revenue forecast), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, Vehicle Cost Calculator, and comprehensive Permission Management.
-*   **Permission Management:** Role-based access control with customizable permissions, audit logging, and custom field management.
-*   **Multi-Stop Delivery:** Supports up to 5 extra delivery stops with detailed management in customer forms, admin edits, and driver tasks.
-*   **Order Editing:** Allows administrators to fully edit existing orders, including dates, addresses, cargo details, and special requirements, with real-time sync.
-*   **Carpool Panel:** Groups pending orders, calculates AI compatibility scores for merging, manages group assignments, and facilitates driver assignment.
-*   **Outsourcing System:** Manages partner fleets, automates order distribution, calculates profit margins, and uses LINE notifications.
-*   **車隊/貨運公司入駐系統 (Fleet Onboarding System):** Full fleet company registration and management system. DB tables: `fleet_registrations` (company profile, status workflow: pending→reviewing→approved/rejected/suspended, risk_score 0-100, commission_rate), `fleet_vehicles` (per-company vehicle registry with plate/type/inspection/insurance dates), `fleet_ratings` (star ratings with auto risk recalculation), `fleet_complaints` (severity-tiered complaint tracking with resolution flow). API routes: POST `/api/fleet/register` (public, no auth), GET/PATCH `/api/fleet/registrations`, PATCH `/api/fleet/registrations/:id/status` (auto-creates `partner_fleets` entry on approve, syncs status on suspend), PATCH `/api/fleet/registrations/:id/commission`, POST/DELETE `/api/fleet/registrations/:id/vehicles`, POST `/api/fleet/ratings`, POST `/api/fleet/complaints`, PATCH `/api/fleet/complaints/:id/resolve`, GET `/api/fleet/stats`. Frontend: public 4-step wizard at `/fleet-join` (基本資料→車隊資訊→接單模式→確認送出) with success screen + application reference number. Admin panel: "車隊入駐" tab (value="fleetreg") with left-side list + right-side detail panel. Features: 6 stat cards, status filter toolbar, company detail panel with audit actions (開始審核/批准通過/拒絕/暫停/恢復接單), commission + order mode editor with profit preview, vehicle CRUD with inspection/insurance dates, ratings history, complaint filing form with severity levels. Order modes: 指派接單/搶單模式/競標比價. Risk score calculated from completion rate (from partner_fleets), average rating, warning count, complaint count.
-*   **電子發票系統 (E-Invoice Management):** DB table `invoices` with fields: invoice_number, buyer_name, buyer_tax_id, seller info, amount, tax_amount, total_amount, status. API: POST `/api/invoices` (generate with auto-numbered format FY{YEAR}{MONTH}-{SEQ}), GET `/api/invoices`, GET `/api/invoices/:id`, PATCH `/api/invoices/:id/void` (void invoice), POST `/api/invoices/bulk-monthly` (auto-generate for all monthly enterprise clients), GET `/api/invoices/stats/monthly`. Frontend: "電子發票" tab in admin panel secondary tabs. Features: create dialog with buyer details, tax rate selector (0%/5%), order association, amount preview with tax breakdown, one-click monthly billing, void with confirmation, print/download button. Invoice types: receipt, b2b, monthly.
-*   **付款方式系統 (Payment Methods & Cash Management — COMPLETED):** Comprehensive payment lifecycle system. Orders extended with: `payment_method` (cash/line_pay/credit_card/bank_transfer/monthly), `dispatch_blocked` (boolean), `reminder_count`, `last_reminder_at`, `cash_reported_at`, `cash_reported_by`, `cash_confirmed_at`. New tables: `monthly_statements` (enterprise monthly billing, auto-tax 5%, status: draft→sent→paid/overdue/disputed, due 25th of next month), `payment_reminders` (reminder log per order+channel). API router `paymentMethodsRouter` at `artifacts/api-server/src/routes/paymentMethods.ts`: GET `/api/payments/overdue?days=N` (uses `pool.query` with INTERVAL literal for compatibility), GET `/api/payments/stats-by-method`, GET `/api/payments/methods-summary`, GET `/api/payments/cash-pending`, GET `/api/payments/monthly-unreported`, PATCH `/api/orders/:id/payment-method` (sets dispatch_blocked=true for instant methods), POST `/api/orders/:id/confirm-payment` (clears dispatch_blocked, triggers auto-dispatch), POST `/api/orders/:id/driver-cash-report` (sets cash_reported_at, creates payment record), POST `/api/orders/:id/confirm-cash` (admin confirms cash, marks fee_status=paid), POST `/api/payments/send-reminder`, POST `/api/payments/batch-reminder` (batch SMS/LINE), GET/POST `/api/monthly-statements`, PATCH `/api/monthly-statements/:id/status`, POST `/api/monthly-statements/generate`. Frontend: PaymentCenter.tsx has 8 tabs — 訂單收款, 即時付款 (dispatch lock UI, payment link generation), 現金管理 (driver-reported cash confirmation queue), 月結管理 (generate/send/mark-paid statements with year/month selector), 逾期提醒 (overdue list with 0/1/2/3/5/7/14/30 day filter, batch SMS/LINE reminders), 未收款清單, 對帳報表, 收款紀錄. Driver portal: `CashReportButton` in DriverTaskDetail.tsx — appears for delivered orders with payment_method=cash, shows orange "回報現金收款" button, expands to confirmation form with optional note, shows green "已回報等待確認" card after submission. Auto-dispatch: checks `dispatch_blocked` before assigning driver.
-*   **競標比價系統 (Order Bidding/Price Comparison):** DB table `order_bids` (id, order_id, fleet_id, bidder_name, bid_price, vehicle_type, estimated_arrival_min, notes, status). Orders extended with `bidding_open` (boolean) + `bid_deadline` columns. API: GET `/api/orders/bids/open`, GET `/api/orders/:id/bids`, POST `/api/orders/:id/bids` (submit bid), PATCH `/api/orders/bids/:bidId/accept` (accept bid + reject others + update order price), PATCH `/api/orders/:id/bidding` (toggle open/close), GET `/api/bidding/stats`. Frontend: "競標比價" tab in admin panel. Features: 4 stat cards, 3-step flow guide, expandable order cards showing sorted bids (lowest first), "得標" accept button per bid, manual bid entry dialog for phone-in quotes.
-*   **司機收入儀表板 (Driver Income Dashboard):** DB table `driver_settlements` (id, driver_id, period_start, period_end, gross/deduction/net earnings, order_count, km_total, status). `pricing_config` extended with `driver_deduction_rate` (default 15%). API: GET `/api/driver-income/leaderboard`, GET `/api/driver-income/:driverId?period=week|month|year`, GET `/api/driver-income/:driverId/settlements`, POST `/api/driver-income/settle`. Frontend: new `/driver/income` page accessible via "收入" nav item in driver layout bottom nav (5th tab with DollarSign icon). Features: period toggle (本週/本月/本年), gradient earnings card with gross/deduction/net breakdown, 4 KPI cards (completed orders/avg fee/km/rating), rating distribution bar, daily breakdown table, order history with ratings, settlement history. DB driver `driver1`/`pass1234` for testing.
-*   **全自動派車引擎 (Auto-dispatch Engine):** When a new order is created (via any channel), the system automatically reads `pricing_config.auto_dispatch` flag. If enabled, it selects the lowest-load available driver, assigns the order (status → `assigned`), marks driver as busy, triggers LINE notification to driver, and creates 2 customer notifications ("訂單已建立" + "司機已指派"). Also fires on status changes to `in_transit`/`delivered` to notify customers. Admin can toggle auto-dispatch via the System Settings UI.
-*   **系統設定 UI (System Config Management):** New "系統設定" tab in admin panel. All `pricing_config` rows editable via form with toggle controls for boolean keys (auto_dispatch, payment_required). Groups: 自動派車設定, 報價付款時效, 派單評分權重, 費率毛利, 尖峰夜間時段. Batch save with unsaved-changes warning. API: GET/PATCH `/api/system-config`.
-*   **管理首頁圖表 (Admin Dashboard Charts):** AdminHome.tsx enhanced with Recharts: LineChart for 7-day order + revenue trend, PieChart for driver status distribution, horizontal BarChart for monthly orders by vehicle type. 4 KPI cards + 8 quick-nav shortcuts + platform KPI card (avg driver rating, daily completion rate, available driver ratio). Live stats from `/api/system-config/stats/overview`.
-*   **司機評分系統 (Driver Rating System):** `driver_ratings` DB table. POST `/api/ratings/order/:orderId`, GET `/api/ratings/driver/:driverId`, GET `/api/ratings/leaderboard`, GET `/api/ratings/all`. Frontend: `DriverRatingDialog.tsx` — 5-star selector with hover effects, comment textarea. Appears on delivered orders in `/customer/track`. Rating shown in admin dashboard KPIs. Average score affects dispatch quality metrics.
-*   **客戶通知中心 (Customer Notification Center):** `customer_notifications` DB table. API: GET/PATCH `/api/customer-notifications/:customerId`. Frontend: `CustomerNotifications.tsx` component, `CustomerNotificationsPage.tsx` at `/customer/notifications`. Bell icon with unread badge in `CustomerLayout` header (auto-refreshes every 30s). Notifications auto-created for: order_created, order_assigned, order_in_transit, order_delivered. All created via setImmediate in orders.ts after DB writes.
-*   **Enterprise Customer Portal (Full):** Dedicated web portal at `/enterprise` with: dual-tab login (company account + employee sub-account), in-portal order form with real-time enterprise pricing/discount, one-click reorder from history, order cancel/modify (before dispatch), monthly Excel reconciliation export, system notification center (order created/cancelled/delivered), sub-account management (主管/採購 roles), and unread notification badges. DB tables: `enterprise_accounts`, `enterprise_saved_templates`, `enterprise_sub_accounts`, `enterprise_notifications`.
-*   **LINE Integration:** Utilizes `@line/bot-sdk` for sending dispatch notifications to drivers via Flex Messages and handling postback actions via webhooks. An AI chatbot offers guided customer service.
+*   **Admin Panel:** Offers 11 core tabs including Order Dispatch, Driver/Customer Management, Reporting, Vehicle Type Database, Smart Scheduling, Heat Maps, Fleet Maps, Carpool Panel, AI Analysis (forecasting, auto-dispatch, dynamic pricing), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, Vehicle Cost Calculator, and comprehensive Permission Management.
+*   **Permission Management:** Role-based access control with customizable permissions and audit logging.
+*   **Multi-Stop Delivery:** Supports up to 5 additional delivery stops.
+*   **Order Editing:** Administrators can fully edit existing orders with real-time synchronization.
+*   **Carpool Panel:** Groups pending orders, calculates AI compatibility, and manages driver assignments.
+*   **Outsourcing System:** Manages partner fleets, automates order distribution, and calculates profit margins.
+*   **Fleet Onboarding System:** Comprehensive system for fleet company registration and management, including status workflows, risk scoring, vehicle registries, ratings, and complaint tracking.
+*   **E-Invoice Management:** Manages electronic invoices with generation, voiding, bulk monthly billing, and status tracking.
+*   **Payment Methods & Cash Management:** Supports various payment methods (cash, LINE Pay, credit card, bank transfer, monthly accounts), handles payment reminders, cash reporting, and monthly statement generation for enterprises.
+*   **Order Bidding/Price Comparison:** Allows fleets to bid on orders, with features for opening bids, submitting, accepting, and tracking.
+*   **Driver Income Dashboard:** Provides drivers with a dashboard to track earnings, settlements, and performance metrics, including a BonusProgress widget showing monthly KPI achievement and bonus tier progress.
+*   **Performance Audit & Bonus System:** KPI tracking and incentive management for both drivers and fleet companies. DB tables: `performance_targets` (configurable KPI targets), `bonus_rules` (4-tier bronze/silver/gold/platinum bonus levels), `performance_bonuses` (bonus records: pending→approved→paid), `audit_violations` (minor/major/critical violations with penalty/appeal/resolve flow). Admin tab "績效稽核" with 5 inner tabs: 司機稽核 (driver KPI vs targets, expandable, violation logging), 車隊稽核 (fleet KPI audit), 獎金管理 (approve/pay bonuses), 違規記錄 (resolve/waive violations), 規則設定 (edit KPI targets and bonus tiers). Driver portal: BonusProgress panel in DriverIncome showing achievement %, KPI cards, tier milestones, and historical bonus list.
+*   **Auto-dispatch Engine:** Automatically assigns orders to available drivers based on `pricing_config`, triggers notifications, and updates order statuses.
+*   **System Config Management:** An admin UI to manage system-wide settings, including auto-dispatch, payment policies, dispatch scoring weights, rates, and peak hour settings.
+*   **Admin Dashboard Charts:** Enhances the admin home page with Recharts for displaying order trends, driver status, and monthly order breakdowns.
+*   **Driver Rating System:** Allows customers to rate drivers after order completion, influencing dispatch quality metrics.
+*   **Customer Notification Center:** Provides a centralized system for customer notifications regarding order status updates.
+*   **Enterprise Customer Portal:** A dedicated portal for enterprise clients with features like dual-tab login, in-portal ordering with custom pricing, reorder functionality, order modification/cancellation, monthly reconciliation exports, and sub-account management.
+*   **LINE Integration:** Uses `@line/bot-sdk` for driver dispatch notifications and an AI-powered customer service chatbot.
 
 # External Dependencies
 
@@ -73,8 +62,8 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Validation:** Zod, drizzle-zod
 *   **API Codegen:** Orval
 *   **Auth Library:** `jsonwebtoken`
-*   **SMS Service:** Every8D (for SMS OTP)
+*   **SMS Service:** Every8D
 *   **LINE Messaging API:** `@line/bot-sdk`
-*   **Mapping/Location Services:** Google Maps API (for address autocomplete and location data)
+*   **Mapping/Location Services:** Google Maps API
 *   **Frontend Libraries:** React, Vite, React Query, wouter
 *   **Data Manipulation/Utility:** `exceljs`, `date-fns`, `lucide-react`
