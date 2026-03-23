@@ -9,8 +9,8 @@ import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-reac
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLocalStorage } from "@/hooks/use-mobile";
 import { useDriversData } from "@/hooks/use-drivers";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -29,9 +29,9 @@ export default function DriverGrab() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedId] = useLocalStorage<number | null>("driver-session-id", null);
+  const { user } = useAuth();
   const { data: drivers } = useDriversData();
-  const selectedDriver = drivers?.find(d => d.id === selectedId);
+  const selectedDriver = drivers?.find(d => d.id === user?.id);
   const [grabbingId, setGrabbingId] = useState<number | null>(null);
 
   const { data: orders, isLoading, refetch, isFetching } = useListOrders(
@@ -43,7 +43,7 @@ export default function DriverGrab() {
     .filter(o => o.status === "pending" && o.driverId == null)
     .sort((a, b) => getPickupTimestamp(a) - getPickupTimestamp(b));
 
-  if (!selectedId) {
+  if (!user?.id) {
     return (
       <div className="text-center py-16">
         <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -61,13 +61,13 @@ export default function DriverGrab() {
   }
 
   const handleGrab = async (orderId: number) => {
-    if (!selectedId || grabbingId != null) return;
+    if (!user?.id || grabbingId != null) return;
     setGrabbingId(orderId);
     try {
       const res = await fetch(`${BASE_URL}/api/orders/${orderId}/grab`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId: selectedId }),
+        body: JSON.stringify({ driverId: user.id }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

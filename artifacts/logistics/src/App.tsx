@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { CustomerLayout } from "@/components/CustomerLayout";
 import { DriverLayout } from "@/components/DriverLayout";
 import { GlobalHeader } from "@/components/GlobalHeader";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import OrderForm from "@/pages/OrderForm";
@@ -22,6 +23,10 @@ import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
 import DriverGrab from "@/pages/driver/DriverGrab";
 import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
 import LoginPortal from "@/pages/LoginPortal";
+import CustomerLogin from "@/pages/login/CustomerLogin";
+import DriverLogin from "@/pages/login/DriverLogin";
+import AdminLogin from "@/pages/login/AdminLogin";
+import LineCallback from "@/pages/login/LineCallback";
 import AIChat from "@/pages/AIChat";
 
 const queryClient = new QueryClient({
@@ -33,9 +38,17 @@ const queryClient = new QueryClient({
   },
 });
 
+function RequireAuth({ role, children }: { role: "customer" | "driver" | "admin"; children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!user || user.role !== role) {
+    return <Redirect to={`/login/${role}`} />;
+  }
+  return <>{children}</>;
+}
+
 function CustomerPortal() {
   return (
-    <>
+    <RequireAuth role="customer">
       <GlobalHeader />
       <div className="h-dvh overflow-hidden pt-20">
         <CustomerLayout>
@@ -47,13 +60,13 @@ function CustomerPortal() {
           </Switch>
         </CustomerLayout>
       </div>
-    </>
+    </RequireAuth>
   );
 }
 
 function DriverPortal() {
   return (
-    <>
+    <RequireAuth role="driver">
       <GlobalHeader />
       <div className="h-dvh overflow-hidden pt-20">
         <DriverLayout>
@@ -66,13 +79,13 @@ function DriverPortal() {
           </Switch>
         </DriverLayout>
       </div>
-    </>
+    </RequireAuth>
   );
 }
 
 function AdminPortal() {
   return (
-    <>
+    <RequireAuth role="admin">
       <GlobalHeader />
       <div className="h-dvh overflow-hidden pt-20">
         <AppLayout>
@@ -87,7 +100,7 @@ function AdminPortal() {
           </Switch>
         </AppLayout>
       </div>
-    </>
+    </RequireAuth>
   );
 }
 
@@ -99,6 +112,18 @@ function AppRouter() {
   }
   if (location === "/login") {
     return <div className="h-dvh overflow-y-auto"><LoginPortal /></div>;
+  }
+  if (location === "/login/customer") {
+    return <CustomerLogin />;
+  }
+  if (location === "/login/driver") {
+    return <DriverLogin />;
+  }
+  if (location === "/login/admin") {
+    return <AdminLogin />;
+  }
+  if (location === "/login/callback") {
+    return <LineCallback />;
   }
   if (location === "/chat") {
     return <AIChat />;
@@ -112,18 +137,27 @@ function AppRouter() {
   if (location.startsWith("/enterprise")) {
     return <EnterprisePortal />;
   }
+  if (
+    location.startsWith("/admin") ||
+    location.startsWith("/order") ||
+    location.startsWith("/fees")
+  ) {
+    return <AdminPortal />;
+  }
   return <AdminPortal />;
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppRouter />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AppRouter />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

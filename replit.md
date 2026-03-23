@@ -110,6 +110,35 @@ A logistics dispatch management system with:
 - Features: Credit limit display, discount %, priority dispatch badge, CSV export, 1-click reorder templates
 - Test account: DEMO001 / demo1234 (月結, NT$50k 額度, 5% 折扣, 優先派車)
 
+### JWT Auth System (身份驗證)
+- **JWT library**: `jsonwebtoken`; secret via `JWT_SECRET` env var
+- **Tokens**: stored in `localStorage` under keys `auth-jwt` and `auth-user`
+- **Payload**: `{ sub, role, id, name, phone?, username? }`
+- **Roles**: `customer`, `driver`, `admin`
+- **Backend routes** (`artifacts/api-server/src/routes/auth.ts`):
+  - `POST /api/auth/send-otp` — sends SMS OTP (Every8D: `EVERY8D_USER`, `EVERY8D_PASS`); dev mode returns `devOtp`
+  - `POST /api/auth/login/customer` — verifies OTP, returns JWT
+  - `POST /api/auth/login/driver` — username/password, returns JWT
+  - `POST /api/auth/login/admin` — username/password (SHA-256+salt hash), returns JWT
+  - `GET /api/auth/me` — verifies JWT, returns user info
+  - `GET /api/auth/line/url` — returns LINE OAuth URL (requires `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `APP_BASE_URL`)
+  - `GET /api/auth/line/callback` — exchanges LINE code for JWT
+- **DB Tables**: `otps` (SMS OTP records), `line_accounts` (LINE user ↔ customer link)
+- **Frontend** (`artifacts/logistics/src/contexts/AuthContext.tsx`): `AuthProvider` wraps app; `useAuth()` returns `{ user, token, login, logout }`
+
+### Login Portals
+- `/login` — Role selector (LoginPortal.tsx): 一般客戶, 司機, 公司後台, 企業客戶
+- `/login/customer` — CustomerLogin.tsx: step 1 phone+OTP, step 2 verify; LINE Login button (if configured)
+- `/login/driver` — DriverLogin.tsx: username+password
+- `/login/admin` — AdminLogin.tsx: username+password; shows default `admin / admin123`
+- `/login/callback` — LineCallback.tsx: handles LINE OAuth redirect
+
+### Route Guards
+- `App.tsx` uses `RequireAuth` component: unauthenticated users are redirected to `/login/{role}`
+- `/customer/*` — requires `role=customer`
+- `/driver/*` — requires `role=driver`
+- `/admin`, `/order-form`, `/orders`, `/fees` — requires `role=admin`
+
 ### DB Tables
 - `orders` — Full order lifecycle with cargo dimensions + region
 - `drivers` — Driver profiles with LINE user ID
@@ -117,12 +146,21 @@ A logistics dispatch management system with:
 - `vehicle_types` — Vehicle spec database
 - `enterprise_accounts` — Enterprise company accounts (billing, credit, discounts)
 - `enterprise_saved_templates` — Saved quick-order templates per enterprise
+- `otps` — SMS OTP records (phone, code, expiry, used flag)
+- `line_accounts` — LINE user ID ↔ customer ID mapping
+- `admin_roles`, `admin_users` — Role-based backend access control
+- `audit_logs`, `custom_fields` — Audit trail and custom form fields
 
 ### Routes
-- `/` — Customer order form (客戶下單)
-- `/orders` — Order list (訂單列表)
-- `/orders/:id` — Order detail
-- `/admin` — Admin panel (後台管理)
+- `/` — Landing page
+- `/login` — Role selector
+- `/login/customer` — Customer SMS OTP login
+- `/login/driver` — Driver username/password login
+- `/login/admin` — Admin username/password login
+- `/customer` — Customer home (authenticated)
+- `/driver` — Driver home (authenticated)
+- `/orders` — Order list (admin, authenticated)
+- `/admin` — Admin panel (authenticated)
 
 ### API Endpoints
 - `GET /api/orders` — List orders (filter by status)

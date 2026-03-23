@@ -5,8 +5,8 @@ import { useListOrders } from "@workspace/api-client-react";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLocalStorage } from "@/hooks/use-mobile";
 import { useDriversData } from "@/hooks/use-drivers";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 
 type Tab = "active" | "done";
@@ -21,16 +21,16 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function DriverTasks() {
   const [tab, setTab] = useState<Tab>("active");
-  const [selectedId] = useLocalStorage<number | null>("driver-session-id", null);
+  const { user } = useAuth();
   const { data: drivers } = useDriversData();
-  const selectedDriver = drivers?.find(d => d.id === selectedId);
+  const selectedDriver = drivers?.find(d => d.id === user?.id);
 
   const { data: orders, isLoading } = useListOrders(
-    selectedId ? { driverId: selectedId } : undefined,
-    { query: { enabled: !!selectedId, refetchInterval: 20000 } }
+    user?.id ? { driverId: user.id } : undefined,
+    { query: { enabled: !!user?.id, refetchInterval: 20000 } }
   );
 
-  if (!selectedId) {
+  if (!user?.id) {
     return (
       <div className="text-center py-16">
         <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">

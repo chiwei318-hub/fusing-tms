@@ -12,6 +12,7 @@ import { pricingRouter } from "./pricing";
 import paymentsRouter from "./payments";
 import permissionsRouter from "./permissions";
 import aiChatRouter from "./aiChat";
+import authRouter from "./auth";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -31,5 +32,6 @@ router.use("/orders", pricingRouter);
 router.use(paymentsRouter);
 router.use(permissionsRouter);
 router.use(aiChatRouter);
+router.use(authRouter);
 
 export default router;

@@ -1,215 +1,12 @@
-import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import {
   Package, Search, ArrowRight, Truck, Clock, CheckCircle, Phone,
-  User, LogOut, Star, Shield, Zap, MessageSquare, RotateCcw, KeyRound,
+  LogOut, Star, Shield, Zap,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useLocalStorage } from "@/hooks/use-mobile";
-import { useToast } from "@/hooks/use-toast";
-
-const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
-
-interface CustomerSession {
-  id: number;
-  name: string;
-  phone: string;
-  username: string | null;
-}
-
-const RESEND_COOLDOWN = 60;
-
-function OtpLoginForm({ onLogin }: { onLogin: (s: CustomerSession) => void }) {
-  const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [cooldown, setCooldown] = useState(0);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
-  const otpInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setInterval(() => setCooldown(c => Math.max(0, c - 1)), 1000);
-    return () => clearInterval(t);
-  }, [cooldown]);
-
-  const sendOtp = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/api/customers/send-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "發送失敗");
-        return;
-      }
-      setStep("otp");
-      setCooldown(RESEND_COOLDOWN);
-      setDevOtp(data.devOtp ?? null);
-      toast({ title: "驗證碼已發送", description: `已發送至 ${phone}` });
-      setTimeout(() => otpInputRef.current?.focus(), 100);
-    } catch {
-      setError("網路錯誤，請稍後再試");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/api/customers/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "驗證失敗");
-        return;
-      }
-      onLogin(data);
-      toast({ title: `歡迎回來，${data.name}！` });
-    } catch {
-      setError("網路錯誤，請稍後再試");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendOtp();
-  };
-
-  const handleOtpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    verifyOtp();
-  };
-
-  return (
-    <Card className="border bg-white shadow-sm">
-      <CardContent className="p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="bg-primary/10 p-2 rounded-lg">
-            {step === "phone" ? (
-              <Phone className="w-4 h-4 text-primary" />
-            ) : (
-              <KeyRound className="w-4 h-4 text-primary" />
-            )}
-          </div>
-          <div>
-            <p className="font-bold text-sm">
-              {step === "phone" ? "客戶登入" : "輸入驗證碼"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {step === "phone"
-                ? "以手機簡訊驗證身份登入"
-                : `驗證碼已發送至 ${phone}`}
-            </p>
-          </div>
-          {step === "otp" && (
-            <button
-              className="ml-auto text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() => { setStep("phone"); setOtp(""); setError(""); setDevOtp(null); }}
-            >
-              <RotateCcw className="w-3 h-3" /> 換號碼
-            </button>
-          )}
-        </div>
-
-        {step === "phone" ? (
-          <form onSubmit={handlePhoneSubmit} className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">手機號碼</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="tel"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="0912345678"
-                  className="h-11 pl-9"
-                  inputMode="numeric"
-                  required
-                />
-              </div>
-            </div>
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
-            )}
-            <Button type="submit" className="w-full h-11 gap-2" disabled={loading || !phone.trim()}>
-              <MessageSquare className="w-4 h-4" />
-              {loading ? "發送中..." : "發送驗證碼"}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              尚無帳號？請聯絡客服{" "}
-              <a href="tel:0800000000" className="text-primary underline">申請帳號</a>
-            </p>
-            <p className="text-center text-xs text-muted-foreground pt-1 border-t">
-              企業客戶？<Link href="/login" className="text-primary underline">切換登入身份</Link>
-            </p>
-          </form>
-        ) : (
-          <form onSubmit={handleOtpSubmit} className="space-y-3">
-            {devOtp && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
-                <span className="font-bold">測試模式：</span> 驗證碼為 <span className="font-mono font-bold text-base tracking-widest">{devOtp}</span>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">6位數驗證碼</label>
-              <Input
-                ref={otpInputRef}
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
-                placeholder="_ _ _ _ _ _"
-                className="h-14 text-center text-2xl font-mono tracking-[0.5em] font-bold"
-                required
-              />
-              <p className="text-xs text-muted-foreground mt-1 text-center">驗證碼 5 分鐘內有效</p>
-            </div>
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
-            )}
-            <Button
-              type="submit"
-              className="w-full h-11"
-              disabled={loading || otp.length !== 6}
-            >
-              {loading ? "驗證中..." : "驗證並登入"}
-            </Button>
-            <button
-              type="button"
-              onClick={sendOtp}
-              disabled={cooldown > 0 || loading}
-              className="w-full text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors py-1"
-            >
-              {cooldown > 0 ? `重新發送（${cooldown}s）` : "重新發送驗證碼"}
-            </button>
-          </form>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CustomerHome() {
-  const [session, setSession] = useLocalStorage<CustomerSession | null>("customer-session", null);
-  const handleLogout = () => setSession(null);
+  const { user, logout } = useAuth();
 
   return (
     <div className="space-y-5">
@@ -222,40 +19,30 @@ export default function CustomerHome() {
             <Truck className="w-5 h-5 text-orange-400" />
             <span className="text-orange-300 text-xs font-semibold uppercase tracking-wide">富詠運輸</span>
           </div>
-          {session ? (
-            <>
-              <p className="text-blue-200 text-sm">親愛的</p>
-              <h1 className="text-2xl font-black leading-tight">{session.name} 您好 👋</h1>
-              <p className="text-blue-200 text-sm mt-1">歡迎使用富詠運輸物流平台</p>
-            </>
-          ) : (
-            <>
-              <h1 className="text-2xl font-black leading-tight">快速、安全<br />的物流服務</h1>
-              <p className="text-blue-200 text-sm mt-2">24小時全台配送，準時到達</p>
-            </>
-          )}
+          <p className="text-blue-200 text-sm">親愛的</p>
+          <h1 className="text-2xl font-black leading-tight">{user?.name ?? ""} 您好 👋</h1>
+          <p className="text-blue-200 text-sm mt-1">歡迎使用富詠運輸物流平台</p>
         </div>
       </div>
 
-      {/* Login card or greeting */}
-      {session ? (
-        <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center font-black text-primary">
-              {session.name.charAt(0)}
-            </div>
-            <div>
-              <p className="font-bold text-sm">{session.name}</p>
-              <p className="text-xs text-muted-foreground">{session.phone}</p>
-            </div>
+      {/* User card */}
+      <div className="flex items-center justify-between bg-white border rounded-xl px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center font-black text-primary">
+            {(user?.name ?? "?").charAt(0)}
           </div>
-          <button onClick={handleLogout} className="text-xs text-muted-foreground flex items-center gap-1 hover:text-destructive transition-colors">
-            <LogOut className="w-3.5 h-3.5" /> 登出
-          </button>
+          <div>
+            <p className="font-bold text-sm">{user?.name}</p>
+            <p className="text-xs text-muted-foreground">{user?.phone}</p>
+          </div>
         </div>
-      ) : (
-        <OtpLoginForm onLogin={setSession} />
-      )}
+        <button
+          onClick={logout}
+          className="text-xs text-muted-foreground flex items-center gap-1 hover:text-destructive transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" /> 登出
+        </button>
+      </div>
 
       {/* Main CTAs */}
       <div className="space-y-3">
