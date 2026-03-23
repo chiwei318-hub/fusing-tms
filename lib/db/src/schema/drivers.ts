@@ -23,6 +23,10 @@ export const driversTable = pgTable("drivers", {
   vehicleYear: integer("vehicle_year"),
   vehicleTonnage: text("vehicle_tonnage"),
   vehicleBodyType: text("vehicle_body_type"),
+  bankName: text("bank_name"),
+  bankBranch: text("bank_branch"),
+  bankAccount: text("bank_account"),
+  bankAccountName: text("bank_account_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

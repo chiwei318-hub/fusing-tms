@@ -37,6 +37,10 @@ router.post("/drivers", async (req, res) => {
         driverType: body.driverType ?? null,
         username: body.username ?? null,
         password: body.password ?? null,
+        bankName: (body as any).bankName ?? null,
+        bankBranch: (body as any).bankBranch ?? null,
+        bankAccount: (body as any).bankAccount ?? null,
+        bankAccountName: (body as any).bankAccountName ?? null,
         status: "available",
       })
       .returning();
@@ -74,6 +78,10 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("vehicleYear" in body) updates.vehicleYear = (body as any).vehicleYear ?? null;
     if ("vehicleTonnage" in body) updates.vehicleTonnage = (body as any).vehicleTonnage ?? null;
     if ("vehicleBodyType" in body) updates.vehicleBodyType = (body as any).vehicleBodyType ?? null;
+    if ("bankName" in body) updates.bankName = (body as any).bankName ?? null;
+    if ("bankBranch" in body) updates.bankBranch = (body as any).bankBranch ?? null;
+    if ("bankAccount" in body) updates.bankAccount = (body as any).bankAccount ?? null;
+    if ("bankAccountName" in body) updates.bankAccountName = (body as any).bankAccountName ?? null;
 
     const [driver] = await db
       .update(driversTable)
