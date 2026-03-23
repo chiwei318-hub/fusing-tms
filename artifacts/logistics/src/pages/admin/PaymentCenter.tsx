@@ -5,6 +5,8 @@ import {
   CreditCard, Banknote, Smartphone, Building2, CheckCircle2,
   AlertCircle, Clock, Search, Plus, Download, Printer, X,
   Bell, ReceiptText, TrendingUp, DollarSign, FileText, BarChart2,
+  Zap, Lock, Check, Send, CalendarDays, RefreshCw, Link2,
+  Ban, AlertTriangle, Truck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -962,6 +964,598 @@ function AllPaymentsTab() {
   );
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// 即時付款管理 (LINE Pay / 信用卡 / 轉帳)
+// ──────────────────────────────────────────────────────────────────────
+const INSTANT_METHODS = ["line_pay", "credit_card", "bank_transfer"];
+const INSTANT_LABELS: Record<string, string> = { line_pay: "LINE Pay", credit_card: "信用卡", bank_transfer: "銀行轉帳" };
+const INSTANT_ICONS: Record<string, any> = { line_pay: Smartphone, credit_card: CreditCard, bank_transfer: Building2 };
+
+function InstantPaymentTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [setMethodOrder, setSetMethodOrder] = useState<any | null>(null);
+  const [newMethod, setNewMethod] = useState("line_pay");
+
+  const { data: stats } = useQuery({
+    queryKey: ["payment-stats-method"],
+    queryFn: () => fetch("/api/payments/stats-by-method").then(r => r.json()),
+    refetchInterval: 20000,
+  });
+  const { data: orders = [], isLoading } = useQuery<any[]>({
+    queryKey: ["instant-payment-orders"],
+    queryFn: async () => {
+      const r = await fetch("/api/orders");
+      const all = await r.json();
+      return all.filter((o: any) => INSTANT_METHODS.includes(o.paymentMethod ?? o.payment_method) || o.dispatchBlocked || o.dispatch_blocked);
+    },
+    refetchInterval: 15000,
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: (id: number) => fetch(`/api/orders/${id}/confirm-payment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gateway: "manual" }) }).then(r => r.json()),
+    onSuccess: () => { toast({ title: "✅ 付款已確認，派車解鎖" }); qc.invalidateQueries({ queryKey: ["instant-payment-orders"] }); },
+  });
+
+  const genLinkMut = useMutation({
+    mutationFn: (id: number) => fetch(`/api/orders/${id}/generate-payment-link`, { method: "POST" }).then(r => r.json()),
+    onSuccess: (data) => { toast({ title: "付款連結已產生", description: data.paymentLink }); qc.invalidateQueries({ queryKey: ["instant-payment-orders"] }); },
+  });
+
+  const setMethodMut = useMutation({
+    mutationFn: ({ id, method }: { id: number; method: string }) =>
+      fetch(`/api/orders/${id}/payment-method`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paymentMethod: method }) }).then(r => r.json()),
+    onSuccess: (data) => {
+      toast({ title: `付款方式已設定`, description: data.blockDispatch ? "⚠️ 未付款前派車已鎖定" : "派車未鎖定" });
+      qc.invalidateQueries({ queryKey: ["instant-payment-orders"] });
+      setSetMethodOrder(null);
+    },
+  });
+
+  const blocked = orders.filter((o: any) => o.dispatch_blocked || o.dispatchBlocked);
+  const pending = orders.filter((o: any) => !(o.dispatch_blocked || o.dispatchBlocked) && o.fee_status !== "paid");
+  const paid = orders.filter((o: any) => o.fee_status === "paid");
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          { label: "派車鎖定中", value: stats?.dispatch_blocked ?? blocked.length, color: "text-red-600", bg: "bg-red-50 border-red-200", icon: Lock },
+          { label: "待付款", value: (stats?.instant_unpaid ?? pending.length), color: "text-orange-600", bg: "bg-orange-50 border-orange-200", icon: Clock },
+          { label: "已付款", value: paid.length, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", icon: Check },
+          { label: "LINE Pay訂單", value: orders.filter((o: any) => (o.payment_method ?? o.paymentMethod) === "line_pay").length, color: "text-green-600", bg: "bg-green-50 border-green-200", icon: Smartphone },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <s.icon className={`w-4 h-4 ${s.color}`} />
+              <span className="text-xs text-muted-foreground">{s.label}</span>
+            </div>
+            <p className={`text-2xl font-black ${s.color}`}>{s.value ?? 0}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Blocked orders alert */}
+      {blocked.length > 0 && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <Lock className="w-4 h-4 text-red-600 shrink-0" />
+          <p className="text-sm text-red-700 font-bold">{blocked.length} 筆訂單因未付款已鎖定派車，請確認付款後解鎖</p>
+        </div>
+      )}
+
+      {/* Order list */}
+      {isLoading ? <div className="text-center py-8 text-muted-foreground">載入中...</div> : (
+        <div className="space-y-2">
+          {orders.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <Zap className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">暫無即時付款訂單</p>
+            </div>
+          ) : orders.map((o: any) => {
+            const method = o.payment_method ?? o.paymentMethod ?? "cash";
+            const Icon = INSTANT_ICONS[method] ?? Banknote;
+            const isBlocked = o.dispatch_blocked ?? o.dispatchBlocked;
+            const isPaid = o.fee_status === "paid";
+            return (
+              <div key={o.id} className={`bg-card rounded-xl border p-3 flex items-center gap-3 flex-wrap ${isBlocked ? "border-red-300 bg-red-50/30" : ""}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono font-bold text-sm">#{o.id}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                      isBlocked ? "bg-red-100 text-red-700" : isPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
+                    }`}>
+                      {isBlocked ? <><Lock className="w-3 h-3" /> 派車鎖定</> : isPaid ? <><Check className="w-3 h-3" /> 已付款</> : <><Clock className="w-3 h-3" /> 待付款</>}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${
+                      method === "line_pay" ? "bg-green-100 text-green-700" : method === "credit_card" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"
+                    }`}>
+                      <Icon className="w-3 h-3" /> {INSTANT_LABELS[method] ?? method}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium truncate">{o.customerName ?? o.customer_name}</p>
+                  <p className="text-xs text-muted-foreground">{o.pickupAddress ?? o.pickup_address} → {o.deliveryAddress ?? o.delivery_address}</p>
+                  {(o.paymentLink ?? o.payment_link) && (
+                    <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                      <Link2 className="w-3 h-3" />
+                      <span className="truncate max-w-[260px]">{o.paymentLink ?? o.payment_link}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-black text-base">{o.totalFee != null ? nt(o.totalFee) : o.total_fee != null ? nt(o.total_fee) : "未報價"}</p>
+                  <div className="flex gap-1 mt-1 justify-end flex-wrap">
+                    {!isPaid && (
+                      <Button size="sm" className="h-7 text-xs px-2 bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => confirmMut.mutate(o.id)} disabled={confirmMut.isPending}>
+                        <Check className="w-3 h-3 mr-1" /> 確認付款
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" className="h-7 text-xs px-2"
+                      onClick={() => genLinkMut.mutate(o.id)} disabled={genLinkMut.isPending}>
+                      <Link2 className="w-3 h-3 mr-1" /> 產生連結
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Set payment method dialog */}
+      {setMethodOrder && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold mb-4">設定付款方式 — 訂單 #{setMethodOrder.id}</h3>
+            <div className="grid grid-cols-1 gap-2 mb-4">
+              {[...INSTANT_METHODS, "cash", "monthly"].map(m => {
+                const Icon = INSTANT_ICONS[m] ?? Banknote;
+                return (
+                  <label key={m} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer ${newMethod === m ? "border-blue-500 bg-blue-50" : ""}`}>
+                    <input type="radio" name="pm" value={m} checked={newMethod === m} onChange={() => setNewMethod(m)} />
+                    <Icon className="w-4 h-4" />
+                    <div>
+                      <p className="font-bold text-sm">{METHOD_LABELS[m] ?? m}</p>
+                      {INSTANT_METHODS.includes(m) && <p className="text-xs text-orange-600">未付款將鎖定派車</p>}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setSetMethodOrder(null)} className="flex-1">取消</Button>
+              <Button onClick={() => setMethodMut.mutate({ id: setMethodOrder.id, method: newMethod })} className="flex-1 bg-blue-600">確認</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 現金管理：司機回報 → 管理員確認
+// ──────────────────────────────────────────────────────────────────────
+function CashManagementTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: pending = [], isLoading } = useQuery<any[]>({
+    queryKey: ["cash-pending"],
+    queryFn: () => fetch("/api/payments/cash-pending").then(r => r.json()),
+    refetchInterval: 15000,
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: (id: number) => fetch(`/api/orders/${id}/confirm-cash`, { method: "POST" }).then(r => r.json()),
+    onSuccess: () => { toast({ title: "✅ 現金已確認收訖" }); qc.invalidateQueries({ queryKey: ["cash-pending"] }); },
+  });
+
+  // Also show cash orders that haven't been reported yet (in_transit)
+  const { data: unreported = [] } = useQuery<any[]>({
+    queryKey: ["cash-unreported"],
+    queryFn: async () => {
+      const r = await fetch("/api/orders");
+      const all = await r.json();
+      return all.filter((o: any) =>
+        (o.payment_method ?? o.paymentMethod) === "cash" &&
+        ["in_transit", "delivered"].includes(o.status) &&
+        !o.cash_reported_at &&
+        o.fee_status !== "paid"
+      );
+    },
+    refetchInterval: 20000,
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+          <p className="text-2xl font-black text-orange-600">{pending.length}</p>
+          <p className="text-xs text-muted-foreground">待確認現金</p>
+        </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-center">
+          <p className="text-2xl font-black text-yellow-600">{unreported.length}</p>
+          <p className="text-xs text-muted-foreground">司機未回報</p>
+        </div>
+      </div>
+
+      {/* Pending confirmation */}
+      <div>
+        <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+          <Banknote className="w-4 h-4 text-emerald-600" /> 待確認現金收款（{pending.length}）
+        </h3>
+        {isLoading ? <div className="text-xs text-muted-foreground py-4 text-center">載入中...</div>
+          : pending.length === 0 ? <p className="text-xs text-muted-foreground py-4 text-center">目前無待確認現金</p>
+          : (
+          <div className="space-y-2">
+            {pending.map((o: any) => (
+              <div key={o.id} className="bg-card rounded-xl border p-3 flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold">#{o.id}</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">司機已回報</span>
+                  </div>
+                  <p className="text-sm font-medium">{o.customer_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    司機：{o.driver_name ?? "—"} · 回報時間：{o.cash_reported_at ? format(new Date(o.cash_reported_at), "MM/dd HH:mm") : "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">回報人：{o.cash_reported_by ?? "—"}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-black text-base text-emerald-700">{nt(o.total_fee ?? 0)}</p>
+                  <Button size="sm" className="mt-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
+                    onClick={() => confirmMut.mutate(o.id)} disabled={confirmMut.isPending}>
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> 確認收到
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Unreported */}
+      {unreported.length > 0 && (
+        <div>
+          <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-yellow-600" /> 配送中/已送達但未回報現金（{unreported.length}）
+          </h3>
+          <div className="space-y-2">
+            {unreported.map((o: any) => (
+              <div key={o.id} className="bg-card rounded-xl border border-yellow-200 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm">#{o.id}</span>
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Truck className="w-3 h-3" /> {o.status === "in_transit" ? "配送中" : "已送達"}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium">{o.customerName ?? o.customer_name}</p>
+                  <p className="text-xs text-muted-foreground">司機：{o.driverName ?? o.driver_name ?? "未指派"}</p>
+                </div>
+                <p className="font-black text-orange-700">{nt(o.totalFee ?? o.total_fee ?? 0)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 月結管理
+// ──────────────────────────────────────────────────────────────────────
+const STMT_STATUS: Record<string, { label: string; color: string }> = {
+  draft:    { label: "草稿", color: "bg-gray-100 text-gray-600" },
+  sent:     { label: "已寄出", color: "bg-blue-100 text-blue-700" },
+  paid:     { label: "已付款", color: "bg-emerald-100 text-emerald-700" },
+  overdue:  { label: "逾期", color: "bg-red-100 text-red-700" },
+  disputed: { label: "爭議中", color: "bg-orange-100 text-orange-700" },
+};
+
+function MonthlyStatementTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const now = new Date();
+  const [genYear, setGenYear] = useState(String(now.getFullYear()));
+  const [genMonth, setGenMonth] = useState(String(now.getMonth() === 0 ? 12 : now.getMonth()));
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const { data: stmts = [], isLoading } = useQuery<any[]>({
+    queryKey: ["monthly-stmts", statusFilter],
+    queryFn: () => fetch(`/api/monthly-statements${statusFilter ? `?status=${statusFilter}` : ""}`).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  const genMut = useMutation({
+    mutationFn: () => fetch("/api/monthly-statements/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year: Number(genYear), month: Number(genMonth) }),
+    }).then(r => r.json()),
+    onSuccess: (d) => {
+      toast({ title: "✅ 月結帳單已產生", description: `${d.orderCount} 筆訂單，共 NT$${Math.round(d.statement?.total_amount ?? 0).toLocaleString()}` });
+      qc.invalidateQueries({ queryKey: ["monthly-stmts"] });
+    },
+    onError: () => toast({ title: "產生失敗", variant: "destructive" }),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status, note }: { id: number; status: string; note?: string }) =>
+      fetch(`/api/monthly-statements/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, paymentNote: note }),
+      }).then(r => r.json()),
+    onSuccess: () => { toast({ title: "狀態已更新" }); qc.invalidateQueries({ queryKey: ["monthly-stmts"] }); },
+  });
+
+  const totalUnpaid = stmts.filter(s => s.status !== "paid").reduce((a, s) => a + (s.total_amount ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+          <p className="text-xl font-black text-blue-600">{stmts.length}</p>
+          <p className="text-xs text-muted-foreground">帳單總數</p>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+          <p className="text-xl font-black text-red-600">{stmts.filter(s => s.status !== "paid").length}</p>
+          <p className="text-xs text-muted-foreground">未收款帳單</p>
+        </div>
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+          <p className="text-xl font-black text-orange-600">{nt(totalUnpaid)}</p>
+          <p className="text-xs text-muted-foreground">應收款合計</p>
+        </div>
+      </div>
+
+      {/* Generate */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-blue-600" /> 產生月結帳單
+        </h3>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div>
+            <Label className="text-xs">年份</Label>
+            <select className="mt-1 w-24 border rounded-lg px-2 py-1.5 text-sm bg-background"
+              value={genYear} onChange={e => setGenYear(e.target.value)}>
+              {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <option key={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label className="text-xs">月份</Label>
+            <select className="mt-1 w-20 border rounded-lg px-2 py-1.5 text-sm bg-background"
+              value={genMonth} onChange={e => setGenMonth(e.target.value)}>
+              {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1}月</option>)}
+            </select>
+          </div>
+          <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}
+            className="bg-blue-600 hover:bg-blue-700">
+            {genMut.isPending ? "產生中..." : "產生帳單"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">自動彙整所選期間、付款方式為「月結」的所有訂單，含 5% 稅金</p>
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-1 flex-wrap">
+        {[{v:"",l:"全部"}, ...Object.entries(STMT_STATUS).map(([v,c]) => ({v, l: c.label}))].map(f => (
+          <button key={f.v} onClick={() => setStatusFilter(f.v)}
+            className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${statusFilter===f.v ? "bg-blue-600 text-white border-blue-600" : "hover:bg-muted"}`}>
+            {f.l}
+          </button>
+        ))}
+      </div>
+
+      {/* Statement list */}
+      {isLoading ? <div className="py-8 text-center text-muted-foreground">載入中...</div>
+        : stmts.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground">
+            <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">尚無月結帳單</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {stmts.map((s: any) => {
+              const sc = STMT_STATUS[s.status] ?? STMT_STATUS.draft;
+              return (
+                <div key={s.id} className="bg-card rounded-xl border p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <p className="font-bold text-sm">{s.period_year}年{s.period_month}月</p>
+                      <p className="text-xs text-muted-foreground">{s.customer_label ?? "全部客戶"} · {s.order_count}筆訂單</p>
+                      {s.due_date && <p className="text-xs text-muted-foreground">應付日期：{s.due_date}</p>}
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${sc.color}`}>{sc.label}</span>
+                      <p className="font-black text-lg mt-1">{nt(s.total_amount ?? 0)}</p>
+                      <p className="text-xs text-muted-foreground">含稅 {nt(s.tax_amount ?? 0)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    {s.status === "draft" && (
+                      <button onClick={() => statusMut.mutate({ id: s.id, status: "sent" })}
+                        className="text-xs px-2 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1">
+                        <Send className="w-3 h-3" /> 標記已寄出
+                      </button>
+                    )}
+                    {["sent","overdue"].includes(s.status) && (
+                      <button onClick={() => {
+                        const note = prompt("付款備注（可選）");
+                        statusMut.mutate({ id: s.id, status: "paid", note: note ?? undefined });
+                      }}
+                        className="text-xs px-2 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> 標記已收款
+                      </button>
+                    )}
+                    {s.status === "sent" && (
+                      <button onClick={() => statusMut.mutate({ id: s.id, status: "overdue" })}
+                        className="text-xs px-2 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> 標記逾期
+                      </button>
+                    )}
+                    {["paid","rejected"].includes(s.status) ? null : (
+                      <button onClick={() => statusMut.mutate({ id: s.id, status: "disputed" })}
+                        className="text-xs px-2 py-1 border rounded-lg hover:bg-muted flex items-center gap-1">
+                        <Ban className="w-3 h-3" /> 標記爭議
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 逾期未收款提醒
+// ──────────────────────────────────────────────────────────────────────
+function OverdueReminderTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [days, setDays] = useState(3);
+  const [channel, setChannel] = useState("sms");
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const { data: overdue = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["overdue-orders", days],
+    queryFn: () => fetch(`/api/payments/overdue?days=${days}`).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  const sendMut = useMutation({
+    mutationFn: (orderId: number) => fetch("/api/payments/send-reminder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, channel }),
+    }).then(r => r.json()),
+    onSuccess: (data) => {
+      toast({ title: "提醒已發送", description: data.message?.slice(0, 60) + "..." });
+      qc.invalidateQueries({ queryKey: ["overdue-orders"] });
+    },
+  });
+
+  const batchSend = async () => {
+    if (!confirm(`確認批量發送 ${overdue.length} 筆逾期提醒？`)) return;
+    setBatchLoading(true);
+    const r = await fetch("/api/payments/batch-reminder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days, channel }),
+    });
+    const d = await r.json();
+    setBatchLoading(false);
+    toast({ title: `批量提醒完成`, description: `成功發送 ${d.sent} 筆提醒` });
+    qc.invalidateQueries({ queryKey: ["overdue-orders"] });
+  };
+
+  const totalOutstanding = overdue.reduce((a, o) => a + (Number(o.outstanding) ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="bg-muted/30 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <Label className="text-xs">逾期天數</Label>
+          <select className="mt-1 border rounded-lg px-2 py-1.5 text-sm bg-background"
+            value={days} onChange={e => setDays(Number(e.target.value))}>
+            <option value={0}>所有未付款（0天）</option>
+            {[1,2,3,5,7,14,30].map(d => <option key={d} value={d}>超過{d}天</option>)}
+          </select>
+        </div>
+        <div>
+          <Label className="text-xs">提醒管道</Label>
+          <select className="mt-1 border rounded-lg px-2 py-1.5 text-sm bg-background"
+            value={channel} onChange={e => setChannel(e.target.value)}>
+            <option value="sms">簡訊</option>
+            <option value="line">LINE</option>
+            <option value="email">Email</option>
+            <option value="call">電話</option>
+          </select>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <RefreshCw className="w-3.5 h-3.5 mr-1" /> 重新整理
+        </Button>
+        <Button size="sm" className="bg-red-600 hover:bg-red-700"
+          onClick={batchSend} disabled={batchLoading || overdue.length === 0}>
+          <Send className="w-3.5 h-3.5 mr-1" />
+          {batchLoading ? "發送中..." : `批量提醒 (${overdue.length}筆)`}
+        </Button>
+      </div>
+
+      {/* Summary */}
+      {overdue.length > 0 && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+          <div>
+            <span className="font-bold text-red-800">{overdue.length} 筆逾期未收款</span>
+            <span className="text-red-600 ml-2">合計 {nt(totalOutstanding)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue list */}
+      {isLoading ? <div className="py-8 text-center text-muted-foreground">載入中...</div>
+        : overdue.length === 0 ? (
+          <div className="py-10 text-center text-muted-foreground">
+            <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-500" />
+            <p className="text-sm">目前無逾期未收款訂單</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {overdue.map((o: any) => (
+              <div key={o.id} className="bg-card rounded-xl border border-red-200 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono font-bold">#{o.id}</span>
+                      {(o.reminder_count ?? 0) > 0 && (
+                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                          已提醒{o.reminder_count}次
+                        </span>
+                      )}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        (o.payment_method ?? "cash") === "monthly" ? "bg-purple-100 text-purple-700"
+                        : (o.payment_method ?? "cash") === "cash" ? "bg-green-100 text-green-700"
+                        : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {METHOD_LABELS[o.payment_method ?? "cash"] ?? o.payment_method}
+                      </span>
+                    </div>
+                    <p className="font-medium text-sm">{o.customer_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{o.customer_phone}</p>
+                    <p className="text-xs text-muted-foreground">下單：{o.created_at ? format(new Date(o.created_at), "MM/dd") : "—"}</p>
+                    {o.last_reminder_at && (
+                      <p className="text-xs text-muted-foreground">上次提醒：{format(new Date(o.last_reminder_at), "MM/dd HH:mm")}</p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-black text-red-700 text-base">{nt(Number(o.outstanding) ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground">欠款</p>
+                    <Button size="sm" className="mt-1 h-7 text-xs bg-orange-600 hover:bg-orange-700"
+                      onClick={() => sendMut.mutate(o.id)} disabled={sendMut.isPending}>
+                      <Bell className="w-3 h-3 mr-1" /> 發送提醒
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
 export default function PaymentCenter() {
   return (
     <div className="space-y-4">
@@ -970,13 +1564,25 @@ export default function PaymentCenter() {
           <DollarSign className="w-5 h-5 text-emerald-600" />
           金流收款管理
         </h2>
-        <p className="text-xs text-muted-foreground mt-0.5">訂單收款、對帳報表、未收款清單、收款紀錄查詢</p>
+        <p className="text-xs text-muted-foreground mt-0.5">多元付款方式 · 現金確認 · 月結管理 · 逾期提醒 · 電子發票</p>
       </div>
 
       <Tabs defaultValue="collect" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
           <TabsTrigger value="collect" className="flex-1 text-xs gap-1 py-1.5">
             <Plus className="w-3.5 h-3.5" /> 訂單收款
+          </TabsTrigger>
+          <TabsTrigger value="instant" className="flex-1 text-xs gap-1 py-1.5">
+            <Zap className="w-3.5 h-3.5 text-blue-500" /> 即時付款
+          </TabsTrigger>
+          <TabsTrigger value="cash" className="flex-1 text-xs gap-1 py-1.5">
+            <Banknote className="w-3.5 h-3.5 text-emerald-500" /> 現金管理
+          </TabsTrigger>
+          <TabsTrigger value="monthly" className="flex-1 text-xs gap-1 py-1.5">
+            <CalendarDays className="w-3.5 h-3.5 text-purple-500" /> 月結管理
+          </TabsTrigger>
+          <TabsTrigger value="overdue" className="flex-1 text-xs gap-1 py-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-500" /> 逾期提醒
           </TabsTrigger>
           <TabsTrigger value="unpaid" className="flex-1 text-xs gap-1 py-1.5">
             <AlertCircle className="w-3.5 h-3.5" /> 未收款清單
@@ -991,6 +1597,18 @@ export default function PaymentCenter() {
 
         <TabsContent value="collect" className="outline-none mt-4">
           <OrderPaymentTab />
+        </TabsContent>
+        <TabsContent value="instant" className="outline-none mt-4">
+          <InstantPaymentTab />
+        </TabsContent>
+        <TabsContent value="cash" className="outline-none mt-4">
+          <CashManagementTab />
+        </TabsContent>
+        <TabsContent value="monthly" className="outline-none mt-4">
+          <MonthlyStatementTab />
+        </TabsContent>
+        <TabsContent value="overdue" className="outline-none mt-4">
+          <OverdueReminderTab />
         </TabsContent>
         <TabsContent value="unpaid" className="outline-none mt-4">
           <UnpaidTab />

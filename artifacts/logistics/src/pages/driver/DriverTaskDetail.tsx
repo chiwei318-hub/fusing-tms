@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useRef } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { DriverActionType } from "@workspace/api-client-react";
 
@@ -39,6 +40,70 @@ function parseStops(raw: unknown): ExtraStop[] {
   } catch {
     return [];
   }
+}
+
+function CashReportButton({ orderId, amount, onReported }: { orderId: number; amount: number; onReported: () => void }) {
+  const { toast } = useToast();
+  const [show, setShow] = useState(false);
+  const [note, setNote] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => fetch(`/api/orders/${orderId}/driver-cash-report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ driverName: "司機", amount, note }),
+    }).then(r => r.json()),
+    onSuccess: () => {
+      toast({ title: "✅ 現金已回報", description: "等待管理員確認" });
+      setShow(false);
+      onReported();
+    },
+    onError: () => toast({ title: "回報失敗", variant: "destructive" }),
+  });
+
+  return (
+    <div>
+      {!show ? (
+        <button
+          onClick={() => setShow(true)}
+          className="w-full h-16 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-base shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all"
+        >
+          <DollarSign className="w-6 h-6" />
+          回報現金收款 NT${amount.toLocaleString()}
+        </button>
+      ) : (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-3">
+          <p className="font-bold text-orange-800 flex items-center gap-2">
+            <DollarSign className="w-4 h-4" /> 確認現金收款回報
+          </p>
+          <div className="bg-white rounded-xl p-3 text-center border">
+            <p className="text-xs text-muted-foreground">收款金額</p>
+            <p className="font-black text-2xl text-orange-700">NT${amount.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-xs font-bold mb-1">備注（可選）</p>
+            <input
+              className="w-full border rounded-xl px-3 py-2 text-sm bg-background"
+              placeholder="如：客戶要求找零 XX 元"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setShow(false)}
+              className="py-3 border rounded-xl font-bold hover:bg-muted text-sm">取消</button>
+            <button
+              onClick={() => mut.mutate()}
+              disabled={mut.isPending}
+              className="py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 disabled:opacity-60 text-sm"
+            >
+              {mut.isPending ? "回報中..." : "確認回報"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DriverTaskDetail() {
@@ -300,16 +365,29 @@ export default function DriverTaskDetail() {
 
       {/* Done state */}
       {isDone && (
-        <div className={`text-center py-6 rounded-2xl ${order.status === "delivered" ? "bg-emerald-50 border border-emerald-200" : "bg-gray-50 border"}`}>
-          <CheckCircle2 className={`w-12 h-12 mx-auto mb-2 ${order.status === "delivered" ? "text-emerald-500" : "text-gray-400"}`} />
-          <p className="font-black text-lg text-emerald-800">
-            {order.status === "delivered" ? "配送完成！" : "訂單已取消"}
-          </p>
-          {order.completedAt && (
-            <p className="text-sm text-emerald-600 mt-1">完成於 {format(new Date(order.completedAt), "HH:mm")}</p>
+        <div className="space-y-3">
+          <div className={`text-center py-6 rounded-2xl ${order.status === "delivered" ? "bg-emerald-50 border border-emerald-200" : "bg-gray-50 border"}`}>
+            <CheckCircle2 className={`w-12 h-12 mx-auto mb-2 ${order.status === "delivered" ? "text-emerald-500" : "text-gray-400"}`} />
+            <p className="font-black text-lg text-emerald-800">
+              {order.status === "delivered" ? "配送完成！" : "訂單已取消"}
+            </p>
+            {order.completedAt && (
+              <p className="text-sm text-emerald-600 mt-1">完成於 {format(new Date(order.completedAt), "HH:mm")}</p>
+            )}
+            {order.totalFee != null && (
+              <p className="text-orange-600 font-black text-xl mt-2">NT${order.totalFee.toLocaleString()}</p>
+            )}
+          </div>
+          {/* 現金收款回報 */}
+          {order.status === "delivered" && (order as any).paymentMethod === "cash" && !(order as any).cashReportedAt && (
+            <CashReportButton orderId={order.id} amount={order.totalFee ?? 0} onReported={() => queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(order.id) })} />
           )}
-          {order.totalFee != null && (
-            <p className="text-orange-600 font-black text-xl mt-2">NT${order.totalFee.toLocaleString()}</p>
+          {(order as any).cashReportedAt && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
+              <DollarSign className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+              <p className="font-bold text-emerald-800 text-sm">現金已回報</p>
+              <p className="text-xs text-emerald-600">等待管理員確認</p>
+            </div>
           )}
         </div>
       )}

@@ -155,6 +155,9 @@ router.post("/orders", async (req, res) => {
         const autoCfg = (cfgRows.rows as { key: string; value: string }[]).find(r => r.key === "auto_dispatch");
         if (autoCfg?.value !== "true") return;
 
+        // 未付不派車：即時付款方式且尚未付款則封鎖
+        if ((order as any).dispatch_blocked) return;
+
         // 找可用司機中距離最近、評分最高的
         const availableDrivers = await db.select().from(driversTable)
           .where(eq(driversTable.status, "available"));
