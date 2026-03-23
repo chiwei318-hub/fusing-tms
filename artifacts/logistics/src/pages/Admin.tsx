@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { ImportDialog } from "@/components/ImportDialog";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -9,6 +9,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
+  Search, X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
@@ -418,6 +419,12 @@ export default function Admin() {
   const [quoteOrder, setQuoteOrder] = useState<Order | null>(null);
   const [quoteAmount, setQuoteAmount] = useState<number>(0);
 
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState("all");
+  const [driverSearch, setDriverSearch] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const orderSearchRef = useRef<HTMLInputElement>(null);
+
   const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
@@ -437,6 +444,45 @@ export default function Admin() {
   const editStopsField = useFieldArray({ control: editOrderForm.control, name: "extraDeliveryStops" });
 
   const availableDrivers = drivers?.filter((d) => d.status === "available") || [];
+
+  const filteredOrders = useMemo(() => {
+    let list = orders ?? [];
+    if (orderStatusFilter !== "all") list = list.filter(o => o.status === orderStatusFilter);
+    const q = orderSearch.trim().toLowerCase();
+    if (q) list = list.filter(o =>
+      String(o.id).includes(q) ||
+      o.customerName?.toLowerCase().includes(q) ||
+      o.customerPhone?.toLowerCase().includes(q) ||
+      o.pickupAddress?.toLowerCase().includes(q) ||
+      o.deliveryAddress?.toLowerCase().includes(q) ||
+      o.cargoDescription?.toLowerCase().includes(q)
+    );
+    return list;
+  }, [orders, orderSearch, orderStatusFilter]);
+
+  const filteredDrivers = useMemo(() => {
+    const q = driverSearch.trim().toLowerCase();
+    if (!q) return drivers ?? [];
+    return (drivers ?? []).filter(d =>
+      d.name?.toLowerCase().includes(q) ||
+      d.phone?.toLowerCase().includes(q) ||
+      d.vehicleType?.toLowerCase().includes(q) ||
+      d.licensePlate?.toLowerCase().includes(q)
+    );
+  }, [drivers, driverSearch]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return customers ?? [];
+    return (customers ?? []).filter(c =>
+      c.name?.toLowerCase().includes(q) ||
+      c.phone?.toLowerCase().includes(q) ||
+      (c as any).contactPerson?.toLowerCase().includes(q) ||
+      c.username?.toLowerCase().includes(q)
+    );
+  }, [customers, customerSearch]);
+
+  const pendingCount = useMemo(() => (orders ?? []).filter(o => o.status === "pending").length, [orders]);
 
   const onCreateDriverSubmit = async (data: DriverFormValues) => {
     try {
@@ -732,9 +778,14 @@ export default function Admin() {
             <span className="text-base leading-none">🏠</span>
             <span className="text-[10px] sm:text-xs leading-tight">首頁</span>
           </TabsTrigger>
-          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
+          <TabsTrigger value="orders" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5 relative">
             <ClipboardList className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">訂單</span>
+            {pendingCount > 0 && (
+              <span className="absolute -top-1 -right-1 sm:static sm:ml-0.5 min-w-[16px] h-4 bg-orange-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                {pendingCount}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
@@ -822,125 +873,151 @@ export default function Admin() {
 
         {/* ===== 訂單 TAB ===== */}
         <TabsContent value="orders" className="outline-none space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">共 {orders?.length ?? 0} 筆訂單</p>
+          {/* Search + Filter bar */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                ref={orderSearchRef}
+                value={orderSearch}
+                onChange={e => setOrderSearch(e.target.value)}
+                placeholder="搜尋單號、客戶、地址、貨物..."
+                className="w-full h-9 pl-9 pr-8 text-sm bg-card border rounded-md outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+              />
+              {orderSearch && (
+                <button onClick={() => setOrderSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
+              <SelectTrigger className="h-9 w-full sm:w-[140px] bg-card text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部狀態</SelectItem>
+                <SelectItem value="pending">待派車</SelectItem>
+                <SelectItem value="assigned">已派車</SelectItem>
+                <SelectItem value="in_transit">運送中</SelectItem>
+                <SelectItem value="delivered">已完成</SelectItem>
+                <SelectItem value="cancelled">已取消</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="sm:self-center text-xs text-muted-foreground whitespace-nowrap shrink-0">
+              共 <span className="font-semibold text-foreground">{filteredOrders.length}</span> 筆
+              {orderSearch || orderStatusFilter !== "all" ? `（總 ${orders?.length ?? 0}）` : ""}
+            </p>
           </div>
+
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left min-w-[340px]">
-                <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
+                <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
                   <tr>
-                    <th className="px-3 py-3 font-semibold">單號</th>
-                    <th className="px-3 py-3 font-semibold hidden sm:table-cell">客戶 / 電話</th>
-                    <th className="px-3 py-3 font-semibold hidden md:table-cell">貨物 / 金額</th>
-                    <th className="px-3 py-3 font-semibold">狀態</th>
-                    <th className="px-3 py-3 font-semibold">指派司機</th>
-                    <th className="px-3 py-3 font-semibold text-right hidden sm:table-cell">更改狀態</th>
+                    <th className="px-3 py-2.5 font-semibold">單號</th>
+                    <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">客戶</th>
+                    <th className="px-3 py-2.5 font-semibold hidden md:table-cell">貨物 / 金額</th>
+                    <th className="px-3 py-2.5 font-semibold">狀態</th>
+                    <th className="px-3 py-2.5 font-semibold">指派司機</th>
+                    <th className="px-3 py-2.5 font-semibold text-right hidden sm:table-cell">更改狀態</th>
+                    <th className="px-3 py-2.5 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
                   {ordersLoading ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
-                  ) : orders?.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">暫無訂單</td></tr>
-                  ) : orders?.map((order) => (
-                    <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-3">
-                        <div className="font-mono font-semibold text-foreground">#{order.id}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(order.createdAt), "MM/dd HH:mm")}</div>
-                        {/* Mobile: show customer name inline */}
-                        <div className="sm:hidden text-xs font-medium text-foreground mt-0.5">{order.customerName}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <button onClick={() => setSelectedOrder(order as Order)} className="text-xs text-primary hover:underline flex items-center gap-0.5">
-                            <Info className="w-3 h-3" /> 詳情
-                          </button>
-                          {(order.status === "pending" || order.status === "assigned") && (
-                            <button onClick={() => openEditOrderDialog(order as Order)} className="text-xs text-orange-600 hover:underline flex items-center gap-0.5">
-                              <Pencil className="w-3 h-3" /> 編輯
-                            </button>
-                          )}
-                        </div>
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i}>
+                        {Array.from({ length: 6 }).map((__, j) => (
+                          <td key={j} className="px-3 py-3">
+                            <div className="h-4 bg-muted/60 rounded animate-pulse w-20" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-10 text-center text-muted-foreground">
+                        <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">{orderSearch || orderStatusFilter !== "all" ? "沒有符合條件的訂單" : "暫無訂單"}</p>
                       </td>
-                      <td className="px-3 py-3 hidden sm:table-cell">
-                        <div className="font-medium text-foreground">{order.customerName}</div>
-                        <div className="text-xs text-muted-foreground font-mono mt-0.5">{order.customerPhone}</div>
+                    </tr>
+                  ) : filteredOrders.map((order) => (
+                    <tr key={order.id} className="hover:bg-muted/25 transition-colors group">
+                      <td className="px-3 py-2.5">
+                        <div className="font-mono font-bold text-foreground text-sm">#{order.id}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{format(new Date(order.createdAt), "MM/dd HH:mm")}</div>
+                        <div className="sm:hidden text-xs font-medium text-foreground mt-0.5 truncate max-w-[90px]">{order.customerName}</div>
                       </td>
-                      <td className="px-3 py-3 hidden md:table-cell">
-                        <div className="text-foreground text-xs truncate max-w-[120px]">{order.cargoDescription}</div>
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
+                        <div className="font-medium text-foreground text-sm">{order.customerName}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{order.customerPhone}</div>
+                      </td>
+                      <td className="px-3 py-2.5 hidden md:table-cell">
+                        <div className="text-xs text-foreground/80 truncate max-w-[110px]">{order.cargoDescription}</div>
                         {order.totalFee != null ? (
-                          <div className="text-xs font-semibold text-primary mt-0.5">NT${order.totalFee.toLocaleString()}</div>
+                          <div className="text-xs font-bold text-emerald-600 mt-0.5">NT${order.totalFee.toLocaleString()}</div>
                         ) : (
-                          <div className="text-xs text-muted-foreground mt-0.5">未設定運費</div>
+                          <button onClick={() => openQuoteDialog(order as Order)}
+                            className="mt-0.5 text-[11px] text-orange-500 hover:text-orange-700 flex items-center gap-0.5 font-medium">
+                            <Calculator className="w-3 h-3" /> 估價
+                          </button>
                         )}
-                        <button
-                          onClick={() => openQuoteDialog(order as Order)}
-                          className="mt-1 text-xs text-orange-600 hover:underline flex items-center gap-0.5 font-medium"
-                        >
-                          <Calculator className="w-3 h-3" /> 自動估價
-                        </button>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2.5">
                         <OrderStatusBadge status={order.status} />
-                        {/* Mobile: quote button */}
-                        <button
-                          onClick={() => openQuoteDialog(order as Order)}
-                          className="mt-1.5 md:hidden text-xs text-orange-600 hover:underline flex items-center gap-0.5 font-medium"
-                        >
-                          <Calculator className="w-3 h-3" /> 估價
-                        </button>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2.5">
                         {order.status === "pending" && !order.driverId && (
                           <button
                             onClick={() => handleSmartDispatch(order.id)}
-                            className="mb-1.5 flex items-center gap-1 text-xs bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1.5 rounded-lg shadow-sm"
+                            className="mb-1 flex items-center gap-1 text-[11px] bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold px-2 py-1 rounded-md shadow-sm transition"
                           >
-                            <Zap className="w-3 h-3" /> <span className="hidden sm:inline">一鍵</span>派車
+                            <Zap className="w-3 h-3" /> 一鍵派車
                           </button>
                         )}
                         <Select value={order.driverId?.toString() || "none"} onValueChange={(val) => handleOrderAssign(order.id, val)}>
-                          <SelectTrigger className="h-8 text-xs w-[110px] sm:w-[130px]">
+                          <SelectTrigger className="h-7 text-xs w-[120px]">
                             <SelectValue placeholder="選擇司機" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none" className="text-muted-foreground italic">未指派</SelectItem>
+                            <SelectItem value="none" className="text-muted-foreground italic text-xs">未指派</SelectItem>
                             {order.driver && !availableDrivers.find(d => d.id === order.driver?.id) && (
-                              <SelectItem value={order.driver.id.toString()}>{order.driver.name} (目前)</SelectItem>
+                              <SelectItem value={order.driver.id.toString()} className="text-xs">{order.driver.name} (目前)</SelectItem>
                             )}
                             {availableDrivers.map(d => (
-                              <SelectItem key={d.id} value={d.id.toString()}>{d.name} ({d.vehicleType})</SelectItem>
+                              <SelectItem key={d.id} value={d.id.toString()} className="text-xs">{d.name} · {d.vehicleType}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {/* Mobile: status change inline */}
-                        <div className="sm:hidden mt-1.5">
-                          <Select value={order.status} onValueChange={(val) => handleOrderStatus(order.id, val as OrderStatus)}>
-                            <SelectTrigger className="h-7 text-xs w-[110px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">待派車</SelectItem>
-                              <SelectItem value="assigned">已派車</SelectItem>
-                              <SelectItem value="in_transit">運送中</SelectItem>
-                              <SelectItem value="delivered">已完成</SelectItem>
-                              <SelectItem value="cancelled">已取消</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
                       </td>
-                      <td className="px-3 py-3 text-right hidden sm:table-cell">
+                      <td className="px-3 py-2.5 hidden sm:table-cell text-right">
                         <Select value={order.status} onValueChange={(val) => handleOrderStatus(order.id, val as OrderStatus)}>
-                          <SelectTrigger className="h-8 text-xs w-[100px] ml-auto">
+                          <SelectTrigger className="h-7 text-xs w-[90px] ml-auto">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="pending">待派車</SelectItem>
-                            <SelectItem value="assigned">已派車</SelectItem>
-                            <SelectItem value="in_transit">運送中</SelectItem>
-                            <SelectItem value="delivered">已完成</SelectItem>
-                            <SelectItem value="cancelled">已取消</SelectItem>
+                            <SelectItem value="pending" className="text-xs">待派車</SelectItem>
+                            <SelectItem value="assigned" className="text-xs">已派車</SelectItem>
+                            <SelectItem value="in_transit" className="text-xs">運送中</SelectItem>
+                            <SelectItem value="delivered" className="text-xs">已完成</SelectItem>
+                            <SelectItem value="cancelled" className="text-xs">已取消</SelectItem>
                           </SelectContent>
                         </Select>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedOrder(order as Order)} title="詳情">
+                            <Info className="w-3.5 h-3.5" />
+                          </Button>
+                          {(order.status === "pending" || order.status === "assigned") && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => openEditOrderDialog(order as Order)} title="編輯">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden text-orange-500 hover:bg-orange-50" onClick={() => openQuoteDialog(order as Order)} title="估價">
+                            <Calculator className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1380,17 +1457,30 @@ export default function Admin() {
         </TabsContent>
 
         {/* ===== 司機 TAB ===== */}
-        <TabsContent value="drivers" className="outline-none space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-muted-foreground">共 {drivers?.length ?? 0} 位司機</p>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-2" onClick={() => { setImportDialogTab("drivers"); setImportDialogOpen(true); }}>
-                <Upload className="w-4 h-4" /> 批量匯入
+        <TabsContent value="drivers" className="outline-none space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                value={driverSearch}
+                onChange={e => setDriverSearch(e.target.value)}
+                placeholder="搜尋姓名、電話、車型、車牌..."
+                className="w-full h-9 pl-9 pr-8 text-sm bg-card border rounded-md outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+              />
+              {driverSearch && (
+                <button onClick={() => setDriverSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" className="gap-1.5 h-9" onClick={() => { setImportDialogTab("drivers"); setImportDialogOpen(true); }}>
+                <Upload className="w-3.5 h-3.5" /> 批量匯入
               </Button>
             <Dialog open={driverDialogOpen} onOpenChange={setDriverDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2">
-                  <UserPlus className="w-4 h-4" /> 新增司機
+                <Button size="sm" className="gap-1.5 h-9">
+                  <UserPlus className="w-3.5 h-3.5" /> 新增司機
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
@@ -1435,76 +1525,74 @@ export default function Admin() {
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left min-w-[300px]">
-                <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
+                <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">姓名 / 電話</th>
-                    <th className="px-4 py-3 font-semibold hidden sm:table-cell">類型</th>
-                    <th className="px-4 py-3 font-semibold">車型 / 車牌</th>
-                    <th className="px-4 py-3 font-semibold hidden md:table-cell">帳號</th>
-                    <th className="px-4 py-3 font-semibold hidden md:table-cell">LINE</th>
-                    <th className="px-4 py-3 font-semibold">狀態</th>
-                    <th className="px-4 py-3 font-semibold text-right">操作</th>
+                    <th className="px-3 py-2.5 font-semibold">姓名 / 電話</th>
+                    <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">類型</th>
+                    <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">車型 / 車牌</th>
+                    <th className="px-3 py-2.5 font-semibold hidden md:table-cell">帳號</th>
+                    <th className="px-3 py-2.5 font-semibold hidden md:table-cell">LINE</th>
+                    <th className="px-3 py-2.5 font-semibold">狀態</th>
+                    <th className="px-3 py-2.5 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
                   {driversLoading ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
-                  ) : drivers?.length === 0 ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">尚無司機資料，請新增</td></tr>
-                  ) : drivers?.map((driver) => (
-                    <tr key={driver.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-foreground">{driver.name}</div>
-                        <div className="text-muted-foreground font-mono text-xs mt-0.5">{driver.phone}</div>
-                        {/* Mobile: show vehicle info inline */}
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i}>{Array.from({ length: 5 }).map((__, j) => <td key={j} className="px-3 py-2.5"><div className="h-4 bg-muted/60 rounded animate-pulse w-20" /></td>)}</tr>
+                    ))
+                  ) : filteredDrivers.length === 0 ? (
+                    <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground text-sm">
+                      {driverSearch ? "沒有符合搜尋的司機" : "尚無司機資料，請新增"}
+                    </td></tr>
+                  ) : filteredDrivers.map((driver) => (
+                    <tr key={driver.id} className="hover:bg-muted/25 transition-colors group">
+                      <td className="px-3 py-2.5">
+                        <div className="font-bold text-foreground text-sm">{driver.name}</div>
+                        <div className="text-muted-foreground font-mono text-xs">{driver.phone}</div>
                         <div className="sm:hidden text-xs text-muted-foreground mt-0.5">{driver.vehicleType} · <span className="font-mono uppercase">{driver.licensePlate}</span></div>
                       </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
                         {driver.driverType ? (
-                          <Badge variant="outline" className="text-xs whitespace-nowrap">
+                          <Badge variant="outline" className="text-[11px] whitespace-nowrap">
                             {DRIVER_TYPE_LABELS[driver.driverType] ?? driver.driverType}
                           </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm hidden sm:block">{driver.vehicleType}</div>
-                        <span className="font-mono text-xs bg-muted border px-1.5 py-0.5 rounded uppercase hidden sm:inline">{driver.licensePlate}</span>
-                        <span className="sm:hidden text-xs text-muted-foreground">—</span>
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
+                        <div className="text-xs text-foreground">{driver.vehicleType}</div>
+                        <span className="font-mono text-[11px] bg-muted border px-1.5 py-0.5 rounded uppercase">{driver.licensePlate}</span>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
+                      <td className="px-3 py-2.5 hidden md:table-cell">
                         {driver.username ? (
                           <span className="text-xs font-mono text-foreground">{driver.username}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
+                      <td className="px-3 py-2.5 hidden md:table-cell">
                         {driver.lineUserId ? (
-                          <span title={driver.lineUserId} className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                            <MessageCircle className="w-3.5 h-3.5" /> 已綁定
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <MessageCircle className="w-3 h-3" /> 已綁定
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <MessageCircleOff className="w-3.5 h-3.5" /> 未綁定
+                            <MessageCircleOff className="w-3 h-3" /> 未綁定
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <Select value={driver.status} onValueChange={(val) => handleDriverStatus(driver.id, val as DriverStatus)}>
-                          <SelectTrigger className="h-8 w-[100px] sm:w-[110px] border-0 shadow-none p-1 hover:bg-muted/50">
+                          <SelectTrigger className="h-7 w-[95px] border-0 shadow-none p-1 hover:bg-muted/60">
                             <DriverStatusBadge status={driver.status} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="available">可接單</SelectItem>
-                            <SelectItem value="busy">忙碌中</SelectItem>
-                            <SelectItem value="offline">下線</SelectItem>
+                            <SelectItem value="available" className="text-xs">可接單</SelectItem>
+                            <SelectItem value="busy" className="text-xs">忙碌中</SelectItem>
+                            <SelectItem value="offline" className="text-xs">下線</SelectItem>
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" onClick={() => openEditDriverDialog(driver)}
                             className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted">
                             <Pencil className="w-3.5 h-3.5" />
@@ -1524,17 +1612,30 @@ export default function Admin() {
         </TabsContent>
 
         {/* ===== 客戶 TAB ===== */}
-        <TabsContent value="customers" className="outline-none space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-muted-foreground">共 {customers?.length ?? 0} 位客戶</p>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-2" onClick={() => { setImportDialogTab("customers"); setImportDialogOpen(true); }}>
-                <Upload className="w-4 h-4" /> 批量匯入
+        <TabsContent value="customers" className="outline-none space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+                placeholder="搜尋名稱、電話、聯絡人、帳號..."
+                className="w-full h-9 pl-9 pr-8 text-sm bg-card border rounded-md outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+              />
+              {customerSearch && (
+                <button onClick={() => setCustomerSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" className="gap-1.5 h-9" onClick={() => { setImportDialogTab("customers"); setImportDialogOpen(true); }}>
+                <Upload className="w-3.5 h-3.5" /> 批量匯入
               </Button>
             <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2">
-                  <UserPlus className="w-4 h-4" /> 新增客戶
+                <Button size="sm" className="gap-1.5 h-9">
+                  <UserPlus className="w-3.5 h-3.5" /> 新增客戶
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[420px]">
@@ -1579,67 +1680,63 @@ export default function Admin() {
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
+                <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">名稱 / 電話</th>
-                    <th className="px-4 py-3 font-semibold">聯絡人</th>
-                    <th className="px-4 py-3 font-semibold">地址</th>
-                    <th className="px-4 py-3 font-semibold">統編</th>
-                    <th className="px-4 py-3 font-semibold">帳號</th>
-                    <th className="px-4 py-3 font-semibold">建立時間</th>
-                    <th className="px-4 py-3 font-semibold text-right">操作</th>
+                    <th className="px-3 py-2.5 font-semibold">名稱 / 電話</th>
+                    <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">聯絡人</th>
+                    <th className="px-3 py-2.5 font-semibold hidden md:table-cell">地址</th>
+                    <th className="px-3 py-2.5 font-semibold hidden md:table-cell">統編</th>
+                    <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">帳號</th>
+                    <th className="px-3 py-2.5 font-semibold hidden lg:table-cell">建立時間</th>
+                    <th className="px-3 py-2.5 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-card">
                   {customersLoading ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">載入中...</td></tr>
-                  ) : customers?.length === 0 ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">尚無客戶資料，請新增</td></tr>
-                  ) : customers?.map((customer) => (
-                    <tr key={customer.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-foreground">{customer.name}</div>
-                        <div className="text-muted-foreground font-mono text-xs mt-0.5">{customer.phone}</div>
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i}>{Array.from({ length: 5 }).map((__, j) => <td key={j} className="px-3 py-2.5"><div className="h-4 bg-muted/60 rounded animate-pulse w-20" /></td>)}</tr>
+                    ))
+                  ) : filteredCustomers.length === 0 ? (
+                    <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground text-sm">
+                      {customerSearch ? "沒有符合搜尋的客戶" : "尚無客戶資料，請新增"}
+                    </td></tr>
+                  ) : filteredCustomers.map((customer) => (
+                    <tr key={customer.id} className="hover:bg-muted/25 transition-colors group">
+                      <td className="px-3 py-2.5">
+                        <div className="font-bold text-foreground text-sm">{customer.name}</div>
+                        <div className="text-muted-foreground font-mono text-xs">{customer.phone}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
                         {(customer as any).contactPerson ? (
-                          <span className="text-sm">{(customer as any).contactPerson}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                          <span className="text-xs">{(customer as any).contactPerson}</span>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 max-w-[160px]">
+                      <td className="px-3 py-2.5 hidden md:table-cell max-w-[140px]">
                         {(customer as any).address ? (
                           <span className="text-xs truncate block" title={(customer as any).address}>{(customer as any).address}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 hidden md:table-cell">
                         {(customer as any).taxId ? (
                           <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{(customer as any).taxId}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
                         {customer.username ? (
                           <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{customer.username}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 hidden lg:table-cell">
                         <div className="text-xs text-muted-foreground">{format(new Date(customer.createdAt), "MM/dd HH:mm")}</div>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" onClick={() => openEditCustomerDialog(customer)}
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer.id)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8">
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 w-7">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
