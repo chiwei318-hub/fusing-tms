@@ -383,6 +383,58 @@ router.post("/orders/:id/payment", async (req, res) => {
   }
 });
 
+/* ─── Driver self-grab order ─── */
+router.post("/orders/:id/grab", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid order ID" });
+
+    const schema = z.object({ driverId: z.number().int().positive() });
+    const { driverId } = schema.parse(req.body);
+
+    // Fetch current order state
+    const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!rows.length) return res.status(404).json({ error: "Order not found" });
+    const current = rows[0];
+
+    // Only allow grabbing pending, unassigned orders
+    if (current.status !== "pending" || current.driverId != null) {
+      return res.status(409).json({ error: "此訂單已被接走或狀態不符，無法搶單" });
+    }
+
+    // Verify driver exists
+    const driverRows = await db.select().from(driversTable).where(eq(driversTable.id, driverId));
+    if (!driverRows.length) return res.status(404).json({ error: "Driver not found" });
+
+    // Atomically assign
+    await db.update(ordersTable).set({
+      driverId,
+      status: "assigned",
+      updatedAt: new Date(),
+    }).where(eq(ordersTable.id, id));
+
+    // Update driver status to busy
+    await db.update(driversTable).set({ status: "busy" }).where(eq(driversTable.id, driverId));
+
+    const order = await fetchOrderWithDriver(id);
+
+    // Send LINE notification to driver
+    try {
+      const { sendDispatchNotification } = await import("../lib/line.js");
+      if (driverRows[0].lineUserId) {
+        await sendDispatchNotification(driverRows[0].lineUserId, id, driverRows[0].name, order as any);
+      }
+    } catch (e) {
+      req.log.warn({ err: e }, "LINE grab notify failed");
+    }
+
+    res.json(order);
+  } catch (err) {
+    req.log.error({ err }, "Failed to grab order");
+    res.status(500).json({ error: "搶單失敗" });
+  }
+});
+
 /* ─── Quick order (Landing page — minimal data) ─── */
 router.post("/quick-order", async (req, res) => {
   try {
