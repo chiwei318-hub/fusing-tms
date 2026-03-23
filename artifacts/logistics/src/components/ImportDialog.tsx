@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import {
   Dialog,
   DialogContent,
@@ -64,24 +64,82 @@ const DRIVER_SAMPLE: DriverRow[] = [
   { 姓名: "張明德", 電話: "0945678901", 車型: "機車", 車牌號碼: "XY-5678", 司機類型: "靠行", 帳號: "", 密碼: "" },
 ];
 
-function downloadTemplate(type: ImportType) {
+async function downloadTemplate(type: ImportType) {
   const headers = type === "customers" ? CUSTOMER_HEADERS : DRIVER_HEADERS;
   const sample = type === "customers" ? CUSTOMER_SAMPLE : DRIVER_SAMPLE;
-  const ws = XLSX.utils.json_to_sheet(sample, { header: headers });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, type === "customers" ? "客戶資料" : "司機資料");
-  XLSX.writeFile(wb, type === "customers" ? "客戶匯入範本.xlsx" : "司機匯入範本.xlsx");
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(type === "customers" ? "客戶資料" : "司機資料");
+  ws.addRow(headers);
+  sample.forEach(row => ws.addRow(headers.map(h => String((row as any)[h] ?? ""))));
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = type === "customers" ? "客戶匯入範本.xlsx" : "司機匯入範本.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCSV(content: string): AnyRow[] {
+  const lines = content.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).map(line => {
+    const values = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+    const obj: any = {};
+    headers.forEach((h, i) => { obj[h] = values[i] ?? ""; });
+    return obj as AnyRow;
+  });
 }
 
 function parseExcel(file: File): Promise<AnyRow[]> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+
+  if (ext === "csv") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          resolve(parseCSV(e.target!.result as string));
+        } catch {
+          reject(new Error("無法解析 CSV 檔案"));
+        }
+      };
+      reader.onerror = () => reject(new Error("讀取檔案失敗"));
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<AnyRow>(ws, { defval: "" });
+        const buffer = e.target!.result as ArrayBuffer;
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        const ws = wb.worksheets[0];
+        if (!ws) throw new Error("找不到工作表");
+
+        const headers: string[] = [];
+        ws.getRow(1).eachCell((cell) => {
+          headers.push(String(cell.value ?? ""));
+        });
+
+        const rows: AnyRow[] = [];
+        ws.eachRow((row, rowNum) => {
+          if (rowNum === 1) return;
+          const obj: any = {};
+          headers.forEach((h, i) => {
+            const cell = row.getCell(i + 1);
+            obj[h] = cell.value ?? "";
+          });
+          rows.push(obj as AnyRow);
+        });
         resolve(rows);
       } catch {
         reject(new Error("無法解析檔案，請確認格式正確"));
@@ -220,11 +278,11 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
         >
           <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm font-medium mb-1">拖曳或點擊上傳 Excel / CSV 檔案</p>
-          <p className="text-xs text-muted-foreground">支援 .xlsx、.xls、.csv 格式</p>
+          <p className="text-xs text-muted-foreground">支援 .xlsx、.csv 格式</p>
           <input
             ref={fileRef}
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.csv"
             className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
           />

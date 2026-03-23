@@ -202,7 +202,7 @@ Used in: `CustomerOrder.tsx` (取貨/送貨地址), `Admin.tsx` (編輯訂單地
 - History: saved per `historyKey` in localStorage (`addr-history-{key}`)
 - Hooks: `src/hooks/` — use-orders.ts, use-drivers.ts, use-vehicle-types.ts
 - Uses `@workspace/api-client-react` for API calls
-- Dependencies: `xlsx` (Excel export), `date-fns`, `lucide-react`
+- Dependencies: `exceljs` (Excel import/export), `date-fns`, `lucide-react`
 
 **Admin tabs (8):** 訂單 | 司機 | 客戶 | 報表 | 車型庫 | 智慧調度 | 熱區地圖 | AI分析
 
