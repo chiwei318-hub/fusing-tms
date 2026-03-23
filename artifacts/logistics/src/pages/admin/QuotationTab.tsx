@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
+import ExcelJS from 'exceljs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -7,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/hooks/use-toast';
 import {
   Calculator, Settings, Plus, Trash2, ChevronDown, ChevronUp,
   RotateCcw, Printer, TruckIcon, Package, Ruler, Route,
-  CheckCircle2, AlertCircle, Info,
+  CheckCircle2, AlertCircle, Info, Upload, FileDown, FileSpreadsheet,
 } from 'lucide-react';
 
 const VEHICLE_TYPES = ['1.75T', '3.5T', '5T', '8.8T', '17T', '26T', '35T', '43T'] as const;
@@ -329,9 +331,13 @@ function VehicleRuleCard({ vt, rule, onChange }: {
   );
 }
 
+const IMPORT_HEADERS = ['貨品名稱', '車型', '重量(kg)', '材積(m³)', '里程(km)', '特殊貨品', '等待時數(hr)', '過路費(元)'];
+
 export default function QuotationTab() {
   const [rules, setRules] = useState<PricingRules>(loadRules);
   const [dirty, setDirty] = useState(false);
+  const { toast } = useToast();
+  const importRef = useRef<HTMLInputElement>(null);
 
   const [vehicleType, setVehicleType] = useState<VehicleType>('3.5T');
   const [cargoName, setCargoName] = useState('');
@@ -400,6 +406,140 @@ export default function QuotationTab() {
     setRules(updated);
     saveRules(updated);
   };
+
+  const applyImportedRow = useCallback((row: Record<string, string>, currentRules: PricingRules) => {
+    if (row['貨品名稱']) setCargoName(row['貨品名稱']);
+    if (row['重量(kg)'] && row['重量(kg)'] !== '0') setWeightKg(row['重量(kg)']);
+    if (row['材積(m³)'] && row['材積(m³)'] !== '0') setVolumeCbm(row['材積(m³)']);
+    if (row['里程(km)'] && row['里程(km)'] !== '0') setDistanceKm(row['里程(km)']);
+    if (row['等待時數(hr)'] && row['等待時數(hr)'] !== '0') setWaitingHours(row['等待時數(hr)']);
+    if (row['過路費(元)'] && row['過路費(元)'] !== '0') setTollsOverride(row['過路費(元)']);
+
+    const vt = row['車型']?.trim();
+    if (vt && VEHICLE_TYPES.includes(vt as VehicleType)) {
+      setVehicleType(vt as VehicleType);
+      setAutoVehicle(false);
+    } else {
+      setAutoVehicle(true);
+    }
+
+    const specialName = row['特殊貨品']?.trim();
+    if (specialName && specialName !== '無') {
+      const found = currentRules.specialCargoes.find(s => s.name === specialName);
+      setSelectedSpecial(found ? found.id : 'none');
+    } else {
+      setSelectedSpecial('none');
+    }
+
+    setResult(null);
+  }, []);
+
+  const handleImport = useCallback(async (file: File) => {
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      const row: Record<string, string> = {};
+
+      if (ext === 'csv') {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) throw new Error('CSV 至少需要標題列和一列資料');
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const values = lines[1].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        headers.forEach((h, i) => { row[h] = values[i] ?? ''; });
+      } else {
+        const buffer = await file.arrayBuffer();
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buffer);
+        const ws = wb.worksheets[0];
+        if (!ws) throw new Error('找不到工作表');
+        const headers: string[] = [];
+        ws.getRow(1).eachCell(cell => headers.push(String(cell.value ?? '')));
+        if (headers.length === 0) throw new Error('找不到標題列');
+        const dataRow = ws.getRow(2);
+        headers.forEach((h, i) => {
+          const v = dataRow.getCell(i + 1).value;
+          row[h] = v !== null && v !== undefined ? String(v) : '';
+        });
+      }
+
+      applyImportedRow(row, rules);
+      toast({ title: '報價單匯入成功', description: '請確認資料後按「計算報價」' });
+    } catch (e: any) {
+      toast({ title: '匯入失敗', description: e.message ?? '檔案格式不正確', variant: 'destructive' });
+    } finally {
+      if (importRef.current) importRef.current.value = '';
+    }
+  }, [rules, applyImportedRow, toast]);
+
+  const handleDownloadTemplate = useCallback(async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('報價單');
+
+    const headerRow = ws.addRow(IMPORT_HEADERS);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    ws.addRow(['電子設備', '3.5T', '500', '3', '50', '無', '0', '0']);
+    ws.columns = IMPORT_HEADERS.map(h => ({ header: h, width: 18 }));
+
+    const notes: Record<string, string> = {
+      '車型': '1.75T / 3.5T / 5T / 8.8T / 17T / 26T / 35T / 43T（留空自動推薦）',
+      '特殊貨品': '例：易碎品、危險品、冷藏貨品（無特殊需求填「無」）',
+    };
+    ws.getRow(1).eachCell((cell, col) => {
+      const h = IMPORT_HEADERS[col - 1];
+      if (notes[h]) {
+        cell.note = notes[h];
+      }
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '報價單匯入範本.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExportQuote = useCallback(async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('報價單');
+
+    const headerRow = ws.addRow(IMPORT_HEADERS);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    const spec = rules.specialCargoes.find(s => s.id === selectedSpecial);
+    ws.addRow([
+      cargoName || '',
+      vehicleType,
+      weightKg || '0',
+      volumeCbm || '0',
+      distanceKm || '0',
+      spec?.name || '無',
+      waitingHours || '0',
+      tollsOverride || '0',
+    ]);
+    ws.columns = IMPORT_HEADERS.map(h => ({ header: h, width: 18 }));
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `報價單_${cargoName || '未命名'}_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: '報價單已匯出', description: '可再次匯入此檔案重新載入報價資料' });
+  }, [cargoName, vehicleType, weightKg, volumeCbm, distanceKm, selectedSpecial, waitingHours, tollsOverride, rules, toast]);
 
   const handlePrint = () => {
     if (!result) return;
@@ -477,6 +617,50 @@ tr:last-child td{border-bottom:none}
 
         {/* ===== 報價試算 ===== */}
         <TabsContent value="calc">
+          {/* Import / Export toolbar */}
+          <div className="flex flex-wrap items-center gap-2 mb-5 p-3 bg-muted/40 border rounded-xl">
+            <FileSpreadsheet className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium text-muted-foreground mr-1">報價單匯入/匯出</span>
+            <div className="flex flex-wrap gap-2 ml-auto">
+              <input
+                ref={importRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleImport(f); }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8 text-xs"
+                onClick={() => importRef.current?.click()}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                匯入報價單
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8 text-xs"
+                onClick={handleDownloadTemplate}
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                下載匯入範本
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8 text-xs"
+                onClick={handleExportQuote}
+                disabled={!cargoName && !weightKg && !volumeCbm && !distanceKm}
+                title="將目前輸入的資料儲存為 Excel，之後可再次匯入"
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                匯出報價單
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Input Panel */}
             <div className="lg:col-span-2 space-y-5">
