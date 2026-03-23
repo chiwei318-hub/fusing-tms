@@ -176,14 +176,12 @@ export default function Landing() {
 
         {/* Nav */}
         <div className="relative z-10 flex items-center justify-between px-5 sm:px-8 pt-5 pb-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/40">
-              <Truck className="w-5 h-5 text-white" />
-            </div>
-            <div className="leading-tight">
-              <p className="font-black text-white text-sm tracking-wide">富詠運輸</p>
-              <p className="text-blue-300 text-[10px]">FUYI TRANSPORT</p>
-            </div>
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo-transparent.png"
+              alt="富詠運輸"
+              className="h-10 sm:h-12 w-auto object-contain drop-shadow-lg"
+            />
           </div>
           <div className="flex items-center gap-2">
             <Link href="/admin">

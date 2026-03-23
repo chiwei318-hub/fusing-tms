@@ -7,7 +7,7 @@ export function GlobalHeader() {
         {/* Left: Company Logo */}
         <div className="flex items-center h-full py-2">
           <img
-            src="/logo.png"
+            src="/logo-transparent.png"
             alt="富詠運輸"
             className="h-9 sm:h-11 w-auto max-w-[160px] sm:max-w-[200px] object-contain"
             onError={(e) => {
