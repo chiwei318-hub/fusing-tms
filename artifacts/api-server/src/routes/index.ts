@@ -21,6 +21,9 @@ import { customerManagementRouter } from "./customerManagement";
 import { ratingsRouter } from "./ratings";
 import { customerNotificationsRouter } from "./customerNotifications";
 import { systemConfigRouter } from "./systemConfig";
+import { invoicesRouter } from "./invoices";
+import { biddingRouter } from "./bidding";
+import { driverIncomeRouter } from "./driverIncome";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -49,5 +52,8 @@ router.use(customerManagementRouter);
 router.use("/ratings", ratingsRouter);
 router.use("/customer-notifications", customerNotificationsRouter);
 router.use("/system-config", systemConfigRouter);
+router.use(invoicesRouter);
+router.use(biddingRouter);
+router.use(driverIncomeRouter);
 
 export default router;

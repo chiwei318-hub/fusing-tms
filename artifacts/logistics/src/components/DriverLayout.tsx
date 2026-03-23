@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Truck, ClipboardList, Home, LayoutGrid, Zap } from "lucide-react";
+import { Truck, ClipboardList, Home, LayoutGrid, Zap, DollarSign } from "lucide-react";
 import { useListOrders } from "@workspace/api-client-react";
 
 export function DriverLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +15,7 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
     { href: "/driver", icon: Home, label: "首頁", exact: true },
     { href: "/driver/grab", icon: Zap, label: "搶單", exact: false },
     { href: "/driver/tasks", icon: ClipboardList, label: "任務", exact: false },
+    { href: "/driver/income", icon: DollarSign, label: "收入", exact: false },
     { href: "/", icon: LayoutGrid, label: "功能表", exact: true },
   ];
 

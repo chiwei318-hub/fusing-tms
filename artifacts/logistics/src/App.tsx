@@ -22,6 +22,7 @@ import DriverHome from "@/pages/driver/DriverHome";
 import DriverTasks from "@/pages/driver/DriverTasks";
 import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
 import DriverGrab from "@/pages/driver/DriverGrab";
+import DriverIncome from "@/pages/driver/DriverIncome";
 import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
 import LoginPortal from "@/pages/LoginPortal";
 import CustomerLogin from "@/pages/login/CustomerLogin";
@@ -78,6 +79,7 @@ function DriverPortal() {
             <Route path="/driver/grab" component={DriverGrab} />
             <Route path="/driver/tasks" component={DriverTasks} />
             <Route path="/driver/tasks/:id" component={DriverTaskDetail} />
+            <Route path="/driver/income" component={DriverIncome} />
             <Route component={NotFound} />
           </Switch>
         </DriverLayout>

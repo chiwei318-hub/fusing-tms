@@ -32,6 +32,8 @@ import VehicleCostTab from "./admin/VehicleCostTab";
 import PermissionTab from "./admin/PermissionTab";
 import LineManagementTab from "./admin/LineManagementTab";
 import SystemSettingsTab from "./admin/SystemSettingsTab";
+import InvoiceManagementTab from "./admin/InvoiceManagementTab";
+import BiddingTab from "./admin/BiddingTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -891,6 +893,14 @@ export default function Admin() {
             <TabsTrigger value="system" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Settings2 className="w-3.5 h-3.5" />
               <span className="text-[10px] sm:text-xs">系統設定</span>
+            </TabsTrigger>
+            <TabsTrigger value="invoice" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-[10px] sm:text-xs">電子發票</span>
+            </TabsTrigger>
+            <TabsTrigger value="bidding" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Layers className="w-3.5 h-3.5 text-orange-500" />
+              <span className="text-[10px] sm:text-xs">競標比價</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -1872,6 +1882,16 @@ export default function Admin() {
         {/* ===== 系統設定 TAB ===== */}
         <TabsContent value="system" className="outline-none">
           <SystemSettingsTab />
+        </TabsContent>
+
+        {/* ===== 電子發票 TAB ===== */}
+        <TabsContent value="invoice" className="outline-none">
+          <InvoiceManagementTab />
+        </TabsContent>
+
+        {/* ===== 競標比價 TAB ===== */}
+        <TabsContent value="bidding" className="outline-none">
+          <BiddingTab />
         </TabsContent>
       </Tabs>
 
