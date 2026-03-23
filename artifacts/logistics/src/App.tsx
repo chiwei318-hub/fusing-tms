@@ -17,6 +17,7 @@ import Fees from "@/pages/Fees";
 import CustomerHome from "@/pages/customer/CustomerHome";
 import CustomerTrack from "@/pages/customer/CustomerTrack";
 import CustomerOrder from "@/pages/customer/CustomerOrder";
+import CustomerNotificationsPage from "@/pages/customer/CustomerNotificationsPage";
 import DriverHome from "@/pages/driver/DriverHome";
 import DriverTasks from "@/pages/driver/DriverTasks";
 import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
@@ -57,6 +58,7 @@ function CustomerPortal() {
             <Route path="/customer" component={CustomerHome} />
             <Route path="/customer/order" component={CustomerOrder} />
             <Route path="/customer/track" component={CustomerTrack} />
+            <Route path="/customer/notifications" component={CustomerNotificationsPage} />
             <Route component={NotFound} />
           </Switch>
         </CustomerLayout>

@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, ordersTable, driversTable } from "@workspace/db";
+import { customerNotificationsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   CreateOrderBody,
@@ -124,18 +126,80 @@ router.post("/orders", async (req, res) => {
       .returning();
     res.status(201).json({ ...order, driver: null });
 
-    // 通知公司：新訂單到達
     setImmediate(async () => {
+      // 1. LINE 通知公司
       try {
         await sendNewOrderAlertToCompany({
-          id: order.id,
-          pickupAddress: order.pickupAddress,
-          deliveryAddress: order.deliveryAddress,
-          cargoDescription: order.cargoDescription,
-          customerName: order.customerName,
-          customerPhone: order.customerPhone ?? undefined,
+          id: order.id, pickupAddress: order.pickupAddress,
+          deliveryAddress: order.deliveryAddress, cargoDescription: order.cargoDescription,
+          customerName: order.customerName, customerPhone: order.customerPhone ?? undefined,
         });
       } catch { /* LINE not configured — silent */ }
+
+      // 2. 客戶通知：訂單已建立
+      try {
+        const [customer] = await db.select().from(customersTable)
+          .where(eq(customersTable.phone, order.customerPhone));
+        if (customer) {
+          await db.insert(customerNotificationsTable).values({
+            customerId: customer.id, orderId: order.id,
+            type: "order_created", title: "訂單已建立",
+            message: `您的訂單 #${order.id}（${order.pickupAddress} → ${order.deliveryAddress}）已成功建立，我們將盡快安排司機。`,
+          });
+        }
+      } catch { /* silent */ }
+
+      // 3. 全自動派車觸發
+      try {
+        const cfgRows = await db.execute(sql`SELECT key, value FROM pricing_config WHERE key = 'auto_dispatch'`);
+        const autoCfg = (cfgRows.rows as { key: string; value: string }[]).find(r => r.key === "auto_dispatch");
+        if (autoCfg?.value !== "true") return;
+
+        // 找可用司機中距離最近、評分最高的
+        const availableDrivers = await db.select().from(driversTable)
+          .where(eq(driversTable.status, "available"));
+        if (!availableDrivers.length) return;
+
+        // 取前3位（按 today_revenue asc 分散工作量）
+        const candidates = availableDrivers
+          .sort((a, b) => (a.todayRevenue ?? 0) - (b.todayRevenue ?? 0))
+          .slice(0, 1);
+
+        if (!candidates.length) return;
+        const chosen = candidates[0];
+
+        await db.update(ordersTable).set({
+          driverId: chosen.id,
+          status: "assigned",
+          updatedAt: new Date(),
+        }).where(eq(ordersTable.id, order.id));
+
+        await db.update(driversTable).set({ status: "busy" })
+          .where(eq(driversTable.id, chosen.id));
+
+        // LINE 通知司機
+        try {
+          await sendDispatchNotification({
+            orderId: order.id, driverName: chosen.name,
+            lineUserId: chosen.lineUserId ?? undefined,
+            pickupAddress: order.pickupAddress, deliveryAddress: order.deliveryAddress,
+            customerName: order.customerName, customerPhone: order.customerPhone,
+            cargoDescription: order.cargoDescription,
+            vehicleType: chosen.vehicleType, licensePlate: chosen.licensePlate,
+          });
+        } catch { /* LINE not configured */ }
+
+        // 客戶通知：已派車
+        const [cust] = await db.select().from(customersTable)
+          .where(eq(customersTable.phone, order.customerPhone));
+        if (cust) {
+          await db.insert(customerNotificationsTable).values({
+            customerId: cust.id, orderId: order.id,
+            type: "order_assigned", title: "司機已指派",
+            message: `訂單 #${order.id} 已指派司機 ${chosen.name}（${chosen.vehicleType} ${chosen.licensePlate}），請保持聯絡。`,
+          });
+        }
+      } catch { /* auto-dispatch error — silent */ }
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
@@ -198,6 +262,31 @@ router.patch("/orders/:id", async (req, res) => {
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
     res.json(order);
+
+    // 客戶通知：狀態變更
+    if (body.status && ["in_transit", "delivered", "assigned"].includes(body.status) && order) {
+      setImmediate(async () => {
+        try {
+          const customerRows = await db.select().from(customersTable)
+            .where(eq(customersTable.phone, order.customerPhone)).limit(1);
+          const customer = customerRows[0];
+          if (customer) {
+            const notifMap: Record<string, { title: string; message: string }> = {
+              assigned: { title: "司機已指派", message: `訂單 #${order.id} 已指派司機，請保持聯絡。` },
+              in_transit: { title: "貨物運送中", message: `訂單 #${order.id} 的貨物正在運送中，預計即將抵達。` },
+              delivered: { title: "訂單已完成", message: `訂單 #${order.id} 已完成交付，感謝您使用富詠運輸！請為司機留下評分。` },
+            };
+            const notif = notifMap[body.status!];
+            if (notif) {
+              await db.insert(customerNotificationsTable).values({
+                customerId: customer.id, orderId: order.id,
+                type: `order_${body.status}`, ...notif,
+              });
+            }
+          }
+        } catch { /* silent */ }
+      });
+    }
 
     const willBeAssigned = body.driverId != null && updates.status === "assigned";
     if (willBeAssigned && body.driverId && order) {

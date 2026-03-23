@@ -31,6 +31,7 @@ import RoutePriceTab from "./admin/RoutePriceTab";
 import VehicleCostTab from "./admin/VehicleCostTab";
 import PermissionTab from "./admin/PermissionTab";
 import LineManagementTab from "./admin/LineManagementTab";
+import SystemSettingsTab from "./admin/SystemSettingsTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -886,6 +887,10 @@ export default function Admin() {
             <TabsTrigger value="line" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <MessageCircle className="w-3.5 h-3.5 text-green-500" />
               <span className="text-[10px] sm:text-xs">LINE</span>
+            </TabsTrigger>
+            <TabsTrigger value="system" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Settings2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">系統設定</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -1862,6 +1867,11 @@ export default function Admin() {
         {/* ===== LINE 接單整合 TAB ===== */}
         <TabsContent value="line" className="outline-none">
           <LineManagementTab />
+        </TabsContent>
+
+        {/* ===== 系統設定 TAB ===== */}
+        <TabsContent value="system" className="outline-none">
+          <SystemSettingsTab />
         </TabsContent>
       </Tabs>
 

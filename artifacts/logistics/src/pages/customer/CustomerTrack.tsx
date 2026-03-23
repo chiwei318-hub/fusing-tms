@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Search, Package, MapPin, Truck, DollarSign, CheckCircle2, Clock, AlertCircle, CreditCard } from "lucide-react";
+import { Search, Package, MapPin, Truck, DollarSign, CheckCircle2, Clock, AlertCircle, CreditCard, Star } from "lucide-react";
+import DriverRatingDialog from "@/components/DriverRatingDialog";
 import { useTrackOrder, useConfirmPayment, getTrackOrderQueryKey } from "@workspace/api-client-react";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,8 @@ function ProgressBar({ status }: { status: string }) {
 
 function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Order) => void }) {
   const alreadyPaid = order.feeStatus === "paid" || !!order.paymentConfirmedAt;
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const [rated, setRated] = useState(false);
   return (
     <Card className="border shadow-sm">
       <CardHeader className="pb-3 border-b">
@@ -140,7 +143,32 @@ function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Orde
             </div>
           </div>
         )}
+        {/* Rating button for delivered orders */}
+        {order.status === "delivered" && order.driver && (
+          rated ? (
+            <div className="flex items-center gap-2 p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+              <span className="font-medium">已完成評分，感謝您的回饋！</span>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setRatingOpen(true)}
+              className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50">
+              <Star className="w-3.5 h-3.5 mr-1.5 text-yellow-500" />
+              為司機 {order.driver.name} 評分
+            </Button>
+          )
+        )}
       </CardContent>
+
+      {order.driver && (
+        <DriverRatingDialog
+          open={ratingOpen}
+          onClose={() => { setRatingOpen(false); setRated(true); }}
+          orderId={order.id}
+          driverId={order.driver.id}
+          driverName={order.driver.name}
+        />
+      )}
     </Card>
   );
 }
