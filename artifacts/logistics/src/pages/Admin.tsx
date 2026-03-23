@@ -24,6 +24,7 @@ import OutsourcingTab from "./admin/OutsourcingTab";
 import PaymentCenter from "./admin/PaymentCenter";
 import QuotationTab from "./admin/QuotationTab";
 import PermissionTab from "./admin/PermissionTab";
+import LineManagementTab from "./admin/LineManagementTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -738,6 +739,10 @@ export default function Admin() {
             <TabsTrigger value="perm" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <span className="text-sm">🔐</span>
               <span className="text-[10px] sm:text-xs">權限</span>
+            </TabsTrigger>
+            <TabsTrigger value="line" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+              <span className="text-[10px] sm:text-xs">LINE</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -1638,6 +1643,11 @@ export default function Admin() {
         {/* ===== 權限管理 TAB ===== */}
         <TabsContent value="perm" className="outline-none">
           <PermissionTab />
+        </TabsContent>
+
+        {/* ===== LINE 接單整合 TAB ===== */}
+        <TabsContent value="line" className="outline-none">
+          <LineManagementTab />
         </TabsContent>
       </Tabs>
 

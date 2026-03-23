@@ -11,7 +11,13 @@ import {
   UpdateOrderParams,
   ListOrdersQueryParams,
 } from "@workspace/api-zod";
-import { sendDispatchNotification } from "../lib/line.js";
+import {
+  sendDispatchNotification,
+  sendNewOrderAlertToCompany,
+  sendCustomerDispatch,
+  sendCustomerStatusUpdate,
+} from "../lib/line.js";
+import { customersTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -117,6 +123,20 @@ router.post("/orders", async (req, res) => {
       })
       .returning();
     res.status(201).json({ ...order, driver: null });
+
+    // 通知公司：新訂單到達
+    setImmediate(async () => {
+      try {
+        await sendNewOrderAlertToCompany({
+          id: order.id,
+          pickupAddress: order.pickupAddress,
+          deliveryAddress: order.deliveryAddress,
+          cargoDescription: order.cargoDescription,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone ?? undefined,
+        });
+      } catch { /* LINE not configured — silent */ }
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to create order");
     res.status(400).json({ error: "Failed to create order" });
@@ -187,6 +207,7 @@ router.patch("/orders/:id", async (req, res) => {
         try {
           const driverRows = await db.select().from(driversTable).where(eq(driversTable.id, driverId));
           const driver = driverRows[0];
+          // 通知司機
           if (driver?.lineUserId) {
             await sendDispatchNotification(driver.lineUserId, {
               id: order.id,
@@ -195,6 +216,33 @@ router.patch("/orders/:id", async (req, res) => {
               cargoDescription: order.cargoDescription,
               customerName: order.customerName,
             });
+          }
+          // 通知客戶：已派車 + 司機資訊
+          if (driver && order.customerPhone) {
+            const customerRows = await db
+              .select()
+              .from(customersTable)
+              .where(eq(customersTable.phone, order.customerPhone))
+              .limit(1);
+            const customer = customerRows[0];
+            if (customer?.lineUserId) {
+              await sendCustomerDispatch(
+                customer.lineUserId,
+                {
+                  id: order.id,
+                  pickupAddress: order.pickupAddress,
+                  deliveryAddress: order.deliveryAddress,
+                  cargoDescription: order.cargoDescription,
+                  customerName: order.customerName,
+                },
+                {
+                  name: driver.name,
+                  phone: driver.phone,
+                  licensePlate: driver.licensePlate,
+                  vehicleType: driver.vehicleType ?? undefined,
+                },
+              );
+            }
           }
         } catch (err) {
           log.warn({ err }, "Failed to send LINE dispatch notification");
@@ -244,6 +292,27 @@ router.post("/orders/:id/driver-action", async (req, res) => {
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
     res.json(order);
+
+    // 通知客戶：到達 / 完成
+    const notifyStatus = body.action === "checkin" ? "in_transit" : body.action === "complete" ? "delivered" : null;
+    if (notifyStatus && order?.customerPhone) {
+      const log = req.log;
+      setImmediate(async () => {
+        try {
+          const customerRows = await db
+            .select()
+            .from(customersTable)
+            .where(eq(customersTable.phone, order.customerPhone!))
+            .limit(1);
+          const customer = customerRows[0];
+          if (customer?.lineUserId) {
+            await sendCustomerStatusUpdate(customer.lineUserId, id, notifyStatus);
+          }
+        } catch (err) {
+          log.warn({ err }, "Failed to send LINE status notification");
+        }
+      });
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to perform driver action");
     res.status(500).json({ error: "Failed to perform driver action" });
