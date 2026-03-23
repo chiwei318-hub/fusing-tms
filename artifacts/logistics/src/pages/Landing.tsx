@@ -389,11 +389,10 @@ export default function Landing() {
       {/* ═══════════════ FOOTER ═══════════════ */}
       <footer className="bg-[#07152c] py-8 px-5">
         <div className="max-w-lg mx-auto text-center">
-          <p className="text-gray-600 text-xs mb-4">員工 / 司機入口</p>
+          <p className="text-gray-600 text-xs mb-4">帳號登入</p>
           <div className="flex justify-center gap-4 flex-wrap">
             <Link href="/chat"><span className="text-green-400 hover:text-green-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">🤖 AI 客服下單</span></Link>
-            <Link href="/customer"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">客戶中心</span></Link>
-            <Link href="/enterprise/login"><span className="text-gray-500 hover:text-orange-400 text-xs underline underline-offset-2 transition-colors cursor-pointer">企業專屬</span></Link>
+            <Link href="/login"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">客戶 / 企業登入</span></Link>
             <Link href="/driver"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">司機接單</span></Link>
             <Link href="/admin"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">後台管理</span></Link>
           </div>

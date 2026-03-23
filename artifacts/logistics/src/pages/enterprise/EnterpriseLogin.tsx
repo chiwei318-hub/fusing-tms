@@ -128,10 +128,17 @@ export default function EnterpriseLogin() {
         </div>
       </div>
 
-      <div className="mt-6 text-center">
-        <Link href="/">
-          <span className="text-blue-300/60 hover:text-blue-300 text-xs transition-colors cursor-pointer">← 返回首頁</span>
-        </Link>
+      <div className="mt-6 text-center space-y-2">
+        <div>
+          <Link href="/login">
+            <span className="text-blue-300/60 hover:text-blue-300 text-xs transition-colors cursor-pointer">← 返回登入選擇</span>
+          </Link>
+        </div>
+        <div>
+          <Link href="/">
+            <span className="text-blue-300/40 hover:text-blue-300/60 text-xs transition-colors cursor-pointer">返回首頁</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

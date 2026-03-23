@@ -100,6 +100,9 @@ function LoginForm({ onLogin }: { onLogin: (s: CustomerSession) => void }) {
           <p className="text-center text-xs text-muted-foreground">
             尚無帳號？請聯絡客服 <a href="tel:0800000000" className="text-primary underline">申請帳號</a>
           </p>
+          <p className="text-center text-xs text-muted-foreground pt-1 border-t">
+            企業客戶？<Link href="/login" className="text-primary underline">切換登入身份</Link>
+          </p>
         </form>
       </CardContent>
     </Card>
