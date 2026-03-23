@@ -1,8 +1,15 @@
 import { Link, useLocation } from "wouter";
 import { Truck, ClipboardList, Home, LayoutGrid, Zap } from "lucide-react";
+import { useListOrders } from "@workspace/api-client-react";
 
 export function DriverLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+
+  const { data: pendingOrders } = useListOrders(
+    { status: "pending" } as any,
+    { query: { refetchInterval: 12000, select: (data: any[]) => data?.filter((o: any) => o.status === "pending" && o.driverId == null) } }
+  );
+  const pendingCount = pendingOrders?.length ?? 0;
 
   const navItems = [
     { href: "/driver", icon: Home, label: "首頁", exact: true },
@@ -13,13 +20,18 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-full bg-slate-50 flex flex-col overflow-hidden pb-16 md:pb-0 md:flex-row">
-      {/* Mobile top bar (compact, no brand) / Desktop left sidebar */}
+      {/* Mobile top bar / Desktop left sidebar */}
       <header className="bg-primary text-primary-foreground shrink-0 z-30 shadow-md md:h-full md:w-52 md:flex md:flex-col md:shadow-xl">
 
-        {/* Mobile: compact section label */}
+        {/* Mobile: compact top bar */}
         <div className="flex items-center gap-2 px-4 h-10 md:hidden border-b border-white/10">
           <Truck className="w-4 h-4 opacity-70" />
           <span className="text-sm font-semibold opacity-90">司機作業系統</span>
+          {pendingCount > 0 && (
+            <span className="ml-auto bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+              {pendingCount}
+            </span>
+          )}
         </div>
 
         {/* Desktop: nav label */}
@@ -43,7 +55,14 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                   : active ? "bg-white/20 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}>
                 <item.icon className="w-5 h-5 shrink-0" />
                 {item.label}
-                {isGrab && <span className="ml-auto text-[10px] font-black bg-orange-500/30 text-orange-200 px-1.5 py-0.5 rounded-full">搶</span>}
+                {isGrab && pendingCount > 0 && (
+                  <span className="ml-auto bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                    {pendingCount}
+                  </span>
+                )}
+                {isGrab && pendingCount === 0 && (
+                  <span className="ml-auto text-[10px] font-black bg-orange-500/30 text-orange-200 px-1.5 py-0.5 rounded-full">搶</span>
+                )}
               </Link>
             );
           })}
@@ -71,11 +90,18 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
             const isGrab = item.href === "/driver/grab";
             return (
               <Link key={item.href} href={item.href}
-                className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-xs font-medium transition-colors
+                className={`flex-1 flex flex-col items-center py-2 gap-0.5 text-xs font-medium transition-colors relative
                   ${isMenuLink ? "text-orange-500 hover:text-orange-600"
                   : isGrab ? active ? "text-orange-500" : "text-orange-400 hover:text-orange-500"
                   : active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-                <item.icon className={`w-5 h-5 ${isMenuLink || isGrab ? "text-orange-500" : active ? "text-primary" : ""}`} />
+                <div className="relative">
+                  <item.icon className={`w-5 h-5 ${isMenuLink || isGrab ? "text-orange-500" : active ? "text-primary" : ""}`} />
+                  {isGrab && pendingCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-orange-500 text-white text-[9px] font-black px-1 py-px rounded-full min-w-[14px] text-center leading-tight">
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </span>
+                  )}
+                </div>
                 {item.label}
               </Link>
             );
