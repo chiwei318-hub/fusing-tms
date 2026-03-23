@@ -15,6 +15,7 @@ import aiChatRouter from "./aiChat";
 import authRouter from "./auth";
 import { routePricesRouter } from "./routePrices";
 import { vehicleCostsRouter } from "./vehicleCosts";
+import { smartOrderRouter } from "./smartOrder";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -37,5 +38,6 @@ router.use(aiChatRouter);
 router.use(authRouter);
 router.use(routePricesRouter);
 router.use(vehicleCostsRouter);
+router.use(smartOrderRouter);
 
 export default router;
