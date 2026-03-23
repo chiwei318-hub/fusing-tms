@@ -50,7 +50,7 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Order Editing:** Allows administrators to fully edit existing orders, including dates, addresses, cargo details, and special requirements, with real-time sync.
 *   **Carpool Panel:** Groups pending orders, calculates AI compatibility scores for merging, manages group assignments, and facilitates driver assignment.
 *   **Outsourcing System:** Manages partner fleets, automates order distribution, calculates profit margins, and uses LINE notifications.
-*   **Enterprise Customer Portal:** Dedicated web portal for enterprise clients with features like quick orders, credit management, discount application, reporting, and 1-click reorder templates.
+*   **Enterprise Customer Portal (Full):** Dedicated web portal at `/enterprise` with: dual-tab login (company account + employee sub-account), in-portal order form with real-time enterprise pricing/discount, one-click reorder from history, order cancel/modify (before dispatch), monthly Excel reconciliation export, system notification center (order created/cancelled/delivered), sub-account management (主管/採購 roles), and unread notification badges. DB tables: `enterprise_accounts`, `enterprise_saved_templates`, `enterprise_sub_accounts`, `enterprise_notifications`.
 *   **LINE Integration:** Utilizes `@line/bot-sdk` for sending dispatch notifications to drivers via Flex Messages and handling postback actions via webhooks. An AI chatbot offers guided customer service.
 
 # External Dependencies

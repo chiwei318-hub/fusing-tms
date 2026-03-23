@@ -1,19 +1,27 @@
 import { useEffect } from "react";
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { GlobalHeader } from "@/components/GlobalHeader";
 import { EnterpriseLayout, getEnterpriseSession } from "@/components/EnterpriseLayout";
 import EnterpriseLogin from "./EnterpriseLogin";
 import EnterpriseDashboard from "./EnterpriseDashboard";
 import EnterpriseOrders from "./EnterpriseOrders";
-import EnterpriseQuickOrder from "./EnterpriseQuickOrder";
+import EnterprisePlaceOrder from "./EnterprisePlaceOrder";
+import EnterpriseNotifications from "./EnterpriseNotifications";
+import EnterpriseSubAccounts from "./EnterpriseSubAccounts";
 import EnterpriseAccount from "./EnterpriseAccount";
+
+function getSession() {
+  const fromLs = getEnterpriseSession();
+  if (fromLs) return fromLs;
+  try {
+    const r = sessionStorage.getItem("enterprise-session");
+    return r ? JSON.parse(r) : null;
+  } catch { return null; }
+}
 
 function EnterpriseGuard({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
-  const session = getEnterpriseSession()
-    ?? (() => {
-      try { const r = sessionStorage.getItem("enterprise-session"); return r ? JSON.parse(r) : null; } catch { return null; }
-    })();
+  const session = getSession();
 
   useEffect(() => {
     if (!session && location !== "/enterprise/login") {
@@ -22,23 +30,14 @@ function EnterpriseGuard({ children }: { children: React.ReactNode }) {
   }, [session, location]);
 
   if (!session) return null;
-
-  return (
-    <EnterpriseLayout session={session}>
-      {children}
-    </EnterpriseLayout>
-  );
+  return <EnterpriseLayout session={session}>{children}</EnterpriseLayout>;
 }
 
 export default function EnterprisePortal() {
   const [location] = useLocation();
   const isLogin = location === "/enterprise/login";
-
-  // Get session for passing to pages
-  const session = getEnterpriseSession()
-    ?? (() => {
-      try { const r = sessionStorage.getItem("enterprise-session"); return r ? JSON.parse(r) : null; } catch { return null; }
-    })();
+  const session = getSession();
+  const isAdmin = !session?.subAccount || session?.subAccount?.role === "admin";
 
   if (isLogin) {
     return (
@@ -60,11 +59,20 @@ export default function EnterprisePortal() {
             <Route path="/enterprise">
               {session ? <EnterpriseDashboard session={session} /> : null}
             </Route>
+            <Route path="/enterprise/place-order">
+              {session ? <EnterprisePlaceOrder session={session} /> : null}
+            </Route>
             <Route path="/enterprise/quick-order">
-              {session ? <EnterpriseQuickOrder session={session} /> : null}
+              <Redirect to="/enterprise/place-order" />
             </Route>
             <Route path="/enterprise/orders">
               {session ? <EnterpriseOrders session={session} /> : null}
+            </Route>
+            <Route path="/enterprise/notifications">
+              {session ? <EnterpriseNotifications session={session} /> : null}
+            </Route>
+            <Route path="/enterprise/sub-accounts">
+              {session && isAdmin ? <EnterpriseSubAccounts session={session} /> : session ? <Redirect to="/enterprise" /> : null}
             </Route>
             <Route path="/enterprise/account">
               {session ? <EnterpriseAccount session={session} /> : null}

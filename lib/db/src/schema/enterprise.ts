@@ -12,15 +12,12 @@ export const enterpriseAccountsTable = pgTable("enterprise_accounts", {
   email: text("email"),
   taxId: text("tax_id"),
   address: text("address"),
-  // Billing
-  billingType: text("billing_type").notNull().default("prepaid"), // "monthly" | "prepaid"
+  billingType: text("billing_type").notNull().default("prepaid"),
   creditLimit: real("credit_limit").notNull().default(0),
-  // Perks
   discountPercent: real("discount_percent").notNull().default(0),
   priorityDispatch: boolean("priority_dispatch").notNull().default(false),
   exclusiveNote: text("exclusive_note"),
-  // Status
-  status: text("status").notNull().default("active"), // "active" | "suspended"
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -38,6 +35,30 @@ export const enterpriseSavedTemplatesTable = pgTable("enterprise_saved_templates
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const enterpriseSubAccountsTable = pgTable("enterprise_sub_accounts", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").references(() => enterpriseAccountsTable.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  subCode: text("sub_code").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull().default("purchaser"),
+  email: text("email"),
+  phone: text("phone"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const enterpriseNotificationsTable = pgTable("enterprise_notifications", {
+  id: serial("id").primaryKey(),
+  enterpriseId: integer("enterprise_id").references(() => enterpriseAccountsTable.id, { onDelete: "cascade" }).notNull(),
+  orderId: integer("order_id"),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertEnterpriseAccountSchema = createInsertSchema(enterpriseAccountsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEnterpriseAccount = z.infer<typeof insertEnterpriseAccountSchema>;
 export type EnterpriseAccount = typeof enterpriseAccountsTable.$inferSelect;
@@ -45,3 +66,6 @@ export type EnterpriseAccount = typeof enterpriseAccountsTable.$inferSelect;
 export const insertEnterpriseTemplateSchema = createInsertSchema(enterpriseSavedTemplatesTable).omit({ id: true, createdAt: true });
 export type InsertEnterpriseTemplate = z.infer<typeof insertEnterpriseTemplateSchema>;
 export type EnterpriseTemplate = typeof enterpriseSavedTemplatesTable.$inferSelect;
+
+export type EnterpriseSubAccount = typeof enterpriseSubAccountsTable.$inferSelect;
+export type EnterpriseNotification = typeof enterpriseNotificationsTable.$inferSelect;
