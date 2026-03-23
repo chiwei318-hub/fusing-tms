@@ -9,3 +9,4 @@ export * from "./payments";
 export * from "./admin";
 export * from "./auth";
 export * from "./routePrices";
+export * from "./vehicleCosts";

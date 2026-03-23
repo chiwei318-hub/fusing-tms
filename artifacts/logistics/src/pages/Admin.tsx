@@ -25,6 +25,7 @@ import OutsourcingTab from "./admin/OutsourcingTab";
 import PaymentCenter from "./admin/PaymentCenter";
 import QuotationTab from "./admin/QuotationTab";
 import RoutePriceTab from "./admin/RoutePriceTab";
+import VehicleCostTab from "./admin/VehicleCostTab";
 import PermissionTab from "./admin/PermissionTab";
 import LineManagementTab from "./admin/LineManagementTab";
 import PricingPanel from "@/components/PricingPanel";
@@ -846,6 +847,10 @@ export default function Admin() {
             <TabsTrigger value="routeprice" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <MapPin className="w-3.5 h-3.5" />
               <span className="text-[10px] sm:text-xs">路線報價</span>
+            </TabsTrigger>
+            <TabsTrigger value="vehiclecost" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <span className="text-sm">💰</span>
+              <span className="text-[10px] sm:text-xs">車輛成本</span>
             </TabsTrigger>
             <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Map className="w-3.5 h-3.5" />
@@ -1812,6 +1817,11 @@ export default function Admin() {
         {/* ===== 路線報價表 TAB ===== */}
         <TabsContent value="routeprice" className="outline-none">
           <RoutePriceTab />
+        </TabsContent>
+
+        {/* ===== 車輛成本計算 TAB ===== */}
+        <TabsContent value="vehiclecost" className="outline-none">
+          <VehicleCostTab />
         </TabsContent>
 
         {/* ===== 權限管理 TAB ===== */}

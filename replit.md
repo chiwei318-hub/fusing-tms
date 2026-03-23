@@ -59,7 +59,8 @@ A logistics dispatch management system with:
 - **AI 客服** — Standalone chat page `/chat`: OpenAI-powered customer service agent that guides users step-by-step (origin → destination → vehicle → cargo → add-ons → quote → confirm dispatch). System prompt enforces pricing rules: base NT$1500 + NT$30/km + tailgate 300 + moving 800 + cold chain 1000 + urgent 500
 - **金流** — Payment collection system (see Payment System section below)
 - **報價** — Freight quotation calculator with per-vehicle pricing rules and auto-calculation
-- **路線報價** — Route-based fixed price table (origin → destination × vehicle type); DB-backed CRUD; seeded with PDF data (楊梅/湖口 × 10.5T/15T); supports waiting fee, elevator fee, tax rate, heap-machine-only flag, Excel export
+- **路線報價** — Route-based fixed price table (origin → destination × vehicle type); DB-backed CRUD; seeded with PDF data; Excel export
+- **車輛成本** — Per-vehicle cost calculator: fuel, depreciation, license/fuel tax, insurance, maintenance, wear, salary, other; auto-calculates fixed cost/month + fuel cost/trip by distance; color bar breakdown chart; summary stats; Excel export
 - **權限** — Backend permission management: admin accounts, role-based access control, custom fields, audit log
 
 ### Permission Management System (後台權限管理)
