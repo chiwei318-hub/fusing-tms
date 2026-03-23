@@ -24,6 +24,7 @@ import { systemConfigRouter } from "./systemConfig";
 import { invoicesRouter } from "./invoices";
 import { biddingRouter } from "./bidding";
 import { driverIncomeRouter } from "./driverIncome";
+import { fleetRegistrationRouter } from "./fleetRegistration";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -55,5 +56,6 @@ router.use("/system-config", systemConfigRouter);
 router.use(invoicesRouter);
 router.use(biddingRouter);
 router.use(driverIncomeRouter);
+router.use(fleetRegistrationRouter);
 
 export default router;

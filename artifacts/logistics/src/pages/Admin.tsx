@@ -34,6 +34,7 @@ import LineManagementTab from "./admin/LineManagementTab";
 import SystemSettingsTab from "./admin/SystemSettingsTab";
 import InvoiceManagementTab from "./admin/InvoiceManagementTab";
 import BiddingTab from "./admin/BiddingTab";
+import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -901,6 +902,10 @@ export default function Admin() {
             <TabsTrigger value="bidding" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Layers className="w-3.5 h-3.5 text-orange-500" />
               <span className="text-[10px] sm:text-xs">競標比價</span>
+            </TabsTrigger>
+            <TabsTrigger value="fleetreg" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <span className="text-[10px] sm:text-xs">車隊入駐</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -1892,6 +1897,11 @@ export default function Admin() {
         {/* ===== 競標比價 TAB ===== */}
         <TabsContent value="bidding" className="outline-none">
           <BiddingTab />
+        </TabsContent>
+
+        {/* ===== 車隊入駐 TAB ===== */}
+        <TabsContent value="fleetreg" className="outline-none">
+          <FleetRegistrationTab />
         </TabsContent>
       </Tabs>
 

@@ -31,6 +31,7 @@ import AdminLogin from "@/pages/login/AdminLogin";
 import LineCallback from "@/pages/login/LineCallback";
 import AIChat from "@/pages/AIChat";
 import DriverJoinPage from "@/pages/DriverJoinPage";
+import FleetJoinPage from "@/pages/FleetJoinPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -135,6 +136,9 @@ function AppRouter() {
   }
   if (location === "/driver-join") {
     return <DriverJoinPage />;
+  }
+  if (location === "/fleet-join") {
+    return <FleetJoinPage />;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;
