@@ -2,14 +2,14 @@ import { Truck } from "lucide-react";
 
 export function GlobalHeader() {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-gray-200 shadow-sm">
+    <header className="fixed top-0 left-0 right-0 z-50 h-20 bg-white border-b border-gray-200 shadow-sm">
       <div className="h-full px-4 sm:px-6 flex items-center justify-between">
         {/* Left: Company Logo */}
         <div className="flex items-center h-full py-2">
           <img
             src="/logo-transparent.png"
             alt="富詠運輸"
-            className="h-11 sm:h-12 w-auto max-w-[180px] sm:max-w-[240px] object-contain"
+            className="h-16 w-auto max-w-[220px] sm:max-w-[300px] object-contain"
             onError={(e) => {
               const img = e.currentTarget as HTMLImageElement;
               img.style.display = "none";

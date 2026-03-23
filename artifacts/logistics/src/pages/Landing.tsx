@@ -180,7 +180,7 @@ export default function Landing() {
             <img
               src="/logo-transparent.png"
               alt="富詠運輸"
-              className="h-14 sm:h-16 w-auto object-contain drop-shadow-lg"
+              className="h-28 sm:h-32 w-auto object-contain drop-shadow-lg"
             />
           </div>
           <div className="flex items-center gap-2">

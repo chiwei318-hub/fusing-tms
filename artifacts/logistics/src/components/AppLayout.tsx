@@ -25,8 +25,8 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      {/* pt-14 offsets the fixed GlobalHeader */}
-      <SidebarContent className="pt-14">
+      {/* pt-20 offsets the fixed GlobalHeader */}
+      <SidebarContent className="pt-20">
         <SidebarGroup className="mt-3">
           <SidebarGroupLabel className="text-xs uppercase tracking-widest text-sidebar-foreground/40 font-semibold px-4 mb-1">
             功能選單
