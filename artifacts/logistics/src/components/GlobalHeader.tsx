@@ -9,7 +9,7 @@ export function GlobalHeader() {
           <img
             src="/logo-transparent.png"
             alt="富詠運輸"
-            className="h-9 sm:h-11 w-auto max-w-[160px] sm:max-w-[200px] object-contain"
+            className="h-11 sm:h-12 w-auto max-w-[180px] sm:max-w-[240px] object-contain"
             onError={(e) => {
               const img = e.currentTarget as HTMLImageElement;
               img.style.display = "none";
