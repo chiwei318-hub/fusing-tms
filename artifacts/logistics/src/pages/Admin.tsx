@@ -17,6 +17,7 @@ import ReportCenter from "./admin/ReportCenter";
 import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import DispatchOptimizerTab from "./admin/DispatchOptimizerTab";
+import DriverApplicationsTab from "./admin/DriverApplicationsTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import FleetMapTab from "./admin/FleetMapTab";
@@ -856,6 +857,10 @@ export default function Admin() {
             <TabsTrigger value="dispatch" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Zap className="w-3.5 h-3.5" />
               <span className="text-[10px] sm:text-xs">派單優化</span>
+            </TabsTrigger>
+            <TabsTrigger value="join" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">加盟審核</span>
             </TabsTrigger>
             <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Map className="w-3.5 h-3.5" />
@@ -1832,6 +1837,11 @@ export default function Admin() {
         {/* ===== 派單優化 TAB ===== */}
         <TabsContent value="dispatch" className="outline-none">
           <DispatchOptimizerTab />
+        </TabsContent>
+
+        {/* ===== 加盟審核 TAB ===== */}
+        <TabsContent value="join" className="outline-none">
+          <DriverApplicationsTab />
         </TabsContent>
 
         {/* ===== 權限管理 TAB ===== */}

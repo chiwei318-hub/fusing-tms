@@ -28,6 +28,7 @@ import DriverLogin from "@/pages/login/DriverLogin";
 import AdminLogin from "@/pages/login/AdminLogin";
 import LineCallback from "@/pages/login/LineCallback";
 import AIChat from "@/pages/AIChat";
+import DriverJoinPage from "@/pages/DriverJoinPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,6 +128,9 @@ function AppRouter() {
   }
   if (location === "/chat") {
     return <AIChat />;
+  }
+  if (location === "/driver-join") {
+    return <DriverJoinPage />;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;
