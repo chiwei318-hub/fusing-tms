@@ -5,8 +5,10 @@ import { db, ordersTable, customersTable, driversTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   replyTextMessage,
+  replyMessages,
   isLineConfigured,
   sendPaymentReminder,
+  sendRejectAlertToCompany,
 } from "../lib/line.js";
 
 const router: IRouter = Router();
@@ -58,20 +60,78 @@ router.post("/line/webhook", async (req, res) => {
         const data = new URLSearchParams(event.postback.data);
         const action = data.get("action");
         const orderIdStr = data.get("orderId");
+        const replyToken = event.replyToken;
         if (!action || !orderIdStr) continue;
         const orderId = parseInt(orderIdStr, 10);
         if (isNaN(orderId)) continue;
         try {
-          const existing = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-          if (!existing.length) continue;
+          const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+          if (!order) {
+            await replyTextMessage(replyToken, `❌ 找不到訂單 #${orderId}，可能已被取消或異動。`);
+            continue;
+          }
           const now = new Date();
+
           if (action === "accept") {
+            // 防止重複接單
+            if (order.driverAcceptedAt) {
+              await replyTextMessage(replyToken, `ℹ️ 訂單 #${orderId} 您已確認過接單，無需重複操作。`);
+              continue;
+            }
             await db.update(ordersTable).set({ status: "assigned", driverAcceptedAt: now, updatedAt: now }).where(eq(ordersTable.id, orderId));
+
+            // 取貨時間格式化
+            const pickupTimeStr = order.pickupTime
+              ? new Date(order.pickupTime).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "待確認";
+
+            await replyMessages(replyToken, [
+              {
+                type: "text",
+                text: [
+                  `✅ 接單成功！訂單 #${orderId}`,
+                  ``,
+                  `📦 貨物：${order.cargoDescription || "—"}`,
+                  `📍 取貨：${order.pickupAddress}`,
+                  `🏁 送達：${order.deliveryAddress}`,
+                  `🕐 取貨時間：${pickupTimeStr}`,
+                  ``,
+                  `請準時前往取貨，祝行車順利！`,
+                ].join("\n"),
+              },
+            ]);
+            console.log(`[LINE postback] ✓ Driver accepted order #${orderId}`);
+
           } else if (action === "reject") {
+            // 取得司機名稱
+            let driverName = "（司機）";
+            if (order.driverId) {
+              const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, order.driverId)).limit(1);
+              if (driver) driverName = driver.name;
+            }
+
             await db.update(ordersTable).set({ driverId: null, status: "pending", updatedAt: now }).where(eq(ordersTable.id, orderId));
+
+            // 回覆司機
+            await replyTextMessage(replyToken, `已收到您的拒單，訂單 #${orderId} 將由系統重新安排司機。感謝告知！`);
+
+            // 通知公司拒單
+            await sendRejectAlertToCompany(
+              {
+                id: orderId,
+                pickupAddress: order.pickupAddress,
+                deliveryAddress: order.deliveryAddress,
+                cargoDescription: order.cargoDescription || "—",
+                customerName: order.customerName || "—",
+                customerPhone: order.customerPhone ?? undefined,
+              },
+              driverName,
+            );
+            console.log(`[LINE postback] ✓ Driver rejected order #${orderId}, company notified`);
           }
         } catch (err) {
           console.error(`Failed to process LINE postback for order ${orderId}:`, err);
+          try { await replyTextMessage(replyToken, "系統處理中發生錯誤，請稍後再試或聯繫管理員。"); } catch {}
         }
         continue;
       }

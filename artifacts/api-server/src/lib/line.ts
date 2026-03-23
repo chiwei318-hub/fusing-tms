@@ -304,7 +304,68 @@ export async function sendPaymentReminder(
   await pushFlex(lineUserId, `【付款提醒】訂單 #${orderId} 未付 ${nt(amountDue)}`, bubble);
 }
 
-/* ─── 6. 回覆綁定確認 ─── */
+/* ─── 6. 拒單提醒 → 公司 ─── */
+export async function sendRejectAlertToCompany(order: OrderInfo, driverName: string): Promise<void> {
+  const companyUserId = process.env.LINE_COMPANY_USER_ID;
+  if (!companyUserId) return;
+
+  const bubble: line.messagingApi.FlexBubble = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [{ type: "text", text: "⚠️ 司機拒單", weight: "bold", color: "#ffffff", size: "lg" }],
+      backgroundColor: "#dc2626",
+      paddingAll: "md",
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "md",
+      contents: [
+        { type: "text", text: `訂單 #${order.id} 被拒單`, weight: "bold", size: "xl", color: "#1e293b" },
+        { type: "separator", margin: "md" },
+        {
+          type: "box", layout: "vertical", margin: "md", spacing: "sm",
+          contents: [
+            row("司機", driverName),
+            row("客戶", order.customerName),
+            row("取貨", order.pickupAddress),
+            row("送達", order.deliveryAddress),
+          ],
+        },
+        {
+          type: "text",
+          text: "⚡ 訂單已退回待派車，請盡快重新安排！",
+          wrap: true,
+          color: "#dc2626",
+          size: "sm",
+          margin: "md",
+          weight: "bold",
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "md",
+      contents: [{
+        type: "button", style: "primary", color: "#dc2626",
+        action: { type: "uri", label: "前往後台重新派車", uri: `${process.env.APP_BASE_URL ?? ""}/admin` },
+      }],
+    },
+  };
+
+  await pushFlex(companyUserId, `【拒單警告】司機 ${driverName} 拒絕訂單 #${order.id}`, bubble);
+}
+
+/* ─── 7. 回覆訊息（含多則） ─── */
+export async function replyMessages(replyToken: string, messages: line.messagingApi.Message[]): Promise<void> {
+  if (!channelAccessToken) return;
+  await getClient().replyMessage({ replyToken, messages });
+}
+
+/* ─── 8. 回覆單則文字 ─── */
 export async function replyTextMessage(replyToken: string, text: string): Promise<void> {
   if (!channelAccessToken) return;
   await getClient().replyMessage({
