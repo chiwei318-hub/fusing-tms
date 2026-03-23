@@ -87,6 +87,34 @@ router.patch("/drivers/:id", async (req, res) => {
   }
 });
 
+router.post("/drivers/bulk", async (req, res) => {
+  try {
+    const { rows } = req.body as { rows: { name: string; phone: string; vehicleType: string; licensePlate: string; driverType?: string; username?: string; password?: string }[] };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No rows provided" });
+    }
+    const values = rows.map(r => ({
+      name: String(r.name ?? "").trim(),
+      phone: String(r.phone ?? "").trim(),
+      vehicleType: String(r.vehicleType ?? "").trim() || "機車",
+      licensePlate: String(r.licensePlate ?? "").trim(),
+      status: "available" as const,
+      driverType: r.driverType ? String(r.driverType).trim() : null,
+      username: r.username ? String(r.username).trim() : null,
+      password: r.password ? String(r.password).trim() : null,
+    })).filter(r => r.name && r.phone && r.licensePlate);
+
+    if (values.length === 0) {
+      return res.status(400).json({ error: "No valid rows (name, phone and licensePlate required)" });
+    }
+    const inserted = await db.insert(driversTable).values(values).returning();
+    return res.status(201).json({ inserted: inserted.length, rows: inserted });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk import drivers");
+    return res.status(500).json({ error: "Failed to bulk import drivers" });
+  }
+});
+
 router.delete("/drivers/:id", async (req, res) => {
   try {
     const { id } = DeleteDriverParams.parse(req.params);

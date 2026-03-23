@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { ImportDialog } from "@/components/ImportDialog";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +8,7 @@ import {
   Package, Truck, UserPlus, Settings2, Trash2, BarChart2,
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
-  Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield,
+  Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
@@ -352,6 +353,8 @@ export default function Admin() {
   const [driverDialogOpen, setDriverDialogOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importDialogTab, setImportDialogTab] = useState<"customers" | "drivers">("customers");
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -1293,6 +1296,10 @@ export default function Admin() {
         <TabsContent value="drivers" className="outline-none space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">共 {drivers?.length ?? 0} 位司機</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => { setImportDialogTab("drivers"); setImportDialogOpen(true); }}>
+                <Upload className="w-4 h-4" /> 批量匯入
+              </Button>
             <Dialog open={driverDialogOpen} onOpenChange={setDriverDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2">
@@ -1316,6 +1323,7 @@ export default function Admin() {
                 </Form>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
 
           <Dialog open={!!editingDriver} onOpenChange={(open) => { if (!open) setEditingDriver(null); }}>
@@ -1432,6 +1440,10 @@ export default function Admin() {
         <TabsContent value="customers" className="outline-none space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">共 {customers?.length ?? 0} 位客戶</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => { setImportDialogTab("customers"); setImportDialogOpen(true); }}>
+                <Upload className="w-4 h-4" /> 批量匯入
+              </Button>
             <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2">
@@ -1455,6 +1467,7 @@ export default function Admin() {
                 </Form>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
 
           <Dialog open={!!editingCustomer} onOpenChange={(open) => { if (!open) setEditingCustomer(null); }}>
@@ -1612,6 +1625,15 @@ export default function Admin() {
           <PermissionTab />
         </TabsContent>
       </Tabs>
+
+      <ImportDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        defaultTab={importDialogTab}
+        onSuccess={() => {
+          setImportDialogOpen(false);
+        }}
+      />
     </div>
   );
 }

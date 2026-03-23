@@ -100,6 +100,33 @@ router.post("/customers/login", async (req, res) => {
   }
 });
 
+router.post("/customers/bulk", async (req, res) => {
+  try {
+    const { rows } = req.body as { rows: { name: string; phone: string; address?: string; contactPerson?: string; taxId?: string; username?: string; password?: string }[] };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No rows provided" });
+    }
+    const values = rows.map(r => ({
+      name: String(r.name ?? "").trim(),
+      phone: String(r.phone ?? "").trim(),
+      address: r.address ? String(r.address).trim() : null,
+      contactPerson: r.contactPerson ? String(r.contactPerson).trim() : null,
+      taxId: r.taxId ? String(r.taxId).trim() : null,
+      username: r.username ? String(r.username).trim() : null,
+      password: r.password ? String(r.password).trim() : null,
+    })).filter(r => r.name && r.phone);
+
+    if (values.length === 0) {
+      return res.status(400).json({ error: "No valid rows (name and phone required)" });
+    }
+    const inserted = await db.insert(customersTable).values(values).returning();
+    return res.status(201).json({ inserted: inserted.length, rows: inserted });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk import customers");
+    return res.status(500).json({ error: "Failed to bulk import customers" });
+  }
+});
+
 router.delete("/customers/:id", async (req, res) => {
   try {
     const { id } = DeleteCustomerParams.parse(req.params);
