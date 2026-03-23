@@ -27,6 +27,7 @@ import { driverIncomeRouter } from "./driverIncome";
 import { fleetRegistrationRouter } from "./fleetRegistration";
 import { paymentMethodsRouter } from "./paymentMethods";
 import { performanceRouter } from "./performance";
+import { quickOrderRouter } from "./quickOrder";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -61,5 +62,6 @@ router.use(driverIncomeRouter);
 router.use(fleetRegistrationRouter);
 router.use(paymentMethodsRouter);
 router.use(performanceRouter);
+router.use("/quick-order", quickOrderRouter);
 
 export default router;

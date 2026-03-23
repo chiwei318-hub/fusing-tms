@@ -32,6 +32,8 @@ import LineCallback from "@/pages/login/LineCallback";
 import AIChat from "@/pages/AIChat";
 import DriverJoinPage from "@/pages/DriverJoinPage";
 import FleetJoinPage from "@/pages/FleetJoinPage";
+import QuickOrder from "@/pages/QuickOrder";
+import QuickTrack from "@/pages/QuickTrack";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,6 +141,12 @@ function AppRouter() {
   }
   if (location === "/fleet-join") {
     return <FleetJoinPage />;
+  }
+  if (location === "/quick" || location.startsWith("/quick/")) {
+    if (location.startsWith("/quick/track/")) {
+      return <div className="h-dvh overflow-y-auto"><QuickTrack /></div>;
+    }
+    return <div className="h-dvh overflow-y-auto"><QuickOrder /></div>;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;

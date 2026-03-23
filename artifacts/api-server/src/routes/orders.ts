@@ -527,31 +527,4 @@ router.post("/orders/:id/grab", async (req, res) => {
   }
 });
 
-/* ─── Quick order (Landing page — minimal data) ─── */
-router.post("/quick-order", async (req, res) => {
-  try {
-    const { phone, pickupAddress } = req.body as { phone: string; pickupAddress: string };
-    if (!phone || !pickupAddress) {
-      return res.status(400).json({ error: "電話與取貨地址為必填" });
-    }
-    const [order] = await db.insert(ordersTable).values({
-      customerName: `快速下單 ${phone.slice(-4)}`,
-      customerPhone: phone.trim(),
-      pickupAddress: pickupAddress.trim(),
-      deliveryAddress: "待確認",
-      cargoDescription: "待補充（快速下單）",
-      status: "pending",
-    }).returning();
-
-    const base = 350;
-    const priceMin = base + Math.floor(Math.random() * 100);
-    const priceMax = priceMin + 200 + Math.floor(Math.random() * 200);
-
-    return res.status(201).json({ orderId: order.id, priceMin, priceMax });
-  } catch (err) {
-    req.log.error({ err }, "Failed to create quick order");
-    return res.status(500).json({ error: "建立訂單失敗" });
-  }
-});
-
 export default router;

@@ -5,7 +5,6 @@ import {
   Building2, Zap, Clock, Users, Shield, ChevronDown, Sparkles,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.BASE_URL + "api";
 
 function useLiveStats() {
   const [nearbyTrucks, setNearbyTrucks] = useState(7);
@@ -66,99 +65,21 @@ const reviews = [
   { name: "陳經理", company: "台北倉儲物流股份有限公司", stars: 5, text: "一次搬三個點，全部到位，司機還幫忙確認簽收。超乎期待。" },
 ];
 
-interface QuickOrderSuccess { orderId: number; priceMin: number; priceMax: number; }
-
 function QuickOrderForm() {
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState<QuickOrderSuccess | null>(null);
-  const [error, setError] = useState("");
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`${API_BASE}/quick-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, pickupAddress: address }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "送出失敗");
-      setSuccess(data);
-    } catch (err: any) {
-      setError(err.message ?? "送出失敗，請稍後再試");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (success) {
-    return (
-      <div className="text-center space-y-4 py-2">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-          <CheckCircle className="w-8 h-8 text-green-600" />
-        </div>
-        <div>
-          <p className="font-black text-gray-900 text-xl">已送出！客服將聯絡你</p>
-          <p className="text-gray-500 text-sm mt-1">訂單編號 #{success.orderId}</p>
-        </div>
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl px-5 py-4">
-          <p className="text-xs text-orange-600 font-semibold mb-1">系統預估費用</p>
-          <p className="text-2xl font-black text-orange-600">
-            NT${success.priceMin.toLocaleString()} – NT${success.priceMax.toLocaleString()}
-          </p>
-          <p className="text-xs text-orange-500 mt-1">確切報價由調度員與你確認</p>
-        </div>
-        <p className="text-xs text-gray-400">通常 15 分鐘內有人聯絡你</p>
-        <button
-          onClick={() => { setSuccess(null); setPhone(""); setAddress(""); }}
-          className="text-xs text-[#1a3a8f] underline"
-        >
-          再下一單
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="space-y-3">
-      <div className="relative">
-        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="tel"
-          required
-          placeholder="您的聯絡電話"
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
-          className="w-full pl-10 pr-4 py-3.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a8f]/30 focus:border-[#1a3a8f]"
-        />
-      </div>
-      <div className="relative">
-        <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          required
-          placeholder="取貨地址（縣市 + 地址）"
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          className="w-full pl-10 pr-4 py-3.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a3a8f]/30 focus:border-[#1a3a8f]"
-        />
-      </div>
-      {error && <p className="text-red-500 text-xs text-center">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full py-5 bg-orange-500 hover:bg-orange-600 active:scale-[0.98] disabled:opacity-60 text-white font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2"
-      >
-        <Zap className="w-6 h-6" />
-        {loading ? "送出中..." : "快速叫車"}
-        {!loading && <ArrowRight className="w-5 h-5" />}
-      </button>
-      <p className="text-center text-xs text-gray-400">其他資料後補，司機接單後聯繫你</p>
-    </form>
+    <div className="space-y-3 text-center">
+      <p className="text-sm text-gray-500 mb-4">
+        免登入、即時報價、線上付款、自動派車，最快 3 分鐘完成預訂
+      </p>
+      <Link href="/quick">
+        <button className="w-full py-5 bg-orange-500 hover:bg-orange-600 active:scale-[0.98] text-white font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
+          <Zap className="w-6 h-6" />
+          立即開始快速下單
+          <ArrowRight className="w-5 h-5" />
+        </button>
+      </Link>
+      <p className="text-center text-xs text-gray-400">⚡ 免註冊 · 即時報價 · 線上付款 · 自動派車</p>
+    </div>
   );
 }
 
@@ -228,11 +149,18 @@ export default function Landing() {
             </button>
           </Link>
           <p className="text-orange-200 text-sm font-bold mb-1">👉 免註冊・1分鐘完成下單</p>
-          <Link href="/chat">
-            <button className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors mt-2">
-              🤖 AI 客服報價下單
-            </button>
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+            <Link href="/quick">
+              <button className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-400 border border-green-400 text-white text-sm font-bold px-5 py-2.5 rounded-full transition-colors shadow-lg shadow-green-500/30">
+                ⚡ 零散客快速接單（免登入）
+              </button>
+            </Link>
+            <Link href="/chat">
+              <button className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors">
+                🤖 AI 客服報價下單
+              </button>
+            </Link>
+          </div>
 
           {/* Live chips */}
           <div className="mt-6 flex items-center gap-4">
