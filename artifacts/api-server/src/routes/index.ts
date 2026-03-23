@@ -17,6 +17,7 @@ import { routePricesRouter } from "./routePrices";
 import { vehicleCostsRouter } from "./vehicleCosts";
 import { smartOrderRouter } from "./smartOrder";
 import { driverOnboardingRouter } from "./driverOnboarding";
+import { customerManagementRouter } from "./customerManagement";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -41,5 +42,6 @@ router.use(routePricesRouter);
 router.use(vehicleCostsRouter);
 router.use(smartOrderRouter);
 router.use(driverOnboardingRouter);
+router.use(customerManagementRouter);
 
 export default router;

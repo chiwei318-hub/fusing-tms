@@ -9,7 +9,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X,
+  Search, X, Building2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
@@ -18,6 +18,7 @@ import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import DispatchOptimizerTab from "./admin/DispatchOptimizerTab";
 import DriverApplicationsTab from "./admin/DriverApplicationsTab";
+import CustomerManagementTab from "./admin/CustomerManagementTab";
 import HeatMapTab from "./admin/HeatMapTab";
 import AIAnalyticsTab from "./admin/AIAnalyticsTab";
 import FleetMapTab from "./admin/FleetMapTab";
@@ -861,6 +862,10 @@ export default function Admin() {
             <TabsTrigger value="join" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <UserPlus className="w-3.5 h-3.5" />
               <span className="text-[10px] sm:text-xs">加盟審核</span>
+            </TabsTrigger>
+            <TabsTrigger value="crm" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Building2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">廠商管理</span>
             </TabsTrigger>
             <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Map className="w-3.5 h-3.5" />
@@ -1842,6 +1847,11 @@ export default function Admin() {
         {/* ===== 加盟審核 TAB ===== */}
         <TabsContent value="join" className="outline-none">
           <DriverApplicationsTab />
+        </TabsContent>
+
+        {/* ===== 廠商管理 TAB ===== */}
+        <TabsContent value="crm" className="outline-none">
+          <CustomerManagementTab />
         </TabsContent>
 
         {/* ===== 權限管理 TAB ===== */}
