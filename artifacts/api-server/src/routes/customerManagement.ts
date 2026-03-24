@@ -6,6 +6,22 @@ import ExcelJS from "exceljs";
 
 export const customerManagementRouter = Router();
 
+// ─── DB Migration: add new columns if absent ──────────────────────────────────
+
+async function ensureCustomerColumns() {
+  const cols = [
+    "invoice_title TEXT",
+    "company_address TEXT",
+    "factory_address TEXT",
+  ];
+  for (const col of cols) {
+    try {
+      await db.execute(sql.raw(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS ${col}`));
+    } catch { /* ignore */ }
+  }
+}
+ensureCustomerColumns().catch(console.error);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PRICE_LEVEL_LABELS: Record<string, string> = {
@@ -100,6 +116,9 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
       isVip: z.boolean().optional(),
       monthlyStatementDay: z.coerce.number().min(1).max(28).optional(),
       notes: z.string().optional(),
+      invoiceTitle: z.string().optional(),
+      companyAddress: z.string().optional(),
+      factoryAddress: z.string().optional(),
     });
     const data = schema.parse(req.body);
     await db.execute(sql`
@@ -120,7 +139,10 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
         discount_pct = COALESCE(${data.discountPct ?? null}, discount_pct),
         is_vip = COALESCE(${data.isVip ?? null}, is_vip),
         monthly_statement_day = COALESCE(${data.monthlyStatementDay ?? null}, monthly_statement_day),
-        notes = COALESCE(${data.notes ?? null}, notes)
+        notes = COALESCE(${data.notes ?? null}, notes),
+        invoice_title = COALESCE(${data.invoiceTitle ?? null}, invoice_title),
+        company_address = COALESCE(${data.companyAddress ?? null}, company_address),
+        factory_address = COALESCE(${data.factoryAddress ?? null}, factory_address)
       WHERE id = ${id}
     `);
     const updated = (await db.execute(sql`SELECT * FROM customers WHERE id = ${id}`)).rows[0];

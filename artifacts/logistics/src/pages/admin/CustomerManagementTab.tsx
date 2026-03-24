@@ -35,6 +35,7 @@ interface Customer {
   price_level: string; discount_pct: number; is_vip: boolean;
   is_blacklisted: boolean; blacklist_reason: string | null;
   monthly_statement_day: number; notes: string | null; industry: string | null;
+  invoice_title: string | null; company_address: string | null; factory_address: string | null;
   total_orders: number; total_revenue: number; outstanding_amount: number;
   last_order_at: string | null;
 }
@@ -99,6 +100,9 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
     isVip: customer?.is_vip ?? false,
     monthlyStatementDay: String(customer?.monthly_statement_day ?? 5),
     notes: customer?.notes ?? "",
+    invoiceTitle: customer?.invoice_title ?? "",
+    companyAddress: customer?.company_address ?? "",
+    factoryAddress: customer?.factory_address ?? "",
   });
   const [loading, setLoading] = useState(false);
 
@@ -172,6 +176,18 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               <div className="col-span-2">
                 <Label className="text-xs">通訊地址</Label>
                 <Input className="mt-1" placeholder="郵遞區號 + 縣市 + 地址" value={form.address} onChange={e => f("address", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">發票抬頭</Label>
+                <Input className="mt-1" placeholder="開立發票時使用的名稱（預設與公司名稱相同）" value={form.invoiceTitle} onChange={e => f("invoiceTitle", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">公司地址</Label>
+                <Input className="mt-1" placeholder="公司登記地址（可與通訊地址不同）" value={form.companyAddress} onChange={e => f("companyAddress", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">工廠地址</Label>
+                <Input className="mt-1" placeholder="工廠或倉庫實際地址（選填）" value={form.factoryAddress} onChange={e => f("factoryAddress", e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs">客戶類型</Label>
@@ -531,6 +547,9 @@ function CustomerDetailDialog({ customer, onClose, onUpdate }: {
                 ["產業別", customer.industry ?? "—"],
                 ["郵遞區號", customer.postal_code ?? "—"],
                 ["通訊地址", customer.address ?? "—"],
+                ["發票抬頭", customer.invoice_title ?? "—"],
+                ["公司地址", customer.company_address ?? "—"],
+                ["工廠地址", customer.factory_address ?? "—"],
                 ["總訂單", `${Number(customer.total_orders)} 筆`],
                 ["累計金額", `NT$${Number(customer.total_revenue).toLocaleString()}`],
                 ["待收款", customer.outstanding_amount > 0 ? `NT$${Number(customer.outstanding_amount).toLocaleString()}` : "—"],

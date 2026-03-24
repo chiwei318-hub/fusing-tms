@@ -107,6 +107,9 @@ const customerFormSchema = z.object({
   monthlyStatementDay: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
+  invoiceTitle: z.string().optional(),
+  companyAddress: z.string().optional(),
+  factoryAddress: z.string().optional(),
 });
 type CustomerFormValues = z.infer<typeof customerFormSchema>;
 
@@ -431,6 +434,33 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
               <FormMessage />
             </FormItem>
           )} />
+          <FormField control={form.control} name="invoiceTitle" render={({ field }) => (
+            <FormItem className="col-span-2">
+              <FormLabel className="text-xs">發票抬頭</FormLabel>
+              <FormControl>
+                <Input placeholder="開立發票時使用的名稱（可與公司名稱不同）" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="companyAddress" render={({ field }) => (
+            <FormItem className="col-span-2">
+              <FormLabel className="text-xs">公司地址</FormLabel>
+              <FormControl>
+                <HistoryInput fieldKey="customer-companyAddress" placeholder="公司登記地址" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="factoryAddress" render={({ field }) => (
+            <FormItem className="col-span-2">
+              <FormLabel className="text-xs">工廠地址</FormLabel>
+              <FormControl>
+                <HistoryInput fieldKey="customer-factoryAddress" placeholder="工廠或倉庫實際地址（選填）" {...field} value={field.value ?? ""} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
         </div>
       </div>
 
@@ -527,7 +557,7 @@ export default function Admin() {
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
 
-  const customerDefaults = { name: "", phone: "", address: "", contactPerson: "", taxId: "", username: "", password: "" };
+  const customerDefaults = { name: "", phone: "", address: "", contactPerson: "", taxId: "", username: "", password: "", invoiceTitle: "", companyAddress: "", factoryAddress: "" };
   const createCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
   const editCustomerForm = useForm<CustomerFormValues>({ resolver: zodResolver(customerFormSchema), defaultValues: customerDefaults });
 
@@ -670,6 +700,9 @@ export default function Admin() {
           monthlyStatementDay: data.monthlyStatementDay ? parseInt(data.monthlyStatementDay) : 5,
           username: data.username || null,
           password: data.password || null,
+          invoiceTitle: data.invoiceTitle || null,
+          companyAddress: data.companyAddress || null,
+          factoryAddress: data.factoryAddress || null,
         } as any,
       });
       toast({ title: "成功", description: "已新增客戶" });
@@ -696,6 +729,9 @@ export default function Admin() {
       monthlyStatementDay: String((customer as any).monthly_statement_day ?? 5),
       username: customer.username ?? "",
       password: customer.password ?? "",
+      invoiceTitle: (customer as any).invoice_title ?? "",
+      companyAddress: (customer as any).company_address ?? "",
+      factoryAddress: (customer as any).factory_address ?? "",
     });
   };
 
@@ -718,6 +754,9 @@ export default function Admin() {
           monthlyStatementDay: data.monthlyStatementDay ? parseInt(data.monthlyStatementDay) : null,
           username: data.username || null,
           password: data.password || null,
+          invoiceTitle: data.invoiceTitle || null,
+          companyAddress: data.companyAddress || null,
+          factoryAddress: data.factoryAddress || null,
         } as any,
       });
       toast({ title: "成功", description: "客戶資料已更新" });

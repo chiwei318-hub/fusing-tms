@@ -37,14 +37,16 @@ router.post("/customers", async (req, res) => {
         address, postal_code, email,
         company_type, industry,
         payment_type, credit_limit, price_level, discount_pct,
-        is_vip, monthly_statement_day, notes
+        is_vip, monthly_statement_day, notes,
+        invoice_title, company_address, factory_address
       ) VALUES (
         $1,$2,$3,$4,$5,
         $6,$7,
         $8,$9,$10,
         $11,$12,
         $13,$14,$15,$16,
-        $17,$18,$19
+        $17,$18,$19,
+        $20,$21,$22
       ) RETURNING *`,
       [
         String(b.name).trim(),
@@ -66,6 +68,9 @@ router.post("/customers", async (req, res) => {
         b.isVip ?? false,
         parseInt(b.monthlyStatementDay) || 5,
         b.notes ?? null,
+        b.invoiceTitle ?? null,
+        b.companyAddress ?? null,
+        b.factoryAddress ?? null,
       ]
     );
     res.status(201).json(rows[0]);
