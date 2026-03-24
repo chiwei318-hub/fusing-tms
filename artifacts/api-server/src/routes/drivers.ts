@@ -19,6 +19,14 @@ async function ensureDriverColumns() {
     "has_tailgate BOOLEAN DEFAULT FALSE",
     "max_load_kg REAL",
     "max_volume_cbm REAL",
+    "latitude REAL",
+    "longitude REAL",
+    "last_location_at TIMESTAMP",
+    "service_areas TEXT",
+    "can_cold_chain BOOLEAN DEFAULT FALSE",
+    "can_heavy_cargo BOOLEAN DEFAULT FALSE",
+    "available_time_start TEXT",
+    "available_time_end TEXT",
   ];
   for (const col of cols) {
     try {
@@ -120,16 +128,102 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("bankAccount" in b) updates.bankAccount = b.bankAccount ?? null;
     if ("bankAccountName" in b) updates.bankAccountName = b.bankAccountName ?? null;
 
-    const [driver] = await db
-      .update(driversTable)
-      .set(updates)
-      .where(eq(driversTable.id, id))
-      .returning();
-    res.json(driver);
+    // New capability/schedule fields — raw SQL since not in drizzle schema yet
+    const rawFields: string[] = [];
+    const rawParams: any[] = [];
+    let pIdx = 1;
+
+    if ("serviceAreas" in b) {
+      rawFields.push(`service_areas = $${pIdx++}`);
+      rawParams.push(b.serviceAreas != null ? JSON.stringify(b.serviceAreas) : null);
+    }
+    if ("canColdChain" in b) { rawFields.push(`can_cold_chain = $${pIdx++}`); rawParams.push(!!b.canColdChain); }
+    if ("canHeavyCargo" in b) { rawFields.push(`can_heavy_cargo = $${pIdx++}`); rawParams.push(!!b.canHeavyCargo); }
+    if ("availableTimeStart" in b) { rawFields.push(`available_time_start = $${pIdx++}`); rawParams.push(b.availableTimeStart ?? null); }
+    if ("availableTimeEnd" in b) { rawFields.push(`available_time_end = $${pIdx++}`); rawParams.push(b.availableTimeEnd ?? null); }
+
+    if (rawFields.length > 0) {
+      rawParams.push(id);
+      await pool.query(
+        `UPDATE drivers SET ${rawFields.join(", ")} WHERE id = $${pIdx}`,
+        rawParams,
+      );
+    }
+
+    const { rows } = await pool.query(`SELECT * FROM drivers WHERE id = $1`, [id]);
+    res.json(rows[0] ?? updates);
   } catch (err) {
     req.log.error({ err }, "Failed to update driver");
     res.status(500).json({ error: "Failed to update driver" });
   }
+});
+
+// ─── POST /api/drivers/:id/location — update GPS coordinates ─────────────────
+
+router.post("/drivers/:id/location", async (req, res) => {
+  const id = Number(req.params.id);
+  const { latitude, longitude } = req.body as { latitude: number; longitude: number };
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return res.status(400).json({ error: "latitude and longitude required" });
+  }
+  await pool.query(
+    `UPDATE drivers SET latitude = $1, longitude = $2, last_location_at = NOW() WHERE id = $3`,
+    [latitude, longitude, id],
+  );
+  res.json({ ok: true, latitude, longitude });
+});
+
+// ─── GET /api/drivers/analytics — order accept/reject rates per driver ────────
+
+router.get("/drivers/analytics", async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT
+      d.id,
+      d.name,
+      d.vehicle_type,
+      d.license_plate,
+      d.status,
+      d.latitude,
+      d.longitude,
+      d.last_location_at,
+      d.service_areas,
+      d.can_cold_chain,
+      d.can_heavy_cargo,
+      d.available_time_start,
+      d.available_time_end,
+      COUNT(o.id) FILTER (WHERE o.status = 'delivered') AS completed_count,
+      COUNT(o.id) FILTER (WHERE o.status = 'cancelled') AS cancelled_count,
+      COUNT(o.id) FILTER (WHERE o.status IN ('delivered','cancelled')) AS total_responded,
+      ROUND(
+        100.0 * COUNT(o.id) FILTER (WHERE o.status = 'delivered') /
+        NULLIF(COUNT(o.id) FILTER (WHERE o.status IN ('delivered','cancelled')), 0),
+        1
+      ) AS accept_rate,
+      ROUND(AVG(r.stars)::numeric, 2) AS avg_stars,
+      COALESCE(SUM(o.total_fee) FILTER (WHERE o.status = 'delivered' AND o.created_at >= NOW() - INTERVAL '30 days'), 0) AS month_earnings
+    FROM drivers d
+    LEFT JOIN orders o ON o.driver_id = d.id
+    LEFT JOIN driver_ratings r ON r.driver_id = d.id
+    GROUP BY d.id, d.name, d.vehicle_type, d.license_plate, d.status,
+             d.latitude, d.longitude, d.last_location_at,
+             d.service_areas, d.can_cold_chain, d.can_heavy_cargo,
+             d.available_time_start, d.available_time_end
+    ORDER BY month_earnings DESC
+  `);
+  res.json(rows);
+});
+
+// ─── GET /api/drivers/:id/profile — full raw row including extended fields ────
+
+router.get("/drivers/:id/profile", async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows } = await pool.query(`SELECT * FROM drivers WHERE id = $1`, [id]);
+  if (!rows.length) return res.status(404).json({ error: "Not found" });
+  const r = rows[0];
+  res.json({
+    ...r,
+    service_areas: r.service_areas ? JSON.parse(r.service_areas) : [],
+  });
 });
 
 // ─── POST /api/drivers/bulk ───────────────────────────────────────────────────

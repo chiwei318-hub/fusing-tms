@@ -54,6 +54,8 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Customer Notification Center:** Provides a centralized system for customer notifications regarding order status updates.
 *   **Enterprise Customer Portal:** A dedicated portal for enterprise clients with features like dual-tab login, in-portal ordering with custom pricing, reorder functionality, order modification/cancellation, monthly reconciliation exports, and sub-account management.
 *   **LINE Integration:** Uses `@line/bot-sdk` for driver dispatch notifications and an AI-powered customer service chatbot.
+*   **Vehicle Rating System (COMPLETED):** Admin vehicle leaderboard panel (with detail dialog: stats, star distribution, driver groups, comments). Driver home shows vehicle rating card with stats, star bar chart, latest comments. Backend: `GET /api/ratings/vehicle-leaderboard`, `GET /api/ratings/vehicle/:plate` endpoints.
+*   **GPS / Service Area / Capability Settings (COMPLETED):** `drivers` table has 8 new columns: latitude, longitude, last_location_at, service_areas (JSON TEXT), can_cold_chain, can_heavy_cargo, available_time_start, available_time_end. Backend: `POST /api/drivers/:id/location`, `GET /api/drivers/:id/profile`, `GET /api/drivers/analytics`. Driver portal home: "接單能力設定" violet card with GPS one-click update, service area tag add/remove, cold-chain/heavy-cargo toggles, available time slot save. Admin: "本月司機收入排行" table panel (income, accept rate, rating, GPS dot per driver), "GPS 即時狀態" grid panel (links to Google Maps), "服務區域覆蓋" pill cloud panel — all from `/api/drivers/analytics`.
 
 # External Dependencies
 

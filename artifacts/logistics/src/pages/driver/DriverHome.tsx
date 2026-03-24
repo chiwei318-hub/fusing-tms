@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
-import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle, Car } from "lucide-react";
+import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle, Car, MapPin, Clock, Settings2, Snowflake, Package, X, Plus, Navigation } from "lucide-react";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useListOrders } from "@workspace/api-client-react";
 import { DriverStatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
-import { isToday } from "date-fns";
+import { isToday, format, formatDistanceToNow } from "date-fns";
+import { zhTW } from "date-fns/locale";
 import { apiUrl } from "@/lib/api";
 
 interface RatingPerf {
@@ -57,6 +58,76 @@ export default function DriverHome() {
 
   const [perf, setPerf] = useState<RatingPerf | null>(null);
   const [vehiclePerf, setVehiclePerf] = useState<VehiclePerf | null>(null);
+  const [driverProfile, setDriverProfile] = useState<any | null>(null);
+
+  // GPS state
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<"idle" | "success" | "error">("idle");
+
+  // Service area editing state
+  const [editingAreas, setEditingAreas] = useState(false);
+  const [tempAreas, setTempAreas] = useState<string[]>([]);
+  const [newArea, setNewArea] = useState("");
+  const areaInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchProfile = useCallback(async () => {
+    if (!user?.id) return;
+    const data = await fetch(apiUrl(`/drivers/${user.id}/profile`)).then(r => r.json()).catch(() => null);
+    setDriverProfile(data);
+    if (data?.service_areas) setTempAreas(data.service_areas);
+  }, [user?.id]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const shareLocation = useCallback(() => {
+    if (!navigator.geolocation) { setLocationStatus("error"); return; }
+    setLocationLoading(true);
+    setLocationStatus("idle");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await fetch(apiUrl(`/drivers/${user!.id}/location`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          });
+          setLocationStatus("success");
+          fetchProfile();
+        } catch { setLocationStatus("error"); }
+        finally { setLocationLoading(false); }
+      },
+      () => { setLocationLoading(false); setLocationStatus("error"); },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }, [user?.id, fetchProfile]);
+
+  const saveServiceAreas = useCallback(async () => {
+    await fetch(apiUrl(`/drivers/${user!.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceAreas: tempAreas }),
+    });
+    setEditingAreas(false);
+    fetchProfile();
+  }, [user?.id, tempAreas, fetchProfile]);
+
+  const saveCapability = useCallback(async (field: string, value: boolean) => {
+    await fetch(apiUrl(`/drivers/${user!.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    fetchProfile();
+  }, [user?.id, fetchProfile]);
+
+  const saveAvailableTime = useCallback(async (start: string, end: string) => {
+    await fetch(apiUrl(`/drivers/${user!.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ availableTimeStart: start, availableTimeEnd: end }),
+    });
+    fetchProfile();
+  }, [user?.id, fetchProfile]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -299,6 +370,160 @@ export default function DriverHome() {
           </div>
         </div>
       )}
+
+      {/* ── 接單能力設定 ── */}
+      <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-violet-50">
+          <Settings2 className="w-4 h-4 text-violet-600" />
+          <span className="font-bold text-sm text-violet-900">接單能力設定</span>
+        </div>
+        <div className="p-4 space-y-4">
+
+          {/* GPS 定位 */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${locationStatus === "success" ? "bg-emerald-100" : "bg-violet-100"}`}>
+                <Navigation className={`w-4 h-4 ${locationStatus === "success" ? "text-emerald-600" : "text-violet-600"}`} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">GPS 定位</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {locationStatus === "success" ? "✓ 位置已更新"
+                    : locationStatus === "error" ? "⚠ 定位失敗，請重試"
+                    : driverProfile?.last_location_at
+                    ? `上次：${formatDistanceToNow(new Date(driverProfile.last_location_at), { locale: zhTW, addSuffix: true })}`
+                    : "尚未回報位置"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={shareLocation}
+              disabled={locationLoading}
+              className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                locationStatus === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : "bg-violet-600 border-violet-600 text-white hover:bg-violet-700 active:scale-95"
+              } disabled:opacity-60`}
+            >
+              {locationLoading ? "定位中…" : locationStatus === "success" ? "✓ 已更新" : "更新位置"}
+            </button>
+          </div>
+
+          {/* 服務區域 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-violet-500" />
+                <span className="text-sm font-semibold">服務區域</span>
+              </div>
+              {!editingAreas && (
+                <button onClick={() => { setEditingAreas(true); setTempAreas(driverProfile?.service_areas ?? []); setTimeout(() => areaInputRef.current?.focus(), 100); }}
+                  className="text-xs text-violet-600 hover:text-violet-800 border border-violet-200 px-2 py-0.5 rounded-full">
+                  編輯
+                </button>
+              )}
+            </div>
+            {editingAreas ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {tempAreas.map(a => (
+                    <span key={a} className="flex items-center gap-1 bg-violet-100 text-violet-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                      {a}
+                      <button onClick={() => setTempAreas(prev => prev.filter(x => x !== a))} className="hover:text-red-600">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    ref={areaInputRef}
+                    value={newArea}
+                    onChange={e => setNewArea(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && newArea.trim()) { setTempAreas(p => p.includes(newArea.trim()) ? p : [...p, newArea.trim()]); setNewArea(""); }}}
+                    placeholder="輸入區域（如：台北市）按 Enter 新增"
+                    className="flex-1 text-xs border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-300 h-8"
+                  />
+                  <button onClick={() => { if (newArea.trim()) { setTempAreas(p => p.includes(newArea.trim()) ? p : [...p, newArea.trim()]); setNewArea(""); }}}
+                    className="bg-violet-100 text-violet-700 rounded-lg px-2 py-1 hover:bg-violet-200 transition-colors">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={saveServiceAreas} className="flex-1 bg-violet-600 text-white text-xs py-1.5 rounded-lg font-medium hover:bg-violet-700 transition-colors">儲存</button>
+                  <button onClick={() => { setEditingAreas(false); setTempAreas(driverProfile?.service_areas ?? []); }} className="flex-1 border text-xs py-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors">取消</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {(driverProfile?.service_areas ?? []).length > 0
+                  ? (driverProfile.service_areas as string[]).map(a => (
+                    <span key={a} className="bg-violet-100 text-violet-800 text-xs px-2.5 py-1 rounded-full font-medium">{a}</span>
+                  ))
+                  : <span className="text-xs text-muted-foreground">尚未設定（點「編輯」新增服務區域）</span>
+                }
+              </div>
+            )}
+          </div>
+
+          {/* 可接貨型 */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="w-4 h-4 text-violet-500" />
+              <span className="text-sm font-semibold">可接貨型</span>
+            </div>
+            <div className="flex gap-2">
+              {[
+                { field: "canColdChain", label: "冷鏈貨物", icon: <Snowflake className="w-3.5 h-3.5" />, active: !!driverProfile?.can_cold_chain },
+                { field: "canHeavyCargo", label: "重型貨物", icon: <Truck className="w-3.5 h-3.5" />, active: !!driverProfile?.can_heavy_cargo },
+              ].map(opt => (
+                <button
+                  key={opt.field}
+                  onClick={() => saveCapability(opt.field, !opt.active)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all ${
+                    opt.active ? "bg-violet-600 text-white border-violet-600" : "bg-muted text-muted-foreground border-border hover:border-violet-300"
+                  }`}
+                >
+                  {opt.icon} {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 可接時段 */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-4 h-4 text-violet-500" />
+              <span className="text-sm font-semibold">可接時段</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                defaultValue={driverProfile?.available_time_start ?? "08:00"}
+                className="border rounded-lg px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-violet-300"
+                id="time-start"
+              />
+              <span className="text-xs text-muted-foreground">至</span>
+              <input
+                type="time"
+                defaultValue={driverProfile?.available_time_end ?? "20:00"}
+                className="border rounded-lg px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-violet-300"
+                id="time-end"
+              />
+              <button
+                onClick={() => {
+                  const s = (document.getElementById("time-start") as HTMLInputElement)?.value;
+                  const e = (document.getElementById("time-end") as HTMLInputElement)?.value;
+                  if (s && e) saveAvailableTime(s, e);
+                }}
+                className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium hover:bg-violet-700 transition-colors"
+              >
+                儲存
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Action buttons */}
       <div className="grid grid-cols-1 gap-3">

@@ -649,17 +649,21 @@ export default function Admin() {
   const [selectedVehiclePlate, setSelectedVehiclePlate] = useState<string | null>(null);
   const [vehicleDetail, setVehicleDetail] = useState<any | null>(null);
 
+  const [driverAnalytics, setDriverAnalytics] = useState<any[]>([]);
+
   const loadRatings = useCallback(async () => {
-    const [lb, pe, vl] = await Promise.all([
+    const [lb, pe, vl, da] = await Promise.all([
       fetch(apiUrl("/ratings/leaderboard")).then(r => r.json()).catch(() => []),
       fetch(apiUrl("/ratings/performance-events")).then(r => r.json()).catch(() => []),
       fetch(apiUrl("/ratings/vehicle-leaderboard")).then(r => r.json()).catch(() => []),
+      fetch(apiUrl("/drivers/analytics")).then(r => r.json()).catch(() => []),
     ]);
     const map: Record<number, { avg: number; count: number }> = {};
     (lb as any[]).forEach(r => { map[r.id] = { avg: parseFloat(r.avg_stars), count: Number(r.rating_count) }; });
     setDriverRatingMap(map);
     setPerfEvents(pe as any[]);
     setVehicleLeaderboard(vl as any[]);
+    setDriverAnalytics(Array.isArray(da) ? da : []);
   }, []);
 
   useEffect(() => { loadRatings(); }, [loadRatings]);
@@ -2040,6 +2044,161 @@ export default function Admin() {
               </table>
             </div>
           </Card>
+
+          {/* ─── 司機本月收入排行 ─── */}
+          {driverAnalytics.length > 0 && (
+            <Card className="border shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-500" />
+                  本月司機收入排行
+                  <button onClick={loadRatings} className="ml-auto text-xs text-primary border border-primary/30 px-2 py-0.5 rounded-full hover:bg-primary/10">重整</button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[420px]">
+                    <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-semibold">司機</th>
+                        <th className="px-3 py-2 text-left font-semibold hidden sm:table-cell">服務區域</th>
+                        <th className="px-3 py-2 text-right font-semibold">本月收入</th>
+                        <th className="px-3 py-2 text-right font-semibold hidden sm:table-cell">完成單數</th>
+                        <th className="px-3 py-2 text-right font-semibold">接單率</th>
+                        <th className="px-3 py-2 text-right font-semibold hidden md:table-cell">評分</th>
+                        <th className="px-3 py-2 text-center font-semibold">GPS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {driverAnalytics.map((d: any, idx: number) => {
+                        const serviceAreas: string[] = d.service_areas ? (typeof d.service_areas === "string" ? JSON.parse(d.service_areas) : d.service_areas) : [];
+                        const hasRecentGps = d.last_location_at && (Date.now() - new Date(d.last_location_at).getTime() < 24 * 60 * 60 * 1000);
+                        const earnings = Number(d.month_earnings ?? 0);
+                        const acceptRate = d.accept_rate != null ? Number(d.accept_rate) : null;
+                        const avgStars = d.avg_stars ? parseFloat(d.avg_stars) : null;
+                        return (
+                          <tr key={d.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 ${idx === 0 ? "bg-yellow-500" : idx === 1 ? "bg-slate-400" : idx === 2 ? "bg-amber-600" : "bg-slate-200 text-slate-600"}`}>
+                                  {idx + 1}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm">{d.name}</p>
+                                  <p className="text-xs text-muted-foreground">{d.vehicle_type}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 hidden sm:table-cell">
+                              <div className="flex flex-wrap gap-1 max-w-[140px]">
+                                {serviceAreas.length > 0
+                                  ? serviceAreas.slice(0, 2).map(a => <span key={a} className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full">{a}</span>)
+                                  : <span className="text-xs text-muted-foreground">—</span>}
+                                {serviceAreas.length > 2 && <span className="text-[10px] text-muted-foreground">+{serviceAreas.length - 2}</span>}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className={`font-bold ${earnings > 0 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                                {earnings > 0 ? `$${earnings.toLocaleString()}` : "—"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-muted-foreground text-xs hidden sm:table-cell">
+                              {d.completed_count ?? 0} 單
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              {acceptRate !== null
+                                ? <span className={`text-xs font-bold ${acceptRate >= 80 ? "text-emerald-600" : acceptRate >= 50 ? "text-yellow-600" : "text-red-600"}`}>{acceptRate}%</span>
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right hidden md:table-cell">
+                              {avgStars ? <span className={`text-xs font-bold ${avgStars >= 4.5 ? "text-emerald-600" : avgStars >= 3.5 ? "text-blue-600" : "text-red-600"}`}>★ {avgStars.toFixed(1)}</span>
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              {hasRecentGps ? (
+                                <span title={`上次定位：${format(new Date(d.last_location_at), "MM/dd HH:mm")}`}>
+                                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 shadow shadow-emerald-200 animate-pulse" />
+                                </span>
+                              ) : (
+                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-200" title="無GPS" />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ─── GPS 即時狀態面板 ─── */}
+          {driverAnalytics.some(d => d.last_location_at) && (
+            <Card className="border shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-blue-500" />
+                  司機 GPS 狀態
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">
+                    {driverAnalytics.filter(d => d.last_location_at && Date.now() - new Date(d.last_location_at).getTime() < 24 * 60 * 60 * 1000).length} 位今日回報
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {driverAnalytics.filter(d => d.last_location_at).map((d: any) => {
+                    const minsAgo = Math.round((Date.now() - new Date(d.last_location_at).getTime()) / 60000);
+                    const isRecent = minsAgo < 60;
+                    const isToday2 = minsAgo < 24 * 60;
+                    const mapsUrl = `https://www.google.com/maps?q=${d.latitude},${d.longitude}`;
+                    return (
+                      <a key={d.id} href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-xl border p-2.5 hover:bg-muted/40 transition-colors group">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${isRecent ? "bg-emerald-400" : isToday2 ? "bg-yellow-400" : "bg-slate-300"}`} />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate">{d.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {minsAgo < 60 ? `${minsAgo}分鐘前` : minsAgo < 1440 ? `${Math.round(minsAgo / 60)}小時前` : `${Math.round(minsAgo / 1440)}天前`}
+                          </p>
+                        </div>
+                        <MapPin className="w-3 h-3 text-muted-foreground ml-auto group-hover:text-blue-500 shrink-0" />
+                      </a>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ─── 服務區域概覽 ─── */}
+          {driverAnalytics.some(d => d.service_areas) && (
+            <Card className="border shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-violet-500" />
+                  服務區域覆蓋
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const areaMap: Record<string, string[]> = {};
+                    driverAnalytics.forEach(d => {
+                      const areas: string[] = d.service_areas ? (typeof d.service_areas === "string" ? JSON.parse(d.service_areas) : d.service_areas) : [];
+                      areas.forEach(a => { areaMap[a] = areaMap[a] ?? []; areaMap[a].push(d.name); });
+                    });
+                    return Object.entries(areaMap).sort((a, b) => b[1].length - a[1].length).map(([area, names]) => (
+                      <div key={area} className="flex items-center gap-1.5 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
+                        <span className="text-xs font-bold text-violet-800">{area}</span>
+                        <span className="text-[10px] text-violet-600 bg-violet-200 rounded-full px-1.5 py-0.5">{names.length} 位</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ─── 車輛評分排行榜 ─── */}
           {vehicleLeaderboard.length > 0 && (
