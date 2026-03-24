@@ -136,8 +136,8 @@ export default function AdminHome({ onTabChange }: AdminHomeProp) {
         {[
           { label: "今日訂單", value: today.length, icon: Package, color: "text-blue-600", bg: "bg-blue-50", sub: `待派車 ${pending.length}` },
           { label: "運送中", value: inTransit.length, icon: Truck, color: "text-orange-500", bg: "bg-orange-50", sub: `可用司機 ${availableDrivers.length}` },
-          { label: "本週營收", value: `NT$ ${weekRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50", sub: "已完成訂單合計" },
-          { label: "本月營收", value: `NT$ ${monthRevenue.toLocaleString()}`, icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", sub: `${stats ? Number(stats.orders.month_delivered) : 0} 筆完成` },
+          { label: "本週接單金額", value: `NT$ ${weekRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50", sub: "本週所有訂單運費合計" },
+          { label: "本月接單金額", value: `NT$ ${monthRevenue.toLocaleString()}`, icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", sub: `${stats ? Number(stats.orders.month_delivered) : 0} 筆已完成‧含進行中` },
         ].map(({ label, value, icon: Icon, color, bg, sub }) => (
           <Card key={label} className="border-0 shadow-sm">
             <CardContent className="p-4">

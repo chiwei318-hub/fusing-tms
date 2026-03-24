@@ -7,13 +7,20 @@ import {
 
 
 function useLiveStats() {
-  const [nearbyTrucks, setNearbyTrucks] = useState(7);
-  const [etaMin, setEtaMin] = useState(18);
+  const [nearbyTrucks, setNearbyTrucks] = useState(5);
+  const etaMin = 30;
   useEffect(() => {
-    const t = setInterval(() => {
-      setNearbyTrucks(v => Math.max(3, Math.min(15, v + (Math.random() > 0.5 ? 1 : -1))));
-      setEtaMin(v => Math.max(10, Math.min(35, v + (Math.random() > 0.5 ? 1 : -1))));
-    }, 4000);
+    const fetchStats = async () => {
+      try {
+        const res = await fetch("/api/system-config/stats/overview");
+        const data = await res.json();
+        const avail = Number(data?.drivers?.available ?? 0);
+        const busy  = Number(data?.drivers?.busy ?? 0);
+        if (avail + busy > 0) setNearbyTrucks(avail + busy);
+      } catch { /* keep default */ }
+    };
+    fetchStats();
+    const t = setInterval(fetchStats, 60000);
     return () => clearInterval(t);
   }, []);
   return { nearbyTrucks, etaMin };

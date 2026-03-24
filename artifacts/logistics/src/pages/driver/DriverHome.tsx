@@ -175,6 +175,31 @@ export default function DriverHome() {
         </button>
       </div>
 
+      {/* Active task urgent banner */}
+      {activeTasks.length > 0 && (
+        <Link href="/driver/tasks">
+          <div className="bg-orange-500 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30">
+            <div className="relative">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                <Truck className="w-5 h-5 text-white" />
+              </div>
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center text-orange-600 text-[10px] font-black">
+                {activeTasks.length}
+              </span>
+            </div>
+            <div className="flex-1">
+              <p className="font-black text-white">
+                {activeTasks[0].status === "in_transit" ? "🚛 運送中！" : "📦 已接單，待取貨"}
+              </p>
+              <p className="text-orange-100 text-xs mt-0.5 truncate">
+                {activeTasks[0].pickupAddress ?? ""} → {activeTasks[0].deliveryAddress ?? ""}
+              </p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-white/80 shrink-0" />
+          </div>
+        </Link>
+      )}
+
       {/* Stats card */}
       <div className="bg-gradient-to-r from-blue-700 to-blue-900 rounded-2xl p-5 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-28 h-28 bg-white/5 rounded-full -mr-8 -mt-8" />
@@ -220,8 +245,8 @@ export default function DriverHome() {
 
       {/* Rating performance card */}
       {perf && totalRatings > 0 && (
-        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b bg-amber-50">
+        <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b bg-amber-50 dark:bg-amber-950/30">
             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
             <span className="font-bold text-sm">客戶評分回饋</span>
             {avgStars !== null && (
@@ -299,8 +324,8 @@ export default function DriverHome() {
 
       {/* Vehicle rating card */}
       {vehiclePerf && driver?.licensePlate && (
-        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b bg-blue-50">
+        <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b bg-blue-50 dark:bg-blue-950/30">
             <Car className="w-4 h-4 text-blue-600" />
             <span className="font-bold text-sm text-blue-900">本車評分</span>
             <span className="ml-1 font-mono text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">{driver.licensePlate}</span>

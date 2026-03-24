@@ -1,15 +1,24 @@
 import { Link, useLocation } from "wouter";
 import { Truck, ClipboardList, Home, LayoutGrid, Zap, DollarSign } from "lucide-react";
 import { useListOrders } from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function DriverLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const { user } = useAuth();
 
   const { data: pendingOrders } = useListOrders(
     { status: "pending" } as any,
     { query: { refetchInterval: 12000, select: (data: any[]) => data?.filter((o: any) => o.status === "pending" && o.driverId == null) } }
   );
   const pendingCount = pendingOrders?.length ?? 0;
+
+  const { data: myOrders } = useListOrders(
+    user?.id ? { driverId: user.id } as any : undefined,
+    { query: { enabled: !!user?.id, refetchInterval: 15000,
+        select: (data: any[]) => data?.filter((o: any) => o.status === "assigned" || o.status === "in_transit") } }
+  );
+  const activeTaskCount = myOrders?.length ?? 0;
 
   const navItems = [
     { href: "/driver", icon: Home, label: "首頁", exact: true },
@@ -64,6 +73,11 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                 {isGrab && pendingCount === 0 && (
                   <span className="ml-auto text-[10px] font-black bg-orange-500/30 text-orange-200 px-1.5 py-0.5 rounded-full">搶</span>
                 )}
+                {item.href === "/driver/tasks" && activeTaskCount > 0 && (
+                  <span className="ml-auto bg-green-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                    {activeTaskCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -100,6 +114,11 @@ export function DriverLayout({ children }: { children: React.ReactNode }) {
                   {isGrab && pendingCount > 0 && (
                     <span className="absolute -top-1.5 -right-2 bg-orange-500 text-white text-[9px] font-black px-1 py-px rounded-full min-w-[14px] text-center leading-tight">
                       {pendingCount > 9 ? "9+" : pendingCount}
+                    </span>
+                  )}
+                  {item.href === "/driver/tasks" && activeTaskCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-green-500 text-white text-[9px] font-black px-1 py-px rounded-full min-w-[14px] text-center leading-tight">
+                      {activeTaskCount > 9 ? "9+" : activeTaskCount}
                     </span>
                   )}
                 </div>

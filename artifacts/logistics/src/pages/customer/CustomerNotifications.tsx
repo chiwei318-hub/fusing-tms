@@ -96,7 +96,7 @@ export default function CustomerNotifications({ customerId }: { customerId: numb
                 key={n.id}
                 onClick={() => !n.is_read && markOneRead(n.id)}
                 className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-                  n.is_read ? "bg-background border-border/50 opacity-70" : "bg-white border-primary/20 shadow-sm"
+                  n.is_read ? "bg-background border-border/50 opacity-70" : "bg-card border-primary/20 shadow-sm"
                 }`}
               >
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${cfg.bg}`}>
