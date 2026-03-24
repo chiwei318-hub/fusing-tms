@@ -7,6 +7,34 @@ import { sql } from "drizzle-orm";
 
 export const driverOnboardingRouter = Router();
 
+// ─── DB Migration: add new columns if absent ──────────────────────────────────
+
+async function ensureDriverApplicationColumns() {
+  const cols = [
+    "license_type TEXT",
+    "license_number TEXT",
+    "license_expiry DATE",
+    "other_licenses TEXT",
+    "has_gps BOOLEAN DEFAULT FALSE",
+    "has_dashcam BOOLEAN DEFAULT FALSE",
+    "service_regions TEXT",
+    "available_hours TEXT",
+    "earliest_start_date DATE",
+    "bank_name TEXT",
+    "bank_branch TEXT",
+    "bank_account TEXT",
+    "bank_account_name TEXT",
+    "payment_method TEXT",
+  ];
+  for (const col of cols) {
+    const colName = col.split(" ")[0];
+    try {
+      await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS ${col}`));
+    } catch { /* ignore if exists */ }
+  }
+}
+ensureDriverApplicationColumns().catch(console.error);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isExpiringSoon(dateStr: string | null, days = 30): boolean {
@@ -26,11 +54,18 @@ function isExpired(dateStr: string | null): boolean {
 driverOnboardingRouter.post("/driver-applications", async (req, res) => {
   try {
     const schema = z.object({
+      // 1. 基本資料
       name: z.string().min(2),
       phone: z.string().min(8),
       idNumber: z.string().optional(),
       address: z.string().optional(),
       email: z.string().email().optional().or(z.literal("")),
+      // 2. 駕駛資格
+      licenseType: z.string().optional(),
+      licenseNumber: z.string().optional(),
+      licenseExpiry: z.string().optional(),
+      otherLicenses: z.array(z.string()).optional(),
+      // 3. 車輛資料
       vehicleType: z.string().optional(),
       vehicleTonnage: z.string().optional(),
       maxLoadKg: z.coerce.number().optional(),
@@ -40,6 +75,18 @@ driverOnboardingRouter.post("/driver-applications", async (req, res) => {
       hasTailgate: z.boolean().optional(),
       hasRefrigeration: z.boolean().optional(),
       hasHydraulicPallet: z.boolean().optional(),
+      hasGps: z.boolean().optional(),
+      hasDashcam: z.boolean().optional(),
+      // 5. 接單設定
+      serviceRegions: z.array(z.string()).optional(),
+      availableHours: z.array(z.string()).optional(),
+      earliestStartDate: z.string().optional(),
+      // 6. 金流資料
+      bankName: z.string().optional(),
+      bankBranch: z.string().optional(),
+      bankAccount: z.string().optional(),
+      bankAccountName: z.string().optional(),
+      paymentMethod: z.string().optional(),
       notes: z.string().optional(),
     });
     const data = schema.parse(req.body);
@@ -57,16 +104,30 @@ driverOnboardingRouter.post("/driver-applications", async (req, res) => {
 
     const result = await db.execute(sql`
       INSERT INTO driver_applications
-        (name, phone, id_number, address, email, vehicle_type, vehicle_tonnage,
-         max_load_kg, license_plate, vehicle_year, vehicle_body_type,
-         has_tailgate, has_refrigeration, has_hydraulic_pallet, notes,
-         status, created_at, updated_at)
+        (name, phone, id_number, address, email,
+         license_type, license_number, license_expiry, other_licenses,
+         vehicle_type, vehicle_tonnage, max_load_kg, license_plate, vehicle_year, vehicle_body_type,
+         has_tailgate, has_refrigeration, has_hydraulic_pallet, has_gps, has_dashcam,
+         service_regions, available_hours, earliest_start_date,
+         bank_name, bank_branch, bank_account, bank_account_name, payment_method,
+         notes, status, created_at, updated_at)
       VALUES (
         ${data.name}, ${data.phone}, ${data.idNumber ?? null}, ${data.address ?? null},
-        ${data.email || null}, ${data.vehicleType ?? null}, ${data.vehicleTonnage ?? null},
+        ${data.email || null},
+        ${data.licenseType ?? null}, ${data.licenseNumber ?? null},
+        ${data.licenseExpiry ?? null},
+        ${data.otherLicenses?.length ? JSON.stringify(data.otherLicenses) : null},
+        ${data.vehicleType ?? null}, ${data.vehicleTonnage ?? null},
         ${data.maxLoadKg ?? null}, ${data.licensePlate ?? null}, ${data.vehicleYear ?? null},
         ${data.vehicleBodyType ?? null}, ${data.hasTailgate ?? false},
         ${data.hasRefrigeration ?? false}, ${data.hasHydraulicPallet ?? false},
+        ${data.hasGps ?? false}, ${data.hasDashcam ?? false},
+        ${data.serviceRegions?.length ? JSON.stringify(data.serviceRegions) : null},
+        ${data.availableHours?.length ? JSON.stringify(data.availableHours) : null},
+        ${data.earliestStartDate ?? null},
+        ${data.bankName ?? null}, ${data.bankBranch ?? null},
+        ${data.bankAccount ?? null}, ${data.bankAccountName ?? null},
+        ${data.paymentMethod ?? null},
         ${data.notes ?? null}, 'pending', NOW(), NOW()
       )
       RETURNING id
