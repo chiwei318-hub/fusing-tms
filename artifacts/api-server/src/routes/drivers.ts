@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, driversTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   CreateDriverBody,
@@ -9,6 +10,25 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+// ─── DB Migration: add new columns if absent ──────────────────────────────────
+
+async function ensureDriverColumns() {
+  const cols = [
+    "vehicle_brand TEXT",
+    "has_tailgate BOOLEAN DEFAULT FALSE",
+    "max_load_kg REAL",
+    "max_volume_cbm REAL",
+  ];
+  for (const col of cols) {
+    try {
+      await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS ${col}`);
+    } catch { /* ignore */ }
+  }
+}
+ensureDriverColumns().catch(console.error);
+
+// ─── GET /api/drivers ─────────────────────────────────────────────────────────
 
 router.get("/drivers", async (req, res) => {
   try {
@@ -23,9 +43,12 @@ router.get("/drivers", async (req, res) => {
   }
 });
 
+// ─── POST /api/drivers ────────────────────────────────────────────────────────
+
 router.post("/drivers", async (req, res) => {
   try {
     const body = CreateDriverBody.parse(req.body);
+    const b = req.body as Record<string, any>;
     const [driver] = await db
       .insert(driversTable)
       .values({
@@ -37,10 +60,17 @@ router.post("/drivers", async (req, res) => {
         driverType: body.driverType ?? null,
         username: body.username ?? null,
         password: body.password ?? null,
-        bankName: (body as any).bankName ?? null,
-        bankBranch: (body as any).bankBranch ?? null,
-        bankAccount: (body as any).bankAccount ?? null,
-        bankAccountName: (body as any).bankAccountName ?? null,
+        vehicleYear: b.vehicleYear ? parseInt(b.vehicleYear) : null,
+        vehicleBrand: b.vehicleBrand ?? null,
+        vehicleBodyType: b.vehicleBodyType ?? null,
+        vehicleTonnage: b.vehicleTonnage ?? null,
+        hasTailgate: b.hasTailgate ?? false,
+        maxLoadKg: b.maxLoadKg ? parseFloat(b.maxLoadKg) : null,
+        maxVolumeCbm: b.maxVolumeCbm ? parseFloat(b.maxVolumeCbm) : null,
+        bankName: b.bankName ?? null,
+        bankBranch: b.bankBranch ?? null,
+        bankAccount: b.bankAccount ?? null,
+        bankAccountName: b.bankAccountName ?? null,
         status: "available",
       })
       .returning();
@@ -51,10 +81,13 @@ router.post("/drivers", async (req, res) => {
   }
 });
 
+// ─── PATCH /api/drivers/:id ───────────────────────────────────────────────────
+
 router.patch("/drivers/:id", async (req, res) => {
   try {
     const { id } = UpdateDriverParams.parse(req.params);
     const body = UpdateDriverBody.parse(req.body);
+    const b = req.body as Record<string, any>;
 
     const existing = await db
       .select()
@@ -72,16 +105,20 @@ router.patch("/drivers/:id", async (req, res) => {
     if (body.status !== undefined) updates.status = body.status;
     if ("lineUserId" in body) updates.lineUserId = body.lineUserId ?? null;
     if ("driverType" in body) updates.driverType = body.driverType ?? null;
-    if ("username" in body) updates.username = body.username ?? null;
-    if ("password" in body) updates.password = body.password ?? null;
-    if ("engineCc" in body) updates.engineCc = (body as any).engineCc ?? null;
-    if ("vehicleYear" in body) updates.vehicleYear = (body as any).vehicleYear ?? null;
-    if ("vehicleTonnage" in body) updates.vehicleTonnage = (body as any).vehicleTonnage ?? null;
-    if ("vehicleBodyType" in body) updates.vehicleBodyType = (body as any).vehicleBodyType ?? null;
-    if ("bankName" in body) updates.bankName = (body as any).bankName ?? null;
-    if ("bankBranch" in body) updates.bankBranch = (body as any).bankBranch ?? null;
-    if ("bankAccount" in body) updates.bankAccount = (body as any).bankAccount ?? null;
-    if ("bankAccountName" in body) updates.bankAccountName = (body as any).bankAccountName ?? null;
+    if ("username" in b) updates.username = b.username ?? null;
+    if ("password" in b) updates.password = b.password ?? null;
+    if ("engineCc" in b) updates.engineCc = b.engineCc ? parseInt(b.engineCc) : null;
+    if ("vehicleYear" in b) updates.vehicleYear = b.vehicleYear ? parseInt(b.vehicleYear) : null;
+    if ("vehicleBrand" in b) updates.vehicleBrand = b.vehicleBrand ?? null;
+    if ("vehicleTonnage" in b) updates.vehicleTonnage = b.vehicleTonnage ?? null;
+    if ("vehicleBodyType" in b) updates.vehicleBodyType = b.vehicleBodyType ?? null;
+    if ("hasTailgate" in b) updates.hasTailgate = !!b.hasTailgate;
+    if ("maxLoadKg" in b) updates.maxLoadKg = b.maxLoadKg ? parseFloat(b.maxLoadKg) : null;
+    if ("maxVolumeCbm" in b) updates.maxVolumeCbm = b.maxVolumeCbm ? parseFloat(b.maxVolumeCbm) : null;
+    if ("bankName" in b) updates.bankName = b.bankName ?? null;
+    if ("bankBranch" in b) updates.bankBranch = b.bankBranch ?? null;
+    if ("bankAccount" in b) updates.bankAccount = b.bankAccount ?? null;
+    if ("bankAccountName" in b) updates.bankAccountName = b.bankAccountName ?? null;
 
     const [driver] = await db
       .update(driversTable)
@@ -94,6 +131,8 @@ router.patch("/drivers/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to update driver" });
   }
 });
+
+// ─── POST /api/drivers/bulk ───────────────────────────────────────────────────
 
 router.post("/drivers/bulk", async (req, res) => {
   try {
@@ -122,6 +161,8 @@ router.post("/drivers/bulk", async (req, res) => {
     return res.status(500).json({ error: "Failed to bulk import drivers" });
   }
 });
+
+// ─── DELETE /api/drivers/:id ──────────────────────────────────────────────────
 
 router.delete("/drivers/:id", async (req, res) => {
   try {

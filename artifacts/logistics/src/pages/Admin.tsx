@@ -80,7 +80,7 @@ function calculateAutoQuote(order: Order): number {
 const driverFormSchema = z.object({
   name: z.string().min(2, "名稱必填"),
   phone: z.string().min(8, "電話必填"),
-  vehicleType: z.string().min(2, "車型必填"),
+  vehicleType: z.string().min(1, "車型必填"),
   licensePlate: z.string().min(3, "車牌必填"),
   driverType: z.string().optional(),
   username: z.string().optional(),
@@ -90,6 +90,12 @@ const driverFormSchema = z.object({
   bankBranch: z.string().optional(),
   bankAccount: z.string().optional(),
   bankAccountName: z.string().optional(),
+  vehicleBrand: z.string().optional(),
+  vehicleYear: z.string().optional(),
+  vehicleTonnage: z.string().optional(),
+  hasTailgate: z.boolean().optional(),
+  maxLoadKg: z.string().optional(),
+  maxVolumeCbm: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof driverFormSchema>;
 
@@ -220,70 +226,141 @@ function PasswordInput({ field }: { field: React.InputHTMLAttributes<HTMLInputEl
 function DriverFormFields({ form }: { form: ReturnType<typeof useForm<DriverFormValues>> }) {
   return (
     <div className="flex flex-col sm:flex-row gap-5">
-      {/* ── 左欄：基本資料 ── */}
-      <div className="flex-1 space-y-3">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">基本資料</p>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField control={form.control} name="name" render={({ field }) => (
-            <FormItem className="col-span-2">
-              <FormLabel className="text-xs">姓名 <span className="text-destructive">*</span></FormLabel>
-              <FormControl><Input placeholder="例如：陳大文" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="phone" render={({ field }) => (
-            <FormItem className="col-span-2">
-              <FormLabel className="text-xs">電話 <span className="text-destructive">*</span></FormLabel>
-              <FormControl><Input placeholder="09xx-xxx-xxx" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="vehicleType" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-xs">車型</FormLabel>
-              <FormControl><Input placeholder="3.5噸貨車" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="licensePlate" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-xs">車牌</FormLabel>
-              <FormControl><Input placeholder="ABC-1234" {...field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="driverType" render={({ field }) => (
-            <FormItem className="col-span-2">
-              <FormLabel className="text-xs">司機類型</FormLabel>
-              <Select value={field.value ?? ""} onValueChange={field.onChange}>
+      {/* ── 左欄：基本資料 + 車輛規格 ── */}
+      <div className="flex-1 space-y-4">
+        {/* 基本資料 */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">基本資料</p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField control={form.control} name="name" render={({ field }) => (
+              <FormItem className="col-span-2">
+                <FormLabel className="text-xs">姓名 <span className="text-destructive">*</span></FormLabel>
+                <FormControl><Input placeholder="例如：陳大文" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="phone" render={({ field }) => (
+              <FormItem className="col-span-2">
+                <FormLabel className="text-xs">電話 <span className="text-destructive">*</span></FormLabel>
+                <FormControl><Input placeholder="09xx-xxx-xxx" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="driverType" render={({ field }) => (
+              <FormItem className="col-span-2">
+                <FormLabel className="text-xs">司機類型</FormLabel>
+                <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="選擇司機類型" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="self">自有司機</SelectItem>
+                    <SelectItem value="affiliated">靠行司機</SelectItem>
+                    <SelectItem value="external">外車司機</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="username" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">帳號</FormLabel>
+                <FormControl><Input placeholder="登入帳號" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="password" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">密碼</FormLabel>
+                <FormControl><PasswordInput field={field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+        </div>
+
+        {/* 車輛規格 */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">車輛規格</p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField control={form.control} name="vehicleType" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">車型 <span className="text-destructive">*</span></FormLabel>
+                <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="選擇車型" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="廂式">廂式</SelectItem>
+                    <SelectItem value="棚式">棚式</SelectItem>
+                    <SelectItem value="平斗">平斗</SelectItem>
+                    <SelectItem value="歐翼">歐翼</SelectItem>
+                    <SelectItem value="其他">其他</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="licensePlate" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">車牌 <span className="text-destructive">*</span></FormLabel>
+                <FormControl><Input placeholder="ABC-1234" {...field} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="vehicleBrand" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">廠牌</FormLabel>
+                <FormControl><Input placeholder="HINO、三菱…" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="vehicleYear" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">出廠年份</FormLabel>
+                <FormControl><Input type="number" placeholder="2020" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="vehicleTonnage" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">噸位</FormLabel>
+                <FormControl><Input placeholder="3.5T、5T…" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="hasTailgate" render={({ field }) => (
+              <FormItem className="flex flex-row items-center gap-2 space-y-0 pt-5">
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="選擇司機類型" />
-                  </SelectTrigger>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-primary"
+                    checked={field.value ?? false}
+                    onChange={e => field.onChange(e.target.checked)}
+                  />
                 </FormControl>
-                <SelectContent>
-                  <SelectItem value="self">自有司機</SelectItem>
-                  <SelectItem value="affiliated">靠行司機</SelectItem>
-                  <SelectItem value="external">外車司機</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="username" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-xs">帳號</FormLabel>
-              <FormControl><Input placeholder="登入帳號" {...field} value={field.value ?? ""} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="password" render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-xs">密碼</FormLabel>
-              <FormControl><PasswordInput field={field} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+                <FormLabel className="text-xs cursor-pointer">有尾門 (Tail Gate)</FormLabel>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="maxLoadKg" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">可載重量 (kg)</FormLabel>
+                <FormControl><Input type="number" placeholder="3500" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="maxVolumeCbm" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">材積數 (CBM)</FormLabel>
+                <FormControl><Input type="number" step="0.1" placeholder="20.5" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
         </div>
       </div>
 
@@ -553,7 +630,7 @@ export default function Admin() {
   const [customerSearch, setCustomerSearch] = useState("");
   const orderSearchRef = useRef<HTMLInputElement>(null);
 
-  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "" };
+  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
 
@@ -612,24 +689,30 @@ export default function Admin() {
 
   const pendingCount = useMemo(() => (orders ?? []).filter(o => o.status === "pending").length, [orders]);
 
+  const buildDriverPayload = (data: DriverFormValues) => ({
+    name: data.name,
+    phone: data.phone,
+    vehicleType: data.vehicleType,
+    licensePlate: data.licensePlate,
+    lineUserId: data.lineUserId || null,
+    driverType: data.driverType || null,
+    username: data.username || null,
+    password: data.password || null,
+    bankName: data.bankName || null,
+    bankBranch: data.bankBranch || null,
+    bankAccount: data.bankAccount || null,
+    bankAccountName: data.bankAccountName || null,
+    vehicleBrand: data.vehicleBrand || null,
+    vehicleYear: data.vehicleYear ? parseInt(data.vehicleYear) : null,
+    vehicleTonnage: data.vehicleTonnage || null,
+    hasTailgate: data.hasTailgate ?? false,
+    maxLoadKg: data.maxLoadKg ? parseFloat(data.maxLoadKg) : null,
+    maxVolumeCbm: data.maxVolumeCbm ? parseFloat(data.maxVolumeCbm) : null,
+  });
+
   const onCreateDriverSubmit = async (data: DriverFormValues) => {
     try {
-      await createDriver({
-        data: {
-          name: data.name,
-          phone: data.phone,
-          vehicleType: data.vehicleType,
-          licensePlate: data.licensePlate,
-          lineUserId: data.lineUserId || null,
-          driverType: data.driverType || null,
-          username: data.username || null,
-          password: data.password || null,
-          bankName: data.bankName || null,
-          bankBranch: data.bankBranch || null,
-          bankAccount: data.bankAccount || null,
-          bankAccountName: data.bankAccountName || null,
-        },
-      } as any);
+      await createDriver({ data: buildDriverPayload(data) } as any);
       toast({ title: "成功", description: "已新增司機" });
       setDriverDialogOpen(false);
       createDriverForm.reset();
@@ -640,6 +723,7 @@ export default function Admin() {
 
   const openEditDriverDialog = (driver: Driver) => {
     setEditingDriver(driver);
+    const d = driver as any;
     editDriverForm.reset({
       name: driver.name,
       phone: driver.phone,
@@ -649,33 +733,23 @@ export default function Admin() {
       username: driver.username ?? "",
       password: driver.password ?? "",
       lineUserId: driver.lineUserId ?? "",
-      bankName: (driver as any).bankName ?? "",
-      bankBranch: (driver as any).bankBranch ?? "",
-      bankAccount: (driver as any).bankAccount ?? "",
-      bankAccountName: (driver as any).bankAccountName ?? "",
+      bankName: d.bankName ?? d.bank_name ?? "",
+      bankBranch: d.bankBranch ?? d.bank_branch ?? "",
+      bankAccount: d.bankAccount ?? d.bank_account ?? "",
+      bankAccountName: d.bankAccountName ?? d.bank_account_name ?? "",
+      vehicleBrand: d.vehicleBrand ?? d.vehicle_brand ?? "",
+      vehicleYear: d.vehicleYear ?? d.vehicle_year ?? "",
+      vehicleTonnage: d.vehicleTonnage ?? d.vehicle_tonnage ?? "",
+      hasTailgate: d.hasTailgate ?? d.has_tailgate ?? false,
+      maxLoadKg: d.maxLoadKg ?? d.max_load_kg ?? "",
+      maxVolumeCbm: d.maxVolumeCbm ?? d.max_volume_cbm ?? "",
     });
   };
 
   const onEditDriverSubmit = async (data: DriverFormValues) => {
     if (!editingDriver) return;
     try {
-      await updateDriver({
-        id: editingDriver.id,
-        data: {
-          name: data.name,
-          phone: data.phone,
-          vehicleType: data.vehicleType,
-          licensePlate: data.licensePlate,
-          lineUserId: data.lineUserId || null,
-          driverType: data.driverType || null,
-          username: data.username || null,
-          password: data.password || null,
-          bankName: data.bankName || null,
-          bankBranch: data.bankBranch || null,
-          bankAccount: data.bankAccount || null,
-          bankAccountName: data.bankAccountName || null,
-        },
-      } as any);
+      await updateDriver({ id: editingDriver.id, data: buildDriverPayload(data) } as any);
       toast({ title: "成功", description: "司機資料已更新" });
       setEditingDriver(null);
     } catch {

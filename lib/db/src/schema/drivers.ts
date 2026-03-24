@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -21,8 +21,12 @@ export const driversTable = pgTable("drivers", {
   lineUserId: text("line_user_id"),
   engineCc: integer("engine_cc"),
   vehicleYear: integer("vehicle_year"),
+  vehicleBrand: text("vehicle_brand"),
   vehicleTonnage: text("vehicle_tonnage"),
   vehicleBodyType: text("vehicle_body_type"),
+  hasTailgate: boolean("has_tailgate").default(false),
+  maxLoadKg: real("max_load_kg"),
+  maxVolumeCbm: real("max_volume_cbm"),
   bankName: text("bank_name"),
   bankBranch: text("bank_branch"),
   bankAccount: text("bank_account"),
