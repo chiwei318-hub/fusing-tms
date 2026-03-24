@@ -15,6 +15,7 @@ import {
   Banknote, Clock, Star, AlertCircle, Copy
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 
 const CARGO_CATEGORIES = [
   "家具 / 辦公家具",
@@ -275,20 +276,26 @@ export default function QuickOrder() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">起點地址 *</Label>
-                <Input
-                  placeholder="例：台北市信義區信義路五段7號"
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-blue-500" /> 起點地址 *
+                </Label>
+                <TaiwanAddressInput
                   value={pickupAddress}
-                  onChange={(e) => setPickupAddress(e.target.value)}
+                  onChange={setPickupAddress}
+                  historyKey="quick-pickup"
+                  placeholder="選擇縣市區域後填寫路段門牌"
                 />
               </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">送貨地址 *</Label>
-                <Input
-                  placeholder="例：新北市板橋區縣民大道二段7號"
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-orange-500" /> 送貨地址 *
+                </Label>
+                <TaiwanAddressInput
                   value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  onChange={setDeliveryAddress}
+                  historyKey="quick-delivery"
+                  placeholder="選擇縣市區域後填寫路段門牌"
                 />
               </div>
               <div className="space-y-2">

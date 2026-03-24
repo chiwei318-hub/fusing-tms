@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { ShoppingCart, Zap, MapPin, Package, Truck, Star, Trash2, Plus, X, CheckCircle, ChevronRight, RotateCcw } from "lucide-react";
 import { type EnterpriseSession } from "@/components/EnterpriseLayout";
 import { type EnterpriseTemplate } from "@workspace/db";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -190,22 +191,26 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">取貨地址 *</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400" />
-                <input required value={form.pickupAddress} onChange={e => setF("pickupAddress", e.target.value)}
-                  placeholder="請輸入完整取貨地址" className={inp.replace("px-3.5", "pl-9 pr-3.5")} />
-              </div>
+              <label className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-blue-500" /> 取貨地址 *
+              </label>
+              <TaiwanAddressInput
+                value={form.pickupAddress}
+                onChange={v => setF("pickupAddress", v)}
+                historyKey="ent-pickup"
+              />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">送貨地址 *</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-400" />
-                <input required value={form.deliveryAddress} onChange={e => setF("deliveryAddress", e.target.value)}
-                  placeholder="請輸入完整送貨地址" className={inp.replace("px-3.5", "pl-9 pr-3.5")} />
-              </div>
+              <label className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-orange-500" /> 送貨地址 *
+              </label>
+              <TaiwanAddressInput
+                value={form.deliveryAddress}
+                onChange={v => setF("deliveryAddress", v)}
+                historyKey="ent-delivery"
+              />
             </div>
           </div>
 
