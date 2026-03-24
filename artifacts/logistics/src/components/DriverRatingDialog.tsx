@@ -71,7 +71,7 @@ export default function DriverRatingDialog({
         comment.trim(),
       ].filter(Boolean).join("。");
 
-      const res = await fetch(apiUrl(`/api/ratings/order/${orderId}`), {
+      const res = await fetch(apiUrl(`/ratings/order/${orderId}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

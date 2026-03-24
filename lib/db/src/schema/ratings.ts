@@ -7,6 +7,7 @@ export const driverRatingsTable = pgTable("driver_ratings", {
   customerId: integer("customer_id"),
   stars: integer("stars").notNull(),
   comment: text("comment"),
+  licensePlate: text("license_plate"),  // vehicle plate at time of rating
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

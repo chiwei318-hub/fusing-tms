@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle } from "lucide-react";
+import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle, Car } from "lucide-react";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useListOrders } from "@workspace/api-client-react";
 import { DriverStatusBadge } from "@/components/StatusBadge";
@@ -16,6 +16,15 @@ interface RatingPerf {
   } | null;
   recentStars: number[];
   events: any[];
+}
+
+interface VehiclePerf {
+  stats: {
+    total: string; avg_stars: string; five_star: string;
+    four_star: string; three_star: string; bad_count: string; bad_month: string;
+  } | null;
+  recent: any[];
+  byDriver: any[];
 }
 
 function StarRow({ count, label, color }: { count: number; label: string; color: string }) {
@@ -47,13 +56,25 @@ export default function DriverHome() {
   const activeTasks = myOrders?.filter(o => o.status === "assigned" || o.status === "in_transit") ?? [];
 
   const [perf, setPerf] = useState<RatingPerf | null>(null);
+  const [vehiclePerf, setVehiclePerf] = useState<VehiclePerf | null>(null);
+
   useEffect(() => {
     if (!user?.id) return;
-    fetch(apiUrl(`/api/ratings/driver/${user.id}/performance`))
+    fetch(apiUrl(`/ratings/driver/${user.id}/performance`))
       .then(r => r.json())
       .then(setPerf)
       .catch(() => {});
   }, [user?.id]);
+
+  // Fetch vehicle-specific rating when driver's license plate is known
+  useEffect(() => {
+    const plate = driver?.licensePlate;
+    if (!plate) return;
+    fetch(apiUrl(`/ratings/vehicle/${encodeURIComponent(plate)}`))
+      .then(r => r.json())
+      .then(setVehiclePerf)
+      .catch(() => {});
+  }, [driver?.licensePlate]);
 
   if (isLoading) {
     return (
@@ -201,6 +222,80 @@ export default function DriverHome() {
           <div>
             <p className="font-bold text-sm">尚無客戶評分</p>
             <p className="text-xs text-muted-foreground mt-0.5">完成訂單後客戶可為您評分，累積好評可獲得系統獎勵！</p>
+          </div>
+        </div>
+      )}
+
+      {/* Vehicle rating card */}
+      {vehiclePerf && driver?.licensePlate && (
+        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b bg-blue-50">
+            <Car className="w-4 h-4 text-blue-600" />
+            <span className="font-bold text-sm text-blue-900">本車評分</span>
+            <span className="ml-1 font-mono text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">{driver.licensePlate}</span>
+            {vehiclePerf.stats && Number(vehiclePerf.stats.total) > 0 && vehiclePerf.stats.avg_stars && (
+              <span className={`ml-auto text-sm font-black ${
+                parseFloat(vehiclePerf.stats.avg_stars) >= 4.5 ? "text-emerald-600"
+                : parseFloat(vehiclePerf.stats.avg_stars) >= 3.5 ? "text-blue-600"
+                : "text-red-600"
+              }`}>
+                ★ {parseFloat(vehiclePerf.stats.avg_stars).toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="p-4">
+            {vehiclePerf.stats && Number(vehiclePerf.stats.total) > 0 ? (
+              <div className="space-y-3">
+                {/* Quick stats */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-muted/50 p-2.5 text-center">
+                    <p className="font-black text-base">{vehiclePerf.stats.total}</p>
+                    <p className="text-xs text-muted-foreground">評分總數</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 p-2.5 text-center">
+                    <p className="font-black text-base text-emerald-600">{vehiclePerf.stats.five_star}</p>
+                    <p className="text-xs text-muted-foreground">5 星好評</p>
+                  </div>
+                  <div className="rounded-xl bg-red-50 p-2.5 text-center">
+                    <p className={`font-black text-base ${Number(vehiclePerf.stats.bad_count) > 0 ? "text-red-600" : "text-emerald-600"}`}>{vehiclePerf.stats.bad_count}</p>
+                    <p className="text-xs text-muted-foreground">差評</p>
+                  </div>
+                </div>
+
+                {/* Star distribution mini bars */}
+                <div className="space-y-1.5">
+                  {[
+                    { label: "5★", count: Number(vehiclePerf.stats.five_star), color: "bg-emerald-400" },
+                    { label: "4★", count: Number(vehiclePerf.stats.four_star), color: "bg-blue-400" },
+                    { label: "3★", count: Number(vehiclePerf.stats.three_star), color: "bg-yellow-400" },
+                    { label: "1-2★", count: Number(vehiclePerf.stats.bad_count), color: "bg-red-400" },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center gap-2 text-xs">
+                      <span className="w-8 text-muted-foreground shrink-0">{row.label}</span>
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${row.color}`} style={{ width: `${Number(vehiclePerf.stats!.total) > 0 ? Math.round(row.count / Number(vehiclePerf.stats!.total) * 100) : 0}%` }} />
+                      </div>
+                      <span className="w-4 text-right font-medium">{row.count}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Recent comment */}
+                {vehiclePerf.recent[0]?.comment && (
+                  <div className={`rounded-xl px-3 py-2 text-xs ${vehiclePerf.recent[0].stars >= 4 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
+                    <span className="font-bold">最新評語：</span>"{vehiclePerf.recent[0].comment}"
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 py-1">
+                <Car className="w-8 h-8 text-blue-300 shrink-0" />
+                <div>
+                  <p className="font-bold text-sm">本車尚無評分記錄</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">完成訂單後，客戶的評分也會記錄到此車牌。</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

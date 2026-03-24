@@ -23,6 +23,8 @@ async function ensurePerformanceTable() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  // Add license_plate column to driver_ratings if missing
+  await pool.query(`ALTER TABLE driver_ratings ADD COLUMN IF NOT EXISTS license_plate TEXT`);
 }
 ensurePerformanceTable().catch(console.error);
 
@@ -192,8 +194,19 @@ ratingsRouter.post("/order/:orderId", async (req, res) => {
     return res.status(409).json({ error: "此訂單已評分" });
   }
 
+  // Auto-capture the driver's current license plate at time of rating
+  let licensePlate: string | null = null;
+  try {
+    const { rows: driverRows } = await pool.query(
+      `SELECT license_plate FROM drivers WHERE id = $1`,
+      [driverId]
+    );
+    licensePlate = driverRows[0]?.license_plate ?? null;
+  } catch { /* silent */ }
+
   const [rating] = await db.insert(driverRatingsTable).values({
     orderId, driverId, customerId: customerId ?? null, stars, comment: comment ?? null,
+    licensePlate,
   }).returning();
 
   // Check reward/penalty after inserting
@@ -294,6 +307,73 @@ ratingsRouter.get("/leaderboard", async (_req, res) => {
     LIMIT 20
   `);
   res.json(rows.rows);
+});
+
+// ─── GET /api/ratings/vehicle-leaderboard ─────────────────────────────────────
+// Rankings by vehicle (license_plate) across all drivers who drove that vehicle
+
+ratingsRouter.get("/vehicle-leaderboard", async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT
+      r.license_plate,
+      d.vehicle_type,
+      d.vehicle_brand,
+      COUNT(r.id) AS rating_count,
+      ROUND(AVG(r.stars)::numeric, 2) AS avg_stars,
+      COUNT(r.id) FILTER (WHERE r.stars = 5) AS five_star,
+      COUNT(r.id) FILTER (WHERE r.stars = 4) AS four_star,
+      COUNT(r.id) FILTER (WHERE r.stars <= 2) AS bad_count,
+      array_agg(DISTINCT d.name) AS driver_names
+    FROM driver_ratings r
+    JOIN drivers d ON d.id = r.driver_id
+    WHERE r.license_plate IS NOT NULL
+    GROUP BY r.license_plate, d.vehicle_type, d.vehicle_brand
+    HAVING COUNT(r.id) >= 1
+    ORDER BY avg_stars DESC, rating_count DESC
+    LIMIT 50
+  `);
+  res.json(rows);
+});
+
+// ─── GET /api/ratings/vehicle/:plate ──────────────────────────────────────────
+// Detailed stats for a specific vehicle by license plate
+
+ratingsRouter.get("/vehicle/:plate", async (req, res) => {
+  const plate = decodeURIComponent(req.params.plate);
+  const { rows: stats } = await pool.query(`
+    SELECT
+      COUNT(*) AS total,
+      ROUND(AVG(stars)::numeric, 2) AS avg_stars,
+      COUNT(*) FILTER (WHERE stars = 5) AS five_star,
+      COUNT(*) FILTER (WHERE stars = 4) AS four_star,
+      COUNT(*) FILTER (WHERE stars = 3) AS three_star,
+      COUNT(*) FILTER (WHERE stars <= 2) AS bad_count,
+      COUNT(*) FILTER (WHERE stars <= 2 AND created_at >= NOW() - INTERVAL '30 days') AS bad_month
+    FROM driver_ratings WHERE license_plate = $1
+  `, [plate]);
+
+  const { rows: recent } = await pool.query(`
+    SELECT r.stars, r.comment, r.created_at, d.name AS driver_name, d.id AS driver_id,
+           o.pickup_address, o.delivery_address
+    FROM driver_ratings r
+    JOIN drivers d ON d.id = r.driver_id
+    LEFT JOIN orders o ON o.id = r.order_id
+    WHERE r.license_plate = $1
+    ORDER BY r.created_at DESC LIMIT 30
+  `, [plate]);
+
+  const { rows: byDriver } = await pool.query(`
+    SELECT r.driver_id, d.name AS driver_name,
+           ROUND(AVG(r.stars)::numeric, 2) AS avg_stars,
+           COUNT(*) AS rating_count
+    FROM driver_ratings r
+    JOIN drivers d ON d.id = r.driver_id
+    WHERE r.license_plate = $1
+    GROUP BY r.driver_id, d.name
+    ORDER BY rating_count DESC
+  `, [plate]);
+
+  res.json({ plate, stats: stats[0] ?? null, recent, byDriver });
 });
 
 // ─── GET /api/ratings/all ─────────────────────────────────────────────────────

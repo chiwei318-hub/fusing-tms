@@ -635,29 +635,40 @@ export default function Admin() {
   const [orderCustomFields, setOrderCustomFields] = useState<any[]>([]);
   const [editOrderCustomValues, setEditOrderCustomValues] = useState<Record<string, string>>({});
   useEffect(() => {
-    fetch(apiUrl("/api/admin/custom-fields?formType=customer_order"))
+    fetch(apiUrl("/admin/custom-fields?formType=customer_order"))
       .then(r => r.json())
       .then((rows: any[]) => setOrderCustomFields(rows.filter((f: any) => f.isActive)))
       .catch(() => {});
   }, []);
 
-  // ─── Driver ratings leaderboard ───────────────────────────────────────────
+  // ─── Driver & Vehicle ratings ─────────────────────────────────────────────
   const [driverRatingMap, setDriverRatingMap] = useState<Record<number, { avg: number; count: number }>>({});
   const [perfEvents, setPerfEvents] = useState<any[]>([]);
-  useEffect(() => {
-    fetch(apiUrl("/api/ratings/leaderboard"))
-      .then(r => r.json())
-      .then((rows: any[]) => {
-        const map: Record<number, { avg: number; count: number }> = {};
-        rows.forEach(r => { map[r.id] = { avg: parseFloat(r.avg_stars), count: Number(r.rating_count) }; });
-        setDriverRatingMap(map);
-      })
-      .catch(() => {});
-    fetch(apiUrl("/api/ratings/performance-events"))
-      .then(r => r.json())
-      .then((rows: any[]) => setPerfEvents(rows))
-      .catch(() => {});
+  const [vehicleLeaderboard, setVehicleLeaderboard] = useState<any[]>([]);
+  const [vehicleRatingTab, setVehicleRatingTab] = useState<"driver" | "vehicle">("driver");
+  const [selectedVehiclePlate, setSelectedVehiclePlate] = useState<string | null>(null);
+  const [vehicleDetail, setVehicleDetail] = useState<any | null>(null);
+
+  const loadRatings = useCallback(async () => {
+    const [lb, pe, vl] = await Promise.all([
+      fetch(apiUrl("/ratings/leaderboard")).then(r => r.json()).catch(() => []),
+      fetch(apiUrl("/ratings/performance-events")).then(r => r.json()).catch(() => []),
+      fetch(apiUrl("/ratings/vehicle-leaderboard")).then(r => r.json()).catch(() => []),
+    ]);
+    const map: Record<number, { avg: number; count: number }> = {};
+    (lb as any[]).forEach(r => { map[r.id] = { avg: parseFloat(r.avg_stars), count: Number(r.rating_count) }; });
+    setDriverRatingMap(map);
+    setPerfEvents(pe as any[]);
+    setVehicleLeaderboard(vl as any[]);
   }, []);
+
+  useEffect(() => { loadRatings(); }, [loadRatings]);
+
+  const openVehicleDetail = async (plate: string) => {
+    setSelectedVehiclePlate(plate);
+    const data = await fetch(apiUrl(`/ratings/vehicle/${encodeURIComponent(plate)}`)).then(r => r.json()).catch(() => null);
+    setVehicleDetail(data);
+  };
 
   const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
@@ -2030,6 +2041,174 @@ export default function Admin() {
             </div>
           </Card>
 
+          {/* ─── 車輛評分排行榜 ─── */}
+          {vehicleLeaderboard.length > 0 && (
+            <Card className="border shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-blue-500" />
+                  車輛客戶評分排行
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">{vehicleLeaderboard.length} 台車</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[380px]">
+                    <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-semibold">車牌</th>
+                        <th className="px-3 py-2 text-left font-semibold hidden sm:table-cell">車型</th>
+                        <th className="px-3 py-2 text-right font-semibold">平均分</th>
+                        <th className="px-3 py-2 text-right font-semibold">評分數</th>
+                        <th className="px-3 py-2 text-right font-semibold">差評</th>
+                        <th className="px-3 py-2 text-left font-semibold hidden md:table-cell">使用司機</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {vehicleLeaderboard.map((v: any) => {
+                        const avg = parseFloat(v.avg_stars);
+                        const badPct = Number(v.rating_count) > 0 ? Math.round(Number(v.bad_count) / Number(v.rating_count) * 100) : 0;
+                        return (
+                          <tr key={v.license_plate} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-2.5">
+                              <span className="font-mono font-bold text-sm bg-slate-100 px-2 py-0.5 rounded">{v.license_plate}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-muted-foreground text-xs hidden sm:table-cell">
+                              {v.vehicle_brand ? `${v.vehicle_brand} · ` : ""}{v.vehicle_type}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className={`font-bold ${avg >= 4.5 ? "text-emerald-600" : avg >= 3.5 ? "text-blue-600" : "text-red-600"}`}>
+                                ★ {avg.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-muted-foreground">{v.rating_count}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              {Number(v.bad_count) > 0
+                                ? <span className="text-red-600 font-medium">{v.bad_count} ({badPct}%)</span>
+                                : <span className="text-emerald-600 text-xs">0</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-muted-foreground hidden md:table-cell max-w-[160px] truncate">
+                              {(v.driver_names ?? []).join("、")}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <button
+                                className="text-xs text-primary border border-primary/30 px-2 py-0.5 rounded-full hover:bg-primary/10 transition-colors"
+                                onClick={() => openVehicleDetail(v.license_plate)}
+                              >
+                                詳情
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 車輛評分詳情 Dialog */}
+          <Dialog open={!!selectedVehiclePlate} onOpenChange={o => { if (!o) { setSelectedVehiclePlate(null); setVehicleDetail(null); }}}>
+            <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-blue-500" />
+                  車輛評分詳情：{selectedVehiclePlate}
+                </DialogTitle>
+                <DialogDescription>此車牌的全部客戶評分記錄與分析</DialogDescription>
+              </DialogHeader>
+              {!vehicleDetail && <div className="py-8 text-center text-muted-foreground text-sm">載入中…</div>}
+              {vehicleDetail && (() => {
+                const s = vehicleDetail.stats;
+                const avg = s ? parseFloat(s.avg_stars) : null;
+                return (
+                  <div className="space-y-4 py-1 text-sm">
+                    {/* Overall stats */}
+                    {s && (
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { label: "平均分", value: avg ? `★ ${avg.toFixed(2)}` : "—", color: avg && avg >= 4.5 ? "text-emerald-600" : avg && avg >= 3.5 ? "text-blue-600" : "text-red-600" },
+                          { label: "評分總數", value: s.total, color: "" },
+                          { label: "差評(1-2★)", value: s.bad_count, color: Number(s.bad_count) > 0 ? "text-red-600" : "text-emerald-600" },
+                          { label: "近30天差評", value: s.bad_month, color: Number(s.bad_month) > 0 ? "text-orange-600" : "text-emerald-600" },
+                        ].map(item => (
+                          <div key={item.label} className="rounded-xl border p-2.5 text-center">
+                            <p className={`font-bold text-base ${item.color}`}>{item.value}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Star distribution */}
+                    {s && (
+                      <div className="rounded-xl border p-3 space-y-1.5">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">星等分佈</p>
+                        {[
+                          { label: "5 ★", count: s.five_star, color: "bg-emerald-400" },
+                          { label: "4 ★", count: s.four_star, color: "bg-blue-400" },
+                          { label: "3 ★", count: s.three_star, color: "bg-yellow-400" },
+                          { label: "1-2 ★", count: s.bad_count, color: "bg-red-400" },
+                        ].map(row => (
+                          <div key={row.label} className="flex items-center gap-2 text-xs">
+                            <span className="w-10 text-muted-foreground shrink-0">{row.label}</span>
+                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${row.color}`} style={{ width: `${Number(s.total) > 0 ? Math.round(Number(row.count) / Number(s.total) * 100) : 0}%` }} />
+                            </div>
+                            <span className="w-4 text-right font-medium">{row.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Per-driver breakdown */}
+                    {vehicleDetail.byDriver?.length > 0 && (
+                      <div className="rounded-xl border p-3">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">使用此車的司機評分</p>
+                        <div className="divide-y">
+                          {vehicleDetail.byDriver.map((d: any) => (
+                            <div key={d.driver_id} className="flex items-center justify-between py-2">
+                              <span className="font-medium">{d.driver_name}</span>
+                              <div className="flex items-center gap-3">
+                                <span className={`font-bold ${parseFloat(d.avg_stars) >= 4.5 ? "text-emerald-600" : parseFloat(d.avg_stars) >= 3.5 ? "text-blue-600" : "text-red-600"}`}>
+                                  ★ {parseFloat(d.avg_stars).toFixed(2)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">{d.rating_count} 筆</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent reviews */}
+                    {vehicleDetail.recent?.length > 0 && (
+                      <div className="rounded-xl border p-3">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">最近評分記錄</p>
+                        <div className="space-y-2">
+                          {vehicleDetail.recent.slice(0, 8).map((r: any, i: number) => (
+                            <div key={i} className={`rounded-lg px-3 py-2 text-xs ${r.stars >= 4 ? "bg-emerald-50 border border-emerald-100" : r.stars === 3 ? "bg-yellow-50 border border-yellow-100" : "bg-red-50 border border-red-100"}`}>
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className={`font-bold ${r.stars >= 4 ? "text-emerald-700" : r.stars === 3 ? "text-yellow-700" : "text-red-700"}`}>{"★".repeat(r.stars)}{"☆".repeat(5 - r.stars)}</span>
+                                <span className="text-muted-foreground">{r.driver_name} · {format(new Date(r.created_at), "MM/dd")}</span>
+                              </div>
+                              {r.comment && <p className="text-muted-foreground">{r.comment}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setSelectedVehiclePlate(null); setVehicleDetail(null); }}>關閉</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* ─── 評分獎罰事件面板 ─── */}
           {perfEvents.length > 0 && (
             <Card className="border shadow-sm">
@@ -2063,7 +2242,7 @@ export default function Admin() {
                           <button
                             className="text-xs text-primary border border-primary/30 px-2 py-0.5 rounded-full hover:bg-primary/10 transition-colors"
                             onClick={async () => {
-                              await fetch(apiUrl(`/api/ratings/performance-events/${evt.id}/resolve`), { method: "PATCH" });
+                              await fetch(apiUrl(`/ratings/performance-events/${evt.id}/resolve`), { method: "PATCH" });
                               setPerfEvents(prev => prev.map(e => e.id === evt.id ? { ...e, is_resolved: true } : e));
                             }}
                           >
