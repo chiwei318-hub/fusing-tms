@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, customersTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   CreateCustomerBody,
@@ -25,20 +26,49 @@ router.get("/customers", async (req, res) => {
 
 router.post("/customers", async (req, res) => {
   try {
-    const body = CreateCustomerBody.parse(req.body);
-    const [customer] = await db
-      .insert(customersTable)
-      .values({
-        name: body.name,
-        phone: body.phone,
-        username: body.username ?? null,
-        password: body.password ?? null,
-        address: body.address ?? null,
-        contactPerson: body.contactPerson ?? null,
-        taxId: body.taxId ?? null,
-      })
-      .returning();
-    res.status(201).json(customer);
+    const b = req.body as Record<string, any>;
+    if (!b.name || !b.phone) {
+      return res.status(400).json({ error: "名稱與電話為必填" });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO customers (
+        name, short_name, phone, username, password,
+        contact_person, tax_id,
+        address, postal_code, email,
+        company_type, industry,
+        payment_type, credit_limit, price_level, discount_pct,
+        is_vip, monthly_statement_day, notes
+      ) VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,
+        $8,$9,$10,
+        $11,$12,
+        $13,$14,$15,$16,
+        $17,$18,$19
+      ) RETURNING *`,
+      [
+        String(b.name).trim(),
+        b.shortName ? String(b.shortName).trim() : null,
+        String(b.phone).trim(),
+        b.username ?? null,
+        b.password ?? null,
+        b.contactPerson ?? null,
+        b.taxId ?? null,
+        b.address ?? null,
+        b.postalCode ?? null,
+        b.email ?? null,
+        b.companyType ?? "company",
+        b.industry ?? null,
+        b.paymentType ?? "cash",
+        parseFloat(b.creditLimit) || 0,
+        b.priceLevel ?? "standard",
+        parseFloat(b.discountPct) || 0,
+        b.isVip ?? false,
+        parseInt(b.monthlyStatementDay) || 5,
+        b.notes ?? null,
+      ]
+    );
+    res.status(201).json(rows[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to create customer");
     res.status(400).json({ error: "Failed to create customer" });
@@ -48,31 +78,44 @@ router.post("/customers", async (req, res) => {
 router.patch("/customers/:id", async (req, res) => {
   try {
     const { id } = UpdateCustomerParams.parse(req.params);
-    const body = UpdateCustomerBody.parse(req.body);
+    const b = req.body as Record<string, any>;
 
-    const existing = await db
-      .select()
-      .from(customersTable)
-      .where(eq(customersTable.id, id));
+    const { rows: existing } = await pool.query("SELECT id FROM customers WHERE id = $1", [id]);
     if (!existing.length) {
       return res.status(404).json({ error: "Customer not found" });
     }
 
-    const updates: Partial<typeof customersTable.$inferInsert> = {};
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.phone !== undefined) updates.phone = body.phone;
-    if ("username" in body) updates.username = body.username ?? null;
-    if ("password" in body) updates.password = body.password ?? null;
-    if ("address" in body) updates.address = body.address ?? null;
-    if ("contactPerson" in body) updates.contactPerson = body.contactPerson ?? null;
-    if ("taxId" in body) updates.taxId = body.taxId ?? null;
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+    const addField = (col: string, val: any) => { setClauses.push(`${col} = $${idx++}`); values.push(val); };
 
-    const [customer] = await db
-      .update(customersTable)
-      .set(updates)
-      .where(eq(customersTable.id, id))
-      .returning();
-    res.json(customer);
+    if (b.name !== undefined) addField("name", b.name);
+    if (b.shortName !== undefined) addField("short_name", b.shortName || null);
+    if (b.phone !== undefined) addField("phone", b.phone);
+    if (b.email !== undefined) addField("email", b.email || null);
+    if (b.username !== undefined) addField("username", b.username || null);
+    if (b.password !== undefined) addField("password", b.password || null);
+    if (b.address !== undefined) addField("address", b.address || null);
+    if (b.postalCode !== undefined) addField("postal_code", b.postalCode || null);
+    if (b.contactPerson !== undefined) addField("contact_person", b.contactPerson || null);
+    if (b.taxId !== undefined) addField("tax_id", b.taxId || null);
+    if (b.industry !== undefined) addField("industry", b.industry || null);
+    if (b.paymentType !== undefined) addField("payment_type", b.paymentType || null);
+    if (b.monthlyStatementDay !== undefined) addField("monthly_statement_day", parseInt(b.monthlyStatementDay) || 5);
+    if (b.companyType !== undefined) addField("company_type", b.companyType || null);
+
+    if (setClauses.length === 0) {
+      const { rows } = await pool.query("SELECT * FROM customers WHERE id = $1", [id]);
+      return res.json(rows[0]);
+    }
+
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE customers SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    res.json(rows[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to update customer");
     res.status(500).json({ error: "Failed to update customer" });

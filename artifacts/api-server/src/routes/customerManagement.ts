@@ -84,10 +84,12 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const schema = z.object({
       name: z.string().optional(),
+      shortName: z.string().optional(),
       phone: z.string().optional(),
       taxId: z.string().optional(),
       contactPerson: z.string().optional(),
       address: z.string().optional(),
+      postalCode: z.string().optional(),
       email: z.string().optional(),
       companyType: z.string().optional(),
       industry: z.string().optional(),
@@ -103,10 +105,12 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
     await db.execute(sql`
       UPDATE customers SET
         name = COALESCE(${data.name ?? null}, name),
+        short_name = COALESCE(${data.shortName ?? null}, short_name),
         phone = COALESCE(${data.phone ?? null}, phone),
         tax_id = COALESCE(${data.taxId ?? null}, tax_id),
         contact_person = COALESCE(${data.contactPerson ?? null}, contact_person),
         address = COALESCE(${data.address ?? null}, address),
+        postal_code = COALESCE(${data.postalCode ?? null}, postal_code),
         email = COALESCE(${data.email ?? null}, email),
         company_type = COALESCE(${data.companyType ?? null}, company_type),
         industry = COALESCE(${data.industry ?? null}, industry),

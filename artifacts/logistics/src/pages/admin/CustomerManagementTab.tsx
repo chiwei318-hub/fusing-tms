@@ -29,9 +29,9 @@ const API = import.meta.env.BASE_URL + "api";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Customer {
-  id: number; name: string; phone: string; tax_id: string | null;
-  contact_person: string | null; address: string | null; email: string | null;
-  company_type: string; payment_type: string; credit_limit: number;
+  id: number; name: string; short_name: string | null; phone: string; tax_id: string | null;
+  contact_person: string | null; address: string | null; postal_code: string | null;
+  email: string | null; company_type: string; payment_type: string; credit_limit: number;
   price_level: string; discount_pct: number; is_vip: boolean;
   is_blacklisted: boolean; blacklist_reason: string | null;
   monthly_statement_day: number; notes: string | null; industry: string | null;
@@ -83,10 +83,12 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
   const isNew = !customer;
   const [form, setForm] = useState({
     name: customer?.name ?? "",
+    shortName: customer?.short_name ?? "",
     phone: customer?.phone ?? "",
     taxId: customer?.tax_id ?? "",
     contactPerson: customer?.contact_person ?? "",
     address: customer?.address ?? "",
+    postalCode: customer?.postal_code ?? "",
     email: customer?.email ?? "",
     companyType: customer?.company_type ?? "company",
     industry: customer?.industry ?? "",
@@ -128,10 +130,15 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
           <DialogTitle>{isNew ? "新增客戶" : `編輯：${customer!.name}`}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-1">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">基本資料</div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Label className="text-xs">公司／客戶名稱 <span className="text-red-500">*</span></Label>
+            <div>
+              <Label className="text-xs">公司名稱 <span className="text-red-500">*</span></Label>
               <Input className="mt-1" value={form.name} onChange={e => f("name", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">簡稱</Label>
+              <Input className="mt-1" placeholder="常用簡稱" value={form.shortName} onChange={e => f("shortName", e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">電話 <span className="text-red-500">*</span></Label>
@@ -146,16 +153,20 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               <Input className="mt-1" value={form.contactPerson} onChange={e => f("contactPerson", e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">Email</Label>
+              <Label className="text-xs">E-mail</Label>
               <Input className="mt-1" type="email" value={form.email} onChange={e => f("email", e.target.value)} />
             </div>
-            <div className="col-span-2">
-              <Label className="text-xs">公司地址</Label>
-              <Input className="mt-1" value={form.address} onChange={e => f("address", e.target.value)} />
+            <div>
+              <Label className="text-xs">郵遞區號</Label>
+              <Input className="mt-1" placeholder="例：100" value={form.postalCode} onChange={e => f("postalCode", e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">行業別</Label>
+              <Label className="text-xs">產業別</Label>
               <Input className="mt-1" placeholder="電子、食品、物流..." value={form.industry} onChange={e => f("industry", e.target.value)} />
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">通訊地址</Label>
+              <Input className="mt-1" placeholder="郵遞區號 + 縣市 + 地址" value={form.address} onChange={e => f("address", e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">客戶類型</Label>
@@ -174,7 +185,7 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">財務設定</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">付款方式</Label>
+              <Label className="text-xs">支付方式</Label>
               <Select value={form.paymentType} onValueChange={v => f("paymentType", v)}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -183,6 +194,10 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
                   <SelectItem value="transfer">銀行轉帳</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs">結帳日（每月幾號）</Label>
+              <Input className="mt-1" type="number" min="1" max="28" placeholder="5" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">價格等級</Label>
@@ -204,12 +219,6 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               <Label className="text-xs">折扣（%）</Label>
               <Input className="mt-1" type="number" min="0" max="100" value={form.discountPct} onChange={e => f("discountPct", e.target.value)} />
             </div>
-            {form.paymentType === "monthly" && (
-              <div>
-                <Label className="text-xs">月結對帳日</Label>
-                <Input className="mt-1" type="number" min="1" max="28" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
-              </div>
-            )}
             <div className="flex items-center gap-2 pt-5">
               <input type="checkbox" checked={form.isVip} onChange={e => f("isVip", e.target.checked)} className="rounded" />
               <Label className="text-xs cursor-pointer">⭐ VIP 客戶</Label>
@@ -500,9 +509,14 @@ function CustomerDetailDialog({ customer, onClose, onUpdate }: {
           <TabsContent value="info" className="space-y-3 mt-3">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {[
-                ["電話", customer.phone], ["Email", customer.email ?? "—"],
-                ["聯絡人", customer.contact_person ?? "—"], ["行業", customer.industry ?? "—"],
-                ["地址", customer.address ?? "—"],
+                ["公司名稱", customer.name],
+                ["簡稱", customer.short_name ?? "—"],
+                ["電話", customer.phone],
+                ["聯絡人", customer.contact_person ?? "—"],
+                ["E-mail", customer.email ?? "—"],
+                ["產業別", customer.industry ?? "—"],
+                ["郵遞區號", customer.postal_code ?? "—"],
+                ["通訊地址", customer.address ?? "—"],
                 ["總訂單", `${Number(customer.total_orders)} 筆`],
                 ["累計金額", `NT$${Number(customer.total_revenue).toLocaleString()}`],
                 ["待收款", customer.outstanding_amount > 0 ? `NT$${Number(customer.outstanding_amount).toLocaleString()}` : "—"],
@@ -528,7 +542,7 @@ function CustomerDetailDialog({ customer, onClose, onUpdate }: {
                 { label: "價格等級", value: PRICE_LABELS[customer.price_level]?.label ?? customer.price_level },
                 { label: "信用額度", value: customer.credit_limit > 0 ? `NT$${customer.credit_limit.toLocaleString()}` : "無" },
                 { label: "折扣", value: customer.discount_pct > 0 ? `${customer.discount_pct}%` : "無折扣" },
-                { label: "月結對帳日", value: customer.payment_type === "monthly" ? `每月 ${customer.monthly_statement_day} 日` : "—" },
+                { label: "結帳日", value: `每月 ${customer.monthly_statement_day} 日` },
               ].map(item => (
                 <div key={item.label} className="border rounded-lg p-2.5 bg-card">
                   <div className="text-[10px] text-muted-foreground">{item.label}</div>
@@ -775,13 +789,18 @@ export default function CustomerManagementTab() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {c.is_vip && <span className="text-amber-500">⭐</span>}
                     <span className="font-semibold text-sm truncate">{c.name}</span>
+                    {c.short_name && <span className="text-[10px] text-muted-foreground">（{c.short_name}）</span>}
                     {c.is_blacklisted && <Badge variant="destructive" className="text-[10px] py-0 h-4">黑名單</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                     <Phone className="w-3 h-3" /> {c.phone}
                     {c.contact_person && <span>· {c.contact_person}</span>}
                   </div>
-                  {c.tax_id && <div className="text-[10px] text-muted-foreground">統編 {c.tax_id}{c.industry ? ` · ${c.industry}` : ""}</div>}
+                  <div className="text-[10px] text-muted-foreground">
+                    {c.tax_id && `統編 ${c.tax_id}`}
+                    {c.industry && (c.tax_id ? ` · ${c.industry}` : c.industry)}
+                    {c.email && ` · ${c.email}`}
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <PayBadge type={c.payment_type} />

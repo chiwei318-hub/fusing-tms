@@ -95,10 +95,16 @@ type DriverFormValues = z.infer<typeof driverFormSchema>;
 
 const customerFormSchema = z.object({
   name: z.string().min(2, "名稱必填"),
+  shortName: z.string().optional(),
   phone: z.string().min(8, "電話必填"),
+  email: z.string().optional(),
   address: z.string().optional(),
+  postalCode: z.string().optional(),
   contactPerson: z.string().optional(),
   taxId: z.string().optional(),
+  industry: z.string().optional(),
+  paymentType: z.string().optional(),
+  monthlyStatementDay: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
 });
@@ -338,9 +344,16 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
   return (
     <div className="grid grid-cols-2 gap-4">
       <FormField control={form.control} name="name" render={({ field }) => (
-        <FormItem className="col-span-2">
-          <FormLabel>名稱 <span className="text-destructive">*</span></FormLabel>
-          <FormControl><Input placeholder="例如：張小明 或 某某科技股份有限公司" {...field} /></FormControl>
+        <FormItem>
+          <FormLabel>公司名稱 <span className="text-destructive">*</span></FormLabel>
+          <FormControl><Input placeholder="某某科技股份有限公司" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="shortName" render={({ field }) => (
+        <FormItem>
+          <FormLabel>簡稱</FormLabel>
+          <FormControl><Input placeholder="常用簡稱" {...field} value={field.value ?? ""} /></FormControl>
           <FormMessage />
         </FormItem>
       )} />
@@ -351,30 +364,71 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
           <FormMessage />
         </FormItem>
       )} />
+      <FormField control={form.control} name="email" render={({ field }) => (
+        <FormItem>
+          <FormLabel>E-mail</FormLabel>
+          <FormControl><Input type="email" placeholder="email@example.com" {...field} value={field.value ?? ""} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
       <FormField control={form.control} name="contactPerson" render={({ field }) => (
         <FormItem>
-          <FormLabel>聯絡人 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormLabel>聯絡人</FormLabel>
           <FormControl>
             <HistoryInput fieldKey="customer-contactPerson" placeholder="聯絡人姓名" {...field} value={field.value ?? ""} />
           </FormControl>
           <FormMessage />
         </FormItem>
       )} />
+      <FormField control={form.control} name="taxId" render={({ field }) => (
+        <FormItem>
+          <FormLabel>統一編號</FormLabel>
+          <FormControl>
+            <HistoryInput fieldKey="customer-taxId" placeholder="8 位數字" maxLength={8} {...field} value={field.value ?? ""} />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="industry" render={({ field }) => (
+        <FormItem>
+          <FormLabel>產業別</FormLabel>
+          <FormControl><Input placeholder="電子、食品、物流..." {...field} value={field.value ?? ""} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="postalCode" render={({ field }) => (
+        <FormItem>
+          <FormLabel>郵遞區號</FormLabel>
+          <FormControl><Input placeholder="例：100" {...field} value={field.value ?? ""} /></FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
       <FormField control={form.control} name="address" render={({ field }) => (
         <FormItem className="col-span-2">
-          <FormLabel>地址 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormLabel>通訊地址</FormLabel>
           <FormControl>
             <HistoryInput fieldKey="customer-address" placeholder="例如：台北市中山區XX路XX號" {...field} value={field.value ?? ""} />
           </FormControl>
           <FormMessage />
         </FormItem>
       )} />
-      <FormField control={form.control} name="taxId" render={({ field }) => (
+      <FormField control={form.control} name="paymentType" render={({ field }) => (
         <FormItem>
-          <FormLabel>統一編號 <span className="text-muted-foreground font-normal">（選填）</span></FormLabel>
+          <FormLabel>支付方式</FormLabel>
           <FormControl>
-            <HistoryInput fieldKey="customer-taxId" placeholder="8 位數字" maxLength={8} {...field} value={field.value ?? ""} />
+            <select className="w-full h-9 px-3 text-sm border rounded-md bg-background" {...field} value={field.value ?? "cash"}>
+              <option value="cash">現金</option>
+              <option value="monthly">月結</option>
+              <option value="transfer">銀行轉帳</option>
+            </select>
           </FormControl>
+          <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="monthlyStatementDay" render={({ field }) => (
+        <FormItem>
+          <FormLabel>結帳日（每月幾號）</FormLabel>
+          <FormControl><Input type="number" min="1" max="28" placeholder="5" {...field} value={field.value ?? ""} /></FormControl>
           <FormMessage />
         </FormItem>
       )} />
@@ -570,10 +624,16 @@ export default function Admin() {
       await createCustomer({
         data: {
           name: data.name,
+          shortName: data.shortName || null,
           phone: data.phone,
+          email: data.email || null,
           address: data.address || null,
+          postalCode: data.postalCode || null,
           contactPerson: data.contactPerson || null,
           taxId: data.taxId || null,
+          industry: data.industry || null,
+          paymentType: data.paymentType || "cash",
+          monthlyStatementDay: data.monthlyStatementDay ? parseInt(data.monthlyStatementDay) : 5,
           username: data.username || null,
           password: data.password || null,
         } as any,
@@ -590,10 +650,16 @@ export default function Admin() {
     setEditingCustomer(customer);
     editCustomerForm.reset({
       name: customer.name,
+      shortName: (customer as any).short_name ?? "",
       phone: customer.phone,
+      email: (customer as any).email ?? "",
       address: (customer as any).address ?? "",
+      postalCode: (customer as any).postal_code ?? "",
       contactPerson: (customer as any).contactPerson ?? "",
       taxId: (customer as any).taxId ?? "",
+      industry: (customer as any).industry ?? "",
+      paymentType: (customer as any).payment_type ?? "cash",
+      monthlyStatementDay: String((customer as any).monthly_statement_day ?? 5),
       username: customer.username ?? "",
       password: customer.password ?? "",
     });
@@ -606,10 +672,16 @@ export default function Admin() {
         id: editingCustomer.id,
         data: {
           name: data.name,
+          shortName: data.shortName || null,
           phone: data.phone,
+          email: data.email || null,
           address: data.address || null,
+          postalCode: data.postalCode || null,
           contactPerson: data.contactPerson || null,
           taxId: data.taxId || null,
+          industry: data.industry || null,
+          paymentType: data.paymentType || null,
+          monthlyStatementDay: data.monthlyStatementDay ? parseInt(data.monthlyStatementDay) : null,
           username: data.username || null,
           password: data.password || null,
         } as any,
@@ -1753,7 +1825,10 @@ export default function Admin() {
                   ) : filteredCustomers.map((customer) => (
                     <tr key={customer.id} className="hover:bg-muted/25 transition-colors group">
                       <td className="px-3 py-2.5">
-                        <div className="font-bold text-foreground text-sm">{customer.name}</div>
+                        <div className="font-bold text-foreground text-sm">
+                          {customer.name}
+                          {(customer as any).short_name && <span className="text-muted-foreground font-normal text-xs ml-1">（{(customer as any).short_name}）</span>}
+                        </div>
                         <div className="text-muted-foreground font-mono text-xs">{customer.phone}</div>
                       </td>
                       <td className="px-3 py-2.5 hidden sm:table-cell">

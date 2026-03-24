@@ -330,12 +330,19 @@ export const ListCustomersResponse = zod.array(ListCustomersResponseItem);
  */
 export const CreateCustomerBody = zod.object({
   name: zod.string(),
+  shortName: zod.string().nullish(),
   phone: zod.string(),
+  email: zod.string().nullish(),
   username: zod.string().nullish(),
   password: zod.string().nullish(),
   address: zod.string().nullish(),
+  postalCode: zod.string().nullish(),
   contactPerson: zod.string().nullish(),
   taxId: zod.string().nullish(),
+  industry: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
+  monthlyStatementDay: zod.number().nullish(),
+  companyType: zod.string().nullish(),
 });
 
 /**
@@ -347,12 +354,19 @@ export const UpdateCustomerParams = zod.object({
 
 export const UpdateCustomerBody = zod.object({
   name: zod.string().optional(),
+  shortName: zod.string().nullish(),
   phone: zod.string().optional(),
+  email: zod.string().nullish(),
   username: zod.string().nullish(),
   password: zod.string().nullish(),
   address: zod.string().nullish(),
+  postalCode: zod.string().nullish(),
   contactPerson: zod.string().nullish(),
   taxId: zod.string().nullish(),
+  industry: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
+  monthlyStatementDay: zod.number().nullish(),
+  companyType: zod.string().nullish(),
 });
 
 /**
