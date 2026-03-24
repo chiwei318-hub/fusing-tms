@@ -1,11 +1,34 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap } from "lucide-react";
+import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle } from "lucide-react";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useListOrders } from "@workspace/api-client-react";
 import { DriverStatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { isToday } from "date-fns";
+import { apiUrl } from "@/lib/api";
+
+interface RatingPerf {
+  stats: {
+    total: string; avg_stars: string; five_star: string;
+    four_star: string; bad_count: string; bad_month: string;
+  } | null;
+  recentStars: number[];
+  events: any[];
+}
+
+function StarRow({ count, label, color }: { count: number; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-12 text-muted-foreground">{label}</span>
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, count * 10)}%` }} />
+      </div>
+      <span className="w-4 text-right font-medium">{count}</span>
+    </div>
+  );
+}
 
 export default function DriverHome() {
   const { user, logout } = useAuth();
@@ -20,9 +43,17 @@ export default function DriverHome() {
   const todayCompleted = myOrders?.filter(o =>
     o.status === "delivered" && isToday(new Date(o.updatedAt))
   ) ?? [];
-
   const todayEarnings = todayCompleted.reduce((sum, o) => sum + (o.totalFee ?? 0), 0);
   const activeTasks = myOrders?.filter(o => o.status === "assigned" || o.status === "in_transit") ?? [];
+
+  const [perf, setPerf] = useState<RatingPerf | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(apiUrl(`/api/ratings/driver/${user.id}/performance`))
+      .then(r => r.json())
+      .then(setPerf)
+      .catch(() => {});
+  }, [user?.id]);
 
   if (isLoading) {
     return (
@@ -33,6 +64,10 @@ export default function DriverHome() {
       </div>
     );
   }
+
+  const avgStars = perf?.stats ? parseFloat(perf.stats.avg_stars) : null;
+  const totalRatings = perf?.stats ? parseInt(perf.stats.total) : 0;
+  const activeEvent = perf?.events?.find(e => !e.is_resolved);
 
   return (
     <div className="space-y-5">
@@ -60,6 +95,15 @@ export default function DriverHome() {
             <p className="font-black text-white text-base leading-tight">{user?.name}</p>
             {driver && <DriverStatusBadge status={driver.status} />}
           </div>
+          {avgStars !== null && (
+            <div className="text-right shrink-0">
+              <div className="flex items-center gap-1 justify-end">
+                <Star className="w-4 h-4 fill-yellow-300 text-yellow-300" />
+                <span className="text-yellow-300 font-black text-lg">{avgStars.toFixed(1)}</span>
+              </div>
+              <p className="text-blue-200 text-xs">{totalRatings} 筆評分</p>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-white/15 rounded-xl p-3 text-center">
@@ -81,6 +125,85 @@ export default function DriverHome() {
           </div>
         </div>
       </div>
+
+      {/* Rating performance card */}
+      {perf && totalRatings > 0 && (
+        <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b bg-amber-50">
+            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+            <span className="font-bold text-sm">客戶評分回饋</span>
+            {avgStars !== null && (
+              <span className={`ml-auto text-sm font-black ${avgStars >= 4.5 ? "text-emerald-600" : avgStars >= 3.5 ? "text-blue-600" : "text-red-600"}`}>
+                ★ {avgStars.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="p-4 space-y-3">
+            {/* Recent stars trend */}
+            {perf.recentStars.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">最近 {perf.recentStars.length} 筆評分趨勢</p>
+                <div className="flex gap-1.5 items-end h-8">
+                  {perf.recentStars.slice().reverse().map((s, i) => (
+                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                      <div
+                        className={`w-full rounded-sm transition-all ${s >= 4 ? "bg-emerald-400" : s === 3 ? "bg-yellow-400" : "bg-red-400"}`}
+                        style={{ height: `${(s / 5) * 100}%` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                  <span>較早</span><span>最近</span>
+                </div>
+              </div>
+            )}
+
+            {/* Distribution summary */}
+            <div className="space-y-1.5">
+              <StarRow count={parseInt(perf.stats?.five_star ?? "0")}  label="5 ★★★★★" color="bg-emerald-400" />
+              <StarRow count={parseInt(perf.stats?.four_star ?? "0")}  label="4 ★★★★" color="bg-blue-400" />
+              <StarRow count={parseInt(perf.stats?.bad_count ?? "0")} label="1-2 ★" color="bg-red-400" />
+            </div>
+
+            {/* Active event */}
+            {activeEvent && (
+              <div className={`rounded-xl px-3 py-2.5 flex items-start gap-2 text-sm ${
+                activeEvent.event_level === "reward"
+                  ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border border-red-200 text-red-800"
+              }`}>
+                {activeEvent.event_level === "reward"
+                  ? <ThumbsUp className="w-4 h-4 shrink-0 mt-0.5" />
+                  : <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />}
+                <div>
+                  <p className="font-bold text-xs">{activeEvent.title}</p>
+                  <p className="text-xs opacity-80 mt-0.5">{activeEvent.description}</p>
+                </div>
+              </div>
+            )}
+
+            {/* No active events — encouragement */}
+            {!activeEvent && avgStars !== null && avgStars >= 4.0 && (
+              <div className="rounded-xl px-3 py-2.5 bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-700">
+                <TrendingUp className="w-4 h-4 shrink-0" />
+                <span>服務穩定優良，繼續保持！達到 5 連好評可獲得獎勵。</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* No ratings yet */}
+      {perf && totalRatings === 0 && (
+        <div className="rounded-2xl border bg-amber-50 p-4 flex items-center gap-3">
+          <Star className="w-8 h-8 text-amber-400" />
+          <div>
+            <p className="font-bold text-sm">尚無客戶評分</p>
+            <p className="text-xs text-muted-foreground mt-0.5">完成訂單後客戶可為您評分，累積好評可獲得系統獎勵！</p>
+          </div>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="grid grid-cols-1 gap-3">

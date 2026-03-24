@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { ImportDialog } from "@/components/ImportDialog";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -9,8 +9,9 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X, Building2, Trophy,
+  Search, X, Building2, Trophy, Star, AlertTriangle,
 } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
@@ -629,6 +630,24 @@ export default function Admin() {
   const [driverSearch, setDriverSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const orderSearchRef = useRef<HTMLInputElement>(null);
+
+  // ─── Driver ratings leaderboard ───────────────────────────────────────────
+  const [driverRatingMap, setDriverRatingMap] = useState<Record<number, { avg: number; count: number }>>({});
+  const [perfEvents, setPerfEvents] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(apiUrl("/api/ratings/leaderboard"))
+      .then(r => r.json())
+      .then((rows: any[]) => {
+        const map: Record<number, { avg: number; count: number }> = {};
+        rows.forEach(r => { map[r.id] = { avg: parseFloat(r.avg_stars), count: Number(r.rating_count) }; });
+        setDriverRatingMap(map);
+      })
+      .catch(() => {});
+    fetch(apiUrl("/api/ratings/performance-events"))
+      .then(r => r.json())
+      .then((rows: any[]) => setPerfEvents(rows))
+      .catch(() => {});
+  }, []);
 
   const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
@@ -1801,6 +1820,7 @@ export default function Admin() {
                     <th className="px-3 py-2.5 font-semibold hidden sm:table-cell">車型 / 車牌</th>
                     <th className="px-3 py-2.5 font-semibold hidden md:table-cell">帳號</th>
                     <th className="px-3 py-2.5 font-semibold hidden md:table-cell">LINE</th>
+                    <th className="px-3 py-2.5 font-semibold hidden lg:table-cell">客戶評分</th>
                     <th className="px-3 py-2.5 font-semibold">狀態</th>
                     <th className="px-3 py-2.5 font-semibold text-right">操作</th>
                   </tr>
@@ -1848,6 +1868,32 @@ export default function Admin() {
                           </span>
                         )}
                       </td>
+                      <td className="px-3 py-2.5 hidden lg:table-cell">
+                        {(() => {
+                          const r = driverRatingMap[driver.id];
+                          const evt = perfEvents.find(e => e.driver_id === driver.id && !e.is_resolved);
+                          return r ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1">
+                                <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                                <span className="text-sm font-bold">{r.avg.toFixed(1)}</span>
+                                <span className="text-xs text-muted-foreground">({r.count}筆)</span>
+                              </div>
+                              {evt && (
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                  evt.event_level === "reward"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}>
+                                  {evt.title.replace(/[🏆⭐🥇✨⚠️🚫🔻]/gu, "").trim()}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">尚無評分</span>
+                          );
+                        })()}
+                      </td>
                       <td className="px-3 py-2.5">
                         <Select value={driver.status} onValueChange={(val) => handleDriverStatus(driver.id, val as DriverStatus)}>
                           <SelectTrigger className="h-7 w-[95px] border-0 shadow-none p-1 hover:bg-muted/60">
@@ -1878,6 +1924,54 @@ export default function Admin() {
               </table>
             </div>
           </Card>
+
+          {/* ─── 評分獎罰事件面板 ─── */}
+          {perfEvents.length > 0 && (
+            <Card className="border shadow-sm">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-400" />
+                  客戶評分・獎罰事件
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">{perfEvents.length} 筆</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y">
+                  {perfEvents.slice(0, 10).map((evt: any) => (
+                    <div key={evt.id} className="flex items-start gap-3 px-4 py-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                        evt.event_level === "reward" ? "bg-emerald-100" : "bg-red-100"
+                      }`}>
+                        {evt.event_level === "reward"
+                          ? <Star className="w-4 h-4 text-emerald-600" />
+                          : <AlertTriangle className="w-4 h-4 text-red-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold">{evt.title}</p>
+                        <p className="text-xs text-muted-foreground">{evt.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">司機：{evt.driver_name} · {format(new Date(evt.created_at), "MM/dd HH:mm")}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {evt.is_resolved ? (
+                          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">已處理</span>
+                        ) : (
+                          <button
+                            className="text-xs text-primary border border-primary/30 px-2 py-0.5 rounded-full hover:bg-primary/10 transition-colors"
+                            onClick={async () => {
+                              await fetch(apiUrl(`/api/ratings/performance-events/${evt.id}/resolve`), { method: "PATCH" });
+                              setPerfEvents(prev => prev.map(e => e.id === evt.id ? { ...e, is_resolved: true } : e));
+                            }}
+                          >
+                            標記處理
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* ===== 客戶 TAB ===== */}
