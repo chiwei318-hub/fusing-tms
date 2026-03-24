@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   Package, MapPin, User, CheckCircle, Copy, Truck, Calendar,
   Building2, Phone, AlertTriangle, Calculator, Info,
-  Plus, Trash2, ChevronDown, ChevronRight, ClipboardList,
+  Plus, Trash2, ChevronDown, ChevronRight, ClipboardList, CreditCard,
 } from "lucide-react";
 import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
@@ -261,8 +261,10 @@ export default function CustomerOrder() {
   const { toast } = useToast();
   const [created, setCreated] = useState<Order | null>(null);
   const [step, setStep]       = useState(0);
-  const [selectedBody, setSelectedBody]     = useState("");
+  const [selectedBody, setSelectedBody]       = useState("");
   const [selectedTonnage, setSelectedTonnage] = useState("");
+  const [paymentType, setPaymentType]         = useState<"instant" | "cash" | "monthly">("instant");
+  const [instantMethod, setInstantMethod]     = useState<"line_pay" | "credit_card" | "bank_transfer">("line_pay");
   const { mutateAsync: createOrder, isPending } = useCreateOrderMutation();
 
   const form = useForm<FormValues>({
@@ -335,6 +337,7 @@ export default function CustomerOrder() {
           requiredVehicleType: vehicleType,
           extraPickupAddresses:  data.extraPickupAddresses?.length  ? JSON.stringify(data.extraPickupAddresses)  : null,
           extraDeliveryAddresses:data.extraDeliveryAddresses?.length ? JSON.stringify(data.extraDeliveryAddresses) : null,
+          payment_method: paymentType === "instant" ? instantMethod : paymentType,
           specialRequirements: [
             data.pickupNotes   ? `取貨備註：${data.pickupNotes}`   : "",
             data.deliveryNotes ? `送貨備註：${data.deliveryNotes}` : "",
@@ -833,6 +836,60 @@ export default function CustomerOrder() {
                     )} />
                   </div>
                 </Collapsible>
+
+                {/* ── 付款方式 ── */}
+                <div className="border rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" /> 付款方式
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: "instant", label: "即時付款", icon: "⚡", desc: "LINE Pay · 信用卡 · 轉帳", badge: "推薦" },
+                      { id: "cash",    label: "現金付款", icon: "💵", desc: "司機到達時收款", badge: "" },
+                      { id: "monthly", label: "月結帳款", icon: "📋", desc: "企業客戶對帳付款", badge: "企業" },
+                    ].map(pt => (
+                      <button key={pt.id} type="button"
+                        onClick={() => setPaymentType(pt.id as any)}
+                        className={`relative flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 text-center transition-all
+                          ${paymentType === pt.id ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-gray-300"}`}>
+                        {pt.badge && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                            {pt.badge}
+                          </span>
+                        )}
+                        <span className="text-xl mt-0.5">{pt.icon}</span>
+                        <span className="text-xs font-bold">{pt.label}</span>
+                        <span className="text-[10px] text-muted-foreground leading-tight">{pt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {/* 即時付款子選項 */}
+                  {paymentType === "instant" && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "line_pay",      label: "LINE Pay",  icon: "💚" },
+                        { id: "credit_card",   label: "信用卡",    icon: "💳" },
+                        { id: "bank_transfer", label: "銀行轉帳",  icon: "🏦" },
+                      ].map(sm => (
+                        <button key={sm.id} type="button"
+                          onClick={() => setInstantMethod(sm.id as any)}
+                          className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border text-xs font-semibold transition-all
+                            ${instantMethod === sm.id ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-gray-300 text-muted-foreground"}`}>
+                          <span>{sm.icon}</span>{sm.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className={`text-xs rounded-lg px-2 py-1.5 ${
+                    paymentType === "instant" ? "bg-blue-50 text-blue-700" :
+                    paymentType === "cash"    ? "bg-amber-50 text-amber-700" :
+                                               "bg-violet-50 text-violet-700"
+                  }`}>
+                    {paymentType === "instant" ? "⚡ 付款確認後才派車" :
+                     paymentType === "cash"    ? "💵 司機到達時收款，系統自動回報" :
+                                                "📋 需事先申請月結資格，對帳後統一付款"}
+                  </p>
+                </div>
               </div>
             )}
 

@@ -48,11 +48,41 @@ const VEHICLE_TYPES = [
   { id: 5, name: "曳引車", desc: "超重大件、工程貨物", base_fee: 8000, icon: "🏗️" },
 ];
 
-const PAYMENT_METHODS = [
-  { id: "line_pay", label: "LINE Pay", icon: "💚", desc: "掃碼即付，最快捷" },
-  { id: "credit_card", label: "信用卡", icon: "💳", desc: "Visa / Mastercard" },
-  { id: "bank_transfer", label: "銀行轉帳", icon: "🏦", desc: "ATM / 網銀轉帳" },
-  { id: "cash", label: "現金付款", icon: "💵", desc: "司機到達時繳付" },
+const PAYMENT_TYPES = [
+  {
+    id: "instant",
+    label: "即時付款",
+    icon: "⚡",
+    desc: "LINE Pay · 信用卡 · 轉帳",
+    note: "付款確認後才派車",
+    badge: "推薦",
+    badgeColor: "bg-blue-500 text-white",
+    sub: [
+      { id: "line_pay",      label: "LINE Pay",  icon: "💚", desc: "掃碼即付" },
+      { id: "credit_card",   label: "信用卡",    icon: "💳", desc: "Visa / Master" },
+      { id: "bank_transfer", label: "銀行轉帳",  icon: "🏦", desc: "ATM / 網銀" },
+    ],
+  },
+  {
+    id: "cash",
+    label: "現金付款",
+    icon: "💵",
+    desc: "司機到達時收款",
+    note: "司機確認後系統回報",
+    badge: "",
+    badgeColor: "",
+    sub: [],
+  },
+  {
+    id: "monthly",
+    label: "月結帳款",
+    icon: "📋",
+    desc: "企業客戶對帳付款",
+    note: "需事先申請月結資格",
+    badge: "企業",
+    badgeColor: "bg-violet-500 text-white",
+    sub: [],
+  },
 ];
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -108,7 +138,8 @@ export default function QuickOrder() {
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
 
-  const [paymentMethod, setPaymentMethod] = useState("line_pay");
+  const [paymentType, setPaymentType] = useState<"instant" | "cash" | "monthly">("instant");
+  const [instantMethod, setInstantMethod] = useState<"line_pay" | "credit_card" | "bank_transfer">("line_pay");
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
 
@@ -166,7 +197,7 @@ export default function QuickOrder() {
           distance_km: distanceKm,
           cargo_description: [cargoCategory, cargoNotes].filter(Boolean).join(" — ") || null,
           pickup_time: new Date(pickupTime).toISOString(),
-          payment_method: paymentMethod,
+          payment_method: paymentType === "instant" ? instantMethod : paymentType,
           total_fee: quote?.total_fee ?? 0,
           notes,
         }),
@@ -443,26 +474,63 @@ export default function QuickOrder() {
                   <span className="text-blue-600">NT${quote.total_fee.toLocaleString()}</span>
                 </div>
               </div>
+              {/* ── 三種主付款類型 ── */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium flex items-center gap-1">
                   <CreditCard className="h-4 w-4" /> 選擇付款方式
                 </Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PAYMENT_METHODS.map((pm) => (
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_TYPES.map((pt) => (
                     <button
-                      key={pm.id}
-                      onClick={() => setPaymentMethod(pm.id)}
-                      className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 text-center transition-all ${
-                        paymentMethod === pm.id
-                          ? "border-blue-500 bg-blue-50"
+                      key={pt.id}
+                      onClick={() => setPaymentType(pt.id as any)}
+                      className={`relative flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${
+                        paymentType === pt.id
+                          ? "border-blue-500 bg-blue-50 shadow-sm"
                           : "border-gray-200 hover:border-gray-300 bg-white"
                       }`}
                     >
-                      <span className="text-xl">{pm.icon}</span>
-                      <span className="text-xs font-semibold">{pm.label}</span>
-                      <span className="text-xs text-gray-400">{pm.desc}</span>
+                      {pt.badge && (
+                        <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pt.badgeColor}`}>
+                          {pt.badge}
+                        </span>
+                      )}
+                      <span className="text-2xl mt-1">{pt.icon}</span>
+                      <span className="text-xs font-bold">{pt.label}</span>
+                      <span className="text-[10px] text-gray-400 leading-tight">{pt.desc}</span>
                     </button>
                   ))}
+                </div>
+                {/* ── 即時付款子選項 ── */}
+                {paymentType === "instant" && (
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {PAYMENT_TYPES[0].sub.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setInstantMethod(s.id as any)}
+                        className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 text-center transition-all ${
+                          instantMethod === s.id
+                            ? "border-blue-400 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300 bg-white"
+                        }`}
+                      >
+                        <span className="text-lg">{s.icon}</span>
+                        <span className="text-[11px] font-semibold">{s.label}</span>
+                        <span className="text-[10px] text-gray-400">{s.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* ── 付款說明提示 ── */}
+                <div className={`text-xs rounded-lg px-3 py-2 flex items-center gap-2 mt-1 ${
+                  paymentType === "instant" ? "bg-blue-50 text-blue-700" :
+                  paymentType === "cash"    ? "bg-amber-50 text-amber-700" :
+                                             "bg-violet-50 text-violet-700"
+                }`}>
+                  <span className="text-base">
+                    {paymentType === "instant" ? "⚡" : paymentType === "cash" ? "💵" : "📋"}
+                  </span>
+                  <span>{PAYMENT_TYPES.find(p => p.id === paymentType)?.note}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -489,63 +557,123 @@ export default function QuickOrder() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+              {/* ── 訂單摘要 ── */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">訂單編號</span>
                   <span className="font-bold">#{orderResult.order_id}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">付款金額</span>
+                  <span className="text-gray-500">應付金額</span>
                   <span className="font-bold text-blue-600 text-lg">NT${orderResult.total_fee.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">付款方式</span>
-                  <span className="font-medium">{PAYMENT_METHODS.find((p) => p.id === paymentMethod)?.label}</span>
+                  <span className="font-medium">
+                    {paymentType === "instant"
+                      ? `即時付款 · ${PAYMENT_TYPES[0].sub.find(s => s.id === instantMethod)?.label}`
+                      : paymentType === "cash" ? "現金付款" : "月結帳款"}
+                  </span>
                 </div>
               </div>
-              <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-700">
+
+              {/* ── 即時付款：LINE Pay ── */}
+              {paymentType === "instant" && instantMethod === "line_pay" && (
+                <div className="text-center space-y-2">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-6 inline-block">
+                    <div className="text-6xl">💚</div>
+                    <div className="text-sm text-green-700 mt-2 font-bold">LINE Pay 掃碼付款</div>
+                    <div className="text-xs text-gray-400 mt-1">（金流整合後顯示正式 QR Code）</div>
+                  </div>
+                  <p className="text-xs text-blue-600 font-medium">⚡ 付款完成後系統立即自動派車</p>
+                </div>
+              )}
+
+              {/* ── 即時付款：信用卡 ── */}
+              {paymentType === "instant" && instantMethod === "credit_card" && (
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">卡號</Label>
+                      <Input placeholder="1234 5678 9012 3456" disabled className="font-mono bg-white" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">有效期限</Label>
+                        <Input placeholder="MM / YY" disabled className="bg-white" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">安全碼</Label>
+                        <Input placeholder="CVV" disabled className="bg-white" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400">（金流整合後啟用刷卡功能）</p>
+                  </div>
+                  <p className="text-xs text-blue-600 font-medium">⚡ 付款完成後系統立即自動派車</p>
+                </div>
+              )}
+
+              {/* ── 即時付款：銀行轉帳 ── */}
+              {paymentType === "instant" && instantMethod === "bank_transfer" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2 text-sm">
+                  <div className="font-bold text-blue-800 mb-1">🏦 匯款資訊</div>
+                  <div className="flex justify-between"><span className="text-gray-500">銀行</span><span className="font-mono font-bold">台灣銀行 004</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">帳號</span><span className="font-mono font-bold">012-345-678901</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">戶名</span><span className="font-mono font-bold">富詠運輸有限公司</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">金額</span><span className="font-bold text-blue-700">NT${orderResult.total_fee.toLocaleString()}</span></div>
+                  <p className="text-xs text-amber-600 pt-1">※ 請於 2 小時內完成匯款，並來電告知末 5 碼</p>
+                  <p className="text-xs text-blue-600 font-medium">⚡ 確認入帳後系統立即派車</p>
+                </div>
+              )}
+
+              {/* ── 現金 ── */}
+              {paymentType === "cash" && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-800"><span>💵</span> 現金到付說明</div>
+                  <ul className="text-amber-700 space-y-1 text-xs ml-4 list-disc">
+                    <li>司機送達後向您收取 NT${orderResult.total_fee.toLocaleString()}</li>
+                    <li>請事先備好現金，司機不找零超過 NT$500</li>
+                    <li>司機完成收款後，系統自動回報已付款狀態</li>
+                  </ul>
+                </div>
+              )}
+
+              {/* ── 月結 ── */}
+              {paymentType === "monthly" && (
+                <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-violet-800"><span>📋</span> 月結帳款說明</div>
+                  <ul className="text-violet-700 space-y-1 text-xs ml-4 list-disc">
+                    <li>本單費用 NT${orderResult.total_fee.toLocaleString()} 將列入月結帳單</li>
+                    <li>每月 {new Date().getDate() <= 15 ? "15" : "月底"} 日前統一對帳開立發票</li>
+                    <li>月結資格需事先向業務申請，未申請者將改為現金收款</li>
+                  </ul>
+                </div>
+              )}
+
+              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
                 {orderResult.payment_instructions}
               </div>
 
-              {paymentMethod === "line_pay" && (
-                <div className="text-center">
-                  <div className="bg-green-100 rounded-xl p-6 inline-block mb-3">
-                    <div className="text-6xl">💚</div>
-                    <div className="text-sm text-green-700 mt-2 font-medium">LINE Pay QR Code</div>
-                    <div className="text-xs text-gray-400 mt-1">（整合後顯示正式 QR Code）</div>
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === "credit_card" && (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm">卡號</Label>
-                    <Input placeholder="1234 5678 9012 3456" disabled className="font-mono" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label className="text-sm">有效期限</Label>
-                      <Input placeholder="MM/YY" disabled />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm">CVV</Label>
-                      <Input placeholder="123" disabled />
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400">（整合金流後啟用刷卡功能）</p>
-                </div>
-              )}
-
               <Button
-                className="w-full h-12 text-base"
+                className={`w-full h-12 text-base font-bold ${
+                  paymentType === "instant" ? "bg-blue-600 hover:bg-blue-700" :
+                  paymentType === "cash"    ? "bg-amber-500 hover:bg-amber-600" :
+                                             "bg-violet-600 hover:bg-violet-700"
+                }`}
                 disabled={loading}
-                onClick={paymentMethod === "cash" ? () => setStep("success") : handleConfirmPayment}
+                onClick={paymentType === "instant" ? handleConfirmPayment : () => setStep("success")}
               >
-                {loading ? "處理中…" : paymentMethod === "cash" ? "完成預訂（現金到付）" : "確認已完成付款"}
+                {loading ? "處理中…" :
+                  paymentType === "instant" ? "確認已完成付款 → 立即派車" :
+                  paymentType === "cash"    ? "確認預訂（現金到付）" :
+                                             "確認預訂（月結入帳）"}
               </Button>
               <p className="text-center text-xs text-gray-400">
-                付款確認後系統將立即自動派車，並透過 LINE 發送通知
+                {paymentType === "instant"
+                  ? "付款確認後系統將立即自動派車，並透過 LINE 發送通知"
+                  : paymentType === "cash"
+                  ? "訂單成立後系統將自動派車，司機到達時請備妥現金"
+                  : "訂單成立後系統將自動派車，費用列入月結帳單"}
               </p>
             </CardContent>
           </Card>

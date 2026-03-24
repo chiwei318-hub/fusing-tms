@@ -46,6 +46,7 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
     contactName: session.contactPerson, contactPhone: session.phone,
     saveTemplate: false, templateNickname: "",
   });
+  const [paymentType, setPaymentType] = useState<"instant" | "cash" | "monthly">("monthly");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +101,7 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
         ...form,
         cargoDescription: [form.cargoDescription, form.cargoNotes].filter(Boolean).join(" — ") || "",
         totalFee: quote?.finalPrice ?? null,
+        paymentMethod: paymentType,
       };
       const res = await fetch(`${BASE}/api/enterprise/${session.id}/place-order`, {
         method: "POST",
@@ -294,6 +296,40 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
               ) : null}
             </div>
           )}
+
+          {/* ── 付款方式 ── */}
+          <div className="border border-gray-100 rounded-xl p-3.5 space-y-2.5 bg-gray-50/50">
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">付款方式</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { id: "monthly", label: "月結帳款", icon: "📋", badge: "企業預設" },
+                { id: "instant", label: "即時付款", icon: "⚡", badge: "" },
+                { id: "cash",    label: "現金付款", icon: "💵", badge: "" },
+              ].map(pt => (
+                <button key={pt.id} type="button"
+                  onClick={() => setPaymentType(pt.id as any)}
+                  className={`relative flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border-2 text-center transition-all
+                    ${paymentType === pt.id ? "border-[#0d2d6e] bg-[#0d2d6e]/5" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
+                  {pt.badge && (
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#0d2d6e] text-white whitespace-nowrap">
+                      {pt.badge}
+                    </span>
+                  )}
+                  <span className="text-lg mt-0.5">{pt.icon}</span>
+                  <span className="text-[11px] font-bold">{pt.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className={`text-[11px] px-2 py-1.5 rounded-lg ${
+              paymentType === "monthly" ? "bg-violet-50 text-violet-700" :
+              paymentType === "instant" ? "bg-blue-50 text-blue-700" :
+                                         "bg-amber-50 text-amber-700"
+            }`}>
+              {paymentType === "monthly" ? "📋 費用列入月結帳單，每月統一對帳開立發票" :
+               paymentType === "instant" ? "⚡ 付款確認後才派車（LINE Pay / 信用卡 / 轉帳）" :
+                                          "💵 司機到達時收款，系統自動回報"}
+            </p>
+          </div>
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-medium px-3 py-2.5 rounded-xl">
