@@ -125,110 +125,124 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[880px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? "新增客戶" : `編輯：${customer!.name}`}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">基本資料</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">公司名稱 <span className="text-red-500">*</span></Label>
-              <Input className="mt-1" value={form.name} onChange={e => f("name", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">簡稱</Label>
-              <Input className="mt-1" placeholder="常用簡稱" value={form.shortName} onChange={e => f("shortName", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">電話 <span className="text-red-500">*</span></Label>
-              <Input className="mt-1" value={form.phone} onChange={e => f("phone", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">統一編號</Label>
-              <Input className="mt-1" placeholder="12345678" value={form.taxId} onChange={e => f("taxId", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">聯絡人</Label>
-              <Input className="mt-1" value={form.contactPerson} onChange={e => f("contactPerson", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">E-mail</Label>
-              <Input className="mt-1" type="email" value={form.email} onChange={e => f("email", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">郵遞區號</Label>
-              <Input className="mt-1" placeholder="例：100" value={form.postalCode} onChange={e => f("postalCode", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">產業別</Label>
-              <Input className="mt-1" placeholder="電子、食品、物流..." value={form.industry} onChange={e => f("industry", e.target.value)} />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs">通訊地址</Label>
-              <Input className="mt-1" placeholder="郵遞區號 + 縣市 + 地址" value={form.address} onChange={e => f("address", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">客戶類型</Label>
-              <Select value={form.companyType} onValueChange={v => f("companyType", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="company">公司行號</SelectItem>
-                  <SelectItem value="individual">個人</SelectItem>
-                  <SelectItem value="government">政府機關</SelectItem>
-                </SelectContent>
-              </Select>
+
+        {/* ── 主體：左右兩欄橫向版面（手機縮成單欄）── */}
+        <div className="flex flex-col sm:flex-row gap-5 py-1">
+
+          {/* ── 左欄：基本資料 ── */}
+          <div className="flex-1 space-y-3">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">基本資料</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">公司名稱 <span className="text-red-500">*</span></Label>
+                <Input className="mt-1" value={form.name} onChange={e => f("name", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">簡稱</Label>
+                <Input className="mt-1" placeholder="常用簡稱" value={form.shortName} onChange={e => f("shortName", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">電話 <span className="text-red-500">*</span></Label>
+                <Input className="mt-1" value={form.phone} onChange={e => f("phone", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">統一編號</Label>
+                <Input className="mt-1" placeholder="12345678" value={form.taxId} onChange={e => f("taxId", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">聯絡人</Label>
+                <Input className="mt-1" value={form.contactPerson} onChange={e => f("contactPerson", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">E-mail</Label>
+                <Input className="mt-1" type="email" value={form.email} onChange={e => f("email", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">郵遞區號</Label>
+                <Input className="mt-1" placeholder="例：100" value={form.postalCode} onChange={e => f("postalCode", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">產業別</Label>
+                <Input className="mt-1" placeholder="電子、食品、物流..." value={form.industry} onChange={e => f("industry", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">通訊地址</Label>
+                <Input className="mt-1" placeholder="郵遞區號 + 縣市 + 地址" value={form.address} onChange={e => f("address", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">客戶類型</Label>
+                <Select value={form.companyType} onValueChange={v => f("companyType", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="company">公司行號</SelectItem>
+                    <SelectItem value="individual">個人</SelectItem>
+                    <SelectItem value="government">政府機關</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
-          <Separator />
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">財務設定</div>
-          <div className="grid grid-cols-2 gap-3">
+          {/* ── 分隔線 ── */}
+          <div className="hidden sm:block w-px bg-border" />
+          <div className="block sm:hidden h-px bg-border" />
+
+          {/* ── 右欄：財務設定 ── */}
+          <div className="sm:w-56 space-y-4">
+            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">財務設定</div>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">支付方式</Label>
+                <Select value={form.paymentType} onValueChange={v => f("paymentType", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">現金</SelectItem>
+                    <SelectItem value="monthly">月結</SelectItem>
+                    <SelectItem value="transfer">銀行轉帳</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">結帳日（每月幾號）</Label>
+                <Input className="mt-1" type="number" min="1" max="28" placeholder="5" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">價格等級</Label>
+                <Select value={form.priceLevel} onValueChange={v => f("priceLevel", v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">標準</SelectItem>
+                    <SelectItem value="vip">VIP</SelectItem>
+                    <SelectItem value="enterprise">企業</SelectItem>
+                    <SelectItem value="custom">自訂</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">信用額度（元）</Label>
+                <Input className="mt-1" type="number" value={form.creditLimit} onChange={e => f("creditLimit", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">折扣（%）</Label>
+                <Input className="mt-1" type="number" min="0" max="100" value={form.discountPct} onChange={e => f("discountPct", e.target.value)} />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input type="checkbox" checked={form.isVip} onChange={e => f("isVip", e.target.checked)} className="rounded" />
+                <Label className="text-xs cursor-pointer">⭐ VIP 客戶</Label>
+              </div>
+            </div>
+            <Separator />
             <div>
-              <Label className="text-xs">支付方式</Label>
-              <Select value={form.paymentType} onValueChange={v => f("paymentType", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">現金</SelectItem>
-                  <SelectItem value="monthly">月結</SelectItem>
-                  <SelectItem value="transfer">銀行轉帳</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-xs">備註</Label>
+              <Textarea className="mt-1 text-sm" rows={3} value={form.notes} onChange={e => f("notes", e.target.value)} />
             </div>
-            <div>
-              <Label className="text-xs">結帳日（每月幾號）</Label>
-              <Input className="mt-1" type="number" min="1" max="28" placeholder="5" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">價格等級</Label>
-              <Select value={form.priceLevel} onValueChange={v => f("priceLevel", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">標準</SelectItem>
-                  <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="enterprise">企業</SelectItem>
-                  <SelectItem value="custom">自訂</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">信用額度（元）</Label>
-              <Input className="mt-1" type="number" value={form.creditLimit} onChange={e => f("creditLimit", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">折扣（%）</Label>
-              <Input className="mt-1" type="number" min="0" max="100" value={form.discountPct} onChange={e => f("discountPct", e.target.value)} />
-            </div>
-            <div className="flex items-center gap-2 pt-5">
-              <input type="checkbox" checked={form.isVip} onChange={e => f("isVip", e.target.checked)} className="rounded" />
-              <Label className="text-xs cursor-pointer">⭐ VIP 客戶</Label>
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs">備註</Label>
-            <Textarea className="mt-1 text-sm" rows={2} value={form.notes} onChange={e => f("notes", e.target.value)} />
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={submit} disabled={loading || !form.name || !form.phone}>
