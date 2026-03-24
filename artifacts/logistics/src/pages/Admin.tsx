@@ -631,6 +631,16 @@ export default function Admin() {
   const [customerSearch, setCustomerSearch] = useState("");
   const orderSearchRef = useRef<HTMLInputElement>(null);
 
+  // ─── Order custom fields ──────────────────────────────────────────────────
+  const [orderCustomFields, setOrderCustomFields] = useState<any[]>([]);
+  const [editOrderCustomValues, setEditOrderCustomValues] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch(apiUrl("/api/admin/custom-fields?formType=customer_order"))
+      .then(r => r.json())
+      .then((rows: any[]) => setOrderCustomFields(rows.filter((f: any) => f.isActive)))
+      .catch(() => {});
+  }, []);
+
   // ─── Driver ratings leaderboard ───────────────────────────────────────────
   const [driverRatingMap, setDriverRatingMap] = useState<Record<number, { avg: number; count: number }>>({});
   const [perfEvents, setPerfEvents] = useState<any[]>([]);
@@ -940,6 +950,11 @@ export default function Admin() {
 
   const openEditOrderDialog = (order: Order) => {
     setEditingOrder(order);
+    // Load existing custom field values
+    try {
+      const cfv = (order as any).customFieldValues;
+      setEditOrderCustomValues(cfv ? JSON.parse(cfv) : {});
+    } catch { setEditOrderCustomValues({}); }
     const pickup = parseContactPerson(order.pickupContactPerson);
     const delivery = parseContactPerson(order.deliveryContactPerson);
     const stops = parseExtraStops((order as any).extraDeliveryAddresses);
@@ -996,6 +1011,7 @@ export default function Admin() {
           specialRequirements: data.specialRequirements || null,
           notes: data.notes || null,
           extraDeliveryAddresses: extraDeliveryJson,
+          customFieldValues: Object.keys(editOrderCustomValues).length > 0 ? editOrderCustomValues : null,
         } as any,
       });
       toast({ title: "✅ 訂單已更新", description: `訂單 #${editingOrder.id} 資料已修改` });
@@ -1195,6 +1211,16 @@ export default function Admin() {
               共 <span className="font-semibold text-foreground">{filteredOrders.length}</span> 筆
               {orderSearch || orderStatusFilter !== "all" ? `（總 ${orders?.length ?? 0}）` : ""}
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 whitespace-nowrap shrink-0 h-9 text-violet-700 border-violet-200 hover:bg-violet-50"
+              onClick={() => setActiveTab("permissions")}
+              title="前往自訂欄位管理"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              欄位管理
+            </Button>
           </div>
 
           <Card className="border shadow-sm overflow-hidden">
@@ -1588,6 +1614,60 @@ export default function Admin() {
                     )} />
                   </div>
 
+                  {/* 自訂欄位 */}
+                  {orderCustomFields.length > 0 && (
+                    <div className="border border-violet-200 rounded-xl p-3 space-y-3 bg-violet-50/30">
+                      <p className="text-xs font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <Settings2 className="w-3.5 h-3.5" /> 自訂欄位
+                      </p>
+                      <div className="grid grid-cols-1 gap-3">
+                        {orderCustomFields.map((cf: any) => (
+                          <div key={cf.fieldKey} className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">
+                              {cf.fieldLabel}{cf.isRequired && <span className="text-destructive ml-0.5">*</span>}
+                            </label>
+                            {cf.fieldType === "textarea" ? (
+                              <Textarea
+                                rows={2}
+                                className="resize-none text-sm"
+                                value={editOrderCustomValues[cf.fieldKey] ?? ""}
+                                onChange={e => setEditOrderCustomValues(prev => ({ ...prev, [cf.fieldKey]: e.target.value }))}
+                              />
+                            ) : cf.fieldType === "select" ? (
+                              <select
+                                className="w-full h-9 px-3 text-sm border rounded-md bg-background"
+                                value={editOrderCustomValues[cf.fieldKey] ?? ""}
+                                onChange={e => setEditOrderCustomValues(prev => ({ ...prev, [cf.fieldKey]: e.target.value }))}
+                              >
+                                <option value="">-- 請選擇 --</option>
+                                {(cf.options ?? []).map((opt: string) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : cf.fieldType === "checkbox" ? (
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 accent-primary"
+                                  checked={editOrderCustomValues[cf.fieldKey] === "true"}
+                                  onChange={e => setEditOrderCustomValues(prev => ({ ...prev, [cf.fieldKey]: String(e.target.checked) }))}
+                                />
+                                <span className="text-sm">{cf.fieldLabel}</span>
+                              </label>
+                            ) : (
+                              <input
+                                type={cf.fieldType === "number" ? "number" : cf.fieldType === "date" ? "date" : "text"}
+                                className="w-full h-9 px-3 text-sm border rounded-md bg-background"
+                                value={editOrderCustomValues[cf.fieldKey] ?? ""}
+                                onChange={e => setEditOrderCustomValues(prev => ({ ...prev, [cf.fieldKey]: e.target.value }))}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <DialogFooter className="gap-2 pt-2">
                     <Button variant="outline" type="button" onClick={() => setEditingOrder(null)}>取消</Button>
                     <Button type="submit" className="gap-2 bg-orange-500 hover:bg-orange-600">
@@ -1721,6 +1801,31 @@ export default function Admin() {
                         )}
                       </div>
                     )}
+
+                    {/* 自訂欄位值顯示 */}
+                    {(() => {
+                      try {
+                        const cfv = (selectedOrder as any).customFieldValues;
+                        const vals: Record<string, string> = cfv ? JSON.parse(cfv) : {};
+                        const filledFields = orderCustomFields.filter(cf => vals[cf.fieldKey]);
+                        if (!filledFields.length) return null;
+                        return (
+                          <div className="border border-violet-200 rounded-xl p-3 space-y-1.5 bg-violet-50/30">
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                              <Settings2 className="w-3.5 h-3.5" /> 自訂欄位
+                            </p>
+                            {filledFields.map((cf: any) => (
+                              <div key={cf.fieldKey} className="flex justify-between gap-4">
+                                <span className="text-muted-foreground shrink-0 text-xs">{cf.fieldLabel}</span>
+                                <span className="font-medium text-sm text-right">
+                                  {cf.fieldType === "checkbox" ? (vals[cf.fieldKey] === "true" ? "✔ 是" : "✘ 否") : vals[cf.fieldKey]}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      } catch { return null; }
+                    })()}
 
                     {/* Pricing Panel */}
                     <PricingPanel

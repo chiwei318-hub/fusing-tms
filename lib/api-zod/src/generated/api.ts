@@ -196,6 +196,7 @@ export const UpdateOrderBody = zod.object({
   extraPickupAddresses: zod.string().nullish(),
   extraDeliveryAddresses: zod.string().nullish(),
   orderGroupId: zod.string().nullish(),
+  customFieldValues: zod.record(zod.string()).nullish(),
 });
 
 export const UpdateOrderStopsBody = zod.object({

@@ -73,6 +73,8 @@ export const ordersTable = pgTable("orders", {
   waitMinutes: real("wait_minutes").default(0),             // wait time at pickup
   surchargeAmount: real("surcharge_amount").default(0),     // anomaly surcharges total
   surchargeReason: text("surcharge_reason"),                // comma-sep reasons
+  // Custom fields (JSON: { [fieldKey]: value })
+  customFieldValues: text("custom_field_values"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, ordersTable, driversTable } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { customerNotificationsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -22,6 +23,14 @@ import {
 import { customersTable } from "@workspace/db";
 
 const router: IRouter = Router();
+
+// ─── DB Migration: ensure custom_field_values column ─────────────────────────
+async function ensureOrderColumns() {
+  try {
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS custom_field_values TEXT`);
+  } catch { /* ignore */ }
+}
+ensureOrderColumns().catch(console.error);
 
 async function fetchOrderWithDriver(id: number) {
   const rows = await db
@@ -261,6 +270,12 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.extraPickupAddresses !== undefined) updates.extraPickupAddresses = body.extraPickupAddresses ?? null;
     if (body.extraDeliveryAddresses !== undefined) updates.extraDeliveryAddresses = body.extraDeliveryAddresses ?? null;
     if (body.orderGroupId !== undefined) updates.orderGroupId = body.orderGroupId ?? null;
+    // Custom field values (stored as JSON string)
+    if (body.customFieldValues !== undefined) {
+      updates.customFieldValues = body.customFieldValues
+        ? JSON.stringify(body.customFieldValues)
+        : null;
+    }
 
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
