@@ -16,6 +16,30 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+const CARGO_CATEGORIES = [
+  "家具 / 辦公家具",
+  "家電 / 3C 電器",
+  "辦公設備 / 文儀",
+  "建材 / 裝潢材料",
+  "食品飲料 / 生鮮",
+  "服飾 / 紡織品",
+  "書籍 / 文件 / 紙張",
+  "電子零件 / PCB",
+  "機械 / 工業零件",
+  "金屬材料 / 鐵件",
+  "化工原料 / 危險品",
+  "醫療器材 / 藥品",
+  "農產品 / 水果",
+  "包裹 / 快遞物品",
+  "藝術品 / 骨董",
+  "展覽器材 / 展示品",
+  "汽機車 / 輪胎",
+  "重型機械 / 工程設備",
+  "廢棄物 / 回收物",
+  "原物料 / 半成品",
+  "其他（備註說明）",
+];
+
 const VEHICLE_TYPES = [
   { id: 1, name: "小貨車", desc: "適合小型貨物、搬家少量物品", base_fee: 1200, icon: "🚐" },
   { id: 2, name: "3.5噸廂型車", desc: "一般貨運、家具搬遷", base_fee: 2200, icon: "🚚" },
@@ -71,7 +95,8 @@ export default function QuickOrder() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [vehicleTypeId, setVehicleTypeId] = useState<number>(1);
   const [distanceKm, setDistanceKm] = useState<number>(10);
-  const [cargoDesc, setCargoDesc] = useState("");
+  const [cargoCategory, setCargoCategory] = useState("");
+  const [cargoNotes, setCargoNotes] = useState("");
   const [pickupTime, setPickupTime] = useState(() => {
     const d = new Date();
     d.setMinutes(0, 0, 0);
@@ -139,7 +164,7 @@ export default function QuickOrder() {
           delivery_address: deliveryAddress,
           vehicle_type_id: vehicleTypeId,
           distance_km: distanceKm,
-          cargo_description: cargoDesc,
+          cargo_description: [cargoCategory, cargoNotes].filter(Boolean).join(" — ") || null,
           pickup_time: new Date(pickupTime).toISOString(),
           payment_method: paymentMethod,
           total_fee: quote?.total_fee ?? 0,
@@ -228,7 +253,7 @@ export default function QuickOrder() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium">目的地 *</Label>
+                <Label className="text-sm font-medium">送貨地址 *</Label>
                 <Input
                   placeholder="例：新北市板橋區縣民大道二段7號"
                   value={deliveryAddress}
@@ -285,11 +310,26 @@ export default function QuickOrder() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium">貨物描述（選填）</Label>
+                <Label className="text-sm font-medium flex items-center gap-1">
+                  <Package className="h-4 w-4 text-indigo-500" /> 貨物類型（選填）
+                </Label>
+                <Select value={cargoCategory} onValueChange={setCargoCategory}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="選擇貨物類型…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CARGO_CATEGORIES.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">貨物補充說明（選填）</Label>
                 <Textarea
-                  placeholder="例：家具3件、紙箱20箱、易碎品等"
-                  value={cargoDesc}
-                  onChange={(e) => setCargoDesc(e.target.value)}
+                  placeholder="例：家具3件、紙箱20箱、易碎品請小心搬運"
+                  value={cargoNotes}
+                  onChange={(e) => setCargoNotes(e.target.value)}
                   rows={2}
                 />
               </div>

@@ -7,9 +7,33 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const VEHICLE_TYPES = ["箱型車", "冷藏車", "尾門車", "平板車", "小貨車"];
 
+const CARGO_CATEGORIES = [
+  "家具 / 辦公家具",
+  "家電 / 3C 電器",
+  "辦公設備 / 文儀",
+  "建材 / 裝潢材料",
+  "食品飲料 / 生鮮",
+  "服飾 / 紡織品",
+  "書籍 / 文件 / 紙張",
+  "電子零件 / PCB",
+  "機械 / 工業零件",
+  "金屬材料 / 鐵件",
+  "化工原料 / 危險品",
+  "醫療器材 / 藥品",
+  "農產品 / 水果",
+  "包裹 / 快遞物品",
+  "藝術品 / 骨董",
+  "展覽器材 / 展示品",
+  "汽機車 / 輪胎",
+  "重型機械 / 工程設備",
+  "廢棄物 / 回收物",
+  "原物料 / 半成品",
+  "其他（備註說明）",
+];
+
 type Quote = { basePrice: number; discountPercent: number; discountAmount: number; finalPrice: number; estimatedKm: number };
 type OrderForm = {
-  pickupAddress: string; deliveryAddress: string; cargoDescription: string;
+  pickupAddress: string; deliveryAddress: string; cargoDescription: string; cargoNotes: string;
   vehicleType: string; specialRequirements: string; contactName: string; contactPhone: string;
   saveTemplate: boolean; templateNickname: string;
 };
@@ -17,7 +41,7 @@ type OrderForm = {
 export default function EnterprisePlaceOrder({ session }: { session: EnterpriseSession }) {
   const [templates, setTemplates] = useState<EnterpriseTemplate[]>([]);
   const [form, setForm] = useState<OrderForm>({
-    pickupAddress: "", deliveryAddress: "", cargoDescription: "",
+    pickupAddress: "", deliveryAddress: "", cargoDescription: "", cargoNotes: "",
     vehicleType: "箱型車", specialRequirements: "",
     contactName: session.contactPerson, contactPhone: session.phone,
     saveTemplate: false, templateNickname: "",
@@ -72,15 +96,20 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
     if (!form.pickupAddress || !form.deliveryAddress) { setError("請填寫取貨和送貨地址"); return; }
     setSubmitting(true); setError("");
     try {
+      const submitPayload = {
+        ...form,
+        cargoDescription: [form.cargoDescription, form.cargoNotes].filter(Boolean).join(" — ") || "",
+        totalFee: quote?.finalPrice ?? null,
+      };
       const res = await fetch(`${BASE}/api/enterprise/${session.id}/place-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, totalFee: quote?.finalPrice ?? null }),
+        body: JSON.stringify(submitPayload),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "下單失敗"); return; }
       setSuccess(data.order.id);
-      setForm(f => ({ ...f, pickupAddress: "", deliveryAddress: "", cargoDescription: "", specialRequirements: "", saveTemplate: false, templateNickname: "" }));
+      setForm(f => ({ ...f, pickupAddress: "", deliveryAddress: "", cargoDescription: "", cargoNotes: "", specialRequirements: "", saveTemplate: false, templateNickname: "" }));
       setQuote(null);
       fetch(`${BASE}/api/enterprise/${session.id}/templates`).then(r => r.json()).then(setTemplates).catch(() => {});
     } catch {
@@ -180,11 +209,14 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">貨品說明</label>
+              <label className="text-xs font-semibold text-gray-600 mb-1.5 block">貨物類型</label>
               <div className="relative">
-                <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input value={form.cargoDescription} onChange={e => setF("cargoDescription", e.target.value)}
-                  placeholder="例：電子零件、食品、機械" className={inp.replace("px-3.5", "pl-9 pr-3.5")} />
+                <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+                <select value={form.cargoDescription} onChange={e => setF("cargoDescription", e.target.value)}
+                  className={inp.replace("px-3.5", "pl-9 pr-3.5") + " bg-white"}>
+                  <option value="">請選擇貨物類型…</option>
+                  {CARGO_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
             </div>
             <div>
@@ -197,6 +229,12 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
                 </select>
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1.5 block">貨物補充說明（選填）</label>
+            <input value={form.cargoNotes} onChange={e => setF("cargoNotes", e.target.value)}
+              placeholder="例：紙箱 20 箱、易碎品、請輕放" className={inp} />
           </div>
 
           <div>
