@@ -79,20 +79,33 @@ export default function DriverIncome() {
       <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 rounded-2xl p-5 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10" />
         <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full -ml-6 -mb-6" />
-        <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">{periodLabel}總收入（扣前）</p>
-        <p className="text-4xl font-black text-white mb-1">
+        <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">{periodLabel}運費總計</p>
+        <p className="text-4xl font-black text-white mb-3">
           NT${Number(summary.gross_earnings || 0).toLocaleString()}
         </p>
-        <div className="flex items-center gap-2 mb-5">
-          <span className="text-blue-300 text-sm">平台抽成 {summary.deductionRate ?? 15}%</span>
-          <span className="text-orange-300 text-sm font-bold">
-            −NT${Number(summary.deductionAmount || 0).toLocaleString()}
-          </span>
+
+        {/* Deduction breakdown */}
+        <div className="space-y-1.5 mb-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-blue-200">抽成（{summary.commissionRate ?? 15}%）</span>
+            <span className="text-orange-300 font-bold">
+              −NT${Number(summary.commissionAmount || 0).toLocaleString()}
+            </span>
+          </div>
+          {Number(summary.monthlyAffiliationFee || 0) > 0 && period === "month" && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-blue-200">月靠行費</span>
+              <span className="text-orange-300 font-bold">
+                −NT${Number(summary.monthlyAffiliationFee || 0).toLocaleString()}
+              </span>
+            </div>
+          )}
         </div>
+
         <div className="border-t border-white/20 pt-4">
           <p className="text-blue-200 text-xs mb-1">實際到手</p>
           <p className="text-3xl font-black text-green-300">
-            NT${Number(summary.netEarnings || 0).toLocaleString()}
+            NT${Math.max(0, Number(summary.netEarnings || 0)).toLocaleString()}
           </p>
         </div>
       </div>
@@ -170,7 +183,7 @@ export default function DriverIncome() {
                     +NT${Number(d.earnings).toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    到手 NT${Math.round(Number(d.earnings) * 0.85).toLocaleString()}
+                    到手 NT${Math.round(Number(d.earnings) * (1 - (summary.commissionRate ?? 15) / 100)).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -200,7 +213,15 @@ export default function DriverIncome() {
                   )}
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="font-bold text-emerald-600">NT${Number(o.total_fee ?? 0).toLocaleString()}</p>
+                  <p className="font-bold text-blue-700 dark:text-blue-300 text-xs">
+                    運費 NT${Number(o.total_fee ?? 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-orange-500">
+                    −NT${Number(o.commission_amount ?? 0).toLocaleString()}（{Number(o.commission_rate ?? 15).toFixed(0)}%）
+                  </p>
+                  <p className="font-black text-emerald-600">
+                    到手 NT${Number(o.net_fee ?? 0).toLocaleString()}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {o.created_at ? format(new Date(o.created_at), "M/d") : ""}
                   </p>

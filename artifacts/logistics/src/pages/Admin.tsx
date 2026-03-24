@@ -9,7 +9,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X, Building2, Trophy, Star, AlertTriangle,
+  Search, X, Building2, Trophy, Star, AlertTriangle, Percent,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -615,6 +615,11 @@ export default function Admin() {
 
   const [driverDialogOpen, setDriverDialogOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [commissionDialogOpen, setCommissionDialogOpen] = useState(false);
+  const [commissionDriver, setCommissionDriver] = useState<Driver | null>(null);
+  const [commissionRate, setCommissionRate] = useState<number>(15);
+  const [affiliationFee, setAffiliationFee] = useState<number>(0);
+  const [savingCommission, setSavingCommission] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importDialogTab, setImportDialogTab] = useState<"customers" | "drivers">("customers");
@@ -815,6 +820,35 @@ export default function Admin() {
       maxLoadKg: d.maxLoadKg ?? d.max_load_kg ?? "",
       maxVolumeCbm: d.maxVolumeCbm ?? d.max_volume_cbm ?? "",
     });
+  };
+
+  const openCommissionDialog = async (driver: Driver) => {
+    setCommissionDriver(driver);
+    setCommissionDialogOpen(true);
+    try {
+      const res = await fetch(apiUrl(`/admin/drivers/${driver.id}/commission`));
+      const data = await res.json();
+      setCommissionRate(Number(data.commission_rate ?? 15));
+      setAffiliationFee(Number(data.monthly_affiliation_fee ?? 0));
+    } catch {
+      setCommissionRate(15);
+      setAffiliationFee(0);
+    }
+  };
+
+  const saveCommission = async () => {
+    if (!commissionDriver) return;
+    setSavingCommission(true);
+    try {
+      await fetch(apiUrl(`/admin/drivers/${commissionDriver.id}/commission`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commissionRate, monthlyAffiliationFee: affiliationFee }),
+      });
+      setCommissionDialogOpen(false);
+    } finally {
+      setSavingCommission(false);
+    }
   };
 
   const onEditDriverSubmit = async (data: DriverFormValues) => {
@@ -2095,6 +2129,94 @@ export default function Admin() {
             </DialogContent>
           </Dialog>
 
+          {/* ── 靠行費／抽成設定 Dialog（後台隱藏，司機不可見）── */}
+          <Dialog open={commissionDialogOpen} onOpenChange={setCommissionDialogOpen}>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Percent className="w-4 h-4 text-violet-600" />
+                  靠行費 ／ 抽成設定
+                </DialogTitle>
+                <DialogDescription>
+                  {commissionDriver?.name}（{commissionDriver?.licensePlate}）
+                  ─ 此設定僅後台可見，司機只看到扣後金額
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-5 py-2">
+                {/* Commission rate */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold flex items-center gap-1.5">
+                    <span className="w-6 h-6 bg-violet-100 text-violet-700 rounded-full flex items-center justify-center text-xs font-black">%</span>
+                    運費抽成比例（%）
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number" min={0} max={100} step={0.5}
+                      value={commissionRate}
+                      onChange={e => setCommissionRate(Number(e.target.value))}
+                      className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <span className="text-sm text-muted-foreground w-20">
+                      預估每萬抽 NT${Math.round(10000 * commissionRate / 100).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    系統預設 15%。修改後新完成訂單即時套用。
+                  </p>
+                </div>
+
+                {/* Monthly affiliation fee */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold flex items-center gap-1.5">
+                    <span className="w-6 h-6 bg-orange-100 text-orange-700 rounded-full flex items-center justify-center text-xs font-black">月</span>
+                    月靠行費（NT$）
+                  </label>
+                  <input
+                    type="number" min={0} step={100}
+                    value={affiliationFee}
+                    onChange={e => setAffiliationFee(Number(e.target.value))}
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    每月固定從司機「本月收入」中扣除，0 代表不收。
+                  </p>
+                </div>
+
+                {/* Preview */}
+                <div className="bg-muted/50 rounded-xl p-3 text-sm space-y-1">
+                  <p className="text-muted-foreground text-xs font-bold mb-1.5">試算範例（假設本月運費 NT$50,000）</p>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">運費總計</span>
+                    <span className="font-mono">NT$50,000</span>
+                  </div>
+                  <div className="flex justify-between text-orange-600">
+                    <span>抽成（{commissionRate}%）</span>
+                    <span className="font-mono">−NT${Math.round(50000 * commissionRate / 100).toLocaleString()}</span>
+                  </div>
+                  {affiliationFee > 0 && (
+                    <div className="flex justify-between text-orange-600">
+                      <span>月靠行費</span>
+                      <span className="font-mono">−NT${Number(affiliationFee).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-black text-emerald-700 border-t pt-1 mt-1">
+                    <span>司機實領</span>
+                    <span className="font-mono">
+                      NT${Math.max(0, 50000 - Math.round(50000 * commissionRate / 100) - affiliationFee).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCommissionDialogOpen(false)}>取消</Button>
+                <Button onClick={saveCommission} disabled={savingCommission}
+                  className="bg-violet-600 hover:bg-violet-700 text-white">
+                  {savingCommission ? "儲存中..." : "儲存費率"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left min-w-[300px]">
@@ -2193,6 +2315,11 @@ export default function Admin() {
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" onClick={() => openCommissionDialog(driver)}
+                            title="靠行費／抽成設定"
+                            className="h-9 w-9 text-violet-500 hover:text-violet-700 hover:bg-violet-100">
+                            <Percent className="w-3.5 h-3.5" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => openEditDriverDialog(driver)}
                             className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted">
                             <Pencil className="w-3.5 h-3.5" />

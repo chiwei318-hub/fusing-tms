@@ -62,8 +62,12 @@ driverIncomeRouter.get("/driver-income/:driverId", async (req, res) => {
     SELECT o.id, o.status, o.pickup_address, o.delivery_address, 
            o.cargo_description, o.total_fee, o.distance_km,
            o.created_at, o.completed_at,
-           (SELECT ROUND(AVG(stars)::numeric,1) FROM driver_ratings WHERE order_id = o.id) AS rating
+           (SELECT ROUND(AVG(stars)::numeric,1) FROM driver_ratings WHERE order_id = o.id) AS rating,
+           d.commission_rate,
+           ROUND((COALESCE(o.total_fee, 0) * COALESCE(d.commission_rate, 15) / 100)::numeric, 0) AS commission_amount,
+           ROUND((COALESCE(o.total_fee, 0) - COALESCE(o.total_fee, 0) * COALESCE(d.commission_rate, 15) / 100)::numeric, 0) AS net_fee
     FROM orders o
+    JOIN drivers d ON d.id = o.driver_id
     WHERE o.driver_id = ${driverId} AND o.status = 'delivered'
     ORDER BY o.created_at DESC
     LIMIT 50
@@ -79,20 +83,27 @@ driverIncomeRouter.get("/driver-income/:driverId", async (req, res) => {
     WHERE driver_id = ${driverId}
   `);
 
-  // Get deduction rate from config
-  const cfgRows = await db.execute(sql`SELECT value FROM pricing_config WHERE key = 'driver_deduction_rate'`);
-  const deductionRate = (cfgRows.rows as any[])[0]?.value ? Number((cfgRows.rows as any[])[0].value) : 15;
+  // Get per-driver commission rate and monthly affiliation fee
+  const driverCfg = await db.execute(sql`
+    SELECT COALESCE(commission_rate, 15) AS commission_rate,
+           COALESCE(monthly_affiliation_fee, 0) AS monthly_affiliation_fee
+    FROM drivers WHERE id = ${driverId}
+  `);
+  const commissionRate = Number((driverCfg.rows[0] as any)?.commission_rate ?? 15);
+  const monthlyAffiliationFee = period === "month" ? Number((driverCfg.rows[0] as any)?.monthly_affiliation_fee ?? 0) : 0;
 
   const gross = Number((summary.rows[0] as any)?.gross_earnings ?? 0);
-  const deductionAmount = Math.round(gross * deductionRate / 100);
-  const netEarnings = gross - deductionAmount;
+  const commissionAmount = Math.round(gross * commissionRate / 100);
+  const netEarnings = gross - commissionAmount - monthlyAffiliationFee;
 
   res.json({
     summary: {
       ...(summary.rows[0] as any),
-      deductionRate,
-      deductionAmount,
+      commissionRate,
+      commissionAmount,
+      monthlyAffiliationFee,
       netEarnings,
+      gross,
     },
     dailyBreakdown: dailyBreakdown.rows,
     orderHistory: orderHistory.rows,
@@ -128,21 +139,26 @@ driverIncomeRouter.post("/driver-income/settle", async (req, res) => {
   `);
   const stats = (earningsRows.rows[0] as any);
 
-  const cfgRows = await db.execute(sql`SELECT value FROM pricing_config WHERE key = 'driver_deduction_rate'`);
-  const deductionRate = (cfgRows.rows as any[])[0]?.value ? Number((cfgRows.rows as any[])[0].value) : 15;
+  const driverCfgS = await db.execute(sql`
+    SELECT COALESCE(commission_rate, 15) AS commission_rate,
+           COALESCE(monthly_affiliation_fee, 0) AS monthly_affiliation_fee
+    FROM drivers WHERE id = ${Number(driverId)}
+  `);
+  const commissionRateS = Number((driverCfgS.rows[0] as any)?.commission_rate ?? 15);
+  const affiliationFeeS = Number((driverCfgS.rows[0] as any)?.monthly_affiliation_fee ?? 0);
 
   const gross = Number(stats.gross_earnings);
-  const deductionAmount = Math.round(gross * deductionRate / 100);
-  const netEarnings = gross - deductionAmount;
+  const commissionAmount = Math.round(gross * commissionRateS / 100);
+  const netEarnings = gross - commissionAmount - affiliationFeeS;
 
   await db.execute(sql`
     INSERT INTO driver_settlements (driver_id, period_start, period_end, gross_earnings, 
       deduction_rate, deduction_amount, net_earnings, order_count, km_total)
     VALUES (${Number(driverId)}, ${periodStart}, ${periodEnd}, ${gross},
-            ${deductionRate}, ${deductionAmount}, ${netEarnings},
+            ${commissionRateS}, ${commissionAmount + affiliationFeeS}, ${netEarnings},
             ${Number(stats.order_count)}, ${Number(stats.km_total)})
   `);
 
-  res.json({ ok: true, gross, deductionAmount, netEarnings, orderCount: stats.order_count });
+  res.json({ ok: true, gross, commissionAmount, affiliationFeeS, netEarnings, orderCount: stats.order_count });
 });
 

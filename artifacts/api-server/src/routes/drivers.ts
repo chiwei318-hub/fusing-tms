@@ -276,4 +276,64 @@ router.delete("/drivers/:id", async (req, res) => {
   }
 });
 
+// ─── GET /api/admin/drivers/:id/commission  (admin only, hidden from drivers) ─
+router.get("/admin/drivers/:id/commission", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { rows } = await pool.query(
+      `SELECT id, name, license_plate, vehicle_type,
+              COALESCE(commission_rate, 15)       AS commission_rate,
+              COALESCE(monthly_affiliation_fee, 0) AS monthly_affiliation_fee
+       FROM drivers WHERE id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch commission" });
+  }
+});
+
+// ─── PATCH /api/admin/drivers/:id/commission ─────────────────────────────────
+router.patch("/admin/drivers/:id/commission", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { commissionRate, monthlyAffiliationFee } = req.body as {
+      commissionRate?: number;
+      monthlyAffiliationFee?: number;
+    };
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    if (commissionRate !== undefined) {
+      values.push(Number(commissionRate));
+      updates.push(`commission_rate = $${values.length}`);
+    }
+    if (monthlyAffiliationFee !== undefined) {
+      values.push(Number(monthlyAffiliationFee));
+      updates.push(`monthly_affiliation_fee = $${values.length}`);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "No fields to update" });
+    values.push(id);
+    await pool.query(`UPDATE drivers SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update commission" });
+  }
+});
+
+// ─── GET /api/admin/drivers/commissions  (list all) ──────────────────────────
+router.get("/admin/drivers/commissions", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, license_plate, vehicle_type, status,
+              COALESCE(commission_rate, 15)       AS commission_rate,
+              COALESCE(monthly_affiliation_fee, 0) AS monthly_affiliation_fee
+       FROM drivers ORDER BY id`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch commissions" });
+  }
+});
+
 export default router;
