@@ -154,6 +154,12 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("availableTimeStart" in b) { rawFields.push(`available_time_start = $${pIdx++}`); rawParams.push(b.availableTimeStart ?? null); }
     if ("availableTimeEnd" in b) { rawFields.push(`available_time_end = $${pIdx++}`); rawParams.push(b.availableTimeEnd ?? null); }
 
+    // Execute Drizzle update for all standard fields
+    if (Object.keys(updates).length > 0) {
+      await db.update(driversTable).set(updates).where(eq(driversTable.id, id));
+    }
+
+    // Execute raw SQL for non-Drizzle-schema fields
     if (rawFields.length > 0) {
       rawParams.push(id);
       await pool.query(

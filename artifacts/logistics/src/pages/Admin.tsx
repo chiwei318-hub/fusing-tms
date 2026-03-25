@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ImportDialog } from "@/components/ImportDialog";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -9,7 +10,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X, Building2, Trophy, Star, AlertTriangle, Percent,
+  Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -599,6 +600,7 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
 
 export default function Admin() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: orders, isLoading: ordersLoading } = useOrdersData();
   const { data: drivers, isLoading: driversLoading } = useDriversData();
   const { data: customers, isLoading: customersLoading } = useCustomersData();
@@ -620,6 +622,11 @@ export default function Admin() {
   const [commissionRate, setCommissionRate] = useState<number>(15);
   const [affiliationFee, setAffiliationFee] = useState<number>(0);
   const [savingCommission, setSavingCommission] = useState(false);
+  const [credDialogOpen, setCredDialogOpen] = useState(false);
+  const [credDriver, setCredDriver] = useState<Driver | null>(null);
+  const [credUsername, setCredUsername] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [savingCred, setSavingCred] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importDialogTab, setImportDialogTab] = useState<"customers" | "drivers">("customers");
@@ -851,6 +858,36 @@ export default function Admin() {
       setCommissionDialogOpen(false);
     } finally {
       setSavingCommission(false);
+    }
+  };
+
+  const openCredDialog = (driver: Driver) => {
+    setCredDriver(driver);
+    setCredUsername((driver as any).username ?? "");
+    setCredPassword("");
+    setCredDialogOpen(true);
+  };
+
+  const saveCred = async () => {
+    if (!credDriver || !credUsername.trim()) return;
+    setSavingCred(true);
+    try {
+      const body: Record<string, any> = { username: credUsername.trim() };
+      if (credPassword) body.password = credPassword;
+      const res = await fetch(apiUrl(`/drivers/${credDriver.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast({ title: "已更新帳號資訊", description: `帳號：${credUsername.trim().toLowerCase()}` });
+        setCredDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      } else {
+        toast({ title: "更新失敗", variant: "destructive" });
+      }
+    } finally {
+      setSavingCred(false);
     }
   };
 
@@ -2220,6 +2257,64 @@ export default function Admin() {
             </DialogContent>
           </Dialog>
 
+          {/* ─── 快速帳號密碼設定 Dialog ─── */}
+          <Dialog open={credDialogOpen} onOpenChange={setCredDialogOpen}>
+            <DialogContent className="sm:max-w-[360px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-blue-600" />
+                  司機帳號密碼設定
+                </DialogTitle>
+                <DialogDescription>
+                  {credDriver?.name}（{(credDriver as any)?.licensePlate}）
+                  {(credDriver as any)?.username && <span className="text-emerald-600">　現有帳號：{(credDriver as any).username}</span>}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold">登入帳號</label>
+                  <Input
+                    value={credUsername}
+                    onChange={e => setCredUsername(e.target.value)}
+                    placeholder="請輸入帳號（自動轉小寫）"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">帳號儲存時自動轉為小寫，司機以此帳號登入</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-bold">
+                    登入密碼
+                    {(credDriver as any)?.username && <span className="text-muted-foreground font-normal ml-1 text-xs">（留空則不修改）</span>}
+                  </label>
+                  <Input
+                    type="password"
+                    value={credPassword}
+                    onChange={e => setCredPassword(e.target.value)}
+                    placeholder={(credDriver as any)?.username ? "不修改請留空" : "請輸入新密碼"}
+                    autoComplete="new-password"
+                  />
+                  <p className="text-xs text-muted-foreground">密碼以加密方式儲存，系統無法查看原始密碼</p>
+                </div>
+                {!(credDriver as any)?.username && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-700 font-medium">⚠ 此司機尚未設定帳號，設定後才可登入司機平台</p>
+                    <p className="text-xs text-amber-600 mt-1">建議格式：driver{credDriver?.id}，密碼：fuying2025</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCredDialogOpen(false)}>取消</Button>
+                <Button
+                  onClick={saveCred}
+                  disabled={savingCred || !credUsername.trim() || (!(credDriver as any)?.username && !credPassword)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {savingCred ? "儲存中..." : "儲存帳號"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Card className="border shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left min-w-[300px]">
@@ -2263,9 +2358,16 @@ export default function Admin() {
                         <span className="font-mono text-[11px] bg-muted border px-1.5 py-0.5 rounded uppercase">{driver.licensePlate}</span>
                       </td>
                       <td className="px-3 py-2.5 hidden md:table-cell">
-                        {driver.username ? (
-                          <span className="text-xs font-mono text-foreground">{driver.username}</span>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                        {(driver as any).username ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-xs font-mono text-foreground font-semibold">{(driver as any).username}</span>
+                            <span className="text-[10px] text-emerald-600 font-medium">有密碼 ✓</span>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-medium">
+                            ⚠ 未設帳號
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 hidden md:table-cell">
                         {driver.lineUserId ? (
@@ -2318,6 +2420,11 @@ export default function Admin() {
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" onClick={() => openCredDialog(driver)}
+                            title="帳號密碼設定"
+                            className={`h-9 w-9 ${(driver as any).username ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" : "text-amber-500 hover:text-amber-700 hover:bg-amber-50"}`}>
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => openCommissionDialog(driver)}
                             title="靠行費／抽成設定"
                             className="h-9 w-9 text-violet-500 hover:text-violet-700 hover:bg-violet-100">
