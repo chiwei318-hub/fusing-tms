@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { createHash, randomBytes } from "crypto";
 import { db, customersTable, driversTable, adminUsers, adminRoles, otpsTable, lineAccountsTable } from "@workspace/db";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { signJwt, verifyJwt, extractBearerToken } from "../lib/jwt.js";
 
 const router: IRouter = Router();
@@ -140,7 +140,9 @@ router.post("/auth/login/driver", async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: "請提供帳號與密碼" });
     }
-    const [driver] = await db.select().from(driversTable).where(eq(driversTable.username, username.trim()));
+    const normalizedUser = username.trim().toLowerCase();
+    const [driver] = await db.select().from(driversTable)
+      .where(sql`lower(${driversTable.username}) = ${normalizedUser}`);
     if (!driver || !driver.password) {
       return res.status(401).json({ error: "帳號或密碼不正確" });
     }

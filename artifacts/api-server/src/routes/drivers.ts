@@ -2,6 +2,18 @@ import { Router, type IRouter } from "express";
 import { db, driversTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { createHash, randomBytes } from "crypto";
+
+function hashDriverPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = createHash("sha256").update(salt + password).digest("hex");
+  return `${salt}:${hash}`;
+}
+function normalizeUsername(u?: string | null): string | null {
+  if (!u) return null;
+  const t = u.trim().toLowerCase();
+  return t || null;
+}
 import {
   CreateDriverBody,
   UpdateDriverBody,
@@ -66,8 +78,8 @@ router.post("/drivers", async (req, res) => {
         licensePlate: body.licensePlate,
         lineUserId: body.lineUserId ?? null,
         driverType: body.driverType ?? null,
-        username: body.username ?? null,
-        password: body.password ?? null,
+        username: normalizeUsername(body.username),
+        password: body.password ? hashDriverPassword(body.password) : null,
         vehicleYear: b.vehicleYear ? parseInt(b.vehicleYear) : null,
         vehicleBrand: b.vehicleBrand ?? null,
         vehicleBodyType: b.vehicleBodyType ?? null,
@@ -113,8 +125,8 @@ router.patch("/drivers/:id", async (req, res) => {
     if (body.status !== undefined) updates.status = body.status;
     if ("lineUserId" in body) updates.lineUserId = body.lineUserId ?? null;
     if ("driverType" in body) updates.driverType = body.driverType ?? null;
-    if ("username" in b) updates.username = b.username ?? null;
-    if ("password" in b) updates.password = b.password ?? null;
+    if ("username" in b) updates.username = normalizeUsername(b.username);
+    if ("password" in b) updates.password = b.password ? hashDriverPassword(b.password) : null;
     if ("engineCc" in b) updates.engineCc = b.engineCc ? parseInt(b.engineCc) : null;
     if ("vehicleYear" in b) updates.vehicleYear = b.vehicleYear ? parseInt(b.vehicleYear) : null;
     if ("vehicleBrand" in b) updates.vehicleBrand = b.vehicleBrand ?? null;
@@ -241,8 +253,8 @@ router.post("/drivers/bulk", async (req, res) => {
       licensePlate: String(r.licensePlate ?? "").trim(),
       status: "available" as const,
       driverType: r.driverType ? String(r.driverType).trim() : null,
-      username: r.username ? String(r.username).trim() : null,
-      password: r.password ? String(r.password).trim() : null,
+      username: normalizeUsername(r.username ? String(r.username) : null),
+      password: r.password ? hashDriverPassword(String(r.password).trim()) : null,
     })).filter(r => r.name && r.phone && r.licensePlate);
 
     if (values.length === 0) {

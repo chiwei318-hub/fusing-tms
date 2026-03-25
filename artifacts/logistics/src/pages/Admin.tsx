@@ -224,7 +224,7 @@ function PasswordInput({ field }: { field: React.InputHTMLAttributes<HTMLInputEl
   );
 }
 
-function DriverFormFields({ form }: { form: ReturnType<typeof useForm<DriverFormValues>> }) {
+function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<DriverFormValues>>; isEdit?: boolean }) {
   return (
     <div className="flex flex-col sm:flex-row gap-5">
       {/* ── 左欄：基本資料 + 車輛規格 ── */}
@@ -585,7 +585,7 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
             )} />
             <FormField control={form.control} name="password" render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">密碼</FormLabel>
+                <FormLabel className="text-xs">密碼{isEdit && <span className="text-muted-foreground font-normal ml-1">（留空則不修改）</span>}</FormLabel>
                 <FormControl><PasswordInput field={field} /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -765,26 +765,29 @@ export default function Admin() {
 
   const pendingCount = useMemo(() => (orders ?? []).filter(o => o.status === "pending").length, [orders]);
 
-  const buildDriverPayload = (data: DriverFormValues) => ({
-    name: data.name,
-    phone: data.phone,
-    vehicleType: data.vehicleType,
-    licensePlate: data.licensePlate,
-    lineUserId: data.lineUserId || null,
-    driverType: data.driverType || null,
-    username: data.username || null,
-    password: data.password || null,
-    bankName: data.bankName || null,
-    bankBranch: data.bankBranch || null,
-    bankAccount: data.bankAccount || null,
-    bankAccountName: data.bankAccountName || null,
-    vehicleBrand: data.vehicleBrand || null,
-    vehicleYear: data.vehicleYear ? parseInt(data.vehicleYear) : null,
-    vehicleTonnage: data.vehicleTonnage || null,
-    hasTailgate: data.hasTailgate ?? false,
-    maxLoadKg: data.maxLoadKg ? parseFloat(data.maxLoadKg) : null,
-    maxVolumeCbm: data.maxVolumeCbm ? parseFloat(data.maxVolumeCbm) : null,
-  });
+  const buildDriverPayload = (data: DriverFormValues) => {
+    const base: Record<string, any> = {
+      name: data.name,
+      phone: data.phone,
+      vehicleType: data.vehicleType,
+      licensePlate: data.licensePlate,
+      lineUserId: data.lineUserId || null,
+      driverType: data.driverType || null,
+      username: data.username || null,
+      bankName: data.bankName || null,
+      bankBranch: data.bankBranch || null,
+      bankAccount: data.bankAccount || null,
+      bankAccountName: data.bankAccountName || null,
+      vehicleBrand: data.vehicleBrand || null,
+      vehicleYear: data.vehicleYear ? parseInt(data.vehicleYear) : null,
+      vehicleTonnage: data.vehicleTonnage || null,
+      hasTailgate: data.hasTailgate ?? false,
+      maxLoadKg: data.maxLoadKg ? parseFloat(data.maxLoadKg) : null,
+      maxVolumeCbm: data.maxVolumeCbm ? parseFloat(data.maxVolumeCbm) : null,
+    };
+    if (data.password) base.password = data.password;
+    return base;
+  };
 
   const onCreateDriverSubmit = async (data: DriverFormValues) => {
     try {
@@ -807,7 +810,7 @@ export default function Admin() {
       licensePlate: driver.licensePlate,
       driverType: driver.driverType ?? "",
       username: driver.username ?? "",
-      password: driver.password ?? "",
+      password: "",
       lineUserId: driver.lineUserId ?? "",
       bankName: d.bankName ?? d.bank_name ?? "",
       bankBranch: d.bankBranch ?? d.bank_branch ?? "",
@@ -2118,7 +2121,7 @@ export default function Admin() {
               </DialogHeader>
               <Form {...editDriverForm}>
                 <form onSubmit={editDriverForm.handleSubmit(onEditDriverSubmit)} className="space-y-4 py-2">
-                  <DriverFormFields form={editDriverForm} />
+                  <DriverFormFields form={editDriverForm} isEdit />
                   <DialogFooter className="pt-2">
                     <Button type="submit" disabled={updatingDriver} className="w-full">
                       {updatingDriver ? "儲存中..." : "儲存變更"}
