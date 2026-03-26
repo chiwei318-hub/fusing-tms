@@ -244,7 +244,7 @@ export default function Landing() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { icon: "🚐", type: "箱型車", capacity: "1.5噸", desc: "一般家具、電器搬運首選", from: "800", popular: false },
+              { icon: "🚐", type: "箱型車", capacity: "1.5噸", desc: "一般貨物、電器運送首選", from: "800", popular: false },
               { icon: "🚛", type: "冷藏車", capacity: "1.5–5噸", desc: "食品、藥品、低溫食材", from: "1,200", popular: true },
               { icon: "🚚", type: "尾門車", capacity: "2–5噸", desc: "重型貨物、工廠機械設備", from: "1,500", popular: false },
               { icon: "🏗️", type: "平板車", capacity: "5–20噸", desc: "大型工程機具、超長貨物", from: "2,500", popular: false },

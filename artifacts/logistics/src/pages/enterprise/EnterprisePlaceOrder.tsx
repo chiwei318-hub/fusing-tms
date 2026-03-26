@@ -247,7 +247,7 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
           <div>
             <label className="text-xs font-semibold text-gray-600 mb-1.5 block">特殊需求（選填）</label>
             <input value={form.specialRequirements} onChange={e => setF("specialRequirements", e.target.value)}
-              placeholder="例：需搬運服務、溫控要求、到府服務" className={inp} />
+              placeholder="例：需尾門服務、溫控要求、到府服務" className={inp} />
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">

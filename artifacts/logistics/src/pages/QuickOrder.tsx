@@ -42,8 +42,8 @@ const CARGO_CATEGORIES = [
 ];
 
 const VEHICLE_TYPES = [
-  { id: 1, name: "小貨車", desc: "適合小型貨物、搬家少量物品", base_fee: 1200, icon: "🚐" },
-  { id: 2, name: "3.5噸廂型車", desc: "一般貨運、家具搬遷", base_fee: 2200, icon: "🚚" },
+  { id: 1, name: "小貨車", desc: "適合小型貨物、文件包裹", base_fee: 1200, icon: "🚐" },
+  { id: 2, name: "3.5噸廂型車", desc: "一般貨運、辦公設備", base_fee: 2200, icon: "🚚" },
   { id: 3, name: "5噸貨車", desc: "大型貨運、整批商品", base_fee: 3500, icon: "🚛" },
   { id: 4, name: "冷藏車", desc: "生鮮食品、低溫貨物", base_fee: 4500, icon: "❄️" },
   { id: 5, name: "曳引車", desc: "超重大件、工程貨物", base_fee: 8000, icon: "🏗️" },

@@ -127,7 +127,7 @@ export default function EnterpriseQuickOrder({ session }: { session: EnterpriseS
             <div>
               <label className="text-xs font-semibold text-gray-600 mb-1 block">特殊需求</label>
               <input value={newTmpl.specialRequirements} onChange={e => setNewTmpl(v => ({ ...v, specialRequirements: e.target.value }))}
-                placeholder="例：需搬運服務、冷藏"
+                placeholder="例：需尾門服務、冷藏"
                 className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d2d6e]/20 focus:border-[#0d2d6e]" />
             </div>
             <div className="flex gap-3 pt-1">

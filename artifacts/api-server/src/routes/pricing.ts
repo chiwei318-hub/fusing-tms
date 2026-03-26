@@ -18,8 +18,6 @@ const CFG = {
   tailgateFee: 800,
   hydraulicFee: 600,
   fridgeFee: 1200,
-  movingFee: 500,
-  movingPerKg: 2,
   waitFreeMin: 30,         // free wait minutes
   waitPer30Min: 200,       // NTD per 30 min over free
   overweightPerKg: 8,      // NTD per kg over declared
@@ -71,11 +69,6 @@ export function calculatePricing(params: {
   if (params.needTailgate === "yes") { specialFee += CFG.tailgateFee; specialItems.push(`尾門+${CFG.tailgateFee}`); }
   if (params.needHydraulicPallet === "yes") { specialFee += CFG.hydraulicFee; specialItems.push(`油壓板+${CFG.hydraulicFee}`); }
   if (sr.includes("冷藏") || sr.includes("cold")) { specialFee += CFG.fridgeFee; specialItems.push(`冷藏+${CFG.fridgeFee}`); }
-  if (sr.includes("搬運") || sr.includes("moving")) {
-    const mf = CFG.movingFee + weight * CFG.movingPerKg;
-    specialFee += mf;
-    specialItems.push(`搬運+${Math.round(mf)}`);
-  }
 
   const extraWaitUnits = Math.max(0, Math.ceil((wait - CFG.waitFreeMin) / 30));
   const waitFee = extraWaitUnits * CFG.waitPer30Min;

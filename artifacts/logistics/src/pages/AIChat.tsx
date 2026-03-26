@@ -28,12 +28,11 @@ const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
 const WELCOME: Message = {
   role: "assistant",
-  content: "您好！我是富詠運輸 AI 接單系統 🚚\n\n**一句話就能完成報價和下單**，直接說明您的需求即可，例如：\n\n「明天台北到台中，5噸車，搬家具，需要搬運」",
+  content: "您好！我是富詠運輸 AI 接單系統 🚚\n\n**一句話就能完成報價和下單**，直接說明您的需求即可，例如：\n\n「明天台北到台中，5噸車，運送辦公設備」",
 };
 
 const EXTRA_ICONS: Record<string, string> = {
   "尾門": "🔧",
-  "搬運": "💪",
   "冷鏈": "❄️",
   "急件": "⚡",
 };
@@ -213,7 +212,7 @@ function OrderCreatedBanner({ orderId }: { orderId: number }) {
 }
 
 const QUICK_SUGGESTIONS = [
-  "台北到台中，5噸車，搬辦公室家具，需要搬運",
+  "台北到台中，5噸車，運送辦公室家具",
   "桃園到高雄，明天下午，3.5T，電器設備",
   "台北市區到新北，今天急件，3.5T，小型貨物，需要尾門",
   "台中到台南，冷鏈食品，5T，明天早上",

@@ -28,7 +28,7 @@ const BODY_TYPES = [
 ];
 const TONNAGE_OPTIONS = [
   { value: "1.5T", weight: "1,500 kg", volume: "7 m³",  desc: "小型家電、文件、輕貨" },
-  { value: "3.5T", weight: "3,500 kg", volume: "18 m³", desc: "辦公家具、一般搬家" },
+  { value: "3.5T", weight: "3,500 kg", volume: "18 m³", desc: "辦公家具、一般貨運" },
   { value: "5T",   weight: "5,000 kg", volume: "30 m³", desc: "大型設備、建材" },
   { value: "8T",   weight: "8,000 kg", volume: "40 m³", desc: "工廠貨品、大量家具" },
   { value: "11T",  weight: "11,000 kg", volume: "52 m³", desc: "重型機械、大批貨" },
@@ -583,7 +583,7 @@ export default function CustomerOrder() {
                         <FormLabel className="text-sm">備註</FormLabel>
                         <FormControl>
                           <Textarea className="resize-none text-sm" rows={2}
-                            placeholder="例：3樓無電梯、需搬運至室內" {...field} />
+                            placeholder="例：3樓無電梯、需卸貨至室內" {...field} />
                         </FormControl>
                       </FormItem>
                     )} />

@@ -1813,7 +1813,7 @@ export default function Admin() {
                           )} />
                         </div>
                         <FormField control={editOrderForm.control} name={`extraDeliveryStops.${idx}.notes` as any} render={({ field }) => (
-                          <FormItem><FormLabel className="text-xs">備註（樓層、搬運需求等）</FormLabel>
+                          <FormItem><FormLabel className="text-xs">備註（樓層、卸貨需求等）</FormLabel>
                             <FormControl><Textarea className="resize-none text-xs" rows={1} placeholder="例：3樓無電梯" {...field} /></FormControl></FormItem>
                         )} />
                       </div>

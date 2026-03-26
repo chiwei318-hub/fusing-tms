@@ -30,7 +30,7 @@ const OTHER_LICENSES = [
   { id: "dangerous_goods_b", label: "乙種危險物品運送人員訓練證" },
   { id: "forklift", label: "堆高機（推高機）操作人員執照" },
   { id: "cold_chain", label: "低溫冷鏈食品運送認證" },
-  { id: "precision", label: "精密儀器搬運認證" },
+  { id: "precision", label: "精密儀器運送認證" },
   { id: "special_cargo", label: "特殊貨物運送許可" },
   { id: "adr", label: "ADR 危險品運送國際認證" },
 ];
@@ -90,7 +90,7 @@ const CONTRACT_TEXT = `富詠運輸 司機合作條款 v2.0
 
 三、服務品質
 1. 須穿著整潔，態度良好對待客戶。
-2. 貨物搬運須謹慎，若因疏失造成損壞須負賠償責任。
+2. 貨物裝卸須謹慎，若因疏失造成損壞須負賠償責任。
 3. 客戶評分低於 3.5 分（5 分制）連續 3 個月，將暫停接單。
 
 四、費用結算
