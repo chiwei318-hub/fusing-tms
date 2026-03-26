@@ -41,7 +41,7 @@ driverIncomeRouter.get("/driver-income/:driverId", async (req, res) => {
       MAX(created_at) FILTER (WHERE status = 'delivered') AS latest_order
     FROM orders
     WHERE driver_id = ${driverId}
-      AND created_at >= NOW() - ${sql.raw(`INTERVAL '${interval}'`)}
+      AND created_at >= NOW() - CAST(${interval} AS INTERVAL)
   `);
 
   const dailyBreakdown = await db.execute(sql`
@@ -52,7 +52,7 @@ driverIncomeRouter.get("/driver-income/:driverId", async (req, res) => {
       COALESCE(SUM(distance_km) FILTER (WHERE status = 'delivered'), 0) AS km
     FROM orders
     WHERE driver_id = ${driverId}
-      AND created_at >= NOW() - ${sql.raw(`INTERVAL '${interval}'`)}
+      AND created_at >= NOW() - CAST(${interval} AS INTERVAL)
     GROUP BY DATE(created_at)
     ORDER BY day DESC
     LIMIT 30
