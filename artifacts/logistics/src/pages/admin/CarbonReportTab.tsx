@@ -1,12 +1,44 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
-import { Leaf, Truck, TrendingDown, Wind, BarChart2, Download } from "lucide-react";
+import {
+  Leaf, Truck, TrendingDown, Wind, BarChart2, Download,
+  Plus, Trash2, Fuel, FlaskConical, Calculator,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOrdersData } from "@/hooks/use-orders";
-import { calcCarbonKg, carbonLabel, getEmissionFactor, VEHICLE_EMISSION_FACTOR, equivalentTrees } from "@/lib/carbon";
+import {
+  calcCarbonKg, calcCarbonFromFuel, carbonLabel,
+  getEmissionFactor, VEHICLE_EMISSION_FACTOR, equivalentTrees,
+  DIESEL_CO2_PER_LITER,
+} from "@/lib/carbon";
 import type { Order } from "@workspace/api-client-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface FuelEntry {
+  id: string;
+  date: string;
+  vehicle: string;
+  km: number;
+  liters: number;
+  co2: number;
+  note: string;
+}
+
+const FUEL_LOG_KEY = "carbon_fuel_log_v1";
+
+function loadFuelLog(): FuelEntry[] {
+  try { return JSON.parse(localStorage.getItem(FUEL_LOG_KEY) ?? "[]"); } catch { return []; }
+}
+function saveFuelLog(entries: FuelEntry[]) {
+  localStorage.setItem(FUEL_LOG_KEY, JSON.stringify(entries));
+}
+
+// ─── Period helpers ───────────────────────────────────────────────────────────
 
 const PERIOD_OPTIONS = [
   { label: "本月", value: "this_month" },
@@ -14,7 +46,7 @@ const PERIOD_OPTIONS = [
   { label: "全部", value: "all" },
 ];
 
-function getPeriodRange(period: string): { start: Date | null; end: Date | null } {
+function getPeriodRange(period: string) {
   const now = new Date();
   if (period === "this_month") return { start: startOfMonth(now), end: endOfMonth(now) };
   if (period === "last_month") {
@@ -24,21 +56,15 @@ function getPeriodRange(period: string): { start: Date | null; end: Date | null 
   return { start: null, end: null };
 }
 
-function StatCard({
-  icon, label, value, sub, color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  color: string;
+// ─── Shared components ────────────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, color }: {
+  icon: React.ReactNode; label: string; value: string; sub?: string; color: string;
 }) {
   return (
     <Card className="border shadow-sm">
       <CardContent className="p-5 flex items-start gap-4">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
-          {icon}
-        </div>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>{icon}</div>
         <div>
           <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
           <p className="text-xl font-bold text-foreground">{value}</p>
@@ -49,9 +75,244 @@ function StatCard({
   );
 }
 
-export default function CarbonReportTab() {
+// ─── Fuel log tab ─────────────────────────────────────────────────────────────
+
+function FuelLogTab() {
+  const [entries, setEntries] = useState<FuelEntry[]>(loadFuelLog);
+  const [form, setForm] = useState({ date: format(new Date(), "yyyy-MM-dd"), vehicle: "", km: "", liters: "", note: "" });
+  const [preview, setPreview] = useState<number | null>(null);
+
+  useEffect(() => { saveFuelLog(entries); }, [entries]);
+
+  function handleLitersChange(v: string) {
+    setForm(f => ({ ...f, liters: v }));
+    const l = parseFloat(v);
+    setPreview(isNaN(l) || l <= 0 ? null : Math.round(l * DIESEL_CO2_PER_LITER * 10) / 10);
+  }
+
+  function handleAdd() {
+    const liters = parseFloat(form.liters);
+    const km = parseFloat(form.km);
+    if (!form.vehicle.trim() || isNaN(liters) || liters <= 0) return;
+    const entry: FuelEntry = {
+      id: Date.now().toString(),
+      date: form.date,
+      vehicle: form.vehicle.trim(),
+      km: isNaN(km) ? 0 : km,
+      liters,
+      co2: calcCarbonFromFuel(liters),
+      note: form.note.trim(),
+    };
+    setEntries(prev => [entry, ...prev]);
+    setForm(f => ({ ...f, vehicle: "", km: "", liters: "", note: "" }));
+    setPreview(null);
+  }
+
+  function handleDelete(id: string) {
+    setEntries(prev => prev.filter(e => e.id !== id));
+  }
+
+  function handleExport() {
+    const rows = [
+      ["日期", "車牌/車號", "行駛公里", "加油量(公升)", "碳排放量(kg)", "備註"],
+      ...entries.map(e => [e.date, e.vehicle, e.km > 0 ? e.km.toString() : "", e.liters.toFixed(2), e.co2.toFixed(1), e.note]),
+    ];
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `燃油碳排記錄_${format(new Date(), "yyyyMMdd")}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
+  const totalCo2 = entries.reduce((s, e) => s + e.co2, 0);
+  const totalLiters = entries.reduce((s, e) => s + e.liters, 0);
+  const totalKm = entries.reduce((s, e) => s + e.km, 0);
+
+  const byVehicle = useMemo(() => {
+    const map: Record<string, { liters: number; co2: number; km: number; count: number }> = {};
+    for (const e of entries) {
+      if (!map[e.vehicle]) map[e.vehicle] = { liters: 0, co2: 0, km: 0, count: 0 };
+      map[e.vehicle].liters += e.liters;
+      map[e.vehicle].co2 += e.co2;
+      map[e.vehicle].km += e.km;
+      map[e.vehicle].count++;
+    }
+    return Object.entries(map).map(([v, d]) => ({ vehicle: v, ...d })).sort((a, b) => b.co2 - a.co2);
+  }, [entries]);
+
+  const maxCo2 = byVehicle[0]?.co2 ?? 1;
+
+  return (
+    <div className="space-y-5">
+      {/* Formula banner */}
+      <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <FlaskConical className="w-5 h-5 text-amber-600 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-amber-800">實際碳排計算公式</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            碳排放量（kg）＝ 加油量（公升）×  <strong>2.68</strong>　　柴油完全燃燒每公升排放 2.68 kg CO₂
+          </p>
+        </div>
+      </div>
+
+      {/* Input form */}
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3 border-b bg-muted/30">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" /> 新增燃油記錄
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">日期</Label>
+              <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">車牌 / 車號 <span className="text-red-500">*</span></Label>
+              <Input placeholder="例：ABC-1234" value={form.vehicle} onChange={e => setForm(f => ({ ...f, vehicle: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">行駛公里（選填）</Label>
+              <Input type="number" min={0} placeholder="0" value={form.km} onChange={e => setForm(f => ({ ...f, km: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1 sm:col-span-1">
+              <Label className="text-xs">加油量（公升）<span className="text-red-500">*</span></Label>
+              <div className="relative">
+                <Input
+                  type="number" min={0} step={0.1} placeholder="例：45.5"
+                  value={form.liters}
+                  onChange={e => handleLitersChange(e.target.value)}
+                  className="h-8 text-sm pr-8"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">L</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">備註（選填）</Label>
+              <Input placeholder="例：台北→高雄" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="flex flex-col justify-end gap-1">
+              {preview !== null && (
+                <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                  <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-xs text-emerald-700">
+                    <strong>{form.liters} L × 2.68 = </strong>
+                    <span className="font-bold text-emerald-800">{preview} kg</span>
+                  </span>
+                </div>
+              )}
+              <Button
+                size="sm" onClick={handleAdd}
+                disabled={!form.vehicle.trim() || !form.liters || parseFloat(form.liters) <= 0}
+                className="h-8 text-xs gap-1.5 w-full"
+              >
+                <Plus className="w-3.5 h-3.5" /> 新增
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary */}
+      {entries.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard icon={<Fuel className="w-5 h-5 text-amber-700" />} label="總加油量" value={`${totalLiters.toFixed(1)} L`} sub={`${entries.length} 筆記錄`} color="bg-amber-100" />
+            <StatCard icon={<Wind className="w-5 h-5 text-emerald-700" />} label="實際總碳排" value={carbonLabel(Math.round(totalCo2 * 10) / 10)} sub="油量 × 2.68" color="bg-emerald-100" />
+            <StatCard icon={<Truck className="w-5 h-5 text-blue-700" />} label="總行駛距離" value={totalKm > 0 ? `${Math.round(totalKm).toLocaleString()} km` : "—"} sub="有填寫的記錄" color="bg-blue-100" />
+            <StatCard icon={<Leaf className="w-5 h-5 text-green-700" />} label="等效需植樹數" value={`${equivalentTrees(totalCo2).toLocaleString()} 棵`} sub="每棵/年吸 21.77 kg" color="bg-green-100" />
+          </div>
+
+          {/* Per-vehicle breakdown */}
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-3 border-b bg-muted/30">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Truck className="w-4 h-4 text-primary" /> 各車碳排分析
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              {byVehicle.map(row => (
+                <div key={row.vehicle} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-medium text-foreground">{row.vehicle}</span>
+                      <span className="text-xs text-muted-foreground">{row.count} 筆 · {row.liters.toFixed(1)} L</span>
+                    </div>
+                    <span className="font-bold text-emerald-700 tabular-nums">{carbonLabel(Math.round(row.co2 * 10) / 10)}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${Math.round((row.co2 / maxCo2) * 100)}%` }} />
+                  </div>
+                  {row.km > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      累計 {Math.round(row.km).toLocaleString()} km · 平均油耗 {(row.liters / row.km * 100).toFixed(1)} L/100km
+                    </p>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Log table */}
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-3 border-b bg-muted/30 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Fuel className="w-4 h-4 text-primary" /> 燃油記錄明細
+              </CardTitle>
+              <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5 text-xs h-7">
+                <Download className="w-3 h-3" /> 匯出
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {entries.map(e => (
+                  <div key={e.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                    <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 flex flex-col items-center justify-center shrink-0">
+                      <Fuel className="w-3.5 h-3.5 text-amber-600" />
+                      <span className="text-[9px] text-amber-700 font-bold leading-none mt-0.5">{e.liters.toFixed(0)}L</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold font-mono text-foreground">{e.vehicle}</span>
+                        <span className="text-[10px] text-muted-foreground">{e.date}</span>
+                        {e.km > 0 && <span className="text-[10px] text-muted-foreground">{e.km} km</span>}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {e.liters.toFixed(2)} L × 2.68 = <strong className="text-emerald-700">{e.co2.toFixed(1)} kg CO₂</strong>
+                        {e.note && <span className="ml-2">· {e.note}</span>}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-emerald-700">{carbonLabel(e.co2)}</p>
+                      <button onClick={() => handleDelete(e.id)} className="text-[10px] text-muted-foreground hover:text-red-500 flex items-center gap-0.5 ml-auto mt-0.5 transition-colors">
+                        <Trash2 className="w-3 h-3" /> 刪除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {entries.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <Fuel className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="text-sm font-medium">尚未有燃油記錄</p>
+          <p className="text-xs mt-1">填入車牌與加油量，即可自動換算 CO₂</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Estimated tab (existing logic) ──────────────────────────────────────────
+
+function EstimatedTab({ period, setPeriod }: { period: string; setPeriod: (v: string) => void }) {
   const { data: orders = [] } = useOrdersData();
-  const [period, setPeriod] = useState("this_month");
 
   const filtered = useMemo(() => {
     const { start, end } = getPeriodRange(period);
@@ -64,28 +325,15 @@ export default function CarbonReportTab() {
 
   const ordersWithCarbon = useMemo(() =>
     filtered
-      .map(o => ({
-        ...o,
-        carbonKg: calcCarbonKg(o.distanceKm, o.requiredVehicleType ?? o.driver?.vehicleType),
-      }))
+      .map(o => ({ ...o, carbonKg: calcCarbonKg(o.distanceKm, o.requiredVehicleType ?? o.driver?.vehicleType) }))
       .filter(o => o.carbonKg !== null)
       .sort((a, b) => (b.carbonKg ?? 0) - (a.carbonKg ?? 0)),
     [filtered],
   );
 
-  const totalCarbon = useMemo(
-    () => ordersWithCarbon.reduce((s, o) => s + (o.carbonKg ?? 0), 0),
-    [ordersWithCarbon],
-  );
-
-  const totalDistance = useMemo(
-    () => filtered.reduce((s, o) => s + (o.distanceKm ?? 0), 0),
-    [filtered],
-  );
-
-  const avgCarbon = ordersWithCarbon.length > 0
-    ? totalCarbon / ordersWithCarbon.length
-    : 0;
+  const totalCarbon = useMemo(() => ordersWithCarbon.reduce((s, o) => s + (o.carbonKg ?? 0), 0), [ordersWithCarbon]);
+  const totalDistance = useMemo(() => filtered.reduce((s, o) => s + (o.distanceKm ?? 0), 0), [filtered]);
+  const avgCarbon = ordersWithCarbon.length > 0 ? totalCarbon / ordersWithCarbon.length : 0;
 
   const byVehicle = useMemo(() => {
     const map: Record<string, { count: number; totalKm: number; totalCo2: number }> = {};
@@ -96,9 +344,7 @@ export default function CarbonReportTab() {
       map[vt].totalKm += o.distanceKm ?? 0;
       map[vt].totalCo2 += o.carbonKg ?? 0;
     }
-    return Object.entries(map)
-      .map(([vt, v]) => ({ vt, ...v, factor: getEmissionFactor(vt) }))
-      .sort((a, b) => b.totalCo2 - a.totalCo2);
+    return Object.entries(map).map(([vt, v]) => ({ vt, ...v, factor: getEmissionFactor(vt) })).sort((a, b) => b.totalCo2 - a.totalCo2);
   }, [ordersWithCarbon]);
 
   const maxCo2 = byVehicle[0]?.totalCo2 ?? 1;
@@ -120,92 +366,46 @@ export default function CarbonReportTab() {
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `碳排報表_${format(new Date(), "yyyyMMdd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `碳排估算報表_${format(new Date(), "yyyyMMdd")}.csv`;
+    a.click(); URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Leaf className="w-5 h-5 text-emerald-600" /> 碳排放報表
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            依車型及距離估算，柴油每公升 2.68 kg CO₂
-          </p>
+    <div className="space-y-5">
+      {/* Period + Export */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex rounded-lg border overflow-hidden text-xs">
+          {PERIOD_OPTIONS.map(opt => (
+            <button key={opt.value} onClick={() => setPeriod(opt.value)}
+              className={`px-3 py-1.5 font-medium transition-colors ${period === opt.value ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}>
+              {opt.label}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border overflow-hidden text-xs">
-            {PERIOD_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setPeriod(opt.value)}
-                className={`px-3 py-1.5 font-medium transition-colors ${
-                  period === opt.value
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> 匯出 CSV
-          </Button>
-        </div>
+        <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5 text-xs">
+          <Download className="w-3.5 h-3.5" /> 匯出 CSV
+        </Button>
       </div>
 
-      {/* Summary cards */}
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          icon={<Wind className="w-5 h-5 text-emerald-700" />}
-          label="總碳排放量"
-          value={carbonLabel(Math.round(totalCarbon * 10) / 10)}
-          sub={`${ordersWithCarbon.length} 筆有效訂單`}
-          color="bg-emerald-100"
-        />
-        <StatCard
-          icon={<BarChart2 className="w-5 h-5 text-blue-700" />}
-          label="平均每單碳排"
-          value={`${avgCarbon.toFixed(1)} kg`}
-          sub="CO₂ / 單"
-          color="bg-blue-100"
-        />
-        <StatCard
-          icon={<Truck className="w-5 h-5 text-orange-700" />}
-          label="總行駛距離"
-          value={`${Math.round(totalDistance).toLocaleString()} km`}
-          sub={`${filtered.filter(o => o.distanceKm).length} 筆有距離資料`}
-          color="bg-orange-100"
-        />
-        <StatCard
-          icon={<Leaf className="w-5 h-5 text-green-700" />}
-          label="等效需植樹數"
-          value={`${equivalentTrees(totalCarbon).toLocaleString()} 棵`}
-          sub="每棵每年吸收 21.77 kg"
-          color="bg-green-100"
-        />
+        <StatCard icon={<Wind className="w-5 h-5 text-emerald-700" />} label="估算總碳排" value={carbonLabel(Math.round(totalCarbon * 10) / 10)} sub={`${ordersWithCarbon.length} 筆有效訂單`} color="bg-emerald-100" />
+        <StatCard icon={<BarChart2 className="w-5 h-5 text-blue-700" />} label="平均每單碳排" value={`${avgCarbon.toFixed(1)} kg`} sub="CO₂ / 單" color="bg-blue-100" />
+        <StatCard icon={<Truck className="w-5 h-5 text-orange-700" />} label="總行駛距離" value={`${Math.round(totalDistance).toLocaleString()} km`} sub={`${filtered.filter(o => o.distanceKm).length} 筆有距離`} color="bg-orange-100" />
+        <StatCard icon={<Leaf className="w-5 h-5 text-green-700" />} label="等效需植樹數" value={`${equivalentTrees(totalCarbon).toLocaleString()} 棵`} sub="每棵/年吸 21.77 kg" color="bg-green-100" />
       </div>
 
-      {/* Vehicle type breakdown */}
+      {/* By vehicle */}
       <Card className="border shadow-sm">
         <CardHeader className="pb-3 border-b bg-muted/30">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Truck className="w-4 h-4 text-primary" /> 車型碳排分析
-          </CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2"><Truck className="w-4 h-4 text-primary" /> 車型碳排分析</CardTitle>
         </CardHeader>
         <CardContent className="p-4">
           {byVehicle.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">此區間無有距離資料的訂單</p>
           ) : (
             <div className="space-y-3">
-              {/* Emission factor reference */}
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {Object.entries(VEHICLE_EMISSION_FACTOR).slice(0, 8).map(([k, v]) => (
                   <span key={k} className="inline-flex items-center gap-1 text-[10px] bg-muted/60 border rounded px-2 py-0.5 text-muted-foreground">
@@ -218,24 +418,15 @@ export default function CarbonReportTab() {
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-foreground">{row.vt}</span>
-                      <Badge variant="outline" className="text-[10px] px-1.5">
-                        {row.factor} kg/km
-                      </Badge>
+                      <Badge variant="outline" className="text-[10px] px-1.5">{row.factor} kg/km</Badge>
                       <span className="text-xs text-muted-foreground">{row.count} 單</span>
                     </div>
-                    <span className="font-bold text-emerald-700 tabular-nums">
-                      {carbonLabel(Math.round(row.totalCo2 * 10) / 10)}
-                    </span>
+                    <span className="font-bold text-emerald-700 tabular-nums">{carbonLabel(Math.round(row.totalCo2 * 10) / 10)}</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
-                      style={{ width: `${Math.round((row.totalCo2 / maxCo2) * 100)}%` }}
-                    />
+                    <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.round((row.totalCo2 / maxCo2) * 100)}%` }} />
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    累計 {Math.round(row.totalKm).toLocaleString()} km
-                  </p>
+                  <p className="text-[10px] text-muted-foreground">累計 {Math.round(row.totalKm).toLocaleString()} km</p>
                 </div>
               ))}
             </div>
@@ -253,9 +444,7 @@ export default function CarbonReportTab() {
         </CardHeader>
         <CardContent className="p-0">
           {ordersWithCarbon.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              此區間無含距離資料的訂單
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-8">此區間無含距離資料的訂單</p>
           ) : (
             <div className="divide-y">
               {ordersWithCarbon.slice(0, 50).map(o => (
@@ -267,44 +456,72 @@ export default function CarbonReportTab() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-semibold text-foreground">#{o.id}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {format(new Date(o.createdAt), "MM/dd")}
-                      </span>
+                      <span className="text-[10px] text-muted-foreground">{format(new Date(o.createdAt), "MM/dd")}</span>
                       {(o.requiredVehicleType ?? o.driver?.vehicleType) && (
-                        <Badge variant="outline" className="text-[10px] px-1.5">
-                          {o.requiredVehicleType ?? o.driver?.vehicleType}
-                        </Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5">{o.requiredVehicleType ?? o.driver?.vehicleType}</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {o.pickupAddress} → {o.deliveryAddress}
-                    </p>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{o.pickupAddress} → {o.deliveryAddress}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-emerald-700">
-                      {carbonLabel(o.carbonKg)}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {o.distanceKm?.toFixed(0)} km
-                    </p>
+                    <p className="text-sm font-bold text-emerald-700">{carbonLabel(o.carbonKg)}</p>
+                    <p className="text-[10px] text-muted-foreground">{o.distanceKm?.toFixed(0)} km</p>
                   </div>
                 </div>
               ))}
               {ordersWithCarbon.length > 50 && (
-                <p className="text-xs text-muted-foreground text-center py-3">
-                  僅顯示前 50 筆，請匯出 CSV 查看全部
-                </p>
+                <p className="text-xs text-muted-foreground text-center py-3">僅顯示前 50 筆，請匯出 CSV 查看全部</p>
               )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Disclaimer */}
       <p className="text-[10px] text-muted-foreground text-center">
-        本數據依車型排放係數估算（kg CO₂/km），實際排放量以加油量 × 2.68 為準。
-        重車（17T/曳引車）係數 1.2 kg/km，輕型車 0.25 kg/km。
+        本數據依車型排放係數估算（kg CO₂/km），實際排放量請切換至「燃油記錄」頁，以加油量 × 2.68 計算。
       </p>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function CarbonReportTab() {
+  const [tab, setTab] = useState<"estimated" | "fuel">("estimated");
+  const [period, setPeriod] = useState("this_month");
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Leaf className="w-5 h-5 text-emerald-600" /> 碳排放報表
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            估算法：公里 × 車型係數　／　實測法：加油量（L）× 2.68 kg CO₂
+          </p>
+        </div>
+        <div className="flex rounded-lg border overflow-hidden text-xs self-start">
+          <button
+            onClick={() => setTab("estimated")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 font-medium transition-colors ${tab === "estimated" ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+          >
+            <BarChart2 className="w-3.5 h-3.5" /> 估算碳排
+          </button>
+          <button
+            onClick={() => setTab("fuel")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 font-medium transition-colors ${tab === "fuel" ? "bg-amber-500 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+          >
+            <Fuel className="w-3.5 h-3.5" /> 燃油記錄
+          </button>
+        </div>
+      </div>
+
+      {tab === "estimated"
+        ? <EstimatedTab period={period} setPeriod={setPeriod} />
+        : <FuelLogTab />
+      }
     </div>
   );
 }
