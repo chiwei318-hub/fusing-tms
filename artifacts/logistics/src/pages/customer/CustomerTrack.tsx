@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { Search, Package, MapPin, Truck, DollarSign, CheckCircle2, Clock, AlertCircle, CreditCard, Star, Leaf } from "lucide-react";
-import { calcCarbonKg, carbonLabel } from "@/lib/carbon";
+import { carbonLabel, getFuelEfficiency, calcCarbonFromKmAndEfficiency } from "@/lib/carbon";
 import DriverRatingDialog from "@/components/DriverRatingDialog";
 import { useTrackOrder, useConfirmPayment, getTrackOrderQueryKey } from "@workspace/api-client-react";
 import { OrderStatusBadge } from "@/components/StatusBadge";
@@ -64,7 +64,10 @@ function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Orde
   const [ratingOpen, setRatingOpen] = useState(false);
   const [rated, setRated] = useState(false);
   const vehicleType = order.requiredVehicleType ?? order.driver?.vehicleType;
-  const carbonKg = calcCarbonKg(order.distanceKm, vehicleType);
+  const kmPerL = getFuelEfficiency(vehicleType);
+  const fuelCalc = order.distanceKm && order.distanceKm > 0
+    ? calcCarbonFromKmAndEfficiency(order.distanceKm, kmPerL)
+    : null;
   return (
     <Card className="border shadow-sm">
       <CardHeader className="pb-3 border-b">
@@ -109,17 +112,18 @@ function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Orde
           </div>
         </div>
 
-        {carbonKg !== null && (
+        {fuelCalc !== null && (
           <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
             <Leaf className="w-4 h-4 text-emerald-600 shrink-0" />
             <div className="flex-1">
-              <span className="text-emerald-800 text-xs">本次運送碳排放量</span>
+              <span className="text-emerald-800 text-xs font-medium">本次運送碳排放量</span>
+              <p className="text-[10px] text-emerald-600 mt-0.5">
+                {order.distanceKm?.toFixed(0)} km ÷ {kmPerL} km/L ＝ {fuelCalc.liters.toFixed(2)} L × 2.68
+              </p>
             </div>
             <div className="text-right">
-              <span className="font-bold text-emerald-700">{carbonLabel(carbonKg)}</span>
-              {order.distanceKm && (
-                <span className="text-[10px] text-emerald-600 ml-1.5">/ {order.distanceKm.toFixed(0)} km</span>
-              )}
+              <span className="font-bold text-emerald-700">{carbonLabel(fuelCalc.co2)}</span>
+              <p className="text-[10px] text-emerald-600">{fuelCalc.liters.toFixed(1)} 公升</p>
             </div>
           </div>
         )}

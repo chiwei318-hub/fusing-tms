@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { calcCarbonKg, carbonLabel, getEmissionFactor } from "@/lib/carbon";
+import { carbonLabel, getFuelEfficiency, calcCarbonFromKmAndEfficiency } from "@/lib/carbon";
 
 const STATUS_STEPS = [
   { key: "pending",    label: "待派車",  icon: Clock },
@@ -53,7 +53,10 @@ export default function OrderDetail() {
   const isCancelled = order.status === "cancelled";
   const feeConfig = FEE_STATUS_LABELS[order.feeStatus ?? "unpaid"];
   const vehicleType = order.requiredVehicleType ?? order.driver?.vehicleType;
-  const carbonKg = calcCarbonKg(order.distanceKm, vehicleType);
+  const kmPerL = getFuelEfficiency(vehicleType);
+  const fuelCalc = order.distanceKm && order.distanceKm > 0
+    ? calcCarbonFromKmAndEfficiency(order.distanceKm, kmPerL)
+    : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 pb-12">
@@ -217,28 +220,33 @@ export default function OrderDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5">
-              {carbonKg !== null ? (
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div className="bg-muted/40 rounded-lg p-3 text-center">
-                    <p className="text-xs text-muted-foreground mb-1">行駛距離</p>
-                    <p className="font-bold text-foreground">{order.distanceKm?.toFixed(1)} km</p>
-                  </div>
-                  <div className="bg-muted/40 rounded-lg p-3 text-center">
-                    <p className="text-xs text-muted-foreground mb-1">車型係數</p>
-                    <p className="font-bold text-foreground">{getEmissionFactor(vehicleType)} kg/km</p>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-                    <p className="text-xs text-emerald-700 mb-1 font-semibold">本單碳排放量</p>
-                    <p className="font-bold text-emerald-700 text-lg">{carbonLabel(carbonKg)}</p>
-                  </div>
-                  {vehicleType && (
-                    <div className="col-span-3">
-                      <p className="text-xs text-muted-foreground">
-                        車型：<Badge variant="outline" className="text-xs ml-1">{vehicleType}</Badge>
-                        <span className="ml-2">柴油排放係數：2.68 kg CO₂/公升</span>
-                      </p>
+              {fuelCalc !== null ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className="bg-muted/40 rounded-lg p-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">行駛距離</p>
+                      <p className="font-bold text-foreground">{order.distanceKm?.toFixed(1)} km</p>
                     </div>
-                  )}
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center">
+                      <p className="text-xs text-blue-700 mb-1">估算用油量</p>
+                      <p className="font-bold text-blue-700">{fuelCalc.liters.toFixed(2)} L</p>
+                      <p className="text-[10px] text-blue-500">{kmPerL} km/L</p>
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                      <p className="text-xs text-emerald-700 mb-1 font-semibold">碳排放量</p>
+                      <p className="font-bold text-emerald-700 text-lg">{carbonLabel(fuelCalc.co2)}</p>
+                    </div>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+                    <span className="font-mono">
+                      {order.distanceKm?.toFixed(1)} km ÷ {kmPerL} km/L ＝ {fuelCalc.liters.toFixed(2)} L　×　2.68 ＝ <strong className="text-emerald-700">{fuelCalc.co2.toFixed(1)} kg CO₂</strong>
+                    </span>
+                    {vehicleType && (
+                      <span className="ml-3">
+                        <Badge variant="outline" className="text-xs">{vehicleType}</Badge>
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-4">
