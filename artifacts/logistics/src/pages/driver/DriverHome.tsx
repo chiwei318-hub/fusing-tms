@@ -397,10 +397,10 @@ export default function DriverHome() {
       )}
 
       {/* ── 接單能力設定 ── */}
-      <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b bg-violet-50">
+      <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-violet-50 dark:bg-violet-950/30">
           <Settings2 className="w-4 h-4 text-violet-600" />
-          <span className="font-bold text-sm text-violet-900">接單能力設定</span>
+          <span className="font-bold text-sm text-violet-900 dark:text-violet-100">接單能力設定</span>
         </div>
         <div className="p-4 space-y-4">
 
@@ -551,34 +551,55 @@ export default function DriverHome() {
       </div>
 
       {/* Action buttons */}
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Link href="/driver/grab">
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg shadow-orange-500/30">
-            <div className="bg-white/20 p-3 rounded-xl shrink-0">
-              <Zap className="w-7 h-7 text-white" />
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-[0.98] rounded-2xl p-4 flex flex-col items-start gap-3 cursor-pointer transition-all shadow-lg shadow-orange-500/25 h-full">
+            <div className="bg-white/20 p-2.5 rounded-xl">
+              <Zap className="w-6 h-6 text-white" />
             </div>
-            <div className="flex-1">
-              <p className="font-black text-white text-lg">搶單中心</p>
-              <p className="text-orange-100 text-sm">查看待接訂單，主動出擊搶先接單</p>
-            </div>
-            <div className="bg-white/20 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
-              <ArrowRight className="w-4 h-4 text-white" />
+            <div>
+              <p className="font-black text-white text-base leading-tight">搶單中心</p>
+              <p className="text-orange-100 text-xs mt-0.5">主動出擊接單</p>
             </div>
           </div>
         </Link>
         <Link href="/driver/tasks">
-          <div className="bg-slate-700 hover:bg-slate-800 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all">
-            <div className="bg-white/10 p-3 rounded-xl shrink-0">
-              <Truck className="w-7 h-7 text-white" />
+          <div className="bg-gradient-to-br from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 active:scale-[0.98] rounded-2xl p-4 flex flex-col items-start gap-3 cursor-pointer transition-all h-full">
+            <div className="bg-white/10 p-2.5 rounded-xl relative">
+              <Truck className="w-6 h-6 text-white" />
+              {activeTasks.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">
+                  {activeTasks.length}
+                </span>
+              )}
             </div>
-            <div className="flex-1">
-              <p className="font-black text-white text-lg">我的任務</p>
-              <p className="text-slate-300 text-sm">
-                {activeTasks.length > 0 ? `${activeTasks.length} 筆任務進行中` : "查看指派的派車任務"}
+            <div>
+              <p className="font-black text-white text-base leading-tight">我的任務</p>
+              <p className="text-slate-300 text-xs mt-0.5">
+                {activeTasks.length > 0 ? `${activeTasks.length} 筆進行中` : "查看派車任務"}
               </p>
             </div>
-            <div className="bg-white/10 w-9 h-9 rounded-full flex items-center justify-center shrink-0">
-              <ArrowRight className="w-4 h-4 text-white" />
+          </div>
+        </Link>
+        <Link href="/driver/income">
+          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 active:scale-[0.98] rounded-2xl p-4 flex flex-col items-start gap-3 cursor-pointer transition-all shadow-md shadow-emerald-500/20 h-full">
+            <div className="bg-white/20 p-2.5 rounded-xl">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="font-black text-white text-base leading-tight">收入報表</p>
+              <p className="text-emerald-100 text-xs mt-0.5">查看明細與結算</p>
+            </div>
+          </div>
+        </Link>
+        <Link href="/driver">
+          <div className="bg-gradient-to-br from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 active:scale-[0.98] rounded-2xl p-4 flex flex-col items-start gap-3 cursor-pointer transition-all shadow-md shadow-violet-500/20 h-full">
+            <div className="bg-white/20 p-2.5 rounded-xl">
+              <Star className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="font-black text-white text-base leading-tight">評分中心</p>
+              <p className="text-violet-200 text-xs mt-0.5">查看客戶評分</p>
             </div>
           </div>
         </Link>

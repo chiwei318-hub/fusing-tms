@@ -234,6 +234,44 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ═══════════════ VEHICLE TYPES / PRICING ═══════════════ */}
+      <section className="bg-gray-50 py-14 px-5">
+        <div className="max-w-lg mx-auto">
+          <div className="text-center mb-8">
+            <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full mb-3">車型方案</span>
+            <h2 className="text-2xl sm:text-3xl font-black text-gray-900">選擇適合您的車型</h2>
+            <p className="text-gray-500 text-sm mt-2">依貨物大小選車，報價透明不收隱藏費</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { icon: "🚐", type: "箱型車", capacity: "1.5噸", desc: "一般家具、電器搬運首選", from: "800", popular: false },
+              { icon: "🚛", type: "冷藏車", capacity: "1.5–5噸", desc: "食品、藥品、低溫食材", from: "1,200", popular: true },
+              { icon: "🚚", type: "尾門車", capacity: "2–5噸", desc: "重型貨物、工廠機械設備", from: "1,500", popular: false },
+              { icon: "🏗️", type: "平板車", capacity: "5–20噸", desc: "大型工程機具、超長貨物", from: "2,500", popular: false },
+            ].map(v => (
+              <div key={v.type} className={`relative bg-white rounded-2xl p-4 border-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${v.popular ? "border-orange-300" : "border-gray-100"}`}>
+                {v.popular && (
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full whitespace-nowrap">最受歡迎</span>
+                )}
+                <div className="text-3xl mb-2">{v.icon}</div>
+                <p className="font-black text-gray-900 text-base">{v.type}</p>
+                <p className="text-xs text-gray-500 mb-2">{v.capacity} · {v.desc}</p>
+                <p className="text-xs text-gray-400">起價</p>
+                <p className="font-black text-orange-600 text-lg">NT${v.from}<span className="text-xs font-medium text-gray-400"> 起</span></p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-center">
+            <Link href="/quick">
+              <button className="inline-flex items-center gap-2 bg-[#1a3a8f] hover:bg-[#0d2d6e] text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors shadow-md shadow-blue-900/20">
+                <Zap className="w-4 h-4" /> 立即免費報價
+              </button>
+            </Link>
+            <p className="text-xs text-gray-400 mt-2">最快 3 分鐘完成報價，確認後即時派車</p>
+          </div>
+        </div>
+      </section>
+
       {/* ═══════════════ ENTERPRISE ═══════════════ */}
       <section className="bg-gradient-to-br from-[#07152c] to-[#1a3a8f] py-14 px-5">
         <div className="max-w-md mx-auto text-center">
@@ -322,16 +360,33 @@ export default function Landing() {
       </section>
 
       {/* ═══════════════ FOOTER ═══════════════ */}
-      <footer className="bg-[#07152c] py-8 px-5">
-        <div className="max-w-lg mx-auto text-center">
-          <p className="text-gray-600 text-xs mb-4">帳號登入</p>
-          <div className="flex justify-center gap-4 flex-wrap">
-            <Link href="/chat"><span className="text-green-400 hover:text-green-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">🤖 AI 客服下單</span></Link>
-            <Link href="/login"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">客戶 / 企業登入</span></Link>
-            <Link href="/driver"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">司機接單</span></Link>
-            <Link href="/admin"><span className="text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2 transition-colors cursor-pointer">後台管理</span></Link>
+      <footer className="bg-[#07152c] py-10 px-5">
+        <div className="max-w-lg mx-auto">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 mb-6">
+            <div>
+              <p className="text-white font-black text-lg mb-1">富詠運輸</p>
+              <p className="text-gray-500 text-xs">全台物流 · 快速派車 · 專業到府</p>
+              <p className="text-gray-600 text-xs mt-2">客服：0800-XXX-XXX</p>
+            </div>
+            <div className="text-center sm:text-right">
+              <p className="text-gray-600 text-xs mb-3">各身份登入</p>
+              <div className="flex flex-wrap gap-3 justify-center sm:justify-end">
+                <Link href="/quick"><span className="text-orange-400 hover:text-orange-300 text-xs font-semibold transition-colors cursor-pointer">⚡ 快速下單</span></Link>
+                <Link href="/chat"><span className="text-green-400 hover:text-green-300 text-xs font-semibold transition-colors cursor-pointer">🤖 AI 客服</span></Link>
+                <Link href="/login"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">客戶登入</span></Link>
+                <Link href="/driver"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">司機登入</span></Link>
+                <Link href="/enterprise/login"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">企業登入</span></Link>
+                <Link href="/admin"><span className="text-gray-600 hover:text-gray-400 text-xs transition-colors cursor-pointer">後台管理</span></Link>
+              </div>
+            </div>
           </div>
-          <p className="text-gray-700 text-xs mt-6">© 富詠運輸股份有限公司 · 客服：0800-XXX-XXX</p>
+          <div className="border-t border-gray-800 pt-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p className="text-gray-700 text-xs">© 富詠運輸股份有限公司 版權所有</p>
+            <div className="flex gap-3">
+              <span className="text-gray-700 text-xs hover:text-gray-500 cursor-pointer">服務條款</span>
+              <span className="text-gray-700 text-xs hover:text-gray-500 cursor-pointer">隱私政策</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

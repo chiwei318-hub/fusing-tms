@@ -43,31 +43,46 @@ export default function DriverIncome() {
   if (isLoading) {
     return (
       <div className="space-y-4 animate-pulse">
-        <div className="h-48 bg-muted rounded-2xl" />
+        <div className="h-10 bg-muted rounded-xl w-40" />
+        <div className="h-12 bg-muted rounded-xl" />
+        <div className="h-52 bg-muted rounded-2xl" />
         <div className="h-32 bg-muted rounded-2xl" />
-        <div className="h-24 bg-muted rounded-2xl" />
       </div>
     );
   }
 
+  const grossEarnings = Number(summary.gross_earnings || 0);
+  const netEarnings = Math.max(0, Number(summary.netEarnings || 0));
+  const commissionAmt = Number(summary.commissionAmount || 0);
+  const affiliationFee = Number(summary.monthlyAffiliationFee || 0);
+  const netPct = grossEarnings > 0 ? Math.round(netEarnings / grossEarnings * 100) : 0;
+
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black">收入總覽</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">您的收入明細與結算紀錄</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black">收入總覽</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">您的收入明細與結算紀錄</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-muted-foreground">實際到手比例</p>
+          <p className={`text-lg font-black ${netPct >= 80 ? "text-emerald-600" : netPct >= 70 ? "text-blue-600" : "text-orange-600"}`}>
+            {netPct}%
+          </p>
+        </div>
       </div>
 
       {/* Period toggle */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 bg-muted p-1 rounded-xl">
         {(["week", "month", "year"] as Period[]).map(p => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
-            className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
               period === p
-                ? "bg-blue-600 text-white shadow-md"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {{ week: "本週", month: "本月", year: "本年" }[p]}
@@ -75,69 +90,92 @@ export default function DriverIncome() {
         ))}
       </div>
 
-      {/* Main earnings card */}
+      {/* Main earnings card — enhanced */}
       <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 rounded-2xl p-5 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10" />
-        <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full -ml-6 -mb-6" />
-        <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">{periodLabel}運費總計</p>
-        <p className="text-4xl font-black text-white mb-3">
-          NT${Number(summary.gross_earnings || 0).toLocaleString()}
-        </p>
-
-        {/* Deduction breakdown */}
-        <div className="space-y-1.5 mb-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-blue-200">抽成（{summary.commissionRate ?? 15}%）</span>
-            <span className="text-orange-300 font-bold">
-              −NT${Number(summary.commissionAmount || 0).toLocaleString()}
-            </span>
-          </div>
-          {Number(summary.monthlyAffiliationFee || 0) > 0 && period === "month" && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-blue-200">月靠行費</span>
-              <span className="text-orange-300 font-bold">
-                −NT${Number(summary.monthlyAffiliationFee || 0).toLocaleString()}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-white/20 pt-4">
-          <p className="text-blue-200 text-xs mb-1">實際到手</p>
-          <p className="text-3xl font-black text-green-300">
-            NT${Math.max(0, Number(summary.netEarnings || 0)).toLocaleString()}
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -mr-12 -mt-12" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-8 -mb-8" />
+        <div className="relative z-10">
+          <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mb-1">{periodLabel}運費總計</p>
+          <p className="text-4xl font-black text-white mb-4">
+            NT${grossEarnings.toLocaleString()}
           </p>
+
+          {/* Visual deduction flow */}
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-orange-400" />
+                <span className="text-blue-200">抽成（{summary.commissionRate ?? 15}%）</span>
+              </div>
+              <span className="text-orange-300 font-bold">−NT${commissionAmt.toLocaleString()}</span>
+            </div>
+            {affiliationFee > 0 && period === "month" && (
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-red-400" />
+                  <span className="text-blue-200">月靠行費</span>
+                </div>
+                <span className="text-orange-300 font-bold">−NT${affiliationFee.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Net earnings with progress bar */}
+          <div className="border-t border-white/20 pt-4 space-y-2">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-blue-200 text-xs mb-1">實際到手</p>
+                <p className="text-3xl font-black text-green-300">NT${netEarnings.toLocaleString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-blue-300 text-xs">到手率</p>
+                <p className="text-xl font-black text-green-300">{netPct}%</p>
+              </div>
+            </div>
+            <div className="bg-white/10 rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-green-400 to-emerald-300 rounded-full transition-all duration-700"
+                style={{ width: `${netPct}%` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card rounded-2xl p-4 border shadow-sm">
-          <Truck className="w-5 h-5 text-blue-600 mb-2" />
-          <p className="text-2xl font-black">{summary.completed_orders ?? 0}</p>
-          <p className="text-muted-foreground text-xs">{periodLabel}完成訂單</p>
-        </div>
-        <div className="bg-card rounded-2xl p-4 border shadow-sm">
-          <TrendingUp className="w-5 h-5 text-emerald-600 mb-2" />
-          <p className="text-2xl font-black">
-            NT${Math.round(Number(summary.avg_fee_per_order ?? 0)).toLocaleString()}
-          </p>
-          <p className="text-muted-foreground text-xs">平均每單收入</p>
-        </div>
-        <div className="bg-card rounded-2xl p-4 border shadow-sm">
-          <BarChart2 className="w-5 h-5 text-purple-600 mb-2" />
-          <p className="text-2xl font-black">
-            {Number(summary.total_km ?? 0).toFixed(0)} km
-          </p>
-          <p className="text-muted-foreground text-xs">{periodLabel}總里程</p>
-        </div>
-        <div className="bg-card rounded-2xl p-4 border shadow-sm">
-          <Star className="w-5 h-5 text-yellow-500 mb-2" />
-          <p className="text-2xl font-black">
-            {ratings.avg_stars ? Number(ratings.avg_stars).toFixed(1) : "—"}
-          </p>
-          <p className="text-muted-foreground text-xs">平均評分（{ratings.total_ratings ?? 0}筆）</p>
-        </div>
+        {[
+          {
+            icon: Truck, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30",
+            value: String(summary.completed_orders ?? 0),
+            label: `${periodLabel}完成訂單`, unit: "筆"
+          },
+          {
+            icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30",
+            value: `NT$${Math.round(Number(summary.avg_fee_per_order ?? 0)).toLocaleString()}`,
+            label: "平均每單收入", unit: ""
+          },
+          {
+            icon: BarChart2, color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-950/30",
+            value: `${Number(summary.total_km ?? 0).toFixed(0)}`,
+            label: `${periodLabel}總里程`, unit: "km"
+          },
+          {
+            icon: Star, color: "text-yellow-500", bg: "bg-yellow-50 dark:bg-yellow-950/30",
+            value: ratings.avg_stars ? Number(ratings.avg_stars).toFixed(1) : "—",
+            label: `平均評分（${ratings.total_ratings ?? 0}筆）`, unit: "★"
+          },
+        ].map(({ icon: Icon, color, bg, value, label, unit }) => (
+          <div key={label} className="bg-card rounded-2xl p-4 border shadow-sm">
+            <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center mb-3`}>
+              <Icon className={`w-5 h-5 ${color}`} />
+            </div>
+            <p className="text-2xl font-black text-foreground leading-none">
+              {value}<span className="text-sm font-medium text-muted-foreground ml-0.5">{unit}</span>
+            </p>
+            <p className="text-muted-foreground text-xs mt-1">{label}</p>
+          </div>
+        ))}
       </div>
 
       {/* Rating breakdown */}
