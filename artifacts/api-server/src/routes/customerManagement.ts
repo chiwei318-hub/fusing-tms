@@ -9,14 +9,14 @@ export const customerManagementRouter = Router();
 // ─── DB Migration: add new columns if absent ──────────────────────────────────
 
 async function ensureCustomerColumns() {
-  const cols = [
-    "invoice_title TEXT",
-    "company_address TEXT",
-    "factory_address TEXT",
+  const queries = [
+    sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS invoice_title TEXT`,
+    sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_address TEXT`,
+    sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS factory_address TEXT`,
   ];
-  for (const col of cols) {
+  for (const query of queries) {
     try {
-      await db.execute(sql.raw(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS ${col}`));
+      await db.execute(query);
     } catch { /* ignore */ }
   }
 }
