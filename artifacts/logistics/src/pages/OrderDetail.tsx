@@ -1,6 +1,6 @@
 import { useRoute } from "wouter";
 import { format } from "date-fns";
-import { ArrowLeft, MapPin, Package, User, Clock, Truck, DollarSign, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, MapPin, Package, User, Clock, Truck, DollarSign, CheckCircle2, AlertCircle, Leaf } from "lucide-react";
 import { Link } from "wouter";
 import { useOrderDetail } from "@/hooks/use-orders";
 import { OrderStatusBadge } from "@/components/StatusBadge";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { calcCarbonKg, carbonLabel, getEmissionFactor } from "@/lib/carbon";
 
 const STATUS_STEPS = [
   { key: "pending",    label: "待派車",  icon: Clock },
@@ -51,6 +52,8 @@ export default function OrderDetail() {
   const currentStepIdx = STATUS_STEPS.findIndex(s => s.key === order.status);
   const isCancelled = order.status === "cancelled";
   const feeConfig = FEE_STATUS_LABELS[order.feeStatus ?? "unpaid"];
+  const vehicleType = order.requiredVehicleType ?? order.driver?.vehicleType;
+  const carbonKg = calcCarbonKg(order.distanceKm, vehicleType);
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 pb-12">
@@ -202,6 +205,46 @@ export default function OrderDetail() {
                   <DollarSign className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
                   <p className="text-muted-foreground text-sm">尚未設定運費</p>
                   <p className="text-xs text-muted-foreground mt-1">請至費用管理頁面設定</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {/* Carbon */}
+          <Card className="border shadow-sm">
+            <CardHeader className="bg-emerald-50/60 border-b pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Leaf className="w-4 h-4 text-emerald-600" /> 碳排放資訊
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5">
+              {carbonKg !== null ? (
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-muted/40 rounded-lg p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">行駛距離</p>
+                    <p className="font-bold text-foreground">{order.distanceKm?.toFixed(1)} km</p>
+                  </div>
+                  <div className="bg-muted/40 rounded-lg p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">車型係數</p>
+                    <p className="font-bold text-foreground">{getEmissionFactor(vehicleType)} kg/km</p>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                    <p className="text-xs text-emerald-700 mb-1 font-semibold">本單碳排放量</p>
+                    <p className="font-bold text-emerald-700 text-lg">{carbonLabel(carbonKg)}</p>
+                  </div>
+                  {vehicleType && (
+                    <div className="col-span-3">
+                      <p className="text-xs text-muted-foreground">
+                        車型：<Badge variant="outline" className="text-xs ml-1">{vehicleType}</Badge>
+                        <span className="ml-2">柴油排放係數：2.68 kg CO₂/公升</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Leaf className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
+                  <p className="text-muted-foreground text-sm">距離資料不足，無法計算碳排放</p>
+                  <p className="text-xs text-muted-foreground mt-1">請設定行駛距離後自動計算</p>
                 </div>
               )}
             </CardContent>

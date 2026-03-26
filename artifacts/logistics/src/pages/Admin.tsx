@@ -38,6 +38,7 @@ import InvoiceManagementTab from "./admin/InvoiceManagementTab";
 import BiddingTab from "./admin/BiddingTab";
 import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
+import CarbonReportTab from "./admin/CarbonReportTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1419,6 +1420,10 @@ export default function Admin() {
             <TabsTrigger value="performance" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Trophy className="w-3.5 h-3.5 text-yellow-500" />
               <span className="text-[10px] sm:text-xs">績效稽核</span>
+            </TabsTrigger>
+            <TabsTrigger value="carbon" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <span className="text-sm">🌱</span>
+              <span className="text-[10px] sm:text-xs">碳排報表</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3073,6 +3078,11 @@ export default function Admin() {
         {/* ===== 績效稽核 TAB ===== */}
         <TabsContent value="performance" className="outline-none">
           <PerformanceAuditTab />
+        </TabsContent>
+
+        {/* ===== 碳排報表 TAB ===== */}
+        <TabsContent value="carbon" className="outline-none">
+          <CarbonReportTab />
         </TabsContent>
       </Tabs>
 

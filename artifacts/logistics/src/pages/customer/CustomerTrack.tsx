@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Search, Package, MapPin, Truck, DollarSign, CheckCircle2, Clock, AlertCircle, CreditCard, Star } from "lucide-react";
+import { Search, Package, MapPin, Truck, DollarSign, CheckCircle2, Clock, AlertCircle, CreditCard, Star, Leaf } from "lucide-react";
+import { calcCarbonKg, carbonLabel } from "@/lib/carbon";
 import DriverRatingDialog from "@/components/DriverRatingDialog";
 import { useTrackOrder, useConfirmPayment, getTrackOrderQueryKey } from "@workspace/api-client-react";
 import { OrderStatusBadge } from "@/components/StatusBadge";
@@ -62,6 +63,8 @@ function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Orde
   const alreadyPaid = order.feeStatus === "paid" || !!order.paymentConfirmedAt;
   const [ratingOpen, setRatingOpen] = useState(false);
   const [rated, setRated] = useState(false);
+  const vehicleType = order.requiredVehicleType ?? order.driver?.vehicleType;
+  const carbonKg = calcCarbonKg(order.distanceKm, vehicleType);
   return (
     <Card className="border shadow-sm">
       <CardHeader className="pb-3 border-b">
@@ -105,6 +108,21 @@ function OrderCard({ order, onPayment }: { order: Order; onPayment: (order: Orde
             </div>
           </div>
         </div>
+
+        {carbonKg !== null && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
+            <Leaf className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="flex-1">
+              <span className="text-emerald-800 text-xs">本次運送碳排放量</span>
+            </div>
+            <div className="text-right">
+              <span className="font-bold text-emerald-700">{carbonLabel(carbonKg)}</span>
+              {order.distanceKm && (
+                <span className="text-[10px] text-emerald-600 ml-1.5">/ {order.distanceKm.toFixed(0)} km</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {order.driver && (
           <div className="bg-blue-50 rounded-lg p-3 flex items-center gap-3 border border-blue-100">
