@@ -39,6 +39,9 @@ import { orderStatusFlowRouter } from "./orderStatusFlow";
 import { dispatchSuggestRouter } from "./dispatchSuggest";
 import { zonesRouter } from "./zones";
 import { dailyOpsRouter } from "./dailyOps";
+import { orderImportRouter } from "./orderImport";
+import { autoRoutingRouter } from "./autoRouting";
+import { zonePermissionsRouter } from "../middleware/zoneScope";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -46,6 +49,7 @@ const router: IRouter = Router();
 router.use(auditMiddleware);
 
 router.use(healthRouter);
+router.use(orderImportRouter);
 router.use(ordersRouter);
 router.use(driversRouter);
 router.use(lineRouter);
@@ -85,5 +89,7 @@ router.use(orderStatusFlowRouter);
 router.use(dispatchSuggestRouter);
 router.use(zonesRouter);
 router.use(dailyOpsRouter);
+router.use(autoRoutingRouter);
+router.use(zonePermissionsRouter);
 
 export default router;

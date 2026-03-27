@@ -22,7 +22,7 @@ import { Upload, Download, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet }
 
 const API_BASE = import.meta.env.BASE_URL + "api";
 
-type ImportType = "customers" | "drivers";
+type ImportType = "customers" | "drivers" | "orders";
 
 interface CustomerRow {
   姓名: string;
@@ -375,6 +375,233 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
   );
 }
 
+// ── Orders Import Panel (server-side upload) ──────────────────────────────
+interface OrderPreviewRow {
+  rowNum: number;
+  valid: boolean;
+  errors: string[];
+  preview: {
+    customer_name: string;
+    customer_phone: string;
+    pickup_address: string;
+    delivery_address: string;
+    cargo_description: string;
+    required_vehicle_type: string;
+    pickup_date: string;
+    delivery_date: string;
+    total_fee: string;
+  };
+}
+
+interface OrderImportDryResult {
+  total: number;
+  valid: number;
+  errors: number;
+  rows: OrderPreviewRow[];
+}
+
+function OrdersImportPanel({ onSuccess }: { onSuccess: () => void }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dryResult, setDryResult] = useState<OrderImportDryResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [finalResult, setFinalResult] = useState<{ inserted: number; errors: number } | null>(null);
+
+  const downloadTemplate = () => {
+    const url = `${API_BASE}/orders/import-template`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "訂單匯入範本.xlsx";
+    a.click();
+  };
+
+  const handleFile = async (file: File) => {
+    setSelectedFile(file);
+    setDryResult(null);
+    setFinalResult(null);
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE}/orders/import?dry_run=1`, { method: "POST", body: fd });
+      const data = await res.json() as OrderImportDryResult & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "預覽失敗");
+      setDryResult(data as OrderImportDryResult);
+    } catch (e: any) {
+      toast({ title: "解析失敗", description: e.message, variant: "destructive" });
+      setSelectedFile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile || !dryResult) return;
+    setImportLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      const res = await fetch(`${API_BASE}/orders/import`, { method: "POST", body: fd });
+      const data = await res.json() as { inserted?: number; skipped_errors?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "匯入失敗");
+      setFinalResult({ inserted: data.inserted ?? 0, errors: data.skipped_errors ?? 0 });
+      toast({ title: `成功匯入 ${data.inserted} 筆訂單` });
+      onSuccess();
+    } catch (e: any) {
+      toast({ title: "匯入失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setSelectedFile(null);
+    setDryResult(null);
+    setFinalResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const ORDER_PREVIEW_COLS = ["客戶姓名", "客戶電話", "取貨地址", "送貨地址", "車型", "取貨日期", "費用"];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          必填：客戶姓名、電話、取貨地址、送貨地址。系統自動套用分單規則。
+        </p>
+        <Button variant="outline" size="sm" onClick={downloadTemplate}>
+          <Download className="w-4 h-4 mr-1" />
+          下載範本
+        </Button>
+      </div>
+
+      {!selectedFile && !loading && (
+        <div
+          className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-10 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+          onDrop={handleDrop}
+          onDragOver={e => e.preventDefault()}
+          onClick={() => fileRef.current?.click()}
+        >
+          <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+          <p className="text-sm font-medium mb-1">拖曳或點擊上傳訂單 Excel / CSV 檔案</p>
+          <p className="text-xs text-muted-foreground">支援 .xlsx、.csv 格式，最大 10MB</p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.csv"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+        </div>
+      )}
+
+      {loading && (
+        <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">
+          伺服器解析中，請稍候…
+        </div>
+      )}
+
+      {dryResult && !finalResult && (
+        <>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm">
+              <FileSpreadsheet className="w-4 h-4 text-green-600" />
+              <span className="font-medium">{selectedFile?.name}</span>
+            </div>
+            <Badge variant="secondary">共 {dryResult.total} 列</Badge>
+            <Badge variant={dryResult.valid > 0 ? "default" : "secondary"} className="bg-green-100 text-green-700">
+              ✅ 有效 {dryResult.valid} 筆
+            </Badge>
+            {dryResult.errors > 0 && (
+              <Badge variant="destructive">⚠ 錯誤 {dryResult.errors} 筆（將略過）</Badge>
+            )}
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={reset}>重新上傳</Button>
+          </div>
+
+          <div className="border rounded-lg overflow-auto max-h-64">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">列</TableHead>
+                  <TableHead className="w-8">狀態</TableHead>
+                  {ORDER_PREVIEW_COLS.map(h => <TableHead key={h}>{h}</TableHead>)}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dryResult.rows.map((row) => (
+                  <TableRow key={row.rowNum} className={row.valid ? "" : "bg-red-50 text-muted-foreground"}>
+                    <TableCell>{row.rowNum}</TableCell>
+                    <TableCell>
+                      {row.valid
+                        ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        : <AlertCircle className="w-4 h-4 text-red-500" title={row.errors.join(", ")} />}
+                    </TableCell>
+                    <TableCell className="max-w-[80px] truncate">{row.preview.customer_name}</TableCell>
+                    <TableCell>{row.preview.customer_phone}</TableCell>
+                    <TableCell className="max-w-[150px] truncate">{row.preview.pickup_address}</TableCell>
+                    <TableCell className="max-w-[150px] truncate">{row.preview.delivery_address}</TableCell>
+                    <TableCell>{row.preview.required_vehicle_type}</TableCell>
+                    <TableCell>{row.preview.pickup_date}</TableCell>
+                    <TableCell>{row.preview.total_fee ? `$${row.preview.total_fee}` : ""}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {dryResult.rows.some(r => !r.valid) && (
+            <div className="space-y-1">
+              {dryResult.rows.filter(r => !r.valid).map(r => (
+                <p key={r.rowNum} className="text-xs text-red-500">
+                  第 {r.rowNum} 列：{r.errors.join("、")}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {dryResult.valid === 0 ? (
+            <p className="text-sm text-center text-muted-foreground">沒有有效資料可匯入</p>
+          ) : (
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={reset}>取消</Button>
+              <Button onClick={handleImport} disabled={importLoading}>
+                <Upload className="w-4 h-4 mr-1" />
+                {importLoading ? "匯入中…" : `確認匯入 ${dryResult.valid} 筆訂單`}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {finalResult && (
+        <div className={`p-4 rounded-lg border ${finalResult.inserted > 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+          {finalResult.inserted > 0 ? (
+            <div className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-medium">成功匯入 {finalResult.inserted} 筆訂單！</span>
+              {finalResult.errors > 0 && <span className="text-sm text-orange-600">（{finalResult.errors} 筆因錯誤略過）</span>}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-red-700">
+              <XCircle className="w-5 h-5" />
+              <span className="font-medium">所有資料均匯入失敗</span>
+            </div>
+          )}
+          <Button variant="outline" size="sm" className="mt-3" onClick={reset}>繼續匯入</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ImportDialogProps {
   open: boolean;
   onClose: () => void;
@@ -397,12 +624,16 @@ export function ImportDialog({ open, onClose, defaultTab = "customers", onSucces
           <TabsList className="w-full">
             <TabsTrigger value="customers" className="flex-1">客戶資料</TabsTrigger>
             <TabsTrigger value="drivers" className="flex-1">司機資料</TabsTrigger>
+            <TabsTrigger value="orders" className="flex-1">訂單批量匯入</TabsTrigger>
           </TabsList>
           <TabsContent value="customers" className="mt-4">
             <ImportTabPanel type="customers" onSuccess={() => onSuccess?.()} />
           </TabsContent>
           <TabsContent value="drivers" className="mt-4">
             <ImportTabPanel type="drivers" onSuccess={() => onSuccess?.()} />
+          </TabsContent>
+          <TabsContent value="orders" className="mt-4">
+            <OrdersImportPanel onSuccess={() => onSuccess?.()} />
           </TabsContent>
         </Tabs>
       </DialogContent>

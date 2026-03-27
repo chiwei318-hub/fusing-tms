@@ -47,6 +47,7 @@ import CostAnalysisTab from "./admin/CostAnalysisTab";
 import { DemandForecastTab } from "./admin/DemandForecastTab";
 import { ZoneManagementTab } from "./admin/ZoneManagementTab";
 import { DailyOpsTab } from "./admin/DailyOpsTab";
+import { AutoRoutingTab } from "./admin/AutoRoutingTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1464,6 +1465,10 @@ export default function Admin() {
             <TabsTrigger value="dailyops" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <BarChart2 className="w-3.5 h-3.5 text-blue-500" />
               <span className="text-[10px] sm:text-xs">運營KPI</span>
+            </TabsTrigger>
+            <TabsTrigger value="autorouting" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Navigation className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="text-[10px] sm:text-xs">自動分單</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3163,6 +3168,11 @@ export default function Admin() {
         {/* ===== 運營KPI 儀表板 TAB ===== */}
         <TabsContent value="dailyops" className="outline-none">
           <DailyOpsTab />
+        </TabsContent>
+
+        {/* ===== 自動分單規則 TAB ===== */}
+        <TabsContent value="autorouting" className="outline-none">
+          <AutoRoutingTab />
         </TabsContent>
       </Tabs>
 
