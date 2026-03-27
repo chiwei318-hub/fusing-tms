@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { writeAuditLog } from "./auditLog";
 
 export const approvalsRouter = Router();
 
@@ -197,7 +198,20 @@ approvalsRouter.patch("/approvals/:id/approve", async (req, res) => {
     `, [reviewed_by, review_note || null, req.params.id]);
 
     await client.query("COMMIT");
-    res.json({ ok: true, approval: rows[0], action_result: actionResult });
+    const approved = rows[0];
+    // Write audit log
+    await writeAuditLog({
+      action_type: `approve_${ar.action_type}`,
+      actor: approved.reviewed_by,
+      target_type: "approval_request",
+      target_id: approved.id,
+      order_id: ar.order_id ?? undefined,
+      before_data: { status: "pending", payload: ar.payload },
+      after_data:  { status: "approved", action_result: actionResult },
+      note: approved.review_note,
+      ip_address: req.ip,
+    });
+    res.json({ ok: true, approval: approved, action_result: actionResult });
   } catch (e) {
     await client.query("ROLLBACK");
     res.status(500).json({ error: String(e) });
@@ -217,6 +231,18 @@ approvalsRouter.patch("/approvals/:id/reject", async (req, res) => {
       RETURNING *
     `, [reviewed_by, review_note || null, req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: "審批請求不存在或已處理" });
+    // Write audit log
+    await writeAuditLog({
+      action_type: `reject_${rows[0].action_type}`,
+      actor: reviewed_by,
+      target_type: "approval_request",
+      target_id: rows[0].id,
+      order_id: rows[0].order_id ?? undefined,
+      before_data: { status: "pending" },
+      after_data:  { status: "rejected" },
+      note: review_note,
+      ip_address: req.ip,
+    });
     res.json({ ok: true, approval: rows[0] });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });

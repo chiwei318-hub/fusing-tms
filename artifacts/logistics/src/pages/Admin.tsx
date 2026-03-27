@@ -10,7 +10,7 @@ import {
   TrendingUp, Clock, CheckCircle, XCircle, DollarSign, Users, ClipboardList,
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
-  Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound,
+  Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +42,8 @@ import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
 import ApprovalCenterTab from "./admin/ApprovalCenterTab";
 import SettlementCenterTab from "./admin/SettlementCenterTab";
+import AuditLogTab from "./admin/AuditLogTab";
+import CostAnalysisTab from "./admin/CostAnalysisTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1439,6 +1441,14 @@ export default function Admin() {
             <TabsTrigger value="settlement" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
               <span className="text-[10px] sm:text-xs">結算</span>
+            </TabsTrigger>
+            <TabsTrigger value="cost" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-violet-600" />
+              <span className="text-[10px] sm:text-xs">毛利</span>
+            </TabsTrigger>
+            <TabsTrigger value="auditlog" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <FileText className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-[10px] sm:text-xs">日誌</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3113,6 +3123,16 @@ export default function Admin() {
         {/* ===== 結算中心 TAB ===== */}
         <TabsContent value="settlement" className="outline-none">
           <SettlementCenterTab />
+        </TabsContent>
+
+        {/* ===== 毛利分析 TAB ===== */}
+        <TabsContent value="cost" className="outline-none">
+          <CostAnalysisTab />
+        </TabsContent>
+
+        {/* ===== 操作日誌 TAB ===== */}
+        <TabsContent value="auditlog" className="outline-none">
+          <AuditLogTab />
         </TabsContent>
       </Tabs>
 

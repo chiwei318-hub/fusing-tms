@@ -32,6 +32,9 @@ import { dispatchAlertsRouter } from "./dispatchAlerts";
 import { kpiDashboardRouter } from "./kpiDashboard";
 import { approvalsRouter } from "./approvals";
 import { costEventsRouter } from "./costEvents";
+import { auditLogRouter } from "./auditLog";
+import { costAnalysisRouter } from "./costAnalysis";
+import { settlementExportRouter } from "./settlementExport";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -71,5 +74,8 @@ router.use(dispatchAlertsRouter);
 router.use(kpiDashboardRouter);
 router.use(approvalsRouter);
 router.use(costEventsRouter);
+router.use(auditLogRouter);
+router.use(costAnalysisRouter);
+router.use(settlementExportRouter);
 
 export default router;

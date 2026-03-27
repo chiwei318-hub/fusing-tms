@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { format } from "date-fns";
 import {
   DollarSign, Users, Truck, RefreshCw, CheckCircle,
-  Download, AlertCircle, FileText, Building2,
+  Download, AlertCircle, FileText, Building2, Package,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -151,6 +151,13 @@ function CustomerStatements() {
           <FileText className="w-3.5 h-3.5" />
           {generating ? "生成中…" : "一鍵生成月結帳單"}
         </Button>
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => window.open(apiUrl(`/api/settlement/export/customer-ar?month=${month}`), "_blank")}
+        >
+          <Download className="w-3.5 h-3.5" /> 匯出 CSV
+        </Button>
         <p className="text-xs text-muted-foreground self-end">
           自動為所有月結客戶生成該月帳單
         </p>
@@ -273,6 +280,13 @@ function DriverPayroll() {
           className="bg-emerald-600 hover:bg-emerald-700 gap-1.5">
           <CheckCircle className="w-3.5 h-3.5" />
           {settling ? "結算中…" : "一鍵結算本月薪資"}
+        </Button>
+        <Button variant="outline" className="gap-1.5"
+          onClick={() => {
+            const m = format(new Date(), "yyyy-MM");
+            window.open(apiUrl(`/api/settlement/export/driver-payroll?month=${m}`), "_blank");
+          }}>
+          <Download className="w-3.5 h-3.5" /> 匯出薪資表 CSV
         </Button>
         <p className="text-xs text-muted-foreground">
           依各司機完成趟次自動計算，扣除佣金後入帳
@@ -461,12 +475,122 @@ export default function SettlementCenterTab() {
           <TabsTrigger value="abnormal" className="flex-1 gap-1.5 text-xs">
             <AlertCircle className="w-3.5 h-3.5" /> 異常成本
           </TabsTrigger>
+          <TabsTrigger value="outsourcer" className="flex-1 gap-1.5 text-xs">
+            <Package className="w-3.5 h-3.5" /> 外包請款
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="customer" className="mt-4"><CustomerStatements /></TabsContent>
-        <TabsContent value="driver"   className="mt-4"><DriverPayroll /></TabsContent>
-        <TabsContent value="abnormal" className="mt-4"><AbnormalCostSettlement /></TabsContent>
+        <TabsContent value="customer"   className="mt-4"><CustomerStatements /></TabsContent>
+        <TabsContent value="driver"     className="mt-4"><DriverPayroll /></TabsContent>
+        <TabsContent value="abnormal"   className="mt-4"><AbnormalCostSettlement /></TabsContent>
+        <TabsContent value="outsourcer" className="mt-4"><OutsourcerInvoices /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Section 4 — Outsourcer Invoices
+// ══════════════════════════════════════════════════════════════════════════
+function OutsourcerInvoices() {
+  const { toast } = useToast();
+  const [month, setMonth] = useState(thisMonth());
+  const [rows, setRows]   = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoad] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoad(true);
+    try {
+      const res = await fetch(apiUrl(`/api/approvals?action_type=outsource_order&status=approved&limit=100`));
+      const data = await res.json();
+      setRows(Array.isArray(data) ? data : []);
+    } catch { /* ignore */ } finally { setLoad(false); }
+  }, []);
+
+  useState(() => { load(); });
+
+  const downloadCSV = () => {
+    window.open(apiUrl(`/api/settlement/export/outsourcer?month=${month}`), "_blank");
+  };
+
+  // Group by fleet_name
+  const grouped: Record<string, { fleet: string; orders: number; total: number }> = {};
+  for (const r of rows) {
+    const payload = r.payload as Record<string, unknown>;
+    const fleet = String(payload?.fleet_name ?? "未知外包商");
+    const fee   = Number(payload?.outsource_fee ?? 0);
+    if (!grouped[fleet]) grouped[fleet] = { fleet, orders: 0, total: 0 };
+    grouped[fleet].orders++;
+    grouped[fleet].total += fee;
+  }
+  const fleetList = Object.values(grouped).sort((a, b) => b.total - a.total);
+  const grandTotal = fleetList.reduce((s, f) => s + f.total, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card className="border-cyan-100 bg-cyan-50">
+          <CardContent className="p-4">
+            <p className="text-xs text-cyan-600">外包商請款總計</p>
+            <p className="text-xl font-bold text-cyan-700">{fmtMoney(grandTotal)}</p>
+            <p className="text-xs text-cyan-500">{fleetList.length} 家廠商</p>
+          </CardContent>
+        </Card>
+        <Card className="border-gray-100 bg-gray-50">
+          <CardContent className="p-4">
+            <p className="text-xs text-gray-600">外包單量</p>
+            <p className="text-xl font-bold text-gray-700">{rows.length}</p>
+            <p className="text-xs text-gray-500">已核准</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 p-3 bg-muted/40 rounded-xl border">
+        <div>
+          <Label className="text-xs mb-1 block">篩選月份</Label>
+          <Input type="month" value={month} onChange={e => setMonth(e.target.value)} className="w-36 text-sm" />
+        </div>
+        <Button onClick={load} disabled={loading} size="sm" variant="outline" className="gap-1.5">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> 重整
+        </Button>
+        <Button onClick={downloadCSV} size="sm" className="gap-1.5 bg-cyan-600 hover:bg-cyan-700">
+          <Download className="w-3.5 h-3.5" /> 匯出請款 CSV
+        </Button>
+      </div>
+
+      {fleetList.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">尚無外包請款紀錄</div>
+      ) : (
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted text-muted-foreground">
+              <tr>
+                {["外包商名稱","外包單量","請款金額","平均每單"].map(h => (
+                  <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {fleetList.map((f, i) => (
+                <tr key={f.fleet} className={i % 2 === 0 ? "bg-white" : "bg-muted/30"}>
+                  <td className="px-3 py-2 font-medium">{f.fleet}</td>
+                  <td className="px-3 py-2 text-center">{f.orders}</td>
+                  <td className="px-3 py-2 font-semibold text-cyan-700">{fmtMoney(f.total)}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {f.orders > 0 ? fmtMoney(Math.round(f.total / f.orders)) : "—"}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-muted font-semibold">
+                <td className="px-3 py-2">合計</td>
+                <td className="px-3 py-2 text-center">{rows.length}</td>
+                <td className="px-3 py-2 text-cyan-700">{fmtMoney(grandTotal)}</td>
+                <td className="px-3 py-2" />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
