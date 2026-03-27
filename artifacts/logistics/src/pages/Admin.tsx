@@ -45,6 +45,8 @@ import SettlementCenterTab from "./admin/SettlementCenterTab";
 import AuditLogTab from "./admin/AuditLogTab";
 import CostAnalysisTab from "./admin/CostAnalysisTab";
 import { DemandForecastTab } from "./admin/DemandForecastTab";
+import { ZoneManagementTab } from "./admin/ZoneManagementTab";
+import { DailyOpsTab } from "./admin/DailyOpsTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1454,6 +1456,14 @@ export default function Admin() {
             <TabsTrigger value="forecast" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <TrendingUp className="w-3.5 h-3.5 text-violet-500" />
               <span className="text-[10px] sm:text-xs">預測</span>
+            </TabsTrigger>
+            <TabsTrigger value="zones" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-[10px] sm:text-xs">站點</span>
+            </TabsTrigger>
+            <TabsTrigger value="dailyops" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <BarChart2 className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-[10px] sm:text-xs">運營KPI</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3143,6 +3153,16 @@ export default function Admin() {
         {/* ===== 預測分析 TAB ===== */}
         <TabsContent value="forecast" className="outline-none">
           <DemandForecastTab />
+        </TabsContent>
+
+        {/* ===== 站點/車隊架構 TAB ===== */}
+        <TabsContent value="zones" className="outline-none">
+          <ZoneManagementTab />
+        </TabsContent>
+
+        {/* ===== 運營KPI 儀表板 TAB ===== */}
+        <TabsContent value="dailyops" className="outline-none">
+          <DailyOpsTab />
         </TabsContent>
       </Tabs>
 

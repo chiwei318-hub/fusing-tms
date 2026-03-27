@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startAlertScheduler } from "./lib/alertScheduler";
+import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
 
@@ -36,5 +37,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 startAlertScheduler();
+ensureDbIndexes().catch((e) => console.error("[dbIndexes] Failed:", e));
 
 export default app;
