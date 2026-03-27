@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { useLocation, Link } from "wouter";
+import { Link } from "wouter";
 import { Building2, Lock, User, Truck, Eye, EyeOff, UserCircle } from "lucide-react";
-import { setEnterpriseSession, type EnterpriseSession } from "@/components/EnterpriseLayout";
+import { type EnterpriseSession } from "@/components/EnterpriseLayout";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-export default function EnterpriseLogin() {
-  const [, navigate] = useLocation();
+interface Props {
+  onLogin: (session: EnterpriseSession, remember: boolean) => void;
+}
+
+export default function EnterpriseLogin({ onLogin }: Props) {
   const [tab, setTab] = useState<"main" | "sub">("main");
   const [accountCode, setAccountCode] = useState("");
   const [subCode, setSubCode] = useState("");
@@ -38,12 +41,7 @@ export default function EnterpriseLogin() {
         subAccount: data.subAccount ?? null,
       };
 
-      if (remember) {
-        setEnterpriseSession(session);
-      } else {
-        sessionStorage.setItem("enterprise-session", JSON.stringify(session));
-      }
-      navigate("/enterprise");
+      onLogin(session, remember);
     } catch {
       setError("網路錯誤，請稍後再試");
     } finally {

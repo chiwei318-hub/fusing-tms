@@ -43,8 +43,8 @@ export function clearEnterpriseSession() {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-export function EnterpriseLayout({ children, session }: { children: React.ReactNode; session: EnterpriseSession }) {
-  const [location, navigate] = useLocation();
+export function EnterpriseLayout({ children, session, onLogout }: { children: React.ReactNode; session: EnterpriseSession; onLogout?: () => void }) {
+  const [location] = useLocation();
   const [unread, setUnread] = useState(0);
 
   const isAdmin = !session.subAccount || session.subAccount.role === "admin";
@@ -71,8 +71,11 @@ export function EnterpriseLayout({ children, session }: { children: React.ReactN
   ];
 
   function logout() {
-    clearEnterpriseSession();
-    navigate("/enterprise/login");
+    if (onLogout) {
+      onLogout();
+    } else {
+      clearEnterpriseSession();
+    }
   }
 
   return (

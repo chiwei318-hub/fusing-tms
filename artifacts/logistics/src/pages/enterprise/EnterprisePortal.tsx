@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import { GlobalHeader } from "@/components/GlobalHeader";
-import { EnterpriseLayout, getEnterpriseSession } from "@/components/EnterpriseLayout";
+import { EnterpriseLayout, getEnterpriseSession, setEnterpriseSession, clearEnterpriseSession, type EnterpriseSession } from "@/components/EnterpriseLayout";
 import EnterpriseLogin from "./EnterpriseLogin";
 import EnterpriseDashboard from "./EnterpriseDashboard";
 import EnterpriseOrders from "./EnterpriseOrders";
@@ -10,7 +10,7 @@ import EnterpriseNotifications from "./EnterpriseNotifications";
 import EnterpriseSubAccounts from "./EnterpriseSubAccounts";
 import EnterpriseAccount from "./EnterpriseAccount";
 
-function getSession() {
+function loadSession(): EnterpriseSession | null {
   const fromLs = getEnterpriseSession();
   if (fromLs) return fromLs;
   try {
@@ -19,32 +19,33 @@ function getSession() {
   } catch { return null; }
 }
 
-function EnterpriseGuard({ children }: { children: React.ReactNode }) {
-  const [location, navigate] = useLocation();
-  const session = getSession();
-
-  useEffect(() => {
-    if (!session && location !== "/enterprise/login") {
-      navigate("/enterprise/login");
-    }
-  }, [session, location]);
-
-  if (!session) return null;
-  return <EnterpriseLayout session={session}>{children}</EnterpriseLayout>;
-}
-
 export default function EnterprisePortal() {
   const [location] = useLocation();
-  const isLogin = location === "/enterprise/login";
-  const session = getSession();
+  const [session, setSession] = useState<EnterpriseSession | null>(() => loadSession());
+
+  const handleLogin = useCallback((newSession: EnterpriseSession, remember: boolean) => {
+    if (remember) {
+      setEnterpriseSession(newSession);
+    } else {
+      sessionStorage.setItem("enterprise-session", JSON.stringify(newSession));
+    }
+    setSession(newSession);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearEnterpriseSession();
+    sessionStorage.removeItem("enterprise-session");
+    setSession(null);
+  }, []);
+
   const isAdmin = !session?.subAccount || session?.subAccount?.role === "admin";
 
-  if (isLogin) {
+  if (!session) {
     return (
       <>
         <GlobalHeader />
         <div className="pt-14">
-          <EnterpriseLogin />
+          <EnterpriseLogin onLogin={handleLogin} />
         </div>
       </>
     );
@@ -54,31 +55,31 @@ export default function EnterprisePortal() {
     <>
       <GlobalHeader />
       <div className="pt-14">
-        <EnterpriseGuard>
+        <EnterpriseLayout session={session} onLogout={handleLogout}>
           <Switch>
             <Route path="/enterprise">
-              {session ? <EnterpriseDashboard session={session} /> : null}
+              <EnterpriseDashboard session={session} />
             </Route>
             <Route path="/enterprise/place-order">
-              {session ? <EnterprisePlaceOrder session={session} /> : null}
+              <EnterprisePlaceOrder session={session} />
             </Route>
             <Route path="/enterprise/quick-order">
               <Redirect to="/enterprise/place-order" />
             </Route>
             <Route path="/enterprise/orders">
-              {session ? <EnterpriseOrders session={session} /> : null}
+              <EnterpriseOrders session={session} />
             </Route>
             <Route path="/enterprise/notifications">
-              {session ? <EnterpriseNotifications session={session} /> : null}
+              <EnterpriseNotifications session={session} />
             </Route>
             <Route path="/enterprise/sub-accounts">
-              {session && isAdmin ? <EnterpriseSubAccounts session={session} /> : session ? <Redirect to="/enterprise" /> : null}
+              {isAdmin ? <EnterpriseSubAccounts session={session} /> : <Redirect to="/enterprise" />}
             </Route>
             <Route path="/enterprise/account">
-              {session ? <EnterpriseAccount session={session} /> : null}
+              <EnterpriseAccount session={session} />
             </Route>
           </Switch>
-        </EnterpriseGuard>
+        </EnterpriseLayout>
       </div>
     </>
   );
