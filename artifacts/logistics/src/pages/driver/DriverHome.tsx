@@ -201,11 +201,16 @@ export default function DriverHome() {
       )}
 
       {/* Stats card */}
-      <div className="bg-gradient-to-r from-blue-700 to-blue-900 rounded-2xl p-5 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-28 h-28 bg-white/5 rounded-full -mr-8 -mt-8" />
-        <div className="absolute bottom-0 left-0 w-16 h-16 bg-orange-500/20 rounded-full -ml-4 -mb-4" />
+      <div className="rounded-2xl p-5 text-white relative overflow-hidden"
+        style={{ background: "linear-gradient(140deg, #071829 0%, #0c2444 55%, #0f2d58 100%)" }}>
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{ backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
+        <div className="absolute top-0 right-0 w-40 h-40 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(59,130,246,0.12) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
+        <div className="absolute bottom-0 left-0 w-28 h-28 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(217,119,6,0.10) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
         <div className="relative z-10 flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center text-white font-black text-xl shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-white/12 border border-white/20 flex items-center justify-center text-white font-black text-xl shrink-0">
             {(user?.name ?? "?").charAt(0)}
           </div>
           <div className="flex-1 min-w-0">
@@ -215,30 +220,30 @@ export default function DriverHome() {
           {avgStars !== null && (
             <div className="text-right shrink-0">
               <div className="flex items-center gap-1 justify-end">
-                <Star className="w-4 h-4 fill-yellow-300 text-yellow-300" />
-                <span className="text-yellow-300 font-black text-lg">{avgStars.toFixed(1)}</span>
+                <Star className="w-4 h-4 fill-amber-300" style={{ color: "#fcd34d" }} />
+                <span className="font-black text-lg" style={{ color: "#fcd34d" }}>{avgStars.toFixed(1)}</span>
               </div>
-              <p className="text-blue-200 text-xs">{totalRatings} 筆評分</p>
+              <p className="text-slate-400 text-xs">{totalRatings} 筆評分</p>
             </div>
           )}
         </div>
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white/15 rounded-xl p-3 text-center">
-            <CheckCircle className="w-4 h-4 text-green-300 mx-auto mb-1" />
+          <div className="bg-white/8 border border-white/10 rounded-xl p-3 text-center">
+            <CheckCircle className="w-4 h-4 text-emerald-300 mx-auto mb-1" />
             <p className="font-black text-lg text-white">{todayCompleted.length}</p>
-            <p className="text-blue-200 text-xs">今日完成</p>
+            <p className="text-slate-400 text-xs">今日完成</p>
           </div>
-          <div className="bg-white/15 rounded-xl p-3 text-center">
-            <Truck className="w-4 h-4 text-orange-300 mx-auto mb-1" />
+          <div className="bg-white/8 border border-white/10 rounded-xl p-3 text-center">
+            <Truck className="w-4 h-4 mx-auto mb-1" style={{ color: "#fbbf24" }} />
             <p className="font-black text-lg text-white">{activeTasks.length}</p>
-            <p className="text-blue-200 text-xs">進行中</p>
+            <p className="text-slate-400 text-xs">進行中</p>
           </div>
-          <div className="bg-white/15 rounded-xl p-3 text-center">
-            <DollarSign className="w-4 h-4 text-yellow-300 mx-auto mb-1" />
+          <div className="bg-white/8 border border-white/10 rounded-xl p-3 text-center">
+            <DollarSign className="w-4 h-4 text-emerald-300 mx-auto mb-1" />
             <p className="font-black text-base text-white">
               {todayEarnings > 0 ? `$${todayEarnings.toLocaleString()}` : "—"}
             </p>
-            <p className="text-blue-200 text-xs">今日收入</p>
+            <p className="text-slate-400 text-xs">今日收入</p>
           </div>
         </div>
       </div>

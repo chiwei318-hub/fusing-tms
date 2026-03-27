@@ -27,7 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-gray-100 text-gray-500",
 };
-const CHART_COLORS = ["#1a3a8f", "#f97316", "#10b981", "#a855f7", "#06b6d4", "#ef4444"];
+const CHART_COLORS = ["#1d4ed8", "#d97706", "#10b981", "#7c3aed", "#06b6d4", "#ef4444"];
 
 interface StatsOverview {
   orders: {
@@ -87,34 +87,41 @@ export default function AdminHome({ onTabChange }: AdminHomeProp) {
   ].filter(d => d.value > 0);
 
   const shortcuts = [
-    { icon: ClipboardList, label: "訂單管理", sub: `${orders.length} 筆`, tab: "orders", color: "bg-blue-600" },
-    { icon: Truck, label: "司機管理", sub: `${drivers.length} 位`, tab: "drivers", color: "bg-orange-500" },
-    { icon: Users, label: "客戶管理", sub: `${customers.length} 位`, tab: "customers", color: "bg-purple-600" },
-    { icon: BarChart2, label: "報表中心", sub: "匯出・列印", tab: "report", color: "bg-emerald-600" },
-    { icon: Layers, label: "智慧調度", sub: "混載・回頭車", tab: "smart", color: "bg-cyan-600" },
-    { icon: Brain, label: "AI 分析", sub: "預測・成本", tab: "ai", color: "bg-violet-600" },
-    { icon: Settings, label: "系統設定", sub: "費率・自動派車", tab: "system", color: "bg-gray-600" },
-    { icon: Map, label: "車隊地圖", sub: "即時位置", tab: "fleetmap", color: "bg-teal-600" },
+    { icon: ClipboardList, label: "訂單管理", sub: `${orders.length} 筆`, tab: "orders", color: "bg-blue-700" },
+    { icon: Truck, label: "司機管理", sub: `${drivers.length} 位`, tab: "drivers", color: "bg-amber-600" },
+    { icon: Users, label: "客戶管理", sub: `${customers.length} 位`, tab: "customers", color: "bg-violet-700" },
+    { icon: BarChart2, label: "報表中心", sub: "匯出・列印", tab: "report", color: "bg-emerald-700" },
+    { icon: Layers, label: "智慧調度", sub: "混載・回頭車", tab: "smart", color: "bg-cyan-700" },
+    { icon: Brain, label: "AI 分析", sub: "預測・成本", tab: "ai", color: "bg-purple-700" },
+    { icon: Settings, label: "系統設定", sub: "費率・自動派車", tab: "system", color: "bg-slate-600" },
+    { icon: Map, label: "車隊地圖", sub: "即時位置", tab: "fleetmap", color: "bg-teal-700" },
   ];
 
   return (
     <div className="space-y-6">
       {/* Banner */}
-      <div className="bg-gradient-to-r from-[#1a3a8f] to-[#0d2060] rounded-2xl p-6 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -mr-16 -mt-16" />
-        <div className="absolute bottom-0 left-1/3 w-32 h-32 bg-orange-500/10 rounded-full -mb-10" />
+      <div className="rounded-2xl p-6 text-white relative overflow-hidden"
+        style={{ background: "linear-gradient(140deg, #071829 0%, #0c2444 50%, #0f2d58 100%)" }}>
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{ backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)", backgroundSize: "36px 36px" }} />
+        <div className="absolute top-0 right-0 w-56 h-56 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(59,130,246,0.10) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
+        <div className="absolute bottom-0 left-1/3 w-40 h-40 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(217,119,6,0.08) 0%, transparent 70%)", transform: "translateY(40%)" }} />
         <div className="relative z-10 flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="bg-orange-500 p-1.5 rounded-lg"><Truck className="w-4 h-4 text-white" /></div>
-              <span className="text-orange-300 text-xs font-bold uppercase tracking-widest">富詠運輸後台</span>
+              <div className="p-1.5 rounded-lg" style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)" }}>
+                <Truck className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#fcd34d" }}>富詠運輸後台</span>
             </div>
-            <h1 className="text-2xl font-black leading-tight">全自動物流管理中心</h1>
-            <p className="text-blue-200 text-sm mt-1.5">
+            <h1 className="text-2xl font-black leading-tight text-white">全自動物流管理中心</h1>
+            <p className="text-slate-400 text-sm mt-1.5">
               {format(new Date(), "yyyy年MM月dd日")} · 今日 {today.length} 筆訂單
             </p>
           </div>
-          <Button size="sm" variant="ghost" className="text-blue-200 hover:text-white hover:bg-white/10" onClick={fetchStats}>
+          <Button size="sm" variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/10" onClick={fetchStats}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />更新
           </Button>
         </div>

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import {
   Truck, Star, Phone, MapPin, ArrowRight, CheckCircle,
   Building2, Zap, Clock, Users, Shield, ChevronDown, Sparkles,
 } from "lucide-react";
-
 
 function useLiveStats() {
   const [nearbyTrucks, setNearbyTrucks] = useState(5);
@@ -58,9 +57,7 @@ function AnimatedTruckCount({ count }: { count: number }) {
     }
   }, [count, prev]);
   return (
-    <span
-      className={`font-black text-orange-300 tabular-nums transition-all duration-300 inline-block ${animate ? "scale-150 text-yellow-300" : "scale-100"}`}
-    >
+    <span className={`font-black text-amber-300 tabular-nums transition-all duration-300 inline-block ${animate ? "scale-150 text-yellow-200" : "scale-100"}`}>
       {count}
     </span>
   );
@@ -69,23 +66,23 @@ function AnimatedTruckCount({ count }: { count: number }) {
 const reviews = [
   { name: "王先生", company: "順達五金有限公司", stars: 5, text: "下午三點叫車，十八分鐘就到了！司機很專業，貨物完好無缺，推薦！" },
   { name: "林小姐", company: "欣葉餐飲集團", stars: 5, text: "長期配合兩年，每次準時，報價透明，再也不用擔心出貨問題。" },
-  { name: "陳經理", company: "台北倉儲物流股份有限公司", stars: 5, text: "一次搬三個點，全部到位，司機還幫忙確認簽收。超乎期待。" },
+  { name: "陳經理", company: "台北倉儲物流股份有限公司", stars: 5, text: "三個據點同步調度，全部到位，司機主動確認簽收，服務超乎期待。" },
 ];
 
 function QuickOrderForm() {
   return (
     <div className="space-y-3 text-center">
-      <p className="text-sm text-gray-500 mb-4">
-        免登入、即時報價、線上付款、自動派車，最快 3 分鐘完成預訂
+      <p className="text-sm text-slate-500 mb-4">
+        免登入 · 即時報價 · 線上付款 · 自動派車，最快 3 分鐘完成預訂
       </p>
       <Link href="/quick">
-        <button className="w-full py-5 bg-orange-500 hover:bg-orange-600 active:scale-[0.98] text-white font-black text-xl rounded-2xl shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2">
-          <Zap className="w-6 h-6" />
+        <button className="w-full py-4 bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-white font-bold text-lg rounded-xl shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-2">
+          <Zap className="w-5 h-5" />
           立即開始快速下單
           <ArrowRight className="w-5 h-5" />
         </button>
       </Link>
-      <p className="text-center text-xs text-gray-400">⚡ 免註冊 · 即時報價 · 線上付款 · 自動派車</p>
+      <p className="text-center text-xs text-slate-400">免註冊 · 即時報價 · 線上付款 · 自動派車</p>
     </div>
   );
 }
@@ -94,31 +91,33 @@ export default function Landing() {
   const { nearbyTrucks, etaMin } = useLiveStats();
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-white text-slate-900">
 
-      {/* ═══════════════ HERO ═══════════════ */}
-      <section className="relative min-h-screen bg-gradient-to-b from-[#05152e] via-[#0d2d6e] to-[#1a3a8f] flex flex-col overflow-hidden">
+      {/* ── HERO ──────────────────────────────────────────────────── */}
+      <section className="relative min-h-screen flex flex-col overflow-hidden"
+        style={{ background: "linear-gradient(160deg, #071829 0%, #0a2240 40%, #0f2d58 70%, #0d2448 100%)" }}>
 
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-72 h-72 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Subtle grid texture */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{ backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)", backgroundSize: "48px 48px" }} />
+
+        {/* Glow orbs */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(59,130,246,0.12) 0%, transparent 70%)" }} />
+        <div className="absolute bottom-10 right-0 w-80 h-80 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(217,119,6,0.08) 0%, transparent 70%)" }} />
 
         {/* Nav */}
-        <div className="relative z-10 flex items-center justify-between px-5 sm:px-8 pt-5 pb-2">
-          <div className="flex items-center gap-2">
-            <img
-              src="/logo-transparent.png"
-              alt="富詠運輸"
-              className="h-28 sm:h-32 w-auto object-contain drop-shadow-lg"
-            />
-          </div>
+        <div className="relative z-10 flex items-center justify-between px-5 sm:px-8 pt-4 pb-2">
+          <img src="/logo-transparent.png" alt="富詠運輸" className="h-24 sm:h-28 w-auto object-contain drop-shadow-lg" />
           <div className="flex items-center gap-2">
             <Link href="/admin">
-              <button className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold px-3 py-2 rounded-full transition-colors">
+              <button className="hidden sm:flex items-center gap-1.5 text-slate-200/80 hover:text-white border border-white/15 hover:border-white/30 bg-white/5 hover:bg-white/10 text-xs font-medium px-3.5 py-2 rounded-full transition-all">
                 <Building2 className="w-3.5 h-3.5" />
                 後台管理
               </button>
             </Link>
-            <a href="tel:0800000000" className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold px-3 py-2 rounded-full transition-colors">
+            <a href="tel:0800000000" className="flex items-center gap-1.5 text-slate-200/80 hover:text-white border border-white/15 hover:border-white/30 bg-white/5 hover:bg-white/10 text-xs font-medium px-3.5 py-2 rounded-full transition-all">
               <Phone className="w-3.5 h-3.5" />
               免費客服
             </a>
@@ -126,96 +125,104 @@ export default function Landing() {
         </div>
 
         {/* Hero content */}
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 text-center pt-6 pb-8">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 text-center pt-4 pb-10">
 
-          {/* Live badge — animated truck count */}
-          <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-bold px-4 py-1.5 rounded-full mb-6">
-            <span className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+          {/* Live badge */}
+          <div className="inline-flex items-center gap-2 border text-xs font-semibold px-4 py-1.5 rounded-full mb-7"
+            style={{ background: "rgba(217,119,6,0.12)", borderColor: "rgba(217,119,6,0.35)", color: "#fcd34d" }}>
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#fbbf24" }} />
             現在有&nbsp;<AnimatedTruckCount count={nearbyTrucks} />&nbsp;台車可即時調派
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight mb-4 max-w-lg">
             富詠運輸
             <br />
-            <span className="text-orange-400">最快30分鐘</span>到車
+            <span style={{ color: "#fbbf24" }}>最快30分鐘</span>到車
           </h1>
 
-          <p className="text-blue-200 text-base sm:text-lg font-medium mb-2">
+          <p className="text-slate-300 text-base sm:text-lg font-medium mb-1.5">
             全台接單 · 專業物流 · 即時派車
           </p>
-          <p className="text-blue-300/70 text-sm mb-8">
+          <p className="text-slate-400/80 text-sm mb-9">
             箱型車 · 冷藏車 · 尾門車 · 平板車，一鍵搞定
           </p>
 
-          {/* ★ PRIMARY CTA — 1.5x bigger */}
+          {/* Primary CTA */}
           <Link href="/customer/order">
-            <button className="group relative inline-flex items-center gap-3 bg-orange-500 hover:bg-orange-400 active:scale-[0.97] text-white font-black text-3xl sm:text-4xl px-14 sm:px-16 py-7 sm:py-8 rounded-3xl shadow-2xl shadow-orange-500/50 transition-all mb-3">
-              <Truck className="w-8 h-8 sm:w-10 sm:h-10" />
+            <button className="group relative inline-flex items-center gap-3 text-white font-black text-3xl sm:text-4xl px-12 sm:px-16 py-6 sm:py-7 rounded-2xl transition-all mb-4"
+              style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", boxShadow: "0 20px 50px rgba(217,119,6,0.4)" }}>
+              <Truck className="w-8 h-8 sm:w-9 sm:h-9" />
               立即叫車
-              <ArrowRight className="w-6 h-6 sm:w-7 sm:h-7 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="w-6 h-6 sm:w-7 sm:h-7 group-hover:translate-x-1.5 transition-transform" />
             </button>
           </Link>
-          <p className="text-orange-200 text-sm font-bold mb-1">👉 免註冊・1分鐘完成下單</p>
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+
+          <p className="text-amber-300/80 text-sm font-semibold mb-2">免註冊 · 1分鐘完成下單</p>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-1.5">
             <Link href="/quick">
-              <button className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-400 border border-green-400 text-white text-sm font-bold px-5 py-2.5 rounded-full transition-colors shadow-lg shadow-green-500/30">
-                ⚡ 零散客快速接單（免登入）
+              <button className="inline-flex items-center gap-2 border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-sm font-semibold px-5 py-2.5 rounded-full transition-colors">
+                <Zap className="w-3.5 h-3.5" />
+                零散客快速接單（免登入）
               </button>
             </Link>
             <Link href="/chat">
-              <button className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-colors">
-                🤖 AI 客服報價下單
+              <button className="inline-flex items-center gap-2 bg-white/8 hover:bg-white/14 border border-white/15 text-slate-200 text-sm font-medium px-5 py-2.5 rounded-full transition-colors">
+                AI 客服報價下單
               </button>
             </Link>
           </div>
 
           {/* Live chips */}
-          <div className="mt-6 flex items-center gap-4">
-            <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 text-white text-xs font-semibold px-3.5 py-2 rounded-full">
-              <Clock className="w-3.5 h-3.5 text-orange-400" />
-              預估 <span className="text-orange-300 font-black">{etaMin}</span> 分鐘到達
+          <div className="mt-7 flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-white/8 border border-white/12 text-slate-200/90 text-xs font-medium px-3.5 py-2 rounded-full">
+              <Clock className="w-3.5 h-3.5" style={{ color: "#fbbf24" }} />
+              預估 <span className="font-black mx-0.5" style={{ color: "#fcd34d" }}>{etaMin}</span> 分鐘到達
             </div>
-            <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 text-white text-xs font-semibold px-3.5 py-2 rounded-full">
+            <div className="flex items-center gap-1.5 bg-white/8 border border-white/12 text-slate-200/90 text-xs font-medium px-3.5 py-2 rounded-full">
               <Truck className="w-3.5 h-3.5 text-blue-300" />
               <AnimatedTruckCount count={nearbyTrucks} /> 台車待命中
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col items-center pb-6 text-blue-300/50 text-xs gap-1">
+        <div className="relative z-10 flex flex-col items-center pb-6 text-slate-500 text-xs gap-1">
           <span>向下了解更多</span>
           <ChevronDown className="w-4 h-4 animate-bounce" />
         </div>
       </section>
 
-      {/* ═══════════════ TRUST METRICS ═══════════════ */}
-      <section className="bg-[#1a3a8f] py-10 px-5">
+      {/* ── TRUST METRICS ─────────────────────────────────────────── */}
+      <section className="py-10 px-5" style={{ background: "linear-gradient(90deg, #071829, #0c2444, #071829)" }}>
         <div className="max-w-lg mx-auto grid grid-cols-3 gap-6 text-center">
           {[
-            { icon: CheckCircle, value: 12500, suffix: "+", label: "已完成訂單", color: "text-green-400" },
-            { icon: Building2, value: 380, suffix: "+", label: "服務企業", color: "text-blue-300" },
-            { icon: Star, value: 4.9, suffix: "★", label: "客戶評分", color: "text-orange-400" },
+            { icon: CheckCircle, value: 12500, suffix: "+", label: "已完成訂單", color: "#34d399" },
+            { icon: Building2, value: 380, suffix: "+", label: "服務企業", color: "#93c5fd" },
+            { icon: Star, value: 4.9, suffix: "★", label: "客戶評分", color: "#fbbf24" },
           ].map(({ icon: Icon, value, suffix, label, color }) => (
-            <div key={label}>
-              <Icon className={`w-5 h-5 mx-auto mb-1.5 ${color}`} />
-              <p className="text-2xl sm:text-3xl font-black text-white leading-none">
+            <div key={label} className="relative">
+              <div className="w-8 h-8 mx-auto mb-2.5 flex items-center justify-center rounded-xl"
+                style={{ background: `${color}18` }}>
+                <Icon className="w-4 h-4" style={{ color }} />
+              </div>
+              <p className="text-2xl sm:text-3xl font-black text-white leading-none tabular-nums">
                 {typeof value === "number" && value > 100 ? <Counter target={value} suffix={suffix} /> : <>{value}{suffix}</>}
               </p>
-              <p className="text-blue-300 text-xs mt-1 font-medium">{label}</p>
+              <p className="text-slate-400 text-xs mt-1.5 font-medium">{label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ═══════════════ QUICK ORDER ═══════════════ */}
-      <section className="bg-white py-12 px-5">
+      {/* ── QUICK ORDER ───────────────────────────────────────────── */}
+      <section className="bg-white py-14 px-5">
         <div className="max-w-md mx-auto">
-          <div className="text-center mb-7">
-            <span className="inline-block bg-orange-100 text-orange-600 text-xs font-bold px-3 py-1 rounded-full mb-3">一鍵快速下單</span>
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight">30秒完成叫車</h2>
-            <p className="text-gray-500 text-sm mt-2">只需填電話 + 取貨地址，其他資料後補</p>
+          <div className="text-center mb-8">
+            <span className="inline-block bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-3.5 py-1 rounded-full mb-3">一鍵快速下單</span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">30秒完成叫車</h2>
+            <p className="text-slate-500 text-sm mt-2">只需填電話與取貨地址，其他資料後補</p>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-xl shadow-gray-100 p-6">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl shadow-slate-100/80 p-6">
             <QuickOrderForm />
           </div>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -225,8 +232,8 @@ export default function Landing() {
               { icon: Clock, text: "24H服務" },
               { icon: Users, text: "專業司機" },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 text-gray-600 text-xs font-medium px-3 py-1.5 rounded-full">
-                <Icon className="w-3.5 h-3.5 text-[#1a3a8f]" />
+              <div key={text} className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 text-slate-600 text-xs font-medium px-3 py-1.5 rounded-full">
+                <Icon className="w-3.5 h-3.5" style={{ color: "#1d4ed8" }} />
                 {text}
               </div>
             ))}
@@ -234,13 +241,13 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ═══════════════ VEHICLE TYPES / PRICING ═══════════════ */}
-      <section className="bg-gray-50 py-14 px-5">
+      {/* ── VEHICLE TYPES ─────────────────────────────────────────── */}
+      <section className="bg-slate-50 py-14 px-5">
         <div className="max-w-lg mx-auto">
           <div className="text-center mb-8">
-            <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full mb-3">車型方案</span>
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900">選擇適合您的車型</h2>
-            <p className="text-gray-500 text-sm mt-2">依貨物大小選車，報價透明不收隱藏費</p>
+            <span className="inline-block bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold px-3.5 py-1 rounded-full mb-3">車型方案</span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">選擇適合您的車型</h2>
+            <p className="text-slate-500 text-sm mt-2">依貨物大小選車，報價透明不收隱藏費</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -249,38 +256,42 @@ export default function Landing() {
               { icon: "🚚", type: "尾門車", capacity: "2–5噸", desc: "重型貨物、工廠機械設備", from: "1,500", popular: false },
               { icon: "🏗️", type: "平板車", capacity: "5–20噸", desc: "大型工程機具、超長貨物", from: "2,500", popular: false },
             ].map(v => (
-              <div key={v.type} className={`relative bg-white rounded-2xl p-4 border-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${v.popular ? "border-orange-300" : "border-gray-100"}`}>
+              <div key={v.type}
+                className={`relative bg-white rounded-2xl p-4 border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${v.popular ? "border-amber-300 shadow-amber-100" : "border-slate-100"}`}>
                 {v.popular && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full whitespace-nowrap">最受歡迎</span>
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                    style={{ background: "#d97706" }}>最受歡迎</span>
                 )}
-                <div className="text-3xl mb-2">{v.icon}</div>
-                <p className="font-black text-gray-900 text-base">{v.type}</p>
-                <p className="text-xs text-gray-500 mb-2">{v.capacity} · {v.desc}</p>
-                <p className="text-xs text-gray-400">起價</p>
-                <p className="font-black text-orange-600 text-lg">NT${v.from}<span className="text-xs font-medium text-gray-400"> 起</span></p>
+                <div className="text-3xl mb-2.5">{v.icon}</div>
+                <p className="font-black text-slate-900 text-base">{v.type}</p>
+                <p className="text-xs text-slate-400 mb-2.5">{v.capacity} · {v.desc}</p>
+                <p className="text-xs text-slate-400">起價</p>
+                <p className="font-black text-amber-600 text-lg">NT${v.from}<span className="text-xs font-normal text-slate-400"> 起</span></p>
               </div>
             ))}
           </div>
-          <div className="mt-4 text-center">
+          <div className="mt-5 text-center">
             <Link href="/quick">
-              <button className="inline-flex items-center gap-2 bg-[#1a3a8f] hover:bg-[#0d2d6e] text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors shadow-md shadow-blue-900/20">
+              <button className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-all shadow-lg"
+                style={{ background: "linear-gradient(135deg, #1e3a8a, #1d4ed8)", boxShadow: "0 8px 20px rgba(29,78,216,0.25)" }}>
                 <Zap className="w-4 h-4" /> 立即免費報價
               </button>
             </Link>
-            <p className="text-xs text-gray-400 mt-2">最快 3 分鐘完成報價，確認後即時派車</p>
+            <p className="text-xs text-slate-400 mt-2">最快 3 分鐘完成報價，確認後即時派車</p>
           </div>
         </div>
       </section>
 
-      {/* ═══════════════ ENTERPRISE ═══════════════ */}
-      <section className="bg-gradient-to-br from-[#07152c] to-[#1a3a8f] py-14 px-5">
+      {/* ── ENTERPRISE ────────────────────────────────────────────── */}
+      <section className="py-14 px-5" style={{ background: "linear-gradient(145deg, #071829 0%, #0c2444 60%, #0f2a50 100%)" }}>
         <div className="max-w-md mx-auto text-center">
-          <div className="inline-flex items-center gap-1.5 bg-orange-500/20 border border-orange-400/30 text-orange-300 text-xs font-bold px-3 py-1 rounded-full mb-5">
+          <div className="inline-flex items-center gap-1.5 border text-xs font-semibold px-3.5 py-1 rounded-full mb-5"
+            style={{ background: "rgba(217,119,6,0.12)", borderColor: "rgba(217,119,6,0.35)", color: "#fcd34d" }}>
             <Sparkles className="w-3.5 h-3.5" />
             企業方案
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white mb-3">專屬企業物流服務</h2>
-          <p className="text-blue-200 text-sm mb-4">月結 · 專屬價格 · 優先派車</p>
+          <h2 className="text-2xl sm:text-3xl font-black text-white mb-2.5">專屬企業物流服務</h2>
+          <p className="text-slate-400 text-sm mb-7">月結帳期 · 專屬報價 · 優先調派</p>
 
           <div className="grid grid-cols-3 gap-3 mb-7">
             {[
@@ -288,56 +299,58 @@ export default function Landing() {
               { label: "專屬報價", icon: "💰" },
               { label: "優先派車", icon: "🚀" },
             ].map(item => (
-              <div key={item.label} className="bg-white/10 border border-white/10 rounded-2xl py-4 text-center">
-                <div className="text-2xl mb-1">{item.icon}</div>
-                <p className="text-white text-xs font-semibold">{item.label}</p>
+              <div key={item.label} className="bg-white/6 border border-white/10 rounded-2xl py-5 text-center hover:bg-white/10 transition-colors">
+                <div className="text-2xl mb-1.5">{item.icon}</div>
+                <p className="text-slate-200 text-xs font-semibold">{item.label}</p>
               </div>
             ))}
           </div>
 
           <Link href="/enterprise/login">
-            <button className="w-full py-4 bg-orange-500 hover:bg-orange-400 active:scale-[0.98] text-white font-black text-lg rounded-2xl shadow-xl shadow-orange-500/30 transition-all flex items-center justify-center gap-2 mb-3">
+            <button className="w-full py-4 text-white font-bold text-base rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 mb-3"
+              style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", boxShadow: "0 16px 32px rgba(217,119,6,0.3)" }}>
               <Building2 className="w-5 h-5" />
               企業快速接單入口
               <ArrowRight className="w-4 h-4" />
             </button>
           </Link>
-          <p className="text-blue-300/70 text-sm">
+          <p className="text-slate-500 text-sm">
             還沒帳號？
             <Link href="/enterprise/login">
-              <span className="text-orange-300 font-bold cursor-pointer hover:underline"> 3分鐘開通 →</span>
+              <span className="font-semibold cursor-pointer hover:underline ml-1" style={{ color: "#fcd34d" }}>3分鐘開通</span>
             </Link>
           </p>
         </div>
       </section>
 
-      {/* ═══════════════ REVIEWS ═══════════════ */}
-      <section className="bg-blue-50 py-12 px-5">
+      {/* ── REVIEWS ───────────────────────────────────────────────── */}
+      <section className="bg-slate-50 py-14 px-5">
         <div className="max-w-lg mx-auto">
-          <div className="text-center mb-7">
-            <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full mb-3">客戶評價</span>
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900">他們都信任富詠</h2>
+          <div className="text-center mb-8">
+            <span className="inline-block bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-3.5 py-1 rounded-full mb-3">客戶評價</span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">他們都信任富詠</h2>
           </div>
           <div className="space-y-4">
             {reviews.map((r, i) => (
-              <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-blue-100/60">
+              <div key={i} className="bg-white rounded-2xl p-5 shadow-md shadow-slate-100 border border-slate-100 hover:shadow-lg transition-shadow">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-[#1a3a8f] to-blue-600 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0"
+                    style={{ background: "linear-gradient(135deg, #1e3a8a, #1d4ed8)" }}>
                     {r.name[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
-                        <p className="font-bold text-gray-900 text-sm">{r.name}</p>
-                        <p className="text-gray-400 text-xs truncate">{r.company}</p>
+                        <p className="font-bold text-slate-900 text-sm">{r.name}</p>
+                        <p className="text-slate-400 text-xs truncate">{r.company}</p>
                       </div>
                       <div className="flex gap-0.5 shrink-0">
                         {Array.from({ length: r.stars }).map((_, j) => (
-                          <Star key={j} className="w-3.5 h-3.5 text-orange-400 fill-orange-400" />
+                          <Star key={j} className="w-3.5 h-3.5 fill-amber-400" style={{ color: "#fbbf24" }} />
                         ))}
                       </div>
                     </div>
-                    <p className="text-gray-700 text-sm mt-2.5 leading-relaxed">{r.text}</p>
+                    <p className="text-slate-600 text-sm mt-2.5 leading-relaxed">{r.text}</p>
                   </div>
                 </div>
               </div>
@@ -346,12 +359,17 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ═══════════════ BOTTOM CTA ═══════════════ */}
-      <section className="bg-gradient-to-r from-orange-500 to-orange-600 py-10 px-5 text-center">
-        <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">現在就叫車</h2>
-        <p className="text-orange-100 text-sm mb-6">最快30分鐘，司機到府</p>
+      {/* ── BOTTOM CTA ────────────────────────────────────────────── */}
+      <section className="py-14 px-5 text-center" style={{ background: "linear-gradient(135deg, #071829, #0c2444)" }}>
+        <div className="mb-1.5 inline-flex items-center gap-1.5 bg-white/6 border border-white/10 text-slate-300 text-xs font-medium px-3 py-1 rounded-full">
+          <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+          24小時全天候服務中
+        </div>
+        <h2 className="text-2xl sm:text-3xl font-black text-white mt-4 mb-2">現在就叫車</h2>
+        <p className="text-slate-400 text-sm mb-7">最快30分鐘，司機到府服務</p>
         <Link href="/customer/order">
-          <button className="inline-flex items-center gap-2 bg-white text-orange-600 font-black text-lg px-8 py-4 rounded-2xl shadow-xl active:scale-[0.97] transition-transform">
+          <button className="inline-flex items-center gap-2.5 text-white font-bold text-lg px-10 py-4 rounded-xl shadow-2xl active:scale-[0.97] transition-all"
+            style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", boxShadow: "0 16px 40px rgba(217,119,6,0.35)" }}>
             <Truck className="w-5 h-5" />
             立即叫車
             <ArrowRight className="w-4 h-4" />
@@ -359,32 +377,32 @@ export default function Landing() {
         </Link>
       </section>
 
-      {/* ═══════════════ FOOTER ═══════════════ */}
-      <footer className="bg-[#07152c] py-10 px-5">
+      {/* ── FOOTER ────────────────────────────────────────────────── */}
+      <footer className="py-10 px-5" style={{ background: "#050e1a" }}>
         <div className="max-w-lg mx-auto">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 mb-6">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 mb-7">
             <div>
-              <p className="text-white font-black text-lg mb-1">富詠運輸</p>
-              <p className="text-gray-500 text-xs">全台物流 · 快速派車 · 專業到府</p>
-              <p className="text-gray-600 text-xs mt-2">客服：0800-XXX-XXX</p>
+              <p className="text-white font-black text-base mb-1">富詠運輸</p>
+              <p className="text-slate-600 text-xs">全台物流 · 快速派車 · 專業到府</p>
+              <p className="text-slate-700 text-xs mt-1.5">客服：0800-XXX-XXX</p>
             </div>
             <div className="text-center sm:text-right">
-              <p className="text-gray-600 text-xs mb-3">各身份登入</p>
-              <div className="flex flex-wrap gap-3 justify-center sm:justify-end">
-                <Link href="/quick"><span className="text-orange-400 hover:text-orange-300 text-xs font-semibold transition-colors cursor-pointer">⚡ 快速下單</span></Link>
-                <Link href="/chat"><span className="text-green-400 hover:text-green-300 text-xs font-semibold transition-colors cursor-pointer">🤖 AI 客服</span></Link>
-                <Link href="/login"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">客戶登入</span></Link>
-                <Link href="/driver"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">司機登入</span></Link>
-                <Link href="/enterprise/login"><span className="text-gray-400 hover:text-gray-200 text-xs transition-colors cursor-pointer">企業登入</span></Link>
-                <Link href="/admin"><span className="text-gray-600 hover:text-gray-400 text-xs transition-colors cursor-pointer">後台管理</span></Link>
+              <p className="text-slate-600 text-xs mb-3">各身份登入</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center sm:justify-end">
+                <Link href="/quick"><span className="text-amber-500 hover:text-amber-400 text-xs font-semibold transition-colors cursor-pointer">快速下單</span></Link>
+                <Link href="/chat"><span className="text-emerald-500 hover:text-emerald-400 text-xs font-semibold transition-colors cursor-pointer">AI 客服</span></Link>
+                <Link href="/login"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">客戶登入</span></Link>
+                <Link href="/driver"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">司機登入</span></Link>
+                <Link href="/enterprise/login"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">企業登入</span></Link>
+                <Link href="/admin"><span className="text-slate-700 hover:text-slate-500 text-xs transition-colors cursor-pointer">後台管理</span></Link>
               </div>
             </div>
           </div>
-          <div className="border-t border-gray-800 pt-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-gray-700 text-xs">© 富詠運輸股份有限公司 版權所有</p>
-            <div className="flex gap-3">
-              <span className="text-gray-700 text-xs hover:text-gray-500 cursor-pointer">服務條款</span>
-              <span className="text-gray-700 text-xs hover:text-gray-500 cursor-pointer">隱私政策</span>
+          <div className="border-t border-slate-900 pt-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p className="text-slate-700 text-xs">© 富詠運輸股份有限公司 版權所有</p>
+            <div className="flex gap-4">
+              <span className="text-slate-700 text-xs hover:text-slate-500 cursor-pointer transition-colors">服務條款</span>
+              <span className="text-slate-700 text-xs hover:text-slate-500 cursor-pointer transition-colors">隱私政策</span>
             </div>
           </div>
         </div>

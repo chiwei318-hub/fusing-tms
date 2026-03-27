@@ -53,40 +53,43 @@ export default function CustomerHome() {
   return (
     <div className="space-y-5 pb-4">
       {/* Hero Banner */}
-      <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-blue-900 rounded-2xl p-5 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -mr-12 -mt-12" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-500/15 rounded-full -ml-8 -mb-8" />
+      <div className="rounded-2xl p-5 text-white relative overflow-hidden"
+        style={{ background: "linear-gradient(140deg, #071829 0%, #0c2444 55%, #0f2d58 100%)" }}>
+        {/* Subtle grid texture */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+          style={{ backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
+        {/* Glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(59,130,246,0.12) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
+        <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(ellipse, rgba(217,119,6,0.10) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
         <div className="relative z-10">
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
-                <span className="text-orange-300 text-xs font-semibold uppercase tracking-wider">富詠運輸</span>
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#fbbf24" }} />
+                <span className="text-xs font-semibold tracking-wider" style={{ color: "#fcd34d" }}>富詠運輸</span>
               </div>
-              <p className="text-blue-200 text-sm">親愛的客戶</p>
-              <h1 className="text-2xl font-black leading-tight">{user?.name ?? user?.phone ?? ""} 您好</h1>
-              <p className="text-blue-300 text-xs mt-1">歡迎使用富詠運輸物流平台</p>
+              <p className="text-slate-300 text-sm">親愛的客戶</p>
+              <h1 className="text-2xl font-black leading-tight text-white">{user?.name ?? user?.phone ?? ""} 您好</h1>
+              <p className="text-slate-400 text-xs mt-1">歡迎使用富詠運輸物流平台</p>
             </div>
-            <button
-              onClick={logout}
-              className="text-blue-300 text-xs flex items-center gap-1 hover:text-white transition-colors mt-1 shrink-0"
-            >
+            <button onClick={logout} className="text-slate-400 text-xs flex items-center gap-1 hover:text-white transition-colors mt-1 shrink-0">
               <LogOut className="w-3 h-3" /> 登出
             </button>
           </div>
-          {/* Quick stats in banner */}
           <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="bg-white/10 rounded-xl p-2.5 text-center">
+            <div className="bg-white/8 border border-white/10 rounded-xl p-2.5 text-center">
               <p className="font-black text-lg text-white">{orders.length}</p>
-              <p className="text-blue-200 text-[10px]">歷史訂單</p>
+              <p className="text-slate-400 text-[10px]">歷史訂單</p>
             </div>
-            <div className="bg-white/10 rounded-xl p-2.5 text-center">
-              <p className="font-black text-lg text-orange-300">{hasActive ? activeOrders.length : 0}</p>
-              <p className="text-blue-200 text-[10px]">進行中</p>
+            <div className="bg-white/8 border border-white/10 rounded-xl p-2.5 text-center">
+              <p className="font-black text-lg" style={{ color: "#fbbf24" }}>{hasActive ? activeOrders.length : 0}</p>
+              <p className="text-slate-400 text-[10px]">進行中</p>
             </div>
-            <div className="bg-white/10 rounded-xl p-2.5 text-center">
+            <div className="bg-white/8 border border-white/10 rounded-xl p-2.5 text-center">
               <p className="font-black text-lg text-emerald-300">{completedOrders.length}</p>
-              <p className="text-blue-200 text-[10px]">已完成</p>
+              <p className="text-slate-400 text-[10px]">已完成</p>
             </div>
           </div>
         </div>
@@ -143,7 +146,8 @@ export default function CustomerHome() {
       {/* Main CTAs */}
       <div className="space-y-2.5">
         <Link href="/customer/order">
-          <div className="bg-orange-500 hover:bg-orange-600 active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg shadow-orange-500/25">
+          <div className="active:scale-[0.98] rounded-2xl p-5 flex items-center gap-4 cursor-pointer transition-all shadow-lg"
+            style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", boxShadow: "0 8px 24px rgba(217,119,6,0.3)" }}>
             <div className="bg-white/20 p-3 rounded-xl shrink-0">
               <Package className="w-7 h-7 text-white" />
             </div>

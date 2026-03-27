@@ -73,7 +73,7 @@ body,
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE — 富詠運輸 藍白配色 */
+/* ── 富詠運輸 · 高端商務藍金配色 ─────────────────────────────────── */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -81,71 +81,70 @@ body,
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  /* Background: near white */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  /* 背景：冷白 */
+  --background: 214 32% 97%;
+  --foreground: 220 42% 10%;
+  --border: 220 18% 88%;
+  --input: 220 18% 88%;
+  --ring: 221 72% 42%;
 
-  --border: 214 32% 91%;
-
-  /* Cards: pure white */
+  /* 卡片：純白 */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
+  --card-foreground: 220 42% 10%;
+  --card-border: 220 18% 90%;
 
-  /* Sidebar: deep navy blue */
-  --sidebar: 222 47% 15%;
-  --sidebar-foreground: 210 40% 96%;
-  --sidebar-border: 222 47% 20%;
-  --sidebar-primary: 213 94% 68%;
+  /* Sidebar：深邃海軍藍 */
+  --sidebar: 220 46% 10%;
+  --sidebar-foreground: 210 35% 93%;
+  --sidebar-border: 220 46% 16%;
+  --sidebar-primary: 221 72% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 47% 22%;
-  --sidebar-accent-foreground: 210 40% 96%;
-  --sidebar-ring: 213 94% 68%;
+  --sidebar-accent: 220 46% 17%;
+  --sidebar-accent-foreground: 210 35% 93%;
+  --sidebar-ring: 221 72% 54%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
+  --popover-foreground: 220 42% 10%;
+  --popover-border: 220 18% 88%;
 
-  /* Primary: bright blue */
-  --primary: 213 94% 50%;
+  /* Primary：精緻皇家藍 */
+  --primary: 221 72% 42%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary: light blue-gray */
-  --secondary: 210 40% 94%;
-  --secondary-foreground: 222 47% 20%;
+  /* Secondary：淡藍灰 */
+  --secondary: 215 28% 93%;
+  --secondary-foreground: 220 36% 22%;
 
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
+  /* Muted */
+  --muted: 215 28% 95%;
+  --muted-foreground: 220 14% 48%;
 
-  /* Accent: sky blue */
-  --accent: 199 89% 48%;
+  /* Accent：琥珀金（高端感關鍵） */
+  --accent: 36 80% 46%;
   --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 72% 51%;
+  --destructive: 2 68% 50%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 214 32% 88%;
-  --ring: 213 94% 50%;
+  --chart-1: 221 72% 42%;
+  --chart-2: 36 80% 46%;
+  --chart-3: 142 66% 40%;
+  --chart-4: 258 58% 54%;
+  --chart-5: 2 68% 50%;
 
-  --chart-1: 213 94% 50%;
-  --chart-2: 199 89% 48%;
-  --chart-3: 142 71% 45%;
-  --chart-4: 38 92% 50%;
-  --chart-5: 0 72% 51%;
-
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Inter', 'Noto Sans TC', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: .5rem;
+  --radius: 0.625rem;
 
-  --shadow-2xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
-  --shadow-xs: 0px 1px 3px 0px rgba(0, 0, 0, 0.08);
-  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.04);
-  --shadow: 0px 2px 4px 0px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.04);
-  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,0.08), 0px 2px 4px -2px rgba(0,0,0,0.04);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.08), 0px 4px 6px -4px rgba(0,0,0,0.04);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.08), 0px 8px 10px -6px rgba(0,0,0,0.04);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.15);
+  --shadow-2xs: 0px 1px 2px 0px rgba(15,25,50,0.04);
+  --shadow-xs: 0px 1px 3px 0px rgba(15,25,50,0.07);
+  --shadow-sm: 0px 1px 3px 0px rgba(15,25,50,0.07), 0px 1px 2px -1px rgba(15,25,50,0.04);
+  --shadow: 0px 2px 6px 0px rgba(15,25,50,0.08), 0px 1px 2px -1px rgba(15,25,50,0.04);
+  --shadow-md: 0px 4px 8px -1px rgba(15,25,50,0.09), 0px 2px 4px -2px rgba(15,25,50,0.05);
+  --shadow-lg: 0px 10px 20px -3px rgba(15,25,50,0.10), 0px 4px 8px -4px rgba(15,25,50,0.05);
+  --shadow-xl: 0px 20px 30px -5px rgba(15,25,50,0.10), 0px 8px 12px -6px rgba(15,25,50,0.05);
+  --shadow-2xl: 0px 28px 56px -12px rgba(15,25,50,0.18);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -172,54 +171,54 @@ body,
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222 47% 8%;
-  --foreground: 210 40% 98%;
-  --border: 217 33% 17%;
+  --background: 222 46% 6%;
+  --foreground: 210 38% 96%;
+  --border: 220 36% 15%;
+  --input: 220 36% 18%;
+  --ring: 221 72% 56%;
 
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 33% 17%;
+  --card: 222 46% 9%;
+  --card-foreground: 210 38% 96%;
+  --card-border: 220 36% 15%;
 
-  --sidebar: 222 47% 7%;
-  --sidebar-foreground: 210 40% 92%;
-  --sidebar-border: 222 47% 13%;
-  --sidebar-primary: 213 94% 62%;
+  --sidebar: 222 46% 5%;
+  --sidebar-foreground: 210 35% 90%;
+  --sidebar-border: 220 46% 11%;
+  --sidebar-primary: 221 72% 58%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 47% 14%;
-  --sidebar-accent-foreground: 210 40% 92%;
-  --sidebar-ring: 213 94% 62%;
+  --sidebar-accent: 220 46% 12%;
+  --sidebar-accent-foreground: 210 35% 90%;
+  --sidebar-ring: 221 72% 58%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 33% 17%;
+  --popover: 222 46% 9%;
+  --popover-foreground: 210 38% 96%;
+  --popover-border: 220 36% 15%;
 
-  --primary: 213 94% 62%;
+  --primary: 221 72% 58%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 199 89% 55%;
+  --secondary: 220 36% 15%;
+  --secondary-foreground: 210 38% 96%;
+  --muted: 220 36% 15%;
+  --muted-foreground: 215 18% 62%;
+  --accent: 36 80% 50%;
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 62% 55%;
+  --destructive: 2 62% 52%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 217 33% 22%;
-  --ring: 213 94% 62%;
-  --chart-1: 213 94% 62%;
-  --chart-2: 199 89% 55%;
-  --chart-3: 142 71% 55%;
-  --chart-4: 38 92% 55%;
-  --chart-5: 0 62% 55%;
+  --chart-1: 221 72% 58%;
+  --chart-2: 36 80% 50%;
+  --chart-3: 142 66% 52%;
+  --chart-4: 258 58% 62%;
+  --chart-5: 2 62% 52%;
 
-  --shadow-2xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
-  --shadow-xs: 0px 1px 3px 0px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.3), 0px 1px 2px -1px rgba(0,0,0,0.2);
-  --shadow: 0px 2px 4px 0px rgba(0,0,0,0.3), 0px 1px 2px -1px rgba(0,0,0,0.2);
-  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,0.3), 0px 2px 4px -2px rgba(0,0,0,0.2);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,0.3), 0px 4px 6px -4px rgba(0,0,0,0.2);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,0.3), 0px 8px 10px -6px rgba(0,0,0,0.2);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,0.5);
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.35);
+  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.35);
+  --shadow-sm: 0px 1px 3px 0px rgba(0,0,0,0.35), 0px 1px 2px -1px rgba(0,0,0,0.25);
+  --shadow: 0px 2px 6px 0px rgba(0,0,0,0.35), 0px 1px 2px -1px rgba(0,0,0,0.25);
+  --shadow-md: 0px 4px 8px -1px rgba(0,0,0,0.35), 0px 2px 4px -2px rgba(0,0,0,0.25);
+  --shadow-lg: 0px 10px 20px -3px rgba(0,0,0,0.35), 0px 4px 8px -4px rgba(0,0,0,0.25);
+  --shadow-xl: 0px 20px 30px -5px rgba(0,0,0,0.35), 0px 8px 12px -6px rgba(0,0,0,0.25);
+  --shadow-2xl: 0px 28px 56px -12px rgba(0,0,0,0.55);
 }
 
 @layer base {
