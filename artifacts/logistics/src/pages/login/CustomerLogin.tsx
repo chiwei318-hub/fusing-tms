@@ -147,7 +147,7 @@ export default function CustomerLogin() {
                 </>
               )}
               <p className="text-center text-xs text-gray-400">
-                尚未有帳號？<a href="tel:0800000000" className="text-orange-500 underline">聯絡客服申請</a>
+                尚未有帳號？<Link href="/register/customer" className="text-orange-500 underline font-medium">立即免費申請</Link>
               </p>
             </div>
           ) : (

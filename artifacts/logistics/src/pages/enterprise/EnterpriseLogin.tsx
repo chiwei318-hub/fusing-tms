@@ -151,11 +151,11 @@ export default function EnterpriseLogin() {
           </button>
         </form>
 
-        <div className="mt-5 pt-4 border-t border-gray-100 text-center">
+        <div className="mt-5 pt-4 border-t border-gray-100 text-center space-y-1">
           <p className="text-xs text-gray-400">尚未開通企業帳號？</p>
-          <a href="tel:0800000000" className="text-xs font-semibold text-orange-500 hover:text-orange-600">
-            聯繫專屬客服開通
-          </a>
+          <Link href="/register/enterprise" className="text-xs font-semibold text-purple-600 hover:text-purple-700 underline">
+            立即申請企業帳號
+          </Link>
         </div>
       </div>
 

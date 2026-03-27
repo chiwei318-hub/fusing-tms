@@ -34,6 +34,9 @@ import DriverJoinPage from "@/pages/DriverJoinPage";
 import FleetJoinPage from "@/pages/FleetJoinPage";
 import QuickOrder from "@/pages/QuickOrder";
 import QuickTrack from "@/pages/QuickTrack";
+import CustomerRegister from "@/pages/register/CustomerRegister";
+import EnterpriseRegister from "@/pages/register/EnterpriseRegister";
+import DriverRegister from "@/pages/register/DriverRegister";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -132,6 +135,15 @@ function AppRouter() {
   }
   if (location === "/login/callback") {
     return <LineCallback />;
+  }
+  if (location === "/register/customer") {
+    return <CustomerRegister />;
+  }
+  if (location === "/register/enterprise") {
+    return <EnterpriseRegister />;
+  }
+  if (location === "/register/driver") {
+    return <DriverRegister />;
   }
   if (location === "/chat") {
     return <AIChat />;

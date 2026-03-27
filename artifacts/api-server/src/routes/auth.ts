@@ -297,6 +297,122 @@ router.get("/auth/line/callback", async (req, res) => {
   }
 });
 
+// ── POST /auth/register/customer ─────────────────────────────────────────────
+// 一般客戶自助申請帳號（姓名 + 手機 + 密碼）
+router.post("/auth/register/customer", async (req, res) => {
+  try {
+    const { name, phone: rawPhone, password } = req.body as { name?: string; phone?: string; password?: string };
+    const name_ = (name ?? "").trim();
+    const phone = normalizePhone((rawPhone ?? "").trim());
+    const pwd   = (password ?? "").trim();
+
+    if (!name_ || name_.length < 2)        return res.status(400).json({ error: "請輸入真實姓名（至少 2 字）" });
+    if (!isValidTaiwanPhone(phone))         return res.status(400).json({ error: "請輸入有效的台灣手機號碼（09開頭，共10位）" });
+    if (pwd.length < 6)                     return res.status(400).json({ error: "密碼至少 6 位" });
+
+    const existing = await db.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
+    if (existing.length) return res.status(409).json({ error: "此手機號碼已有帳號，請直接登入" });
+
+    const hashed = hashPassword(pwd);
+    const [customer] = await db.insert(customersTable).values({ name: name_, phone, password: hashed }).returning();
+    const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
+    return res.status(201).json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
+  } catch (err) {
+    req.log.error({ err }, "register customer failed");
+    res.status(500).json({ error: "申請失敗，請稍後再試" });
+  }
+});
+
+// ── POST /auth/register/enterprise ───────────────────────────────────────────
+// 企業客戶自助申請（公司名稱 + 聯絡人 + 手機 + 統編 + 密碼）
+router.post("/auth/register/enterprise", async (req, res) => {
+  try {
+    const { companyName, contactPerson, phone: rawPhone, taxId, address, password } = req.body as {
+      companyName?: string; contactPerson?: string; phone?: string; taxId?: string; address?: string; password?: string;
+    };
+    const name_ = (companyName ?? "").trim();
+    const contact = (contactPerson ?? "").trim();
+    const phone   = normalizePhone((rawPhone ?? "").trim());
+    const pwd     = (password ?? "").trim();
+
+    if (!name_ || name_.length < 2)   return res.status(400).json({ error: "請輸入公司名稱" });
+    if (!contact)                      return res.status(400).json({ error: "請輸入聯絡人姓名" });
+    if (!isValidTaiwanPhone(phone))    return res.status(400).json({ error: "請輸入有效的台灣手機號碼" });
+    if (pwd.length < 6)               return res.status(400).json({ error: "密碼至少 6 位" });
+
+    const existing = await db.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
+    if (existing.length) return res.status(409).json({ error: "此手機號碼已有帳號，請直接登入" });
+
+    const hashed = hashPassword(pwd);
+    const [customer] = await db.insert(customersTable).values({
+      name: name_, phone, password: hashed,
+      contactPerson: contact,
+      taxId: (taxId ?? "").trim() || null,
+      address: (address ?? "").trim() || null,
+    }).returning();
+    const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
+    return res.status(201).json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
+  } catch (err) {
+    req.log.error({ err }, "register enterprise failed");
+    res.status(500).json({ error: "申請失敗，請稍後再試" });
+  }
+});
+
+// ── POST /auth/register/driver ────────────────────────────────────────────────
+// 司機自助申請（姓名 + 手機 + 車種 + 車牌 + 密碼）→ 後台審核後啟用
+router.post("/auth/register/driver", async (req, res) => {
+  try {
+    const { name, phone: rawPhone, vehicleType, licensePlate, password } = req.body as {
+      name?: string; phone?: string; vehicleType?: string; licensePlate?: string; password?: string;
+    };
+    const name_  = (name ?? "").trim();
+    const phone  = normalizePhone((rawPhone ?? "").trim());
+    const vType  = (vehicleType ?? "").trim();
+    const plate  = (licensePlate ?? "").trim().toUpperCase();
+    const pwd    = (password ?? "").trim();
+
+    if (!name_ || name_.length < 2)  return res.status(400).json({ error: "請輸入真實姓名" });
+    if (!isValidTaiwanPhone(phone))  return res.status(400).json({ error: "請輸入有效的台灣手機號碼" });
+    if (!vType)                      return res.status(400).json({ error: "請選擇車種" });
+    if (!plate || plate.length < 4)  return res.status(400).json({ error: "請輸入有效車牌" });
+    if (pwd.length < 6)              return res.status(400).json({ error: "密碼至少 6 位" });
+
+    const existing = await db.select({ id: driversTable.id }).from(driversTable).where(eq(driversTable.phone, phone)).limit(1);
+    if (existing.length) return res.status(409).json({ error: "此手機號碼已有司機帳號" });
+
+    const hashed   = hashPassword(pwd);
+    const username = `d${phone.slice(-6)}`;
+    await db.insert(driversTable).values({
+      name: name_, phone, vehicleType: vType, licensePlate: plate,
+      username, password: hashed, status: "offline",
+    });
+    return res.status(201).json({ ok: true, message: "申請成功！資料審核通過後即可登入，我們將以電話通知您。" });
+  } catch (err) {
+    req.log.error({ err }, "register driver failed");
+    res.status(500).json({ error: "申請失敗，請稍後再試" });
+  }
+});
+
+// ── POST /auth/login/customer/password ────────────────────────────────────────
+// 一般/企業客戶以手機 + 密碼登入（替代 OTP）
+router.post("/auth/login/customer/password", async (req, res) => {
+  try {
+    const phone = normalizePhone(String(req.body?.phone ?? "").trim());
+    const pwd   = String(req.body?.password ?? "").trim();
+    if (!phone || !pwd) return res.status(400).json({ error: "請提供手機號碼與密碼" });
+
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
+    if (!customer || !customer.password) return res.status(401).json({ error: "帳號不存在或尚未設定密碼" });
+    if (!checkPassword(pwd, customer.password)) return res.status(401).json({ error: "密碼錯誤" });
+
+    const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
+    return res.json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
+  } catch (err) {
+    req.log.error({ err }, "customer password login failed");
+    res.status(500).json({ error: "登入失敗" });
+  }
+});
+
 // ── POST /auth/line/link ──────────────────────────────────────────────────────
 router.post("/auth/line/link", async (req, res) => {
   try {

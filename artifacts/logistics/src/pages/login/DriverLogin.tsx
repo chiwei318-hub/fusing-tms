@@ -98,7 +98,7 @@ export default function DriverLogin() {
               {loading ? "登入中..." : "登入"}
             </Button>
             <p className="text-center text-xs text-gray-400">
-              帳號由公司管理員設定，如有問題請聯絡調度員
+              還沒有帳號？<Link href="/register/driver" className="text-blue-600 underline font-medium">申請加入成為司機</Link>
             </p>
           </form>
         </div>
