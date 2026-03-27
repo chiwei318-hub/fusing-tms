@@ -661,6 +661,9 @@ export default function Admin() {
   const [enterprisePwDialog, setEnterprisePwDialog] = useState<{ id: number; companyName: string; accountCode: string } | null>(null);
   const [enterprisePwInput, setEnterprisePwInput] = useState("");
   const [enterprisePwSaving, setEnterprisePwSaving] = useState(false);
+  const [enterpriseCreateOpen, setEnterpriseCreateOpen] = useState(false);
+  const [enterpriseCreateSaving, setEnterpriseCreateSaving] = useState(false);
+  const [enterpriseCreateForm, setEnterpriseCreateForm] = useState({ accountCode: "", companyName: "", contactPerson: "", phone: "", password: "", billingType: "monthly", discountPercent: "0" });
 
   const fetchEnterpriseAccounts = useCallback(async () => {
     try {
@@ -691,6 +694,39 @@ export default function Admin() {
       }
     } finally {
       setEnterprisePwSaving(false);
+    }
+  };
+
+  const createEnterpriseAccount = async () => {
+    const { accountCode, companyName, contactPerson, phone, password, billingType, discountPercent } = enterpriseCreateForm;
+    if (!accountCode.trim() || !companyName.trim() || !password.trim()) return;
+    setEnterpriseCreateSaving(true);
+    try {
+      const res = await fetch(apiUrl("/enterprise"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountCode: accountCode.trim().toUpperCase(),
+          companyName: companyName.trim(),
+          contactPerson: contactPerson.trim(),
+          phone: phone.trim(),
+          password,
+          billingType,
+          discountPercent: Number(discountPercent) || 0,
+          status: "active",
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "企業帳號已建立", description: `${companyName.trim()}（${accountCode.trim().toUpperCase()}）` });
+        setEnterpriseCreateOpen(false);
+        setEnterpriseCreateForm({ accountCode: "", companyName: "", contactPerson: "", phone: "", password: "", billingType: "monthly", discountPercent: "0" });
+        fetchEnterpriseAccounts();
+      } else {
+        const data = await res.json();
+        toast({ title: "建立失敗", description: data.error ?? "未知錯誤", variant: "destructive" });
+      }
+    } finally {
+      setEnterpriseCreateSaving(false);
     }
   };
 
@@ -2984,12 +3020,20 @@ export default function Admin() {
           })()}
 
           {/* ── 合約企業帳號管理 ── */}
-          {enterpriseAccounts.length > 0 && (
-            <div className="border border-blue-200 rounded-xl bg-blue-50 p-3 space-y-2">
+          <div className="border border-blue-200 rounded-xl bg-blue-50 p-3 space-y-2">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
                 <Building2 className="w-4 h-4" />
                 合約企業帳號（{enterpriseAccounts.length} 個）
               </div>
+              <Button size="sm" className="h-7 px-3 text-xs gap-1 bg-blue-700 hover:bg-blue-800 text-white"
+                onClick={() => { setEnterpriseCreateOpen(true); setEnterpriseCreateForm({ accountCode: "", companyName: "", contactPerson: "", phone: "", password: "", billingType: "monthly", discountPercent: "0" }); }}>
+                <UserPlus className="w-3 h-3" /> 新增企業帳號
+              </Button>
+            </div>
+            {enterpriseAccounts.length === 0 ? (
+              <p className="text-xs text-blue-500 text-center py-2">尚無企業帳號，請點擊「新增企業帳號」建立。</p>
+            ) : (
               <div className="space-y-1.5">
                 {enterpriseAccounts.map(acc => (
                   <div key={acc.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 shadow-sm border border-blue-100">
@@ -3007,8 +3051,72 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <Dialog open={enterpriseCreateOpen} onOpenChange={setEnterpriseCreateOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>新增合約企業帳號</DialogTitle>
+                <DialogDescription>建立企業客戶的登入帳號，完成後企業可使用公司帳號登入。</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">公司帳號代碼 *</label>
+                    <Input placeholder="例：CORP001" value={enterpriseCreateForm.accountCode}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, accountCode: e.target.value.toUpperCase() }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">公司名稱 *</label>
+                    <Input placeholder="XX股份有限公司" value={enterpriseCreateForm.companyName}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, companyName: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">聯絡人</label>
+                    <Input placeholder="王大明" value={enterpriseCreateForm.contactPerson}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, contactPerson: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">電話</label>
+                    <Input placeholder="0912345678" value={enterpriseCreateForm.phone}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, phone: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">付款方式</label>
+                    <select className="w-full h-9 px-3 text-sm border rounded-md bg-white"
+                      value={enterpriseCreateForm.billingType}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, billingType: e.target.value }))}>
+                      <option value="monthly">月結</option>
+                      <option value="prepaid">預付</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">折扣 (%)</label>
+                    <Input type="number" min="0" max="100" placeholder="0" value={enterpriseCreateForm.discountPercent}
+                      onChange={e => setEnterpriseCreateForm(f => ({ ...f, discountPercent: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">登入密碼 *</label>
+                  <Input type="password" placeholder="請設定初始密碼" value={enterpriseCreateForm.password}
+                    onChange={e => setEnterpriseCreateForm(f => ({ ...f, password: e.target.value }))}
+                    autoComplete="new-password" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEnterpriseCreateOpen(false)}>取消</Button>
+                <Button onClick={createEnterpriseAccount}
+                  disabled={!enterpriseCreateForm.accountCode.trim() || !enterpriseCreateForm.companyName.trim() || !enterpriseCreateForm.password.trim() || enterpriseCreateSaving}>
+                  {enterpriseCreateSaving ? "建立中..." : "建立帳號"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={!!enterprisePwDialog} onOpenChange={open => { if (!open) setEnterprisePwDialog(null); }}>
             <DialogContent className="sm:max-w-sm">
