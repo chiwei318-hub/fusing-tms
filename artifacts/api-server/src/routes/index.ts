@@ -29,6 +29,7 @@ import { paymentMethodsRouter } from "./paymentMethods";
 import { performanceRouter } from "./performance";
 import { quickOrderRouter } from "./quickOrder";
 import { dispatchAlertsRouter } from "./dispatchAlerts";
+import { kpiDashboardRouter } from "./kpiDashboard";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -65,5 +66,6 @@ router.use(paymentMethodsRouter);
 router.use(performanceRouter);
 router.use("/quick-order", quickOrderRouter);
 router.use(dispatchAlertsRouter);
+router.use(kpiDashboardRouter);
 
 export default router;

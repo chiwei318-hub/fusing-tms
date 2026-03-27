@@ -39,6 +39,7 @@ import BiddingTab from "./admin/BiddingTab";
 import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
+import KPIDashboardTab from "./admin/KPIDashboardTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1340,6 +1341,10 @@ export default function Admin() {
             <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <BarChart2 className="w-3.5 h-3.5" />
               <span className="text-[10px] sm:text-xs">報表</span>
+            </TabsTrigger>
+            <TabsTrigger value="kpi" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span className="text-[10px] sm:text-xs">KPI</span>
             </TabsTrigger>
             <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <Layers className="w-3.5 h-3.5" />
@@ -2968,6 +2973,11 @@ export default function Admin() {
         {/* ===== 報表 TAB ===== */}
         <TabsContent value="report" className="outline-none">
           <ReportCenter />
+        </TabsContent>
+
+        {/* ===== KPI 儀表板 TAB ===== */}
+        <TabsContent value="kpi" className="outline-none">
+          <KPIDashboardTab />
         </TabsContent>
 
         {/* ===== 車型庫 TAB ===== */}
