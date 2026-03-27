@@ -657,6 +657,43 @@ export default function Admin() {
   const [customerSearch, setCustomerSearch] = useState("");
   const orderSearchRef = useRef<HTMLInputElement>(null);
 
+  const [enterpriseAccounts, setEnterpriseAccounts] = useState<any[]>([]);
+  const [enterprisePwDialog, setEnterprisePwDialog] = useState<{ id: number; companyName: string; accountCode: string } | null>(null);
+  const [enterprisePwInput, setEnterprisePwInput] = useState("");
+  const [enterprisePwSaving, setEnterprisePwSaving] = useState(false);
+
+  const fetchEnterpriseAccounts = useCallback(async () => {
+    try {
+      const data = await fetch(apiUrl("/enterprise/accounts")).then(r => r.json());
+      setEnterpriseAccounts(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "customers") fetchEnterpriseAccounts();
+  }, [activeTab, fetchEnterpriseAccounts]);
+
+  const saveEnterprisePassword = async () => {
+    if (!enterprisePwDialog || !enterprisePwInput.trim()) return;
+    setEnterprisePwSaving(true);
+    try {
+      const res = await fetch(apiUrl(`/enterprise/${enterprisePwDialog.id}/settings`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: enterprisePwInput.trim() }),
+      });
+      if (res.ok) {
+        toast({ title: "密碼已更新", description: `${enterprisePwDialog.companyName} 的登入密碼已成功重設` });
+        setEnterprisePwDialog(null);
+        setEnterprisePwInput("");
+      } else {
+        toast({ title: "更新失敗", variant: "destructive" });
+      }
+    } finally {
+      setEnterprisePwSaving(false);
+    }
+  };
+
   // ─── Order custom fields ──────────────────────────────────────────────────
   const [orderCustomFields, setOrderCustomFields] = useState<any[]>([]);
   const [editOrderCustomValues, setEditOrderCustomValues] = useState<Record<string, string>>({});
@@ -2945,6 +2982,62 @@ export default function Admin() {
               </div>
             );
           })()}
+
+          {/* ── 合約企業帳號管理 ── */}
+          {enterpriseAccounts.length > 0 && (
+            <div className="border border-blue-200 rounded-xl bg-blue-50 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-blue-800 font-semibold text-sm">
+                <Building2 className="w-4 h-4" />
+                合約企業帳號（{enterpriseAccounts.length} 個）
+              </div>
+              <div className="space-y-1.5">
+                {enterpriseAccounts.map(acc => (
+                  <div key={acc.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 shadow-sm border border-blue-100">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-sm text-gray-800 truncate">{acc.companyName}</span>
+                      <span className="ml-2 text-xs font-mono text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">{acc.accountCode}</span>
+                      <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded font-medium ${acc.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                        {acc.status === "active" ? "啟用" : "停用"}
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 px-3 text-xs gap-1 shrink-0"
+                      onClick={() => { setEnterprisePwDialog({ id: acc.id, companyName: acc.companyName, accountCode: acc.accountCode }); setEnterprisePwInput(""); }}>
+                      <KeyRound className="w-3 h-3" /> 重設密碼
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Dialog open={!!enterprisePwDialog} onOpenChange={open => { if (!open) setEnterprisePwDialog(null); }}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>重設企業登入密碼</DialogTitle>
+                <DialogDescription>
+                  {enterprisePwDialog?.companyName}（{enterprisePwDialog?.accountCode}）
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <label className="text-sm font-medium text-gray-700 block">新密碼</label>
+                <Input
+                  type="password"
+                  placeholder="請輸入新密碼"
+                  value={enterprisePwInput}
+                  onChange={e => setEnterprisePwInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveEnterprisePassword(); }}
+                  autoComplete="new-password"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEnterprisePwDialog(null)}>取消</Button>
+                <Button onClick={saveEnterprisePassword} disabled={!enterprisePwInput.trim() || enterprisePwSaving}>
+                  {enterprisePwSaving ? "儲存中..." : "確認更新"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />

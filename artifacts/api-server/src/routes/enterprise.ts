@@ -82,6 +82,26 @@ router.post("/enterprise/sub-login", async (req, res) => {
   }
 });
 
+/* ─── Admin: List all enterprise accounts ──────── */
+router.get("/enterprise/accounts", async (req, res) => {
+  try {
+    const accounts = await db.select({
+      id: enterpriseAccountsTable.id,
+      accountCode: enterpriseAccountsTable.accountCode,
+      companyName: enterpriseAccountsTable.companyName,
+      contactPerson: enterpriseAccountsTable.contactPerson,
+      phone: enterpriseAccountsTable.phone,
+      status: enterpriseAccountsTable.status,
+      billingType: enterpriseAccountsTable.billingType,
+      discountPercent: enterpriseAccountsTable.discountPercent,
+      createdAt: enterpriseAccountsTable.createdAt,
+    }).from(enterpriseAccountsTable).orderBy(enterpriseAccountsTable.companyName);
+    res.json(accounts);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 /* ─── Get account info ─────────────────────────── */
 router.get("/enterprise/:id", async (req, res) => {
   try {
@@ -534,9 +554,17 @@ router.post("/enterprise", async (req, res) => {
 router.patch("/enterprise/:id/settings", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { creditLimit, discountPercent, billingType, priorityDispatch, status, exclusiveNote } = req.body;
+    const { creditLimit, discountPercent, billingType, priorityDispatch, status, exclusiveNote, password } = req.body;
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (creditLimit !== undefined) updates.creditLimit = creditLimit;
+    if (discountPercent !== undefined) updates.discountPercent = discountPercent;
+    if (billingType !== undefined) updates.billingType = billingType;
+    if (priorityDispatch !== undefined) updates.priorityDispatch = priorityDispatch;
+    if (status !== undefined) updates.status = status;
+    if (exclusiveNote !== undefined) updates.exclusiveNote = exclusiveNote;
+    if (password) updates.passwordHash = hashPassword(password);
     const [acc] = await db.update(enterpriseAccountsTable)
-      .set({ creditLimit, discountPercent, billingType, priorityDispatch, status, exclusiveNote, updatedAt: new Date() })
+      .set(updates as any)
       .where(eq(enterpriseAccountsTable.id, id)).returning();
     const { passwordHash: _, ...safe } = acc;
     res.json(safe);
