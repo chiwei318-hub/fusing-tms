@@ -70,7 +70,7 @@ export default function AdminLogin() {
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="admin"
+                  placeholder="請輸入帳號"
                   className="h-12 pl-9"
                   autoComplete="username"
                   required
@@ -97,9 +97,6 @@ export default function AdminLogin() {
               <LogIn className="w-4 h-4" />
               {loading ? "登入中..." : "登入後台"}
             </Button>
-            <div className="bg-blue-50 rounded-xl px-3 py-2.5 text-xs text-blue-600 text-center">
-              預設帳號：<span className="font-mono font-bold">admin</span> ／ 密碼：<span className="font-mono font-bold">admin123</span>
-            </div>
           </form>
         </div>
       </div>
