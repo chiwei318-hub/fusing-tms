@@ -63,7 +63,10 @@ router.post("/auth/send-otp", async (req, res) => {
 
     const customers = await db.select().from(customersTable).where(eq(customersTable.phone, phone));
     if (!customers.length) {
-      return res.status(404).json({ error: "此手機號碼尚未建立客戶帳號，請聯絡客服申請" });
+      return res.status(404).json({ error: "此手機號碼尚未建立客戶帳號，請先申請帳號" });
+    }
+    if (!customers[0].isActive) {
+      return res.status(403).json({ error: "帳號審核中，尚未開通。請等待管理員啟用，我們將電話通知您。" });
     }
 
     const now = new Date();
@@ -124,6 +127,7 @@ router.post("/auth/login/customer", async (req, res) => {
 
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.phone, phone));
     if (!customer) return res.status(404).json({ error: "找不到此客戶帳號" });
+    if (!customer.isActive) return res.status(403).json({ error: "帳號審核中，尚未開通。請等待管理員啟用，我們將電話通知您。" });
 
     const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
     return res.json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
@@ -314,9 +318,8 @@ router.post("/auth/register/customer", async (req, res) => {
     if (existing.length) return res.status(409).json({ error: "此手機號碼已有帳號，請直接登入" });
 
     const hashed = hashPassword(pwd);
-    const [customer] = await db.insert(customersTable).values({ name: name_, phone, password: hashed }).returning();
-    const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
-    return res.status(201).json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
+    await db.insert(customersTable).values({ name: name_, phone, password: hashed, isActive: false }).returning();
+    return res.status(201).json({ ok: true, message: "申請成功！帳號審核通過後即可登入，我們將以電話通知您。" });
   } catch (err) {
     req.log.error({ err }, "register customer failed");
     res.status(500).json({ error: "申請失敗，請稍後再試" });
@@ -344,14 +347,14 @@ router.post("/auth/register/enterprise", async (req, res) => {
     if (existing.length) return res.status(409).json({ error: "此手機號碼已有帳號，請直接登入" });
 
     const hashed = hashPassword(pwd);
-    const [customer] = await db.insert(customersTable).values({
+    await db.insert(customersTable).values({
       name: name_, phone, password: hashed,
       contactPerson: contact,
       taxId: (taxId ?? "").trim() || null,
       address: (address ?? "").trim() || null,
-    }).returning();
-    const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
-    return res.status(201).json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });
+      isActive: false,
+    });
+    return res.status(201).json({ ok: true, message: "企業帳號申請成功！審核通過後即可登入，我們將以電話通知您。" });
   } catch (err) {
     req.log.error({ err }, "register enterprise failed");
     res.status(500).json({ error: "申請失敗，請稍後再試" });
@@ -404,6 +407,7 @@ router.post("/auth/login/customer/password", async (req, res) => {
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
     if (!customer || !customer.password) return res.status(401).json({ error: "帳號不存在或尚未設定密碼" });
     if (!checkPassword(pwd, customer.password)) return res.status(401).json({ error: "密碼錯誤" });
+    if (!customer.isActive) return res.status(403).json({ error: "帳號審核中，尚未開通。請等待管理員啟用，我們將電話通知您。" });
 
     const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
     return res.json({ token, user: { id: customer.id, role: "customer", name: customer.name, phone: customer.phone } });

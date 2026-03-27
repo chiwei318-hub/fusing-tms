@@ -2172,6 +2172,34 @@ export default function Admin() {
 
         {/* ===== 司機 TAB ===== */}
         <TabsContent value="drivers" className="outline-none space-y-3">
+          {/* ── 待審核司機申請 ── */}
+          {(() => {
+            const pending = (drivers ?? []).filter(d => d.status === "offline" && d.username);
+            if (!pending.length) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                  <Bell className="w-4 h-4" />
+                  待審核司機申請（{pending.length} 筆）
+                </div>
+                <div className="space-y-1.5">
+                  {pending.map(d => (
+                    <div key={d.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 shadow-sm border border-amber-100">
+                      <div>
+                        <span className="font-semibold text-sm text-gray-800">{d.name}</span>
+                        <span className="ml-2 text-xs text-gray-500">{d.phone}</span>
+                        <span className="ml-2 text-xs text-gray-400">{d.vehicleType}｜{d.licensePlate}</span>
+                      </div>
+                      <Button size="sm" className="h-7 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1"
+                        onClick={() => handleDriverStatus(d.id, "available")}>
+                        <CheckCircle className="w-3.5 h-3.5" /> 啟動
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -2888,6 +2916,35 @@ export default function Admin() {
 
         {/* ===== 客戶 TAB ===== */}
         <TabsContent value="customers" className="outline-none space-y-3">
+          {/* ── 待審核客戶/企業申請 ── */}
+          {(() => {
+            const pending = (customers ?? []).filter(c => (c as any).isActive === false || (c as any).is_active === false);
+            if (!pending.length) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                  <Bell className="w-4 h-4" />
+                  待審核帳號申請（{pending.length} 筆）
+                </div>
+                <div className="space-y-1.5">
+                  {pending.map(c => (
+                    <div key={c.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 shadow-sm border border-amber-100">
+                      <div>
+                        <span className="font-semibold text-sm text-gray-800">{c.name}</span>
+                        {(c as any).taxId && <span className="ml-1.5 text-[11px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">企業</span>}
+                        <span className="ml-2 text-xs text-gray-500">{c.phone}</span>
+                        {c.contactPerson && <span className="ml-2 text-xs text-gray-400">聯絡人：{c.contactPerson}</span>}
+                      </div>
+                      <Button size="sm" className="h-7 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1"
+                        onClick={() => updateCustomer({ id: c.id, data: { isActive: true } as any })}>
+                        <CheckCircle className="w-3.5 h-3.5" /> 啟動
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />

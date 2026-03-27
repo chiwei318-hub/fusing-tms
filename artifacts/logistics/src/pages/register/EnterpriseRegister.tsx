@@ -1,16 +1,13 @@
 import { useState } from "react";
-import { useLocation, Link } from "wouter";
-import { Building2, User, Phone, Lock, Eye, EyeOff, ChevronLeft, FileText, MapPin, CheckCircle } from "lucide-react";
+import { Link } from "wouter";
+import { Building2, User, Phone, Lock, Eye, EyeOff, ChevronLeft, FileText, MapPin, CheckCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
 export default function EnterpriseRegister() {
-  const { login } = useAuth();
-  const [, navigate] = useLocation();
   const { toast } = useToast();
 
   const [form, setForm] = useState({
@@ -38,10 +35,8 @@ export default function EnterpriseRegister() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "申請失敗"); return; }
-      login(data.token, data.user);
       setDone(true);
-      toast({ title: "企業帳號建立成功！" });
-      setTimeout(() => navigate("/customer"), 1800);
+      toast({ title: "企業帳號申請已送出！", description: "等待管理員審核後即可登入。" });
     } catch { setError("網路錯誤，請稍後再試"); }
     finally { setLoading(false); }
   };
@@ -68,9 +63,13 @@ export default function EnterpriseRegister() {
         <div className="bg-white rounded-3xl shadow-2xl p-6">
           {done ? (
             <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <CheckCircle className="w-14 h-14 text-green-500" />
-              <p className="text-lg font-bold text-gray-800">企業帳號建立成功！</p>
-              <p className="text-sm text-gray-500">正在前往企業下單頁面…</p>
+              <CheckCircle className="w-14 h-14 text-emerald-500" />
+              <p className="text-lg font-bold text-gray-800">企業帳號申請已送出！</p>
+              <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-4 py-2 rounded-xl text-sm font-medium">
+                <Clock className="w-4 h-4" /> 等待管理員審核啟用
+              </div>
+              <p className="text-xs text-gray-400">審核通過後我們將以電話通知您，<br />即可登入企業帳號。</p>
+              <Link href="/enterprise/login"><Button variant="outline" size="sm" className="mt-1">返回登入頁</Button></Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3">

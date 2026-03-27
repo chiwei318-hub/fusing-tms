@@ -109,6 +109,7 @@ router.patch("/customers/:id", async (req, res) => {
     if (b.paymentType !== undefined) addField("payment_type", b.paymentType || null);
     if (b.monthlyStatementDay !== undefined) addField("monthly_statement_day", parseInt(b.monthlyStatementDay) || 5);
     if (b.companyType !== undefined) addField("company_type", b.companyType || null);
+    if (b.isActive !== undefined) addField("is_active", Boolean(b.isActive));
 
     if (setClauses.length === 0) {
       const { rows } = await pool.query("SELECT * FROM customers WHERE id = $1", [id]);
