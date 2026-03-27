@@ -40,6 +40,8 @@ import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
+import ApprovalCenterTab from "./admin/ApprovalCenterTab";
+import SettlementCenterTab from "./admin/SettlementCenterTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1429,6 +1431,14 @@ export default function Admin() {
             <TabsTrigger value="carbon" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <span className="text-sm">🌱</span>
               <span className="text-[10px] sm:text-xs">碳排報表</span>
+            </TabsTrigger>
+            <TabsTrigger value="approval" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <Shield className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-[10px] sm:text-xs">審批</span>
+            </TabsTrigger>
+            <TabsTrigger value="settlement" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-[10px] sm:text-xs">結算</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3093,6 +3103,16 @@ export default function Admin() {
         {/* ===== 碳排報表 TAB ===== */}
         <TabsContent value="carbon" className="outline-none">
           <CarbonReportTab />
+        </TabsContent>
+
+        {/* ===== 審批中心 TAB ===== */}
+        <TabsContent value="approval" className="outline-none">
+          <ApprovalCenterTab />
+        </TabsContent>
+
+        {/* ===== 結算中心 TAB ===== */}
+        <TabsContent value="settlement" className="outline-none">
+          <SettlementCenterTab />
         </TabsContent>
       </Tabs>
 

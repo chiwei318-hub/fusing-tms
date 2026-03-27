@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { isLineConfigured } from "../lib/line";
 
 export const dispatchAlertsRouter = Router();
 
@@ -105,6 +106,31 @@ export async function runAlertScan() {
       )
     );
     console.log(`[AlertScan] Inserted ${inserts.length} new alert(s) at ${now.toISOString()}`);
+
+    // Push LINE notification to admin if configured
+    const adminLineId = process.env.ADMIN_LINE_ID;
+    if (adminLineId && isLineConfigured()) {
+      try {
+        const { default: fetch } = await import("node-fetch");
+        const token = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+        for (const ins of inserts) {
+          await fetch("https://api.line.me/v2/bot/message/push", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              to: adminLineId,
+              messages: [{ type: "text", text: `⚠️ 派車預警\n${ins.message}` }],
+            }),
+          });
+        }
+        console.log(`[AlertScan] Sent ${inserts.length} LINE notification(s) to admin`);
+      } catch (lineErr) {
+        console.warn("[AlertScan] LINE push failed:", lineErr);
+      }
+    }
   }
 }
 
