@@ -42,6 +42,7 @@ import { dailyOpsRouter } from "./dailyOps";
 import { orderImportRouter } from "./orderImport";
 import { autoRoutingRouter } from "./autoRouting";
 import { zonePermissionsRouter } from "../middleware/zoneScope";
+import { presenceRouter } from "./presence";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -91,5 +92,6 @@ router.use(zonesRouter);
 router.use(dailyOpsRouter);
 router.use(autoRoutingRouter);
 router.use(zonePermissionsRouter);
+router.use(presenceRouter);
 
 export default router;

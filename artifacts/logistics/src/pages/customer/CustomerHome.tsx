@@ -19,7 +19,15 @@ const STATUS_META: Record<string, { label: string; color: string; icon: typeof T
 };
 
 export default function CustomerHome() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
+
+  useEffect(() => {
+    if (!token) return;
+    const ping = () => fetch(import.meta.env.BASE_URL + "api/presence/ping", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    ping();
+    const iv = setInterval(ping, 30_000);
+    return () => clearInterval(iv);
+  }, [token]);
   const [orders, setOrders] = useState<any[]>([]);
   const [unread, setUnread] = useState(0);
   const [loadingOrders, setLoadingOrders] = useState(true);

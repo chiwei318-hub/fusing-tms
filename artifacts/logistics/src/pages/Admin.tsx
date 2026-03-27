@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImportDialog } from "@/components/ImportDialog";
+import { OnlineUsersPanel } from "@/components/OnlineUsersPanel";
+import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -609,6 +611,7 @@ function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<Customer
 }
 
 export default function Admin() {
+  const { token } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: orders, isLoading: ordersLoading } = useOrdersData();
@@ -1162,19 +1165,22 @@ export default function Admin() {
           <p className="text-muted-foreground mt-1 text-xs sm:text-sm hidden sm:block">訂單調派、司機管理、客戶管理、營運報表</p>
         </div>
 
-        {/* 警示鐘 */}
-        <button
-          onClick={() => { setAlertsOpen(true); }}
-          className={`relative mt-1 shrink-0 w-10 h-10 rounded-full flex items-center justify-center border shadow-sm transition-all hover:scale-105 active:scale-95 ${unreadAlertCount > 0 ? "bg-red-50 border-red-300 animate-pulse" : "bg-white border-border"}`}
-          title={unreadAlertCount > 0 ? `${unreadAlertCount} 則未處理警示` : "派車警示"}
-        >
-          <Bell className={`w-5 h-5 ${unreadAlertCount > 0 ? "text-red-600" : "text-muted-foreground"}`} />
-          {unreadAlertCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none shadow">
-              {unreadAlertCount > 99 ? "99+" : unreadAlertCount}
-            </span>
-          )}
-        </button>
+        {/* 線上人員 + 警示鐘 */}
+        <div className="flex items-center gap-2 mt-1 shrink-0">
+          <OnlineUsersPanel token={token} />
+          <button
+            onClick={() => { setAlertsOpen(true); }}
+            className={`relative w-10 h-10 rounded-full flex items-center justify-center border shadow-sm transition-all hover:scale-105 active:scale-95 ${unreadAlertCount > 0 ? "bg-red-50 border-red-300 animate-pulse" : "bg-white border-border"}`}
+            title={unreadAlertCount > 0 ? `${unreadAlertCount} 則未處理警示` : "派車警示"}
+          >
+            <Bell className={`w-5 h-5 ${unreadAlertCount > 0 ? "text-red-600" : "text-muted-foreground"}`} />
+            {unreadAlertCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none shadow">
+                {unreadAlertCount > 99 ? "99+" : unreadAlertCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ── 警示面板 overlay ── */}

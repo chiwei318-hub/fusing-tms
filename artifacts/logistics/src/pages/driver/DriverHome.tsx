@@ -41,7 +41,15 @@ function StarRow({ count, label, color }: { count: number; label: string; color:
 }
 
 export default function DriverHome() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
+
+  useEffect(() => {
+    if (!token) return;
+    const ping = () => fetch(import.meta.env.BASE_URL + "api/presence/ping", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    ping();
+    const iv = setInterval(ping, 30_000);
+    return () => clearInterval(iv);
+  }, [token]);
   const { data: drivers, isLoading } = useDriversData();
   const driver = drivers?.find(d => d.id === user?.id);
 
