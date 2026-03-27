@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Filter, ChevronRight, InboxIcon, Truck } from "lucide-react";
+import { Filter, ChevronRight, InboxIcon, Truck, Search } from "lucide-react";
 import { useOrdersData } from "@/hooks/use-orders";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -23,9 +24,23 @@ const feeStatusColor: Record<string, string> = {
 
 export default function OrderList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const { data: orders, isLoading } = useOrdersData(
     statusFilter !== "all" ? { status: statusFilter } : undefined
   );
+
+  const filtered = useMemo(() => {
+    if (!orders) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter(o =>
+      o.customerName?.toLowerCase().includes(q) ||
+      o.customerPhone?.toLowerCase().includes(q) ||
+      o.pickupAddress?.toLowerCase().includes(q) ||
+      o.deliveryAddress?.toLowerCase().includes(q) ||
+      String(o.id).includes(q)
+    );
+  }, [orders, search]);
 
   return (
     <div className="space-y-5 pb-12">
@@ -37,13 +52,25 @@ export default function OrderList() {
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">訂單列表</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            共 {isLoading ? "…" : (orders?.length ?? 0)} 筆訂單
+            共 {isLoading ? "…" : filtered.length} 筆訂單
+            {search && orders && filtered.length !== orders.length && (
+              <span className="ml-1 text-primary font-medium">（已篩選）</span>
+            )}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              className="pl-8 h-9 w-[180px] bg-card text-sm"
+              placeholder="搜尋客戶、地址、單號…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px] bg-card">
+            <SelectTrigger className="w-[140px] h-9 bg-card">
               <Filter className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
               <SelectValue placeholder="篩選狀態" />
             </SelectTrigger>
@@ -71,6 +98,7 @@ export default function OrderList() {
                 <th className="px-4 py-3 font-semibold hidden sm:table-cell">司機</th>
                 <th className="px-4 py-3 font-semibold hidden lg:table-cell">運費</th>
                 <th className="px-4 py-3 font-semibold hidden lg:table-cell">收款</th>
+                <th className="px-4 py-3 font-semibold hidden xl:table-cell">建單日期</th>
                 <th className="px-4 py-3 font-semibold text-right">詳情</th>
               </tr>
             </thead>
@@ -78,23 +106,23 @@ export default function OrderList() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 6 }).map((__, j) => (
+                    {Array.from({ length: 7 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
                         <Skeleton className="h-4 w-24" />
                       </td>
                     ))}
                   </tr>
                 ))
-              ) : orders?.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
                     <InboxIcon className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
-                    <p className="font-medium">目前沒有訂單</p>
-                    <p className="text-xs mt-1">尚未有符合此條件的訂單記錄</p>
+                    <p className="font-medium">{search ? "找不到符合的訂單" : "目前沒有訂單"}</p>
+                    <p className="text-xs mt-1">{search ? "請嘗試不同的搜尋關鍵字" : "尚未有符合此條件的訂單記錄"}</p>
                   </td>
                 </tr>
               ) : (
-                orders?.map((order) => (
+                filtered.map((order) => (
                   <tr key={order.id} className="hover:bg-muted/30 transition-colors group">
                     <td className="px-4 py-3 font-mono font-medium text-foreground">
                       #{order.id}
@@ -138,6 +166,13 @@ export default function OrderList() {
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className={`text-xs font-medium ${feeStatusColor[order.feeStatus ?? "unpaid"] ?? "text-muted-foreground"}`}>
                         {feeStatusLabel[order.feeStatus ?? "unpaid"] ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {format(new Date(order.createdAt), "yyyy/MM/dd")}
+                        <br />
+                        <span className="text-muted-foreground/60">{format(new Date(order.createdAt), "HH:mm")}</span>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">

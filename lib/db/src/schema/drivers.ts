@@ -34,6 +34,9 @@ export const driversTable = pgTable("drivers", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertDriverSchema = createInsertSchema(driversTable).omit({ id: true, createdAt: true });
+export const insertDriverSchema = createInsertSchema(driversTable, {
+  status: z.enum(driverStatusEnum).default("available"),
+  driverType: z.enum(driverTypeEnum).optional().nullable(),
+}).omit({ id: true, createdAt: true });
 export type InsertDriver = z.infer<typeof insertDriverSchema>;
 export type Driver = typeof driversTable.$inferSelect;

@@ -79,6 +79,9 @@ export const ordersTable = pgTable("orders", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOrderSchema = createInsertSchema(ordersTable, {
+  status: z.enum(orderStatusEnum).default("pending"),
+  feeStatus: z.enum(feeStatusEnum).default("unpaid"),
+}).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof ordersTable.$inferSelect;

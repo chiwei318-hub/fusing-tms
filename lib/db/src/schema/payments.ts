@@ -22,6 +22,8 @@ export const paymentsTable = pgTable("payments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertPaymentSchema = createInsertSchema(paymentsTable).omit({ id: true, createdAt: true });
+export const insertPaymentSchema = createInsertSchema(paymentsTable, {
+  method: z.enum(paymentMethodEnum).default("cash"),
+}).omit({ id: true, createdAt: true });
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Payment = typeof paymentsTable.$inferSelect;

@@ -136,7 +136,7 @@ export default function OrderForm() {
                     <FormItem>
                       <FormLabel>客戶名稱 <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <HistoryInput fieldKey="order-customerName" placeholder="例如：王小明 或 某某科技公司" {...field} />
+                        <HistoryInput fieldKey="order-customerName" placeholder="例如：王小明 或 某某科技公司" autoComplete="name" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -145,7 +145,7 @@ export default function OrderForm() {
                     <FormItem>
                       <FormLabel>聯絡電話 <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
-                        <HistoryInput fieldKey="order-customerPhone" placeholder="0912-345-678" {...field} />
+                        <HistoryInput fieldKey="order-customerPhone" placeholder="0912-345-678" inputMode="tel" autoComplete="tel" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -170,7 +170,7 @@ export default function OrderForm() {
                     <FormItem>
                       <FormLabel>預估重量 (公斤)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="選填" {...field} value={field.value ?? ""} />
+                        <Input type="number" inputMode="decimal" placeholder="選填" min="0" step="0.1" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -236,7 +236,7 @@ export default function OrderForm() {
                 <FormItem>
                   <FormLabel>備註說明</FormLabel>
                   <FormControl>
-                    <Input placeholder="其他需要司機注意的事項（選填）" {...field} value={field.value ?? ""} />
+                    <Textarea placeholder="其他需要司機注意的事項（選填）" className="resize-none h-20" {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

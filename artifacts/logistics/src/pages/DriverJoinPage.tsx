@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   CheckCircle2, Upload, FileText, Truck, User, Shield,
@@ -411,20 +412,20 @@ export default function DriverJoinPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label className="text-sm">姓名 <Req /></Label>
-            <Input className="mt-1" placeholder="王大明" value={form.name} onChange={e => set("name", e.target.value)} />
+            <Input className="mt-1" placeholder="王大明" autoComplete="name" value={form.name} onChange={e => set("name", e.target.value)} />
           </div>
           <div>
             <Label className="text-sm">手機號碼 <Req /></Label>
-            <Input className="mt-1" placeholder="09xx-xxx-xxx" value={form.phone} onChange={e => set("phone", e.target.value)} />
+            <Input className="mt-1" placeholder="09xx-xxx-xxx" inputMode="tel" autoComplete="tel" value={form.phone} onChange={e => set("phone", e.target.value)} />
           </div>
           <div>
             <Label className="text-sm">身分證字號 <Req /></Label>
-            <Input className="mt-1 uppercase font-mono" placeholder="A123456789" maxLength={10}
+            <Input className="mt-1 uppercase font-mono" placeholder="A123456789" maxLength={10} autoComplete="off"
               value={form.idNumber} onChange={e => set("idNumber", e.target.value.toUpperCase())} />
           </div>
           <div>
             <Label className="text-sm">電子郵件（選填）</Label>
-            <Input className="mt-1" type="email" placeholder="example@mail.com"
+            <Input className="mt-1" type="email" placeholder="example@mail.com" inputMode="email" autoComplete="email"
               value={form.email} onChange={e => set("email", e.target.value)} />
           </div>
         </div>
@@ -445,11 +446,14 @@ export default function DriverJoinPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-1">
             <Label className="text-sm">駕照類型 <Req /></Label>
-            <select className="mt-1 w-full h-10 px-3 border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-              value={form.licenseType} onChange={e => set("licenseType", e.target.value)}>
-              <option value="">請選擇</option>
-              {LICENSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Select value={form.licenseType} onValueChange={v => set("licenseType", v)}>
+              <SelectTrigger className="mt-1 h-10">
+                <SelectValue placeholder="請選擇" />
+              </SelectTrigger>
+              <SelectContent>
+                {LICENSE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="sm:col-span-1">
             <Label className="text-sm">駕照號碼 <Req /></Label>
@@ -502,11 +506,14 @@ export default function DriverJoinPage() {
           </div>
           <div className="col-span-2 sm:col-span-2">
             <Label className="text-sm">噸數</Label>
-            <select className="mt-1 w-full h-10 px-3 border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-              value={form.vehicleTonnage} onChange={e => set("vehicleTonnage", e.target.value)}>
-              <option value="">請選擇</option>
-              {TONNAGE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Select value={form.vehicleTonnage} onValueChange={v => set("vehicleTonnage", v)}>
+              <SelectTrigger className="mt-1 h-10">
+                <SelectValue placeholder="請選擇" />
+              </SelectTrigger>
+              <SelectContent>
+                {TONNAGE_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -634,11 +641,14 @@ export default function DriverJoinPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="col-span-2">
             <Label className="text-sm">銀行名稱 <Req /></Label>
-            <select className="mt-1 w-full h-10 px-3 border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-              value={form.bankName} onChange={e => set("bankName", e.target.value)}>
-              <option value="">請選擇</option>
-              {BANK_LIST.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
+            <Select value={form.bankName} onValueChange={v => set("bankName", v)}>
+              <SelectTrigger className="mt-1 h-10">
+                <SelectValue placeholder="請選擇" />
+              </SelectTrigger>
+              <SelectContent>
+                {BANK_LIST.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="col-span-2">
             <Label className="text-sm">分行名稱</Label>
