@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImportDialog } from "@/components/ImportDialog";
 import { OnlineUsersPanel } from "@/components/OnlineUsersPanel";
+import { QuickOrderPanel } from "@/components/QuickOrderPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -1487,6 +1488,9 @@ export default function Admin() {
 
         {/* ===== 訂單 TAB ===== */}
         <TabsContent value="orders" className="outline-none space-y-3">
+          {/* ⚡ 快速開單（電話/LINE 接單） */}
+          <QuickOrderPanel onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/orders"] })} />
+
           {/* Search + Filter bar */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
