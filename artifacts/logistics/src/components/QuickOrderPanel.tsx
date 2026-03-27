@@ -1,10 +1,14 @@
 /**
  * QuickOrderPanel — 電話/LINE 接單快速開單面板
- * Collapsible form at the top of the orders tab.
- * Phone lookup auto-fills existing customer data.
+ * - Phone lookup auto-fills existing customer data
+ * - Pickup, dropoff, cargo fields show history suggestions (localStorage)
+ * - History stored per field, max 15 entries, most recent first
  */
-import { useState, useRef, useEffect } from "react";
-import { Phone, MapPin, Package, Truck, ChevronDown, ChevronUp, Zap, UserCheck, X, Check } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Phone, MapPin, Package, Truck, ChevronDown, ChevronUp,
+  Zap, UserCheck, X, Check, Clock, Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useCustomersData } from "@/hooks/use-customers";
@@ -13,6 +17,128 @@ import { getApiUrl } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 
 const VEHICLE_TYPES = ["箱型車", "冷藏車", "尾門車", "平板車", "貨車", "機車"];
+const MAX_HISTORY = 15;
+
+const HISTORY_KEYS = {
+  pickup:   "qop_history_pickup",
+  dropoff:  "qop_history_dropoff",
+  cargo:    "qop_history_cargo",
+  customer: "qop_history_customer",
+} as const;
+
+type HistoryKey = keyof typeof HISTORY_KEYS;
+
+function loadHistory(key: HistoryKey): string[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEYS[key]) ?? "[]"); } catch { return []; }
+}
+
+function saveHistory(key: HistoryKey, value: string) {
+  if (!value.trim()) return;
+  const existing = loadHistory(key).filter(v => v !== value.trim());
+  const updated = [value.trim(), ...existing].slice(0, MAX_HISTORY);
+  localStorage.setItem(HISTORY_KEYS[key], JSON.stringify(updated));
+}
+
+function removeHistory(key: HistoryKey, value: string) {
+  const updated = loadHistory(key).filter(v => v !== value);
+  localStorage.setItem(HISTORY_KEYS[key], JSON.stringify(updated));
+}
+
+interface AutoInputProps {
+  value: string;
+  onChange: (v: string) => void;
+  historyKey: HistoryKey;
+  placeholder: string;
+  required?: boolean;
+  icon: React.ReactNode;
+  inputRef?: React.Ref<HTMLInputElement>;
+  suffix?: React.ReactNode;
+}
+
+function AutoInput({ value, onChange, historyKey, placeholder, required, icon, inputRef, suffix }: AutoInputProps) {
+  const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const reload = useCallback(() => setHistory(loadHistory(historyKey)), [historyKey]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const filtered = history.filter(h =>
+    value.trim() === "" || h.toLowerCase().includes(value.toLowerCase())
+  );
+
+  const handleSelect = (v: string) => { onChange(v); setOpen(false); };
+
+  const handleDelete = (e: React.MouseEvent, v: string) => {
+    e.stopPropagation();
+    removeHistory(historyKey, v);
+    reload();
+  };
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">{icon}</span>
+      <input
+        ref={inputRef}
+        required={required}
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => { reload(); setOpen(true); }}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="w-full h-9 pl-8 pr-8 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
+      />
+      {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2">{suffix}</span>}
+      {!suffix && value && (
+        <button
+          type="button"
+          onClick={() => { onChange(""); setOpen(false); }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          tabIndex={-1}
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-amber-50/60">
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span className="text-[10px] text-amber-600 font-medium">歷史記錄</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.map((h, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between px-3 py-2 hover:bg-amber-50 cursor-pointer group text-sm"
+                onMouseDown={() => handleSelect(h)}
+              >
+                <span className="flex-1 truncate">{h}</span>
+                <button
+                  type="button"
+                  onMouseDown={e => handleDelete(e, h)}
+                  className="ml-2 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity"
+                  tabIndex={-1}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface QuickOrderPanelProps {
   onCreated?: (orderId: number) => void;
@@ -22,6 +148,7 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   const [phone, setPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -38,21 +165,16 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const queryClient = useQueryClient();
   const phoneRef = useRef<HTMLInputElement>(null);
 
-  // Auto-lookup customer when phone changes (debounced)
   useEffect(() => {
     setLookupDone(false);
     if (phone.length < 6) return;
     const t = setTimeout(() => {
       const match = customers.find(c => c.phone?.replace(/\D/g, "") === phone.replace(/\D/g, ""));
-      if (match) {
-        setCustomerName(match.name ?? "");
-        setLookupDone(true);
-      }
+      if (match) { setCustomerName(match.name ?? ""); setLookupDone(true); }
     }, 400);
     return () => clearTimeout(t);
   }, [phone, customers]);
 
-  // Focus phone input when opened
   useEffect(() => {
     if (open) setTimeout(() => phoneRef.current?.focus(), 100);
   }, [open]);
@@ -62,13 +184,14 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const reset = () => {
     setPhone(""); setCustomerName(""); setPickup(""); setDropoff("");
     setCargo(""); setVehicleType(""); setDriverId(""); setNotes("");
-    setLookupDone(false); setSuccess(null);
+    setLookupDone(false); setSuccess(null); setError("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim() || !pickup.trim() || !dropoff.trim() || !cargo.trim()) return;
     setSubmitting(true);
+    setError("");
     try {
       const body: Record<string, unknown> = {
         customerName: customerName.trim(),
@@ -88,7 +211,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
       if (!res.ok) throw new Error("建立失敗");
       const order = await res.json();
 
-      // Optionally assign driver immediately
       if (driverId && order.id) {
         await fetch(getApiUrl(`/api/orders/${order.id}`), {
           method: "PATCH",
@@ -97,13 +219,17 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
         });
       }
 
+      saveHistory("pickup", pickup.trim());
+      saveHistory("dropoff", dropoff.trim());
+      saveHistory("cargo", cargo.trim());
+      if (customerName.trim()) saveHistory("customer", customerName.trim());
+
       await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       setSuccess(order.id);
       onCreated?.(order.id);
-      // Auto-collapse + reset after 2.5s
       setTimeout(() => { reset(); setOpen(false); }, 2500);
     } catch {
-      // keep form open on error
+      setError("建立失敗，請再試一次");
     } finally {
       setSubmitting(false);
     }
@@ -111,7 +237,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
 
   return (
     <div className="mb-3">
-      {/* Toggle button */}
       <button
         onClick={() => { setOpen(o => !o); if (!open) reset(); }}
         className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all shadow-sm
@@ -124,7 +249,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
         {open ? <ChevronUp className="w-4 h-4 opacity-60" /> : <ChevronDown className="w-4 h-4 opacity-60" />}
       </button>
 
-      {/* Panel body */}
       {open && (
         <Card className="mt-2 p-4 border-amber-200 shadow-md bg-amber-50/30">
           {success ? (
@@ -138,8 +262,8 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3">
-              <p className="text-xs text-amber-700 font-medium mb-1">
-                電話或 LINE 接單時，在此快速建立訂單，填完後立即出現在下方列表。
+              <p className="text-xs text-amber-700 font-medium">
+                地址與貨物欄位會記錄歷史，下次輸入時自動建議。
               </p>
 
               {/* Row 1: Phone + Name */}
@@ -159,51 +283,47 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                     </span>
                   )}
                 </div>
-                <input
-                  required
+
+                <AutoInput
                   value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
+                  onChange={setCustomerName}
+                  historyKey="customer"
                   placeholder="客戶姓名 *"
-                  className="h-9 px-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
+                  required
+                  icon={<span className="w-3.5 h-3.5 text-amber-500 text-xs font-bold">客</span>}
                 />
               </div>
 
               {/* Row 2: Pickup + Dropoff */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="relative">
-                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400 pointer-events-none" />
-                  <input
-                    required
-                    value={pickup}
-                    onChange={e => setPickup(e.target.value)}
-                    placeholder="取貨地址 *"
-                    className="w-full h-9 pl-8 pr-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
-                  />
-                </div>
-                <div className="relative">
-                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-emerald-500 pointer-events-none" />
-                  <input
-                    required
-                    value={dropoff}
-                    onChange={e => setDropoff(e.target.value)}
-                    placeholder="送達地址 *"
-                    className="w-full h-9 pl-8 pr-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
-                  />
-                </div>
+                <AutoInput
+                  value={pickup}
+                  onChange={setPickup}
+                  historyKey="pickup"
+                  placeholder="取貨地址 *"
+                  required
+                  icon={<MapPin className="w-3.5 h-3.5 text-blue-400" />}
+                />
+                <AutoInput
+                  value={dropoff}
+                  onChange={setDropoff}
+                  historyKey="dropoff"
+                  placeholder="送達地址 *"
+                  required
+                  icon={<MapPin className="w-3.5 h-3.5 text-emerald-500" />}
+                />
               </div>
 
               {/* Row 3: Cargo + Vehicle */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="relative">
-                  <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-violet-400 pointer-events-none" />
-                  <input
-                    required
-                    value={cargo}
-                    onChange={e => setCargo(e.target.value)}
-                    placeholder="貨物描述 *"
-                    className="w-full h-9 pl-8 pr-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
-                  />
-                </div>
+                <AutoInput
+                  value={cargo}
+                  onChange={setCargo}
+                  historyKey="cargo"
+                  placeholder="貨物描述 *"
+                  required
+                  icon={<Package className="w-3.5 h-3.5 text-violet-400" />}
+                />
                 <div className="relative">
                   <Truck className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-orange-400 pointer-events-none" />
                   <select
@@ -239,7 +359,8 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                 />
               </div>
 
-              {/* Actions */}
+              {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+
               <div className="flex gap-2 pt-1">
                 <Button
                   type="submit"
