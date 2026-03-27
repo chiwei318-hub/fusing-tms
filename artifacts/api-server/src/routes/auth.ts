@@ -61,10 +61,18 @@ router.post("/auth/send-otp", async (req, res) => {
       return res.status(400).json({ error: "請輸入有效的台灣手機號碼（09開頭，共10位）" });
     }
 
-    const customers = await db.select().from(customersTable).where(eq(customersTable.phone, phone));
+    let customers = await db.select().from(customersTable).where(eq(customersTable.phone, phone));
+
+    // Auto-create customer if phone not found (walk-in / first-time login)
     if (!customers.length) {
-      return res.status(404).json({ error: "此手機號碼尚未建立客戶帳號，請先申請帳號" });
+      const inserted = await db.insert(customersTable).values({
+        name: phone,
+        phone,
+        isActive: true,
+      }).returning();
+      customers = inserted;
     }
+
     if (!customers[0].isActive) {
       return res.status(403).json({ error: "帳號審核中，尚未開通。請等待管理員啟用，我們將電話通知您。" });
     }
