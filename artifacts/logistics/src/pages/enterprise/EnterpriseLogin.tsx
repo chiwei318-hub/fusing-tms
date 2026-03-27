@@ -107,8 +107,9 @@ export default function EnterpriseLogin({ onLogin }: Props) {
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               {tab === "main" ? (
                 <input required type="text" placeholder="請輸入公司帳號" value={accountCode}
-                  onChange={e => setAccountCode(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d2d6e]/25 focus:border-[#0d2d6e]" />
+                  onChange={e => setAccountCode(e.target.value.toUpperCase().trim())}
+                  autoCapitalize="characters" autoCorrect="off" autoComplete="off"
+                  className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d2d6e]/25 focus:border-[#0d2d6e] font-mono" />
               ) : (
                 <input required type="text" placeholder="例：FY001-WANG" value={subCode}
                   onChange={e => setSubCode(e.target.value.toUpperCase())}

@@ -30,10 +30,12 @@ router.post("/enterprise/login", async (req, res) => {
     const { accountCode, password } = req.body as { accountCode: string; password: string };
     if (!accountCode || !password) return res.status(400).json({ error: "帳號和密碼必填" });
 
+    const accountCodeClean = String(accountCode).trim().toUpperCase();
+
     const [account] = await db
       .select()
       .from(enterpriseAccountsTable)
-      .where(eq(enterpriseAccountsTable.accountCode, accountCode));
+      .where(sql`UPPER(TRIM(${enterpriseAccountsTable.accountCode})) = ${accountCodeClean}`);
 
     if (!account) return res.status(401).json({ error: "帳號不存在" });
     if (account.status !== "active") return res.status(403).json({ error: "帳號已停用" });
