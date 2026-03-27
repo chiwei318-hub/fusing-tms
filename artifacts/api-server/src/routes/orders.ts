@@ -136,6 +136,22 @@ router.post("/orders", async (req, res) => {
     res.status(201).json({ ...order, driver: null });
 
     setImmediate(async () => {
+      // 0. 自動建立客戶名單 — 若電話不存在則新增，已存在則跳過
+      try {
+        const phone = (order.customerPhone ?? "").trim();
+        const name  = (order.customerName  ?? "").trim();
+        const isValidPhone = phone && phone !== "未提供" && phone.length >= 4;
+        if (isValidPhone && name) {
+          const existing = await db.select({ id: customersTable.id })
+            .from(customersTable)
+            .where(eq(customersTable.phone, phone))
+            .limit(1);
+          if (existing.length === 0) {
+            await db.insert(customersTable).values({ name, phone });
+          }
+        }
+      } catch { /* silent */ }
+
       // 1. LINE 通知公司
       try {
         await sendNewOrderAlertToCompany({
