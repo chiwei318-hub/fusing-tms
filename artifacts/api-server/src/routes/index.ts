@@ -35,6 +35,8 @@ import { costEventsRouter } from "./costEvents";
 import { auditLogRouter } from "./auditLog";
 import { costAnalysisRouter } from "./costAnalysis";
 import { settlementExportRouter } from "./settlementExport";
+import { orderStatusFlowRouter } from "./orderStatusFlow";
+import { dispatchSuggestRouter } from "./dispatchSuggest";
 import { auditMiddleware } from "../middleware/audit";
 
 const router: IRouter = Router();
@@ -77,5 +79,7 @@ router.use(costEventsRouter);
 router.use(auditLogRouter);
 router.use(costAnalysisRouter);
 router.use(settlementExportRouter);
+router.use(orderStatusFlowRouter);
+router.use(dispatchSuggestRouter);
 
 export default router;

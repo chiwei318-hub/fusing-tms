@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import {
   MapPin, Package, User, Clock, Truck, Navigation, CheckCircle2,
   XCircle, Camera, AlertCircle, ChevronLeft, Phone, DollarSign,
-  ImagePlus, Calendar,
+  ImagePlus, Calendar, AlertTriangle, WrenchIcon, PlayCircle,
 } from "lucide-react";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrderDetail, useUpdateOrderMutation } from "@/hooks/use-orders";
@@ -20,6 +20,24 @@ import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { DriverActionType } from "@workspace/api-client-react";
+import { OrderStatusTimeline } from "@/components/OrderStatusTimeline";
+
+const EXCEPTION_CODES: Record<string, string> = {
+  E01: "客戶不在現場",
+  E02: "貨物未備妥",
+  E03: "地址錯誤/無法進入",
+  E04: "貨物超重/超尺寸",
+  E05: "道路塞車/管制",
+  E06: "車輛故障",
+  E07: "氣候因素",
+  E08: "司機健康因素",
+  E09: "貨物損毀（司機責任）",
+  E10: "交通事故",
+  E11: "等候費（超過15分鐘）",
+  E99: "其他（備註說明）",
+};
+
+const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") + "/api";
 
 interface ExtraStop {
   address: string;
@@ -117,6 +135,9 @@ export default function DriverTaskDetail() {
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [signingStopIdx, setSigningStopIdx] = useState<number | null>(null);
+  const [showExceptionDialog, setShowExceptionDialog] = useState(false);
+  const [selectedExCode, setSelectedExCode] = useState("E01");
+  const [exceptionNote, setExceptionNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { mutateAsync: updateOrder } = useUpdateOrderMutation();
 
@@ -169,9 +190,48 @@ export default function DriverTaskDetail() {
     }
   };
 
+  const handleStatusEvent = async (
+    event: "arrive" | "start_loading" | "exception" | "resolve_exception",
+    extra?: { exception_code?: string; note?: string }
+  ) => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/orders/${id}/status-event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, actor: "driver", ...extra }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "操作失敗");
+
+      queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(id) });
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ["order-timeline", id] });
+
+      const labels: Record<string, string> = {
+        arrive: "到點打卡成功！",
+        start_loading: "開始裝貨，請確認貨物",
+        exception: "異常已回報，等待調度",
+        resolve_exception: "已繼續配送",
+      };
+      toast({ title: labels[event] ?? "操作成功" });
+
+      if (event === "exception") {
+        setShowExceptionDialog(false);
+        setExceptionNote("");
+      }
+    } catch (err) {
+      toast({ title: "操作失敗", description: String(err), variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openNavigation = (addr?: string) => {
     if (!order) return;
-    const dest = addr ?? (order.status === "in_transit" ? order.deliveryAddress : order.pickupAddress);
+    const inTransitOrLater = ["in_transit", "delivered"].includes(order.status);
+    const dest = addr ?? (inTransitOrLater ? order.deliveryAddress : order.pickupAddress);
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`, "_blank");
   };
 
@@ -217,9 +277,21 @@ export default function DriverTaskDetail() {
     );
   }
 
-  const isAssigned = order.status === "assigned";
-  const isInTransit = order.status === "in_transit";
-  const isDone = order.status === "delivered" || order.status === "cancelled";
+  // Status helpers
+  const isAssigned   = order.status === "assigned";
+  const isArrived    = order.status === "arrived";
+  const isCargoLoading = order.status === "loading";
+  const isInTransit  = order.status === "in_transit";
+  const isException  = order.status === "exception";
+  const isDone       = order.status === "delivered" || order.status === "cancelled";
+  const hasAccepted  = !!(order as any).driverAcceptedAt;
+
+  // isWaiting = driver hasn't tapped "accept" yet
+  const isWaitingAcceptance = isAssigned && !hasAccepted;
+  // isEnRoute = driver has accepted, now travelling to pickup
+  const isEnRoute = isAssigned && hasAccepted;
+
+  const showPickupAddr = isEnRoute || isArrived || isCargoLoading || isAssigned;
   const currentDest = isInTransit ? order.deliveryAddress : order.pickupAddress;
   const currentContactName = isInTransit ? order.deliveryContactName : order.pickupContactName;
   const currentContactPerson = isInTransit ? order.deliveryContactPerson : order.pickupContactPerson;
@@ -245,8 +317,13 @@ export default function DriverTaskDetail() {
         </div>
       </div>
 
+      {/* Status Timeline */}
+      <div className="rounded-2xl border bg-white p-3">
+        <OrderStatusTimeline orderId={id} />
+      </div>
+
       {/* Active destination card */}
-      {!isDone && (
+      {!isDone && !isException && (
         <div className={`rounded-2xl p-5 ${isInTransit ? "bg-orange-500" : "bg-blue-700"}`}>
           <div className="flex items-center gap-2 text-sm font-bold text-white/80 mb-2">
             <MapPin className="w-4 h-4 shrink-0" />
@@ -281,8 +358,8 @@ export default function DriverTaskDetail() {
         </div>
       )}
 
-      {/* Action buttons — assigned */}
-      {isAssigned && (
+      {/* ── 等待接單 ── */}
+      {isWaitingAcceptance && (
         <div className="grid grid-cols-2 gap-3">
           <button
             className="h-20 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-emerald-500/30 disabled:opacity-60 transition-all"
@@ -303,7 +380,80 @@ export default function DriverTaskDetail() {
         </div>
       )}
 
-      {/* Action buttons — in transit */}
+      {/* ── 前往取貨（已接單）── */}
+      {isEnRoute && (
+        <div className="space-y-2">
+          <button
+            className="w-full h-20 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-blue-600/20 disabled:opacity-60 transition-all"
+            onClick={() => handleStatusEvent("arrive")}
+            disabled={loading}
+          >
+            <MapPin className="w-7 h-7" />
+            <span>到點打卡（司機已到取貨點）</span>
+          </button>
+          <button
+            className="w-full py-3 border-2 border-orange-300 text-orange-600 rounded-xl font-bold hover:bg-orange-50 disabled:opacity-60 text-sm"
+            onClick={() => setShowExceptionDialog(true)}
+            disabled={loading}
+          >
+            <AlertTriangle className="w-4 h-4 inline mr-1.5" />回報異常
+          </button>
+        </div>
+      )}
+
+      {/* ── 已到點，準備裝貨 ── */}
+      {isArrived && (
+        <div className="space-y-2">
+          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4 text-center">
+            <MapPin className="w-8 h-8 text-blue-600 mx-auto mb-1" />
+            <p className="font-bold text-blue-800">已到取貨地點</p>
+            <p className="text-xs text-blue-600 mt-0.5">確認貨物後請點擊「開始裝貨」</p>
+          </div>
+          <button
+            className="w-full h-20 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-amber-500/20 disabled:opacity-60 transition-all"
+            onClick={() => handleStatusEvent("start_loading")}
+            disabled={loading}
+          >
+            <Package className="w-7 h-7" />
+            <span>開始裝貨</span>
+          </button>
+          <button
+            className="w-full py-3 border-2 border-orange-300 text-orange-600 rounded-xl font-bold hover:bg-orange-50 disabled:opacity-60 text-sm"
+            onClick={() => setShowExceptionDialog(true)}
+            disabled={loading}
+          >
+            <AlertTriangle className="w-4 h-4 inline mr-1.5" />回報異常
+          </button>
+        </div>
+      )}
+
+      {/* ── 裝貨中，出發配送 ── */}
+      {isCargoLoading && (
+        <div className="space-y-2">
+          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
+            <Package className="w-8 h-8 text-amber-600 mx-auto mb-1" />
+            <p className="font-bold text-amber-800">裝貨中</p>
+            <p className="text-xs text-amber-600 mt-0.5">裝貨完畢後點擊「出發配送」</p>
+          </div>
+          <button
+            className="w-full h-20 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-60 transition-all"
+            onClick={() => handleAction("checkin")}
+            disabled={loading}
+          >
+            <Truck className="w-7 h-7" />
+            <span>出發配送</span>
+          </button>
+          <button
+            className="w-full py-3 border-2 border-orange-300 text-orange-600 rounded-xl font-bold hover:bg-orange-50 disabled:opacity-60 text-sm"
+            onClick={() => setShowExceptionDialog(true)}
+            disabled={loading}
+          >
+            <AlertTriangle className="w-4 h-4 inline mr-1.5" />回報異常
+          </button>
+        </div>
+      )}
+
+      {/* ── 配送中 ── */}
       {isInTransit && (
         <div className="space-y-3">
           {/* Photo capture */}
@@ -342,24 +492,57 @@ export default function DriverTaskDetail() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
             <button
-              className="h-20 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-blue-600/20 disabled:opacity-60 transition-all"
-              onClick={() => handleAction("checkin")}
-              disabled={loading}
-            >
-              <MapPin className="w-7 h-7" />
-              <span>到點打卡</span>
-            </button>
-            <button
-              className="h-20 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-emerald-500/30 disabled:opacity-60 transition-all"
+              className="w-full h-20 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white rounded-2xl flex flex-col items-center justify-center gap-1.5 font-bold shadow-lg shadow-emerald-500/30 disabled:opacity-60 transition-all"
               onClick={() => handleAction("complete")}
               disabled={loading}
             >
               <CheckCircle2 className="w-7 h-7" />
               <span>完成配送</span>
             </button>
+            <button
+              className="w-full py-3 border-2 border-orange-300 text-orange-600 rounded-xl font-bold hover:bg-orange-50 disabled:opacity-60 text-sm"
+              onClick={() => setShowExceptionDialog(true)}
+              disabled={loading}
+            >
+              <AlertTriangle className="w-4 h-4 inline mr-1.5" />回報異常
+            </button>
           </div>
+        </div>
+      )}
+
+      {/* ── 異常狀態 ── */}
+      {isException && (
+        <div className="space-y-3">
+          <div className="rounded-2xl border-2 border-orange-400 bg-orange-50 p-5">
+            <div className="flex items-center gap-2 font-black text-orange-700 text-lg mb-1">
+              <AlertTriangle className="w-6 h-6" />訂單異常
+            </div>
+            {(order as any).exceptionCode && (
+              <p className="text-orange-800 font-semibold text-sm">
+                [{(order as any).exceptionCode}] {EXCEPTION_CODES[(order as any).exceptionCode] ?? (order as any).exceptionCode}
+              </p>
+            )}
+            {(order as any).exceptionNote && (
+              <p className="text-orange-700 text-sm mt-1">{(order as any).exceptionNote}</p>
+            )}
+            <p className="text-xs text-orange-500 mt-2">已通知管理員，請等待調度指示</p>
+          </div>
+          <button
+            className="w-full h-16 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl flex items-center justify-center gap-2 font-bold disabled:opacity-60 transition-all"
+            onClick={() => handleStatusEvent("resolve_exception")}
+            disabled={loading}
+          >
+            <PlayCircle className="w-5 h-5" />
+            繼續配送
+          </button>
+          <button
+            className="w-full py-3 border-2 border-orange-300 text-orange-600 rounded-xl font-bold hover:bg-orange-50 text-sm"
+            onClick={() => setShowExceptionDialog(true)}
+          >
+            <WrenchIcon className="w-4 h-4 inline mr-1.5" />更新異常資訊
+          </button>
         </div>
       )}
 
@@ -601,6 +784,63 @@ export default function DriverTaskDetail() {
             <img src={order.signaturePhotoUrl} alt="簽收照片" className="w-full rounded-xl object-cover border" />
           </CardContent>
         </Card>
+      )}
+
+      {/* ── Exception Report Dialog ── */}
+      {showExceptionDialog && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4" onClick={() => setShowExceptionDialog(false)}>
+          <div className="w-full max-w-md bg-white rounded-3xl p-5 space-y-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 font-black text-orange-700 text-lg">
+              <AlertTriangle className="w-5 h-5" />回報異常
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">異常原因</p>
+              <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
+                {Object.entries(EXCEPTION_CODES).map(([code, label]) => (
+                  <button
+                    key={code}
+                    onClick={() => setSelectedExCode(code)}
+                    className={`text-left px-3 py-2 rounded-xl border text-sm font-medium transition-all
+                      ${selectedExCode === code
+                        ? "border-orange-400 bg-orange-50 text-orange-700"
+                        : "border-gray-200 hover:border-orange-300 hover:bg-orange-50/50 text-gray-700"}`}
+                  >
+                    <span className="font-mono text-xs text-gray-400 mr-1.5">[{code}]</span>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-muted-foreground mb-1.5">補充說明（選填）</p>
+              <textarea
+                className="w-full border rounded-xl px-3 py-2 text-sm bg-background resize-none"
+                rows={2}
+                placeholder="如：客戶電話未接通，等候20分鐘"
+                value={exceptionNote}
+                onChange={e => setExceptionNote(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                className="py-3 border rounded-xl font-bold hover:bg-muted text-sm"
+                onClick={() => setShowExceptionDialog(false)}
+              >取消</button>
+              <button
+                className="py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 disabled:opacity-60 text-sm"
+                disabled={loading}
+                onClick={() => handleStatusEvent("exception", {
+                  exception_code: selectedExCode,
+                  note: exceptionNote || undefined,
+                })}
+              >
+                {loading ? "回報中..." : "確認回報"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

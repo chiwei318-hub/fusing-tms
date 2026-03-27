@@ -44,6 +44,7 @@ import ApprovalCenterTab from "./admin/ApprovalCenterTab";
 import SettlementCenterTab from "./admin/SettlementCenterTab";
 import AuditLogTab from "./admin/AuditLogTab";
 import CostAnalysisTab from "./admin/CostAnalysisTab";
+import { DemandForecastTab } from "./admin/DemandForecastTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1449,6 +1450,10 @@ export default function Admin() {
             <TabsTrigger value="auditlog" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
               <FileText className="w-3.5 h-3.5 text-slate-500" />
               <span className="text-[10px] sm:text-xs">日誌</span>
+            </TabsTrigger>
+            <TabsTrigger value="forecast" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-violet-500" />
+              <span className="text-[10px] sm:text-xs">預測</span>
             </TabsTrigger>
           </TabsList>
         )}
@@ -3133,6 +3138,11 @@ export default function Admin() {
         {/* ===== 操作日誌 TAB ===== */}
         <TabsContent value="auditlog" className="outline-none">
           <AuditLogTab />
+        </TabsContent>
+
+        {/* ===== 預測分析 TAB ===== */}
+        <TabsContent value="forecast" className="outline-none">
+          <DemandForecastTab />
         </TabsContent>
       </Tabs>
 
