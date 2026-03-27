@@ -108,18 +108,33 @@ export default function Landing() {
           style={{ background: "radial-gradient(ellipse, rgba(217,119,6,0.08) 0%, transparent 70%)" }} />
 
         {/* Nav */}
-        <div className="relative z-10 flex items-center justify-between px-5 sm:px-8 pt-4 pb-2">
-          <img src="/logo-transparent.png" alt="富詠運輸" className="h-24 sm:h-28 w-auto object-contain drop-shadow-lg" />
-          <div className="flex items-center gap-2">
-            <Link href="/admin">
-              <button className="hidden sm:flex items-center gap-1.5 text-slate-200/80 hover:text-white border border-white/15 hover:border-white/30 bg-white/5 hover:bg-white/10 text-xs font-medium px-3.5 py-2 rounded-full transition-all">
-                <Building2 className="w-3.5 h-3.5" />
-                後台管理
+        <div className="relative z-10 flex items-center justify-between px-4 sm:px-8 pt-4 pb-2 gap-2">
+          <img src="/logo-transparent.png" alt="富詠運輸" className="h-20 sm:h-24 w-auto object-contain drop-shadow-lg shrink-0" />
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <Link href="/customer/order">
+              <button className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold px-3 py-2 rounded-full transition-all shadow shadow-amber-500/30">
+                <Truck className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">客戶下單</span>
+                <span className="sm:hidden">下單</span>
               </button>
             </Link>
-            <a href="tel:0800000000" className="flex items-center gap-1.5 text-slate-200/80 hover:text-white border border-white/15 hover:border-white/30 bg-white/5 hover:bg-white/10 text-xs font-medium px-3.5 py-2 rounded-full transition-all">
+            <Link href="/driver">
+              <button className="flex items-center gap-1.5 text-slate-200/90 hover:text-white border border-white/20 hover:border-white/40 bg-white/8 hover:bg-white/15 text-xs font-semibold px-3 py-2 rounded-full transition-all">
+                <Users className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">司機登入</span>
+                <span className="sm:hidden">司機</span>
+              </button>
+            </Link>
+            <Link href="/enterprise/login">
+              <button className="flex items-center gap-1.5 text-slate-200/90 hover:text-white border border-white/20 hover:border-white/40 bg-white/8 hover:bg-white/15 text-xs font-semibold px-3 py-2 rounded-full transition-all">
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">企業客戶</span>
+                <span className="sm:hidden">企業</span>
+              </button>
+            </Link>
+            <a href="tel:0800000000" className="flex items-center gap-1.5 text-slate-200/70 hover:text-white border border-white/10 hover:border-white/25 bg-white/5 hover:bg-white/10 text-xs font-medium px-3 py-2 rounded-full transition-all">
               <Phone className="w-3.5 h-3.5" />
-              免費客服
+              <span className="hidden sm:inline">免費客服</span>
             </a>
           </div>
         </div>
@@ -394,7 +409,7 @@ export default function Landing() {
                 <Link href="/login"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">客戶登入</span></Link>
                 <Link href="/driver"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">司機登入</span></Link>
                 <Link href="/enterprise/login"><span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer">企業登入</span></Link>
-                <Link href="/admin"><span className="text-slate-700 hover:text-slate-500 text-xs transition-colors cursor-pointer">後台管理</span></Link>
+                {/* 後台管理入口：不顯示，直接輸入 /admin 進入 */}
               </div>
             </div>
           </div>
