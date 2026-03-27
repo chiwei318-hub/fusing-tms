@@ -29,7 +29,7 @@ async function ensureDriverApplicationColumns() {
   for (const col of cols) {
     const colName = col.split(" ")[0];
     try {
-      await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS ${col}`));
+      await db.execute(sql`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS ${sql.raw(col)}`);
     } catch { /* ignore if exists */ }
   }
 }
