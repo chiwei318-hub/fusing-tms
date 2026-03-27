@@ -1482,7 +1482,14 @@ export default function Admin() {
         <div className="mb-5" />
 
         {/* ===== 首頁 TAB ===== */}
-        <TabsContent value="home" className="outline-none">
+        <TabsContent value="home" className="outline-none space-y-0">
+          {/* ⚡ 快速開單 — 電話/LINE 接單第一時間就能開 */}
+          <QuickOrderPanel
+            onCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+              handleTabChange("orders");
+            }}
+          />
           <AdminHome onTabChange={handleTabChange} />
         </TabsContent>
 
