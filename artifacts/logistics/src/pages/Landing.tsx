@@ -158,6 +158,11 @@ export default function Landing() {
           </a>
           <span className="text-slate-700 text-xs hover:text-slate-500 cursor-pointer transition-colors">服務條款</span>
           <span className="text-slate-700 text-xs hover:text-slate-500 cursor-pointer transition-colors">隱私政策</span>
+          <Link href="/login/admin">
+            <span className="text-slate-700 text-xs hover:text-slate-400 cursor-pointer transition-colors flex items-center gap-1">
+              <Shield className="w-3 h-3" /> 後台登入
+            </span>
+          </Link>
         </div>
       </footer>
     </div>
