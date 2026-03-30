@@ -1424,134 +1424,106 @@ export default function Admin() {
           </button>
         </TabsList>
 
-        {/* ── 進階功能列（展開） ── */}
+        {/* ── 進階功能列（展開）── 分 4 組橫向捲動，不換行不重疊 ── */}
         {advancedOpen && (
-          <TabsList className="flex flex-wrap h-auto gap-1 p-1 mb-1 w-full bg-muted/60 border border-muted rounded-xl">
-            <TabsTrigger value="report" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <BarChart2 className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">報表</span>
-            </TabsTrigger>
-            <TabsTrigger value="kpi" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">KPI</span>
-            </TabsTrigger>
-            <TabsTrigger value="smart" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Layers className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">智慧調度</span>
-            </TabsTrigger>
-            <TabsTrigger value="vehicles" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Truck className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">車型庫</span>
-            </TabsTrigger>
-            <TabsTrigger value="fleet" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Bell className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">車隊</span>
-            </TabsTrigger>
-            <TabsTrigger value="outsourcing" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <DollarSign className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">轉單</span>
-            </TabsTrigger>
-            <TabsTrigger value="quotation" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <span className="text-sm">🧮</span>
-              <span className="text-[10px] sm:text-xs">報價</span>
-            </TabsTrigger>
-            <TabsTrigger value="routeprice" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <MapPin className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">路線報價</span>
-            </TabsTrigger>
-            <TabsTrigger value="vehiclecost" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <span className="text-sm">💰</span>
-              <span className="text-[10px] sm:text-xs">車輛成本</span>
-            </TabsTrigger>
-            <TabsTrigger value="dispatch" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Zap className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">派單優化</span>
-            </TabsTrigger>
-            <TabsTrigger value="join" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <UserPlus className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">加盟審核</span>
-            </TabsTrigger>
-            <TabsTrigger value="crm" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Building2 className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">廠商管理</span>
-            </TabsTrigger>
-            <TabsTrigger value="heatmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Map className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">熱區圖</span>
-            </TabsTrigger>
-            <TabsTrigger value="fleetmap" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Navigation className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">車隊圖</span>
-            </TabsTrigger>
-            <TabsTrigger value="carpool" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Car className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">拼車</span>
-            </TabsTrigger>
-            <TabsTrigger value="perm" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <span className="text-sm">🔐</span>
-              <span className="text-[10px] sm:text-xs">權限</span>
-            </TabsTrigger>
-            <TabsTrigger value="line" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <MessageCircle className="w-3.5 h-3.5 text-green-500" />
-              <span className="text-[10px] sm:text-xs">LINE</span>
-            </TabsTrigger>
-            <TabsTrigger value="system" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Settings2 className="w-3.5 h-3.5" />
-              <span className="text-[10px] sm:text-xs">系統設定</span>
-            </TabsTrigger>
-            <TabsTrigger value="invoice" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-[10px] sm:text-xs">電子發票</span>
-            </TabsTrigger>
-            <TabsTrigger value="bidding" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Layers className="w-3.5 h-3.5 text-orange-500" />
-              <span className="text-[10px] sm:text-xs">競標比價</span>
-            </TabsTrigger>
-            <TabsTrigger value="fleetreg" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Building2 className="w-3.5 h-3.5 text-blue-600" />
-              <span className="text-[10px] sm:text-xs">車隊入駐</span>
-            </TabsTrigger>
-            <TabsTrigger value="performance" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Trophy className="w-3.5 h-3.5 text-yellow-500" />
-              <span className="text-[10px] sm:text-xs">績效稽核</span>
-            </TabsTrigger>
-            <TabsTrigger value="carbon" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <span className="text-sm">🌱</span>
-              <span className="text-[10px] sm:text-xs">碳排報表</span>
-            </TabsTrigger>
-            <TabsTrigger value="approval" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Shield className="w-3.5 h-3.5 text-amber-500" />
-              <span className="text-[10px] sm:text-xs">審批</span>
-            </TabsTrigger>
-            <TabsTrigger value="settlement" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-[10px] sm:text-xs">結算</span>
-            </TabsTrigger>
-            <TabsTrigger value="cost" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-violet-600" />
-              <span className="text-[10px] sm:text-xs">毛利</span>
-            </TabsTrigger>
-            <TabsTrigger value="auditlog" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-[10px] sm:text-xs">日誌</span>
-            </TabsTrigger>
-            <TabsTrigger value="forecast" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-violet-500" />
-              <span className="text-[10px] sm:text-xs">預測</span>
-            </TabsTrigger>
-            <TabsTrigger value="zones" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-[10px] sm:text-xs">站點</span>
-            </TabsTrigger>
-            <TabsTrigger value="dailyops" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <BarChart2 className="w-3.5 h-3.5 text-blue-500" />
-              <span className="text-[10px] sm:text-xs">運營KPI</span>
-            </TabsTrigger>
-            <TabsTrigger value="autorouting" className="gap-1 text-xs flex-1 min-w-[52px] flex-col sm:flex-row py-1.5">
-              <Navigation className="w-3.5 h-3.5 text-indigo-500" />
-              <span className="text-[10px] sm:text-xs">自動分單</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="mb-1 rounded-xl border border-muted bg-muted/40 overflow-hidden divide-y divide-muted">
+
+            {/* 分析報表 */}
+            <div className="flex items-center gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">分析<br/>報表</span>
+              <div className="flex-1 overflow-x-auto">
+                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+                  {[
+                    { value: "report",      icon: <BarChart2 className="w-3.5 h-3.5" />,                                label: "報表" },
+                    { value: "kpi",         icon: <TrendingUp className="w-3.5 h-3.5" />,                              label: "KPI" },
+                    { value: "dailyops",    icon: <BarChart2 className="w-3.5 h-3.5 text-blue-500" />,                label: "運營KPI" },
+                    { value: "cost",        icon: <TrendingUp className="w-3.5 h-3.5 text-violet-600" />,             label: "毛利" },
+                    { value: "forecast",    icon: <TrendingUp className="w-3.5 h-3.5 text-violet-500" />,             label: "預測" },
+                    { value: "performance", icon: <Trophy className="w-3.5 h-3.5 text-yellow-500" />,                 label: "績效稽核" },
+                    { value: "carbon",      icon: <span className="text-sm leading-none">🌱</span>,                   label: "碳排報表" },
+                    { value: "auditlog",    icon: <FileText className="w-3.5 h-3.5 text-slate-500" />,               label: "日誌" },
+                  ].map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      {t.icon}<span>{t.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
+
+            {/* 調度車隊 */}
+            <div className="flex items-center gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">調度<br/>車隊</span>
+              <div className="flex-1 overflow-x-auto">
+                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+                  {[
+                    { value: "smart",       icon: <Layers className="w-3.5 h-3.5" />,                                  label: "智慧調度" },
+                    { value: "dispatch",    icon: <Zap className="w-3.5 h-3.5" />,                                    label: "派單優化" },
+                    { value: "autorouting", icon: <Navigation className="w-3.5 h-3.5 text-indigo-500" />,             label: "自動分單" },
+                    { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                    label: "拼車" },
+                    { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                    label: "熱區圖" },
+                    { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                             label: "車隊圖" },
+                    { value: "vehicles",    icon: <Truck className="w-3.5 h-3.5" />,                                  label: "車型庫" },
+                    { value: "fleet",       icon: <Bell className="w-3.5 h-3.5" />,                                   label: "車隊" },
+                    { value: "outsourcing", icon: <DollarSign className="w-3.5 h-3.5" />,                             label: "轉單" },
+                  ].map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      {t.icon}<span>{t.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
+
+            {/* 帳務財務 */}
+            <div className="flex items-center gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">帳務<br/>財務</span>
+              <div className="flex-1 overflow-x-auto">
+                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+                  {[
+                    { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                   label: "報價" },
+                    { value: "routeprice",  icon: <MapPin className="w-3.5 h-3.5" />,                                 label: "路線報價" },
+                    { value: "vehiclecost", icon: <span className="text-sm leading-none">💰</span>,                   label: "車輛成本" },
+                    { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,            label: "電子發票" },
+                    { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,           label: "結算" },
+                    { value: "bidding",     icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,                label: "競標比價" },
+                    { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,                 label: "審批" },
+                  ].map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      {t.icon}<span>{t.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
+
+            {/* 系統管理 */}
+            <div className="flex items-center gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">系統<br/>管理</span>
+              <div className="flex-1 overflow-x-auto">
+                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+                  {[
+                    { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
+                    { value: "join",        icon: <UserPlus className="w-3.5 h-3.5" />,                               label: "加盟審核" },
+                    { value: "fleetreg",    icon: <Building2 className="w-3.5 h-3.5 text-blue-600" />,               label: "車隊入駐" },
+                    { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
+                    { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
+                    { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
+                    { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
+                  ].map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      {t.icon}<span>{t.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
+
+          </div>
         )}
         <div className="mb-5" />
 
