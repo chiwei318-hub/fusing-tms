@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MapPin, User, Package as PackageIcon, FileText, CheckCircle2, Truck } from "lucide-react";
+import { MapPin, User, Package as PackageIcon, FileText, CheckCircle2, Truck, Calendar, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import HistoryInput from "@/components/HistoryInput";
 import { Button } from "@/components/ui/button";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
+import { SmartDatePicker } from "@/components/SmartDatePicker";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -17,8 +19,12 @@ const orderFormSchema = z.object({
   customerName: z.string().min(2, "請輸入完整的客戶名稱"),
   customerPhone: z.string().min(8, "請輸入有效的聯絡電話"),
   pickupAddress: z.string().min(5, "請輸入詳細的取貨地址"),
+  pickupDate: z.string().optional(),
+  pickupTime: z.string().optional(),
   pickupContactPerson: z.string().optional().nullable(),
   deliveryAddress: z.string().min(5, "請輸入詳細的送貨地址"),
+  deliveryDate: z.string().optional(),
+  deliveryTime: z.string().optional(),
   deliveryContactPerson: z.string().optional().nullable(),
   cargoDescription: z.string().min(2, "請描述貨物內容"),
   cargoWeight: z.coerce.number().optional().nullable(),
@@ -38,8 +44,12 @@ export default function OrderForm() {
       customerName: "",
       customerPhone: "",
       pickupAddress: "",
+      pickupDate: "",
+      pickupTime: "",
       pickupContactPerson: "",
       deliveryAddress: "",
+      deliveryDate: "",
+      deliveryTime: "",
       deliveryContactPerson: "",
       cargoDescription: "",
       cargoWeight: undefined,
@@ -52,6 +62,10 @@ export default function OrderForm() {
       const result = await createOrder({
         data: {
           ...data,
+          pickupDate: data.pickupDate || null,
+          pickupTime: data.pickupTime || null,
+          deliveryDate: data.deliveryDate || null,
+          deliveryTime: data.deliveryTime || null,
           pickupContactPerson: data.pickupContactPerson || null,
           deliveryContactPerson: data.deliveryContactPerson || null,
         } as any,
@@ -126,6 +140,7 @@ export default function OrderForm() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-7">
 
+              {/* ─ 聯絡 + 貨物資訊 ─ */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-5">
                   <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wider pb-2 border-b">
@@ -178,60 +193,117 @@ export default function OrderForm() {
                 </div>
               </div>
 
-              <div className="space-y-5">
-                <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wider pb-2 border-b">
-                  <MapPin className="w-3.5 h-3.5 text-primary" />
-                  運送地址
+              {/* ─ 取貨資訊 ─ */}
+              <div className="space-y-4 bg-orange-50/60 border border-orange-100 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-orange-700 uppercase tracking-wider">
+                  <MapPin className="w-3.5 h-3.5" />
+                  取貨資訊
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                  <div className="space-y-3">
-                    <FormField control={form.control} name="pickupAddress" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>取貨地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl>
-                          <Textarea placeholder="請輸入完整的取貨地址" className="resize-none h-24" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="pickupContactPerson" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5 text-muted-foreground" /> 取貨聯絡人
-                        </FormLabel>
-                        <FormControl>
-                          <HistoryInput fieldKey="order-pickupContact" placeholder="姓名 + 電話，例：王先生 0912-345-678" {...field} value={field.value ?? ""} />
-                        </FormControl>
-                      </FormItem>
-                    )} />
-                  </div>
-                  <div className="hidden md:flex absolute left-1/2 top-9 -translate-x-1/2 w-7 h-7 bg-muted rounded-full items-center justify-center border z-10">
-                    <span className="text-muted-foreground text-xs font-bold">至</span>
-                  </div>
-                  <div className="space-y-3">
-                    <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>送貨地址 <span className="text-destructive">*</span></FormLabel>
-                        <FormControl>
-                          <Textarea placeholder="請輸入完整的送貨地址" className="resize-none h-24" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="deliveryContactPerson" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5 text-muted-foreground" /> 送貨聯絡人
-                        </FormLabel>
-                        <FormControl>
-                          <HistoryInput fieldKey="order-deliveryContact" placeholder="姓名 + 電話，例：李小姐 0988-765-432" {...field} value={field.value ?? ""} />
-                        </FormControl>
-                      </FormItem>
-                    )} />
-                  </div>
+                <FormField control={form.control} name="pickupAddress" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>取貨地址 <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <TaiwanAddressInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        historyKey="orderform-pickup"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="pickupDate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-orange-500" /> 取貨日期
+                      </FormLabel>
+                      <FormControl>
+                        <SmartDatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} />
+                      </FormControl>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="pickupTime" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-orange-500" /> 取貨時間
+                      </FormLabel>
+                      <FormControl>
+                        <input type="time" {...field} value={field.value ?? ""}
+                          className="w-full h-10 px-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400" />
+                      </FormControl>
+                    </FormItem>
+                  )} />
                 </div>
+                <FormField control={form.control} name="pickupContactPerson" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <User className="w-3.5 h-3.5 text-muted-foreground" /> 取貨聯絡人
+                    </FormLabel>
+                    <FormControl>
+                      <HistoryInput fieldKey="order-pickupContact" placeholder="姓名 + 電話，例：王先生 0912-345-678" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                  </FormItem>
+                )} />
               </div>
 
+              {/* ─ 送達資訊 ─ */}
+              <div className="space-y-4 bg-blue-50/60 border border-blue-100 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-700 uppercase tracking-wider">
+                  <MapPin className="w-3.5 h-3.5" />
+                  送達資訊
+                </div>
+                <FormField control={form.control} name="deliveryAddress" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>送貨地址 <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <TaiwanAddressInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        historyKey="orderform-delivery"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="deliveryDate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-blue-500" /> 送達日期
+                      </FormLabel>
+                      <FormControl>
+                        <SmartDatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} />
+                      </FormControl>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="deliveryTime" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-blue-500" /> 送達時間
+                      </FormLabel>
+                      <FormControl>
+                        <input type="time" {...field} value={field.value ?? ""}
+                          className="w-full h-10 px-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400" />
+                      </FormControl>
+                    </FormItem>
+                  )} />
+                </div>
+                <FormField control={form.control} name="deliveryContactPerson" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <User className="w-3.5 h-3.5 text-muted-foreground" /> 送貨聯絡人
+                    </FormLabel>
+                    <FormControl>
+                      <HistoryInput fieldKey="order-deliveryContact" placeholder="姓名 + 電話，例：李小姐 0988-765-432" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+              </div>
+
+              {/* ─ 備註 ─ */}
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
                   <FormLabel>備註說明</FormLabel>
