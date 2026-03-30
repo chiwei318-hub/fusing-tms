@@ -450,7 +450,7 @@ function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<Dr
   );
 }
 
-function CustomerFormFields({ form }: { form: ReturnType<typeof useForm<CustomerFormValues>> }) {
+function CustomerFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<CustomerFormValues>>; isEdit?: boolean }) {
   return (
     <div className="flex flex-col sm:flex-row gap-5">
       {/* ── 左欄：基本資料 ── */}
@@ -3199,7 +3199,7 @@ export default function Admin() {
               </DialogHeader>
               <Form {...editCustomerForm}>
                 <form onSubmit={editCustomerForm.handleSubmit(onEditCustomerSubmit)} className="space-y-4 py-2">
-                  <CustomerFormFields form={editCustomerForm} />
+                  <CustomerFormFields form={editCustomerForm} isEdit />
                   <DialogFooter className="pt-2">
                     <Button type="submit" disabled={updatingCustomer} className="w-full">
                       {updatingCustomer ? "儲存中..." : "儲存變更"}
