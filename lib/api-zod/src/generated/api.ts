@@ -100,6 +100,7 @@ export const CreateOrderBody = zod.object({
   notes: zod.string().nullish(),
   extraPickupAddresses: zod.string().nullish(),
   extraDeliveryAddresses: zod.string().nullish(),
+  operatorName: zod.string().nullish(),
 });
 
 /**

@@ -75,6 +75,8 @@ export const ordersTable = pgTable("orders", {
   surchargeReason: text("surcharge_reason"),                // comma-sep reasons
   // Custom fields (JSON: { [fieldKey]: value })
   customFieldValues: text("custom_field_values"),
+  // 接單人員（後台開單時記錄哪位員工建立）
+  operatorName: text("operator_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -129,6 +129,7 @@ router.post("/orders", async (req, res) => {
         notes: body.notes ?? null,
         extraPickupAddresses: body.extraPickupAddresses ?? null,
         extraDeliveryAddresses: body.extraDeliveryAddresses ?? null,
+        operatorName: body.operatorName ?? null,
         status: "pending",
         feeStatus: "unpaid",
       })

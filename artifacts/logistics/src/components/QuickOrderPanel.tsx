@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import {
   Phone, Package, Truck, ChevronDown, ChevronUp,
-  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar,
+  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -131,6 +131,9 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerAddr, setCustomerAddr] = useState("");
   const [lookupDone, setLookupDone] = useState(false);
+  const [operatorName, setOperatorName] = useState(() =>
+    localStorage.getItem("qop_operator_name") ?? ""
+  );
 
   const [pickupAddress, setPickupAddress] = useState("");
   const [pickupDate, setPickupDate] = useState("");
@@ -150,6 +153,11 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const { data: customers = [] } = useCustomersData();
   const { data: drivers = [] } = useDriversData();
   const queryClient = useQueryClient();
+
+  // 記住接單人員名字
+  useEffect(() => {
+    if (operatorName.trim()) localStorage.setItem("qop_operator_name", operatorName.trim());
+  }, [operatorName]);
 
   // Phone → auto-lookup customer
   useEffect(() => {
@@ -181,6 +189,7 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
     setDeliveryAddress(""); setDeliveryDate(""); setDeliveryTime("");
     setExtraStops([]); setCargo(""); setVehicleType(""); setDriverId(""); setNotes("");
     setSuccess(null); setError("");
+    // 接單人員保留，下一筆繼續使用
   };
 
   const availableDrivers = (drivers as any[]).filter(d => d.status === "available" || !d.status);
@@ -208,6 +217,7 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
         requiredVehicleType: vehicleType || null,
         notes: notes.trim() || null,
         extraDeliveryAddresses: extraDeliveryJson,
+        operatorName: operatorName.trim() || null,
       };
 
       const res = await fetch(getApiUrl("/api/orders"), {
@@ -267,6 +277,18 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+
+              {/* ─ 接單人員 ─ */}
+              <div className="flex items-center gap-2 bg-amber-100/60 border border-amber-200 rounded-xl px-3 py-2">
+                <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <label className="text-[11px] font-bold text-amber-700 whitespace-nowrap">接單人員</label>
+                <input
+                  value={operatorName}
+                  onChange={e => setOperatorName(e.target.value)}
+                  placeholder="輸入您的姓名（將記錄於訂單）"
+                  className="flex-1 h-7 px-2 text-sm bg-white border border-amber-200 rounded-lg outline-none focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                />
+              </div>
 
               {/* ─ 客戶資訊 ─ */}
               <div className="space-y-2">
