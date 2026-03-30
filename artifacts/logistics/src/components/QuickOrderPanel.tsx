@@ -18,7 +18,6 @@ import { useCustomersData } from "@/hooks/use-customers";
 import { useDriversData } from "@/hooks/use-drivers";
 import { getApiUrl } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
 
 const VEHICLE_TYPES = ["箱型車", "冷藏車", "尾門車", "平板車", "貨車", "機車"];
 
@@ -128,9 +127,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const [success, setSuccess] = useState<number | null>(null);
   const [error, setError] = useState("");
 
-  const { user } = useAuth();
-  const operatorName = user?.name ?? user?.username ?? null;
-
   const [phone, setPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerAddr, setCustomerAddr] = useState("");
@@ -213,7 +209,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
         requiredVehicleType: vehicleType || null,
         notes: notes.trim() || null,
         extraDeliveryAddresses: extraDeliveryJson,
-        operatorName: operatorName.trim() || null,
       };
 
       const res = await fetch(getApiUrl("/api/orders"), {
@@ -273,14 +268,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-
-              {/* ─ 接單人員（顯示目前登入帳號）─ */}
-              {operatorName && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-xs text-amber-700">
-                  <User className="w-3.5 h-3.5 shrink-0" />
-                  <span>接單人員：<span className="font-semibold">{operatorName}</span></span>
-                </div>
-              )}
 
               {/* ─ 客戶資訊 ─ */}
               <div className="space-y-2">
