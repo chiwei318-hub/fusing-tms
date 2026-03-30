@@ -135,10 +135,10 @@ export default function CustomerLogin() {
           {mode === "password" ? (
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 mb-1.5 block font-medium">手機號碼</label>
+                <label className="text-xs text-gray-500 mb-1.5 block font-medium">帳號或手機號碼</label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input type="tel" inputMode="numeric" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0912345678" className="h-12 pl-9 text-base" />
+                  <Input type="text" value={phone} onChange={e => setPhone(e.target.value)} placeholder="帳號 或 0912345678" className="h-12 pl-9 text-base" />
                 </div>
               </div>
               <div>

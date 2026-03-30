@@ -405,16 +405,29 @@ router.post("/auth/register/driver", async (req, res) => {
 });
 
 // ── POST /auth/login/customer/password ────────────────────────────────────────
-// 一般/企業客戶以手機 + 密碼登入（替代 OTP）
+// 一般客戶以 帳號(username) 或 手機號碼 + 密碼登入
 router.post("/auth/login/customer/password", async (req, res) => {
   try {
-    const phone = normalizePhone(String(req.body?.phone ?? "").trim());
-    const pwd   = String(req.body?.password ?? "").trim();
-    if (!phone || !pwd) return res.status(400).json({ error: "請提供手機號碼與密碼" });
+    const identifier = String(req.body?.phone ?? req.body?.username ?? "").trim();
+    const pwd = String(req.body?.password ?? "").trim();
+    if (!identifier || !pwd) return res.status(400).json({ error: "請提供帳號（或手機號碼）與密碼" });
 
-    const [customer] = await db.select().from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
+    // 判斷是手機號碼還是帳號名稱
+    const isPhone = /^0\d{8,9}$/.test(normalizePhone(identifier));
+    let customer;
+    if (isPhone) {
+      [customer] = await db.select().from(customersTable)
+        .where(eq(customersTable.phone, normalizePhone(identifier))).limit(1);
+    } else {
+      [customer] = await db.select().from(customersTable)
+        .where(sql`lower(${customersTable.username}) = ${identifier.toLowerCase()}`).limit(1);
+    }
+
     if (!customer || !customer.password) return res.status(401).json({ error: "帳號不存在或尚未設定密碼" });
-    if (!checkPassword(pwd, customer.password)) return res.status(401).json({ error: "密碼錯誤" });
+
+    const isHashed = customer.password.includes(":");
+    const valid = isHashed ? checkPassword(pwd, customer.password) : customer.password === pwd;
+    if (!valid) return res.status(401).json({ error: "密碼錯誤" });
     if (!customer.isActive) return res.status(403).json({ error: "帳號審核中，尚未開通。請等待管理員啟用，我們將電話通知您。" });
 
     const token = signJwt({ role: "customer", id: customer.id, name: customer.name, phone: customer.phone });
