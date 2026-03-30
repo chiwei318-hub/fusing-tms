@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { Filter, ChevronRight, InboxIcon, Truck, Search, Calendar, Clock } from "lucide-react";
+import { Filter, ChevronRight, InboxIcon, Truck, Search, Calendar, Clock, Pencil } from "lucide-react";
 import { useOrdersData } from "@/hooks/use-orders";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import OrderEditSheet from "@/components/OrderEditSheet";
 
 const feeStatusLabel: Record<string, string> = {
   unpaid: "未收款",
@@ -61,6 +62,8 @@ function CreatedAtCell({ createdAt }: { createdAt: string }) {
 export default function OrderList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [editOrder, setEditOrder] = useState<any | null>(null);
+
   const { data: orders, isLoading } = useOrdersData(
     statusFilter !== "all" ? { status: statusFilter } : undefined
   );
@@ -124,7 +127,7 @@ export default function OrderList() {
 
       <Card className="border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left" style={{ minWidth: "1000px" }}>
+          <table className="w-full text-sm text-left" style={{ minWidth: "1050px" }}>
             <thead className="text-xs text-muted-foreground bg-muted/50 border-b">
               <tr>
                 <th className="px-3 py-3 font-semibold">單號</th>
@@ -148,14 +151,14 @@ export default function OrderList() {
                 <th className="px-3 py-3 font-semibold hidden xl:table-cell">運費</th>
                 <th className="px-3 py-3 font-semibold hidden xl:table-cell">收款</th>
                 <th className="px-3 py-3 font-semibold">建單時間</th>
-                <th className="px-3 py-3 font-semibold text-right"></th>
+                <th className="px-3 py-3 font-semibold text-right">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y bg-card">
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 10 }).map((__, j) => (
+                    {Array.from({ length: 12 }).map((__, j) => (
                       <td key={j} className="px-3 py-3">
                         <Skeleton className="h-4 w-20" />
                       </td>
@@ -243,13 +246,24 @@ export default function OrderList() {
                       <CreatedAtCell createdAt={order.createdAt} />
                     </td>
 
-                    {/* 詳情 */}
+                    {/* 操作 */}
                     <td className="px-3 py-3 text-right">
-                      <Button variant="ghost" size="icon" asChild className="opacity-50 group-hover:opacity-100 transition-opacity h-8 w-8">
-                        <Link href={`/orders/${order.id}`}>
-                          <ChevronRight className="w-4 h-4" />
-                        </Link>
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-50 group-hover:opacity-100 transition-opacity text-primary hover:text-primary hover:bg-primary/10"
+                          onClick={() => setEditOrder(order)}
+                          title="快速編輯"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" asChild className="h-8 w-8 opacity-50 group-hover:opacity-100 transition-opacity">
+                          <Link href={`/orders/${order.id}`}>
+                            <ChevronRight className="w-4 h-4" />
+                          </Link>
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -258,6 +272,13 @@ export default function OrderList() {
           </table>
         </div>
       </Card>
+
+      {/* 快速編輯側邊欄 */}
+      <OrderEditSheet
+        order={editOrder}
+        open={!!editOrder}
+        onClose={() => setEditOrder(null)}
+      />
     </div>
   );
 }
