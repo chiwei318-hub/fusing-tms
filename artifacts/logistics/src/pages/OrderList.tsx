@@ -280,13 +280,14 @@ export default function OrderList() {
                     </td>
 
                     {/* 操作按鈕：新增（複製）/ 修改 / 刪除 */}
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2.5 select-none">
                       <div className="flex items-center justify-center gap-1">
                         {/* 新增（複製此訂單） */}
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50 hover:border-green-400 hover:text-green-700"
+                          onMouseDown={e => e.preventDefault()}
                           onClick={() => handleDuplicate(order)}
                           disabled={duplicateOrder.isPending}
                           title="複製新增"
@@ -302,6 +303,7 @@ export default function OrderList() {
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700"
+                          onMouseDown={e => e.preventDefault()}
                           onClick={() => setEditOrder(order)}
                           title="修改訂單"
                         >
@@ -314,6 +316,7 @@ export default function OrderList() {
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 hover:text-red-700"
+                          onMouseDown={e => e.preventDefault()}
                           onClick={() => setDeleteTarget({ id: order.id, label: `#${order.id} ${order.customerName ?? ""}` })}
                           title="刪除訂單"
                         >
