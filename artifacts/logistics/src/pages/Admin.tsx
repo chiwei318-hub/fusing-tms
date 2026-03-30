@@ -1429,82 +1429,75 @@ export default function Admin() {
           <div className="mb-1 rounded-xl border border-muted bg-muted/40 overflow-hidden divide-y divide-muted">
 
             {/* 分析報表 */}
-            <div className="flex items-center gap-0">
-              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">分析<br/>報表</span>
-              <div className="flex-1 overflow-x-auto">
-                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+            <div className="flex items-start gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">分析<br/>報表</span>
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
-                    { value: "report",      icon: <BarChart2 className="w-3.5 h-3.5" />,                                label: "報表" },
-                    { value: "kpi",         icon: <TrendingUp className="w-3.5 h-3.5" />,                              label: "KPI" },
-                    { value: "dailyops",    icon: <BarChart2 className="w-3.5 h-3.5 text-blue-500" />,                label: "運營KPI" },
-                    { value: "cost",        icon: <TrendingUp className="w-3.5 h-3.5 text-violet-600" />,             label: "毛利" },
-                    { value: "forecast",    icon: <TrendingUp className="w-3.5 h-3.5 text-violet-500" />,             label: "預測" },
-                    { value: "performance", icon: <Trophy className="w-3.5 h-3.5 text-yellow-500" />,                 label: "績效稽核" },
-                    { value: "carbon",      icon: <span className="text-sm leading-none">🌱</span>,                   label: "碳排報表" },
-                    { value: "auditlog",    icon: <FileText className="w-3.5 h-3.5 text-slate-500" />,               label: "日誌" },
+                    { value: "report",      icon: <BarChart2 className="w-3.5 h-3.5" />,                             label: "報表" },
+                    { value: "kpi",         icon: <TrendingUp className="w-3.5 h-3.5" />,                            label: "KPI" },
+                    { value: "dailyops",    icon: <BarChart2 className="w-3.5 h-3.5 text-blue-500" />,              label: "運營KPI" },
+                    { value: "cost",        icon: <TrendingUp className="w-3.5 h-3.5 text-violet-600" />,           label: "毛利" },
+                    { value: "forecast",    icon: <TrendingUp className="w-3.5 h-3.5 text-violet-500" />,           label: "預測" },
+                    { value: "performance", icon: <Trophy className="w-3.5 h-3.5 text-yellow-500" />,               label: "績效稽核" },
+                    { value: "carbon",      icon: <span className="text-sm leading-none">🌱</span>,                 label: "碳排報表" },
+                    { value: "auditlog",    icon: <FileText className="w-3.5 h-3.5 text-slate-500" />,             label: "日誌" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
                       {t.icon}<span>{t.label}</span>
                     </TabsTrigger>
                   ))}
-                </TabsList>
-              </div>
+              </TabsList>
             </div>
 
             {/* 調度車隊 */}
-            <div className="flex items-center gap-0">
-              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">調度<br/>車隊</span>
-              <div className="flex-1 overflow-x-auto">
-                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+            <div className="flex items-start gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">調度<br/>車隊</span>
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
-                    { value: "smart",       icon: <Layers className="w-3.5 h-3.5" />,                                  label: "智慧調度" },
-                    { value: "dispatch",    icon: <Zap className="w-3.5 h-3.5" />,                                    label: "派單優化" },
-                    { value: "autorouting", icon: <Navigation className="w-3.5 h-3.5 text-indigo-500" />,             label: "自動分單" },
-                    { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                    label: "拼車" },
-                    { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                    label: "熱區圖" },
-                    { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                             label: "車隊圖" },
-                    { value: "vehicles",    icon: <Truck className="w-3.5 h-3.5" />,                                  label: "車型庫" },
-                    { value: "fleet",       icon: <Bell className="w-3.5 h-3.5" />,                                   label: "車隊" },
-                    { value: "outsourcing", icon: <DollarSign className="w-3.5 h-3.5" />,                             label: "轉單" },
+                    { value: "smart",       icon: <Layers className="w-3.5 h-3.5" />,                                label: "智慧調度" },
+                    { value: "dispatch",    icon: <Zap className="w-3.5 h-3.5" />,                                  label: "派單優化" },
+                    { value: "autorouting", icon: <Navigation className="w-3.5 h-3.5 text-indigo-500" />,           label: "自動分單" },
+                    { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
+                    { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
+                    { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
+                    { value: "vehicles",    icon: <Truck className="w-3.5 h-3.5" />,                                label: "車型庫" },
+                    { value: "fleet",       icon: <Bell className="w-3.5 h-3.5" />,                                 label: "車隊" },
+                    { value: "outsourcing", icon: <DollarSign className="w-3.5 h-3.5" />,                           label: "轉單" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
                       {t.icon}<span>{t.label}</span>
                     </TabsTrigger>
                   ))}
-                </TabsList>
-              </div>
+              </TabsList>
             </div>
 
             {/* 帳務財務 */}
-            <div className="flex items-center gap-0">
-              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">帳務<br/>財務</span>
-              <div className="flex-1 overflow-x-auto">
-                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+            <div className="flex items-start gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">帳務<br/>財務</span>
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
-                    { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                   label: "報價" },
-                    { value: "routeprice",  icon: <MapPin className="w-3.5 h-3.5" />,                                 label: "路線報價" },
-                    { value: "vehiclecost", icon: <span className="text-sm leading-none">💰</span>,                   label: "車輛成本" },
-                    { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,            label: "電子發票" },
-                    { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,           label: "結算" },
-                    { value: "bidding",     icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,                label: "競標比價" },
-                    { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,                 label: "審批" },
+                    { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                 label: "報價" },
+                    { value: "routeprice",  icon: <MapPin className="w-3.5 h-3.5" />,                               label: "路線報價" },
+                    { value: "vehiclecost", icon: <span className="text-sm leading-none">💰</span>,                 label: "車輛成本" },
+                    { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,          label: "電子發票" },
+                    { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,         label: "結算" },
+                    { value: "bidding",     icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,              label: "競標比價" },
+                    { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,               label: "審批" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
                       {t.icon}<span>{t.label}</span>
                     </TabsTrigger>
                   ))}
-                </TabsList>
-              </div>
+              </TabsList>
             </div>
 
             {/* 系統管理 */}
-            <div className="flex items-center gap-0">
-              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2 bg-muted/60 leading-tight px-1">系統<br/>管理</span>
-              <div className="flex-1 overflow-x-auto">
-                <TabsList className="flex h-auto gap-1 p-1 bg-transparent min-w-max">
+            <div className="flex items-start gap-0">
+              <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">系統<br/>管理</span>
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
                     { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
                     { value: "join",        icon: <UserPlus className="w-3.5 h-3.5" />,                               label: "加盟審核" },
@@ -1515,12 +1508,11 @@ export default function Admin() {
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 whitespace-nowrap rounded-lg">
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
                       {t.icon}<span>{t.label}</span>
                     </TabsTrigger>
                   ))}
-                </TabsList>
-              </div>
+              </TabsList>
             </div>
 
           </div>
