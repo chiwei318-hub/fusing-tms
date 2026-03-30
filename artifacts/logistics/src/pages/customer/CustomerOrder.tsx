@@ -84,7 +84,7 @@ const schema = z.object({
   customerPhone:         z.string().min(8, "請填寫有效電話"),
   customerCompany:       z.string().optional(),
   pickupDate:            z.string().optional(),
-  pickupTime:            z.string().optional(),
+  pickupTime:            z.string().min(1, "請填寫取貨時間"),
   pickupAddress:         z.string().min(10, "請填寫完整地址（含縣市區路段門牌）"),
   pickupContactName:     z.string().min(2, "請填寫取貨聯絡人"),
   pickupPhone:           z.string().min(8, "請填寫取貨聯絡電話"),
@@ -92,7 +92,7 @@ const schema = z.object({
   pickupNotes:           z.string().optional(),
   extraPickupAddresses:  z.array(extraStopSchema).default([]),
   deliveryDate:          z.string().optional(),
-  deliveryTime:          z.string().optional(),
+  deliveryTime:          z.string().min(1, "請填寫送達時間"),
   deliveryAddress:       z.string().min(10, "請填寫完整地址（含縣市區路段門牌）"),
   deliveryContactName:   z.string().min(2, "請填寫送達聯絡人"),
   deliveryPhone:         z.string().min(8, "請填寫送達聯絡電話"),
@@ -533,8 +533,9 @@ export default function CustomerOrder() {
                   )} />
                   <FormField control={form.control} name="pickupTime" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>期望時間</FormLabel>
+                      <FormLabel>取貨時間 <span className="text-destructive">*</span></FormLabel>
                       <FormControl><Input type="time" className="h-11" {...field} /></FormControl>
+                      <FormMessage />
                     </FormItem>
                   )} />
                 </div>
@@ -630,8 +631,9 @@ export default function CustomerOrder() {
                   )} />
                   <FormField control={form.control} name="deliveryTime" render={({ field }) => (
                     <FormItem>
-                      <FormLabel>期望時間</FormLabel>
+                      <FormLabel>送達時間 <span className="text-destructive">*</span></FormLabel>
                       <FormControl><Input type="time" className="h-11" {...field} /></FormControl>
+                      <FormMessage />
                     </FormItem>
                   )} />
                 </div>

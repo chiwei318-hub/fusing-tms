@@ -34,7 +34,9 @@ const CARGO_CATEGORIES = [
 
 type Quote = { basePrice: number; discountPercent: number; discountAmount: number; finalPrice: number; estimatedKm: number };
 type OrderForm = {
-  pickupAddress: string; deliveryAddress: string; cargoDescription: string; cargoNotes: string;
+  pickupAddress: string; pickupDate: string; pickupTime: string;
+  deliveryAddress: string; deliveryDate: string; deliveryTime: string;
+  cargoDescription: string; cargoNotes: string;
   vehicleType: string; specialRequirements: string; contactName: string; contactPhone: string;
   saveTemplate: boolean; templateNickname: string;
 };
@@ -42,7 +44,9 @@ type OrderForm = {
 export default function EnterprisePlaceOrder({ session }: { session: EnterpriseSession }) {
   const [templates, setTemplates] = useState<EnterpriseTemplate[]>([]);
   const [form, setForm] = useState<OrderForm>({
-    pickupAddress: "", deliveryAddress: "", cargoDescription: "", cargoNotes: "",
+    pickupAddress: "", pickupDate: "", pickupTime: "",
+    deliveryAddress: "", deliveryDate: "", deliveryTime: "",
+    cargoDescription: "", cargoNotes: "",
     vehicleType: "箱型車", specialRequirements: "",
     contactName: session.contactPerson, contactPhone: session.phone,
     saveTemplate: false, templateNickname: "",
@@ -96,6 +100,8 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.pickupAddress || !form.deliveryAddress) { setError("請填寫取貨和送貨地址"); return; }
+    if (!form.pickupTime) { setError("請填寫取貨時間"); return; }
+    if (!form.deliveryTime) { setError("請填寫下貨時間"); return; }
     setSubmitting(true); setError("");
     try {
       const submitPayload = {
@@ -112,7 +118,7 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "下單失敗"); return; }
       setSuccess(data.order.id);
-      setForm(f => ({ ...f, pickupAddress: "", deliveryAddress: "", cargoDescription: "", cargoNotes: "", specialRequirements: "", saveTemplate: false, templateNickname: "" }));
+      setForm(f => ({ ...f, pickupAddress: "", pickupDate: "", pickupTime: "", deliveryAddress: "", deliveryDate: "", deliveryTime: "", cargoDescription: "", cargoNotes: "", specialRequirements: "", saveTemplate: false, templateNickname: "" }));
       setQuote(null);
       fetch(`${BASE}/api/enterprise/${session.id}/templates`).then(r => r.json()).then(setTemplates).catch(() => {});
     } catch {
@@ -201,6 +207,16 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
                 onChange={v => setF("pickupAddress", v)}
                 historyKey="ent-pickup"
               />
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">取貨日期</label>
+                  <input type="date" value={form.pickupDate} onChange={e => setF("pickupDate", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">取貨時間 <span className="text-red-500">*</span></label>
+                  <input type="time" value={form.pickupTime} onChange={e => setF("pickupTime", e.target.value)} required className={inp} />
+                </div>
+              </div>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
@@ -211,6 +227,16 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
                 onChange={v => setF("deliveryAddress", v)}
                 historyKey="ent-delivery"
               />
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">下貨日期</label>
+                  <input type="date" value={form.deliveryDate} onChange={e => setF("deliveryDate", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">下貨時間 <span className="text-red-500">*</span></label>
+                  <input type="time" value={form.deliveryTime} onChange={e => setF("deliveryTime", e.target.value)} required className={inp} />
+                </div>
+              </div>
             </div>
           </div>
 

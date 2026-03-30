@@ -147,13 +147,13 @@ const extraStopEditSchema = z.object({
 
 const orderEditSchema = z.object({
   pickupDate: z.string().optional(),
-  pickupTime: z.string().optional(),
+  pickupTime: z.string().min(1, "請填寫取貨時間"),
   pickupAddress: z.string().min(5, "請填寫取貨地址"),
   pickupCompany: z.string().optional(),
   pickupContactPersonName: z.string().optional(),
   pickupContactPersonPhone: z.string().optional(),
   deliveryDate: z.string().optional(),
-  deliveryTime: z.string().optional(),
+  deliveryTime: z.string().min(1, "請填寫送達時間"),
   deliveryAddress: z.string().min(5, "請填寫送貨地址"),
   deliveryCompany: z.string().optional(),
   deliveryContactPersonName: z.string().optional(),
@@ -1814,8 +1814,9 @@ export default function Admin() {
                           <FormControl><Input type="date" {...field} /></FormControl></FormItem>
                       )} />
                       <FormField control={editOrderForm.control} name="pickupTime" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">時段</FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl></FormItem>
+                        <FormItem><FormLabel className="text-xs">取貨時間 <span className="text-destructive">*</span></FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl>
+                          <FormMessage /></FormItem>
                       )} />
                     </div>
                     <FormField control={editOrderForm.control} name="pickupAddress" render={({ field }) => (
@@ -1858,8 +1859,9 @@ export default function Admin() {
                           <FormControl><Input type="date" {...field} /></FormControl></FormItem>
                       )} />
                       <FormField control={editOrderForm.control} name="deliveryTime" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">時段</FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl></FormItem>
+                        <FormItem><FormLabel className="text-xs">送達時間 <span className="text-destructive">*</span></FormLabel>
+                          <FormControl><Input type="time" {...field} /></FormControl>
+                          <FormMessage /></FormItem>
                       )} />
                     </div>
                     <FormField control={editOrderForm.control} name="deliveryAddress" render={({ field }) => (

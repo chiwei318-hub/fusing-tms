@@ -166,16 +166,23 @@ router.post("/enterprise/:id/place-order", async (req, res) => {
       pickupAddress, deliveryAddress, cargoDescription,
       vehicleType, specialRequirements, totalFee,
       contactName, contactPhone, saveTemplate, templateNickname,
+      pickupDate, pickupTime, deliveryDate, deliveryTime,
     } = req.body;
 
     if (!pickupAddress || !deliveryAddress) return res.status(400).json({ error: "取貨和送貨地址必填" });
+    if (!pickupTime) return res.status(400).json({ error: "請填寫取貨時間" });
+    if (!deliveryTime) return res.status(400).json({ error: "請填寫下貨時間" });
 
     const [account] = await db.select().from(enterpriseAccountsTable).where(eq(enterpriseAccountsTable.id, id));
     if (!account) return res.status(404).json({ error: "帳號不存在" });
 
     const [order] = await db.insert(ordersTable).values({
       pickupAddress,
+      pickupDate: pickupDate ?? null,
+      pickupTime: pickupTime ?? null,
       deliveryAddress,
+      deliveryDate: deliveryDate ?? null,
+      deliveryTime: deliveryTime ?? null,
       cargoDescription: cargoDescription ?? "",
       requiredVehicleType: vehicleType,
       specialRequirements,
