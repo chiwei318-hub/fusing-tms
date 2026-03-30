@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import {
   Phone, Package, Truck, ChevronDown, ChevronUp,
-  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar, Pencil,
+  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { useCustomersData } from "@/hooks/use-customers";
 import { useDriversData } from "@/hooks/use-drivers";
 import { getApiUrl } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 
 const VEHICLE_TYPES = ["箱型車", "冷藏車", "尾門車", "平板車", "貨車", "機車"];
 
@@ -127,13 +128,13 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const [success, setSuccess] = useState<number | null>(null);
   const [error, setError] = useState("");
 
+  const { user } = useAuth();
+  const operatorName = user?.name ?? user?.username ?? null;
+
   const [phone, setPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerAddr, setCustomerAddr] = useState("");
   const [lookupDone, setLookupDone] = useState(false);
-  const [operatorName, setOperatorName] = useState(() =>
-    localStorage.getItem("qop_operator_name") ?? ""
-  );
 
   const [pickupAddress, setPickupAddress] = useState("");
   const [pickupDate, setPickupDate] = useState("");
@@ -153,11 +154,6 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const { data: customers = [] } = useCustomersData();
   const { data: drivers = [] } = useDriversData();
   const queryClient = useQueryClient();
-
-  // 記住接單人員名字
-  useEffect(() => {
-    if (operatorName.trim()) localStorage.setItem("qop_operator_name", operatorName.trim());
-  }, [operatorName]);
 
   // Phone → auto-lookup customer
   useEffect(() => {
@@ -278,17 +274,13 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
 
-              {/* ─ 接單人員 ─ */}
-              <div className="flex items-center gap-2 bg-amber-100/60 border border-amber-200 rounded-xl px-3 py-2">
-                <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <label className="text-[11px] font-bold text-amber-700 whitespace-nowrap">接單人員</label>
-                <input
-                  value={operatorName}
-                  onChange={e => setOperatorName(e.target.value)}
-                  placeholder="輸入您的姓名（將記錄於訂單）"
-                  className="flex-1 h-7 px-2 text-sm bg-white border border-amber-200 rounded-lg outline-none focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
-                />
-              </div>
+              {/* ─ 接單人員（顯示目前登入帳號）─ */}
+              {operatorName && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-xs text-amber-700">
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <span>接單人員：<span className="font-semibold">{operatorName}</span></span>
+                </div>
+              )}
 
               {/* ─ 客戶資訊 ─ */}
               <div className="space-y-2">
