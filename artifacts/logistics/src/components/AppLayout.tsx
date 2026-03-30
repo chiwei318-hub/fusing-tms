@@ -5,6 +5,7 @@ import {
   DollarSign,
   ClipboardList,
   Home,
+  BarChart2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,6 +23,7 @@ import {
 const navigation = [
   { name: "客戶下單", href: "/order-form", icon: Package },
   { name: "訂單列表", href: "/orders", icon: ClipboardList },
+  { name: "訂單報表", href: "/report", icon: BarChart2 },
   { name: "費用管理", href: "/fees", icon: DollarSign },
   { name: "後台管理", href: "/admin", icon: LayoutDashboard },
 ];

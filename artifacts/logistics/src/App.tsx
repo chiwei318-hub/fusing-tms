@@ -11,6 +11,7 @@ import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import OrderForm from "@/pages/OrderForm";
 import OrderList from "@/pages/OrderList";
+import OrderReport from "@/pages/OrderReport";
 import OrderDetail from "@/pages/OrderDetail";
 import Admin from "@/pages/Admin";
 import Fees from "@/pages/Fees";
@@ -105,6 +106,7 @@ function AdminPortal() {
             <Route path="/order-form" component={OrderForm} />
             <Route path="/orders" component={OrderList} />
             <Route path="/orders/:id" component={OrderDetail} />
+            <Route path="/report" component={OrderReport} />
             <Route path="/fees" component={Fees} />
             <Route path="/admin" component={Admin} />
             <Route component={NotFound} />

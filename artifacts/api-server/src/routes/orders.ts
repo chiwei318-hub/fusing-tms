@@ -4,6 +4,7 @@ import { pool } from "@workspace/db";
 import { customerNotificationsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import ExcelJS from "exceljs";
 import { z } from "zod";
 import {
   CreateOrderBody,
@@ -77,17 +78,34 @@ router.get("/orders/track", async (req, res) => {
 router.get("/orders", async (req, res) => {
   try {
     const query = ListOrdersQueryParams.parse(req.query);
+    const q = req.query as Record<string, string>;
     let qb = db
       .select()
       .from(ordersTable)
       .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
       .$dynamic();
-    if (query.status) {
-      qb = qb.where(eq(ordersTable.status, query.status));
-    } else if ((req.query as Record<string,string>).driverId) {
-      const driverId = parseInt((req.query as Record<string,string>).driverId, 10);
-      qb = qb.where(eq(ordersTable.driverId, driverId));
+
+    const conditions: any[] = [];
+
+    if (query.status) conditions.push(eq(ordersTable.status, query.status));
+
+    if (q.driverId) {
+      const driverId = parseInt(q.driverId, 10);
+      if (!isNaN(driverId)) conditions.push(eq(ordersTable.driverId, driverId));
     }
+
+    if (q.customerName) {
+      conditions.push(sql`lower(${ordersTable.customerName}) like ${"%" + q.customerName.toLowerCase() + "%"}`);
+    }
+
+    if (q.dateFrom || q.dateTo) {
+      const field = q.dateField === "created" ? ordersTable.createdAt : ordersTable.pickupDate;
+      if (q.dateFrom) conditions.push(sql`${field} >= ${q.dateFrom}`);
+      if (q.dateTo)   conditions.push(sql`${field} <= ${q.dateTo}`);
+    }
+
+    if (conditions.length > 0) qb = qb.where(and(...conditions));
+
     const orders = await qb.orderBy(ordersTable.createdAt);
     const result = orders.map((row) => ({
       ...row.orders,
@@ -556,6 +574,102 @@ router.post("/orders/:id/grab", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to grab order");
     res.status(500).json({ error: "搶單失敗" });
+  }
+});
+
+/* ─── Report: Excel export ─── */
+router.get("/orders/report/excel", async (req, res) => {
+  try {
+    const q = req.query as Record<string, string>;
+    let qb = db.select().from(ordersTable)
+      .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
+      .$dynamic();
+
+    const conditions: any[] = [];
+    if (q.status)       conditions.push(eq(ordersTable.status, q.status as any));
+    if (q.driverId)     { const d = parseInt(q.driverId, 10); if (!isNaN(d)) conditions.push(eq(ordersTable.driverId, d)); }
+    if (q.customerName) conditions.push(sql`lower(${ordersTable.customerName}) like ${"%" + q.customerName.toLowerCase() + "%"}`);
+    if (q.dateFrom || q.dateTo) {
+      const field = q.dateField === "created" ? ordersTable.createdAt : ordersTable.pickupDate;
+      if (q.dateFrom) conditions.push(sql`${field} >= ${q.dateFrom}`);
+      if (q.dateTo)   conditions.push(sql`${field} <= ${q.dateTo}`);
+    }
+    if (conditions.length > 0) qb = qb.where(and(...conditions));
+
+    const rows = await qb.orderBy(ordersTable.createdAt);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "富詠運輸";
+    const ws = wb.addWorksheet("訂單報表");
+
+    const STATUS_MAP: Record<string, string> = {
+      pending: "待處理", assigned: "已指派", in_transit: "運送中",
+      delivered: "已送達", cancelled: "已取消",
+    };
+    const FEE_MAP: Record<string, string> = {
+      unpaid: "未收款", paid: "已收款", invoiced: "已開票",
+    };
+
+    ws.columns = [
+      { header: "單號",     key: "id",          width: 8  },
+      { header: "狀態",     key: "status",       width: 10 },
+      { header: "客戶名稱", key: "customerName", width: 18 },
+      { header: "客戶電話", key: "customerPhone",width: 14 },
+      { header: "司機",     key: "driver",       width: 12 },
+      { header: "提貨日期", key: "pickupDate",   width: 12 },
+      { header: "提貨時間", key: "pickupTime",   width: 10 },
+      { header: "提貨地址", key: "pickupAddress",width: 30 },
+      { header: "到貨日期", key: "deliveryDate", width: 12 },
+      { header: "到貨時間", key: "deliveryTime", width: 10 },
+      { header: "到貨地址", key: "deliveryAddress",width:30 },
+      { header: "運費(元)", key: "totalFee",     width: 12 },
+      { header: "收款狀態", key: "feeStatus",    width: 10 },
+      { header: "備注",     key: "notes",        width: 24 },
+      { header: "建單時間", key: "createdAt",    width: 20 },
+    ];
+
+    // Style header row
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+    headerRow.alignment = { horizontal: "center", vertical: "middle" };
+    headerRow.height = 22;
+
+    rows.forEach(({ orders: o, drivers: d }) => {
+      ws.addRow({
+        id:              o.id,
+        status:          STATUS_MAP[o.status] ?? o.status,
+        customerName:    o.customerName,
+        customerPhone:   o.customerPhone,
+        driver:          d?.name ?? "",
+        pickupDate:      o.pickupDate ?? "",
+        pickupTime:      o.pickupTime ?? "",
+        pickupAddress:   o.pickupAddress,
+        deliveryDate:    o.deliveryDate ?? "",
+        deliveryTime:    o.deliveryTime ?? "",
+        deliveryAddress: o.deliveryAddress,
+        totalFee:        o.totalFee ?? "",
+        feeStatus:       FEE_MAP[o.feeStatus ?? "unpaid"] ?? "",
+        notes:           o.notes ?? "",
+        createdAt:       o.createdAt ? new Date(o.createdAt).toLocaleString("zh-TW") : "",
+      });
+    });
+
+    // Zebra stripe
+    ws.eachRow((row, rowNumber) => {
+      if (rowNumber > 1 && rowNumber % 2 === 0) {
+        row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F4FF" } };
+      }
+    });
+
+    const dateTag = new Date().toLocaleDateString("zh-TW").replace(/\//g, "");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent("訂單報表_" + dateTag)}.xlsx`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    req.log.error({ err }, "Excel export failed");
+    res.status(500).json({ error: "匯出失敗" });
   }
 });
 
