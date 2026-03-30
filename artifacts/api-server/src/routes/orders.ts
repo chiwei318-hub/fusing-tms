@@ -559,4 +559,46 @@ router.post("/orders/:id/grab", async (req, res) => {
   }
 });
 
+/* ─── Delete order ─── */
+router.delete("/orders/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid order ID" });
+    const existing = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!existing.length) return res.status(404).json({ error: "Order not found" });
+    await db.delete(ordersTable).where(eq(ordersTable.id, id));
+    res.json({ ok: true, id });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete order");
+    res.status(500).json({ error: "刪除失敗" });
+  }
+});
+
+/* ─── Duplicate order ─── */
+router.post("/orders/:id/duplicate", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid order ID" });
+    const [src] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+    if (!src) return res.status(404).json({ error: "Order not found" });
+    const { id: _id, createdAt: _ca, updatedAt: _ua, driverId: _di,
+      driverAcceptedAt: _daa, checkInAt: _cia, completedAt: _coa,
+      paymentConfirmedAt: _pca, priceLockedAt: _pla, arrivalNotifiedAt: _ana,
+      orderGroupId: _ogi, status: _st, feeStatus: _fs,
+      ...fields } = src;
+    const [newOrder] = await db.insert(ordersTable).values({
+      ...fields,
+      status: "pending",
+      feeStatus: "unpaid",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    const order = await fetchOrderWithDriver(newOrder.id);
+    res.json(order);
+  } catch (err) {
+    req.log.error({ err }, "Failed to duplicate order");
+    res.status(500).json({ error: "複製失敗" });
+  }
+});
+
 export default router;

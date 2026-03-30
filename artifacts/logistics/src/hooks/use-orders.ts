@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { 
   useListOrders, 
   useCreateOrder, 
@@ -8,6 +8,8 @@ import {
   getGetOrderQueryKey
 } from "@workspace/api-client-react";
 import type { CreateOrderInput, UpdateOrderInput, ListOrdersParams } from "@workspace/api-client-react/src/generated/api.schemas";
+
+const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
 export function useOrdersData(params?: ListOrdersParams) {
   return useListOrders(params);
@@ -36,6 +38,48 @@ export function useUpdateOrderMutation() {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(variables.id) });
       },
+    },
+  });
+}
+
+export function useDeleteOrderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem("auth-jwt");
+      const res = await fetch(`${BASE_URL}/api/orders/${id}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "刪除失敗");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    },
+  });
+}
+
+export function useDuplicateOrderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem("auth-jwt");
+      const res = await fetch(`${BASE_URL}/api/orders/${id}/duplicate`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "複製失敗");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
     },
   });
 }
