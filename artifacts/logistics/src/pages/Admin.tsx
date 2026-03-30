@@ -43,6 +43,7 @@ import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
+import { SmartDatePicker } from "@/components/SmartDatePicker";
 import ApprovalCenterTab from "./admin/ApprovalCenterTab";
 import SettlementCenterTab from "./admin/SettlementCenterTab";
 import AuditLogTab from "./admin/AuditLogTab";
@@ -1808,17 +1809,19 @@ export default function Admin() {
                     <p className="text-xs font-bold text-orange-600 uppercase tracking-wide flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5" /> 取貨資訊
                     </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField control={editOrderForm.control} name="pickupDate" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">取貨日期</FormLabel>
-                          <FormControl><Input type="date" {...field} /></FormControl></FormItem>
-                      )} />
-                      <FormField control={editOrderForm.control} name="pickupTime" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">取貨時間 <span className="text-destructive">*</span></FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl>
-                          <FormMessage /></FormItem>
-                      )} />
-                    </div>
+                    <FormField control={editOrderForm.control} name="pickupDate" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">取貨日期</FormLabel>
+                        <FormControl>
+                          <SmartDatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} />
+                        </FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={editOrderForm.control} name="pickupTime" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">取貨時間 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input type="time" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
                     <FormField control={editOrderForm.control} name="pickupAddress" render={({ field }) => (
                       <FormItem><FormLabel className="text-xs">取貨地址 <span className="text-destructive">*</span></FormLabel>
                         <FormControl>
@@ -1853,17 +1856,19 @@ export default function Admin() {
                     <p className="text-xs font-bold text-blue-600 uppercase tracking-wide flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5" /> 主要送達地點
                     </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField control={editOrderForm.control} name="deliveryDate" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">送達日期</FormLabel>
-                          <FormControl><Input type="date" {...field} /></FormControl></FormItem>
-                      )} />
-                      <FormField control={editOrderForm.control} name="deliveryTime" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">送達時間 <span className="text-destructive">*</span></FormLabel>
-                          <FormControl><Input type="time" {...field} /></FormControl>
-                          <FormMessage /></FormItem>
-                      )} />
-                    </div>
+                    <FormField control={editOrderForm.control} name="deliveryDate" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">送達日期</FormLabel>
+                        <FormControl>
+                          <SmartDatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} />
+                        </FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={editOrderForm.control} name="deliveryTime" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs">送達時間 <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input type="time" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
                     <FormField control={editOrderForm.control} name="deliveryAddress" render={({ field }) => (
                       <FormItem><FormLabel className="text-xs">送達地址 <span className="text-destructive">*</span></FormLabel>
                         <FormControl>

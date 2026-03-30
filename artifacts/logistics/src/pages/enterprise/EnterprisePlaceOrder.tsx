@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { ShoppingCart, Zap, MapPin, Package, Truck, Star, Trash2, Plus, X, CheckCircle, ChevronRight, RotateCcw } from "lucide-react";
+import { SmartDatePicker } from "@/components/SmartDatePicker";
 import { type EnterpriseSession } from "@/components/EnterpriseLayout";
 import { type EnterpriseTemplate } from "@workspace/db";
 import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
@@ -207,10 +208,10 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
                 onChange={v => setF("pickupAddress", v)}
                 historyKey="ent-pickup"
               />
-              <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="mt-2 space-y-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">取貨日期</label>
-                  <input type="date" value={form.pickupDate} onChange={e => setF("pickupDate", e.target.value)} className={inp} />
+                  <SmartDatePicker value={form.pickupDate} onChange={v => setF("pickupDate", v)} />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">取貨時間 <span className="text-red-500">*</span></label>
@@ -227,10 +228,10 @@ export default function EnterprisePlaceOrder({ session }: { session: EnterpriseS
                 onChange={v => setF("deliveryAddress", v)}
                 historyKey="ent-delivery"
               />
-              <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="mt-2 space-y-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">下貨日期</label>
-                  <input type="date" value={form.deliveryDate} onChange={e => setF("deliveryDate", e.target.value)} className={inp} />
+                  <SmartDatePicker value={form.deliveryDate} onChange={v => setF("deliveryDate", v)} />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">下貨時間 <span className="text-red-500">*</span></label>
