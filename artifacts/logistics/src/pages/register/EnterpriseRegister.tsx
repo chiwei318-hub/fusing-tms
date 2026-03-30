@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { Building2, User, Phone, Lock, Eye, EyeOff, ChevronLeft, FileText, MapPin, CheckCircle, Clock } from "lucide-react";
+import { Building2, User, Phone, Lock, Eye, EyeOff, ChevronLeft, FileText, CheckCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
@@ -103,10 +104,11 @@ export default function EnterpriseRegister() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">公司地址（選填）</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input value={form.address} onChange={set("address")} placeholder="台北市中山區…" className="h-11 pl-9" />
-                </div>
+                <TaiwanAddressInput
+                  value={form.address}
+                  onChange={v => setForm(f => ({ ...f, address: v }))}
+                  historyKey="ent-reg-addr"
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block font-medium">設定密碼（至少 6 位）*</label>

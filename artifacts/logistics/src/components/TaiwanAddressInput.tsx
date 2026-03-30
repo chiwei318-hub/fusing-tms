@@ -2,12 +2,12 @@
  * TaiwanAddressInput — All-in-one Taiwan address panel
  *
  * Always shows all fields:
- *   1. Google Maps quick-search bar (if VITE_GOOGLE_MAPS_API_KEY set)
+ *   1. Quick-search bar: Google Maps (if VITE_GOOGLE_MAPS_API_KEY set) OR Nominatim OSM (free fallback)
  *   2. 縣市 dropdown
  *   3. 區域 dropdown (filtered by city)
  *   4. 路/街/巷/弄 text input
  *   5. 門牌 text input
- *   6. Auto-combined address preview + validation
+ *   6. Auto-combined address preview + validation + history recall
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -82,6 +82,55 @@ function useGoogleMapsReady() {
   return ready;
 }
 
+// ─── Nominatim (OpenStreetMap) free geocoding ─────────────────────────────────
+
+interface NominatimResult {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  address: {
+    house_number?: string;
+    road?: string;
+    suburb?: string;
+    city_district?: string;
+    city?: string;
+    county?: string;
+    state?: string;
+    postcode?: string;
+  };
+}
+
+let nominatimAbort: AbortController | null = null;
+
+async function searchNominatim(query: string): Promise<NominatimResult[]> {
+  if (nominatimAbort) nominatimAbort.abort();
+  nominatimAbort = new AbortController();
+  try {
+    const q = encodeURIComponent(query);
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=6&countrycodes=tw&addressdetails=1&accept-language=zh-TW`;
+    const res = await fetch(url, {
+      signal: nominatimAbort.signal,
+      headers: { "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5" },
+    });
+    return (await res.json()) as NominatimResult[];
+  } catch {
+    return [];
+  }
+}
+
+function formatNominatim(r: NominatimResult): string {
+  const a = r.address;
+  const parts = [
+    a.state?.replace("台灣省", "").replace("臺灣省", "") ?? "",
+    a.county ?? a.city ?? "",
+    a.city_district ?? a.suburb ?? "",
+    a.road ?? "",
+    a.house_number ? `${a.house_number}號` : "",
+  ].filter(Boolean);
+  return parts.join("") || r.display_name;
+}
+
 // ─── Taiwan postal helpers ────────────────────────────────────────────────────
 
 const CITIES = [...new Set(TAIWAN_POSTAL.map(e => e.city))];
@@ -151,27 +200,34 @@ export function TaiwanAddressInput({
   onBlur,
 }: Props) {
   const gmReady = useGoogleMapsReady();
+  const useNominatim = !GMAPS_KEY;
 
-  // Parse initial value into structured fields
   const initial = useMemo(() => parseAddress(value), []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [city, setCity]     = useState(initial.city);
+  const [city, setCity]         = useState(initial.city);
   const [district, setDistrict] = useState(initial.district);
-  const [road, setRoad]     = useState(initial.road);
-  const [num, setNum]       = useState(initial.num);
+  const [road, setRoad]         = useState(initial.road);
+  const [num, setNum]           = useState(initial.num);
 
   // Google Maps quick-search
-  const [gmQuery, setGmQuery]         = useState("");
+  const [gmQuery, setGmQuery]           = useState("");
   const [gmSuggestions, setGmSuggestions] = useState<GmPrediction[]>([]);
-  const [gmLoading, setGmLoading]     = useState(false);
-  const [gmOpen, setGmOpen]           = useState(false);
+  const [gmLoading, setGmLoading]       = useState(false);
+  const [gmOpen, setGmOpen]             = useState(false);
 
   // Road-field GM suggestions
   const [roadSuggestions, setRoadSuggestions] = useState<GmPrediction[]>([]);
-  const [roadSugOpen, setRoadSugOpen] = useState(false);
-  const [roadLoading, setRoadLoading] = useState(false);
+  const [roadSugOpen, setRoadSugOpen]   = useState(false);
+  const [roadLoading, setRoadLoading]   = useState(false);
 
-  // History dropdown
+  // Nominatim quick-search
+  const [nomQuery, setNomQuery]             = useState("");
+  const [nomSuggestions, setNomSuggestions] = useState<NominatimResult[]>([]);
+  const [nomLoading, setNomLoading]         = useState(false);
+  const [nomOpen, setNomOpen]               = useState(false);
+  const nomTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // History dropdown (shared by both search bars)
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory]         = useState<string[]>([]);
 
@@ -181,7 +237,6 @@ export function TaiwanAddressInput({
   const roadTimer = useRef<ReturnType<typeof setTimeout>>();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Init Google Maps services
   useEffect(() => {
     if (gmReady && window.google) {
       autoSvc.current  = new window.google.maps.places.AutocompleteService();
@@ -189,20 +244,19 @@ export function TaiwanAddressInput({
     }
   }, [gmReady]);
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handler(e: PointerEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setGmOpen(false);
         setRoadSugOpen(false);
         setHistoryOpen(false);
+        setNomOpen(false);
       }
     }
     document.addEventListener("pointerdown", handler);
     return () => document.removeEventListener("pointerdown", handler);
   }, []);
 
-  // Sync external value → parse into fields (only if value changes externally)
   const prevExternal = useRef(value);
   useEffect(() => {
     if (value !== prevExternal.current && value !== buildAddress(city, district, road, num)) {
@@ -216,7 +270,6 @@ export function TaiwanAddressInput({
     return [c, d, r, n].filter(Boolean).join("");
   }
 
-  // Emit combined address upward whenever any field changes
   const emit = useCallback((c: string, d: string, r: string, n: string) => {
     const full = buildAddress(c, d, r, n);
     prevExternal.current = full;
@@ -232,7 +285,6 @@ export function TaiwanAddressInput({
   };
   const handleRoadChange = (r: string) => {
     setRoad(r); emit(city, district, r, num);
-    // Google Maps road suggestions
     clearTimeout(roadTimer.current);
     if (!r.trim() || !autoSvc.current) { setRoadSuggestions([]); return; }
     const q = `${city}${district}${r}`;
@@ -252,7 +304,7 @@ export function TaiwanAddressInput({
     setNum(n); emit(city, district, road, n);
   };
 
-  // Google Maps quick-search bar
+  // ─── Google Maps quick-search ───────────────────────────────────────────────
   const handleGmQueryChange = (q: string) => {
     setGmQuery(q);
     clearTimeout(gmTimer.current);
@@ -272,8 +324,7 @@ export function TaiwanAddressInput({
 
   const applyGmResult = (pred: GmPrediction) => {
     if (!geocoder.current) return;
-    setGmOpen(false);
-    setRoadSugOpen(false);
+    setGmOpen(false); setRoadSugOpen(false);
     setGmQuery(pred.structured_formatting.main_text);
     geocoder.current.geocode({ placeId: pred.place_id }, (results, status) => {
       if (status === "OK" && results?.[0]) {
@@ -284,11 +335,7 @@ export function TaiwanAddressInput({
         onChange(full);
         saveHistory(historyKey, full);
         setGmQuery("");
-        onLocationChange?.({
-          lat: results[0].geometry.location.lat(),
-          lng: results[0].geometry.location.lng(),
-          formattedAddress: full,
-        });
+        onLocationChange?.({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng(), formattedAddress: full });
       }
     });
   };
@@ -307,18 +354,41 @@ export function TaiwanAddressInput({
         prevExternal.current = full;
         onChange(full);
         saveHistory(historyKey, full);
-        onLocationChange?.({
-          lat: results[0].geometry.location.lat(),
-          lng: results[0].geometry.location.lng(),
-          formattedAddress: full,
-        });
+        onLocationChange?.({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng(), formattedAddress: full });
       }
     });
   };
 
+  // ─── Nominatim quick-search ─────────────────────────────────────────────────
+  const handleNomQueryChange = (q: string) => {
+    setNomQuery(q);
+    clearTimeout(nomTimer.current);
+    if (!q.trim()) { setNomSuggestions([]); setNomOpen(false); return; }
+    setNomLoading(true);
+    nomTimer.current = setTimeout(async () => {
+      const results = await searchNominatim(q);
+      setNomLoading(false);
+      setNomSuggestions(results.slice(0, 6));
+      setNomOpen(results.length > 0);
+    }, 400);
+  };
+
+  const applyNominatim = (r: NominatimResult) => {
+    setNomOpen(false); setNomQuery("");
+    const formatted = formatNominatim(r);
+    const p = parseAddress(formatted);
+    setCity(p.city); setDistrict(p.district); setRoad(p.road); setNum(p.num);
+    prevExternal.current = formatted;
+    onChange(formatted);
+    saveHistory(historyKey, formatted);
+    onLocationChange?.({ lat: parseFloat(r.lat), lng: parseFloat(r.lon), formattedAddress: formatted });
+  };
+
+  // ─── Shared helpers ─────────────────────────────────────────────────────────
   const clearAll = () => {
     setCity(""); setDistrict(""); setRoad(""); setNum("");
     setGmQuery(""); setGmSuggestions([]); setRoadSuggestions([]);
+    setNomQuery(""); setNomSuggestions([]);
     prevExternal.current = "";
     onChange("");
   };
@@ -329,6 +399,12 @@ export function TaiwanAddressInput({
     prevExternal.current = addr;
     onChange(addr);
     setHistoryOpen(false);
+  };
+
+  const openHistory = () => {
+    const h = loadHistory(historyKey);
+    setHistory(h);
+    if (h.length > 0) setHistoryOpen(true);
   };
 
   const combined  = buildAddress(city, district, road, num);
@@ -345,7 +421,7 @@ export function TaiwanAddressInput({
           : "border-input",
       )}>
 
-        {/* ── Google Maps quick-search (shown only if API key available) ── */}
+        {/* ── Google Maps quick-search (if API key set) ── */}
         {gmReady && (
           <div className="relative border-b px-3 pt-2.5 pb-2.5">
             <p className="text-[10px] font-semibold text-primary uppercase tracking-wide mb-1.5 flex items-center gap-1">
@@ -357,7 +433,10 @@ export function TaiwanAddressInput({
                 type="text"
                 value={gmQuery}
                 onChange={e => handleGmQueryChange(e.target.value)}
-                onFocus={() => gmSuggestions.length > 0 && setGmOpen(true)}
+                onFocus={() => {
+                  if (gmSuggestions.length > 0) setGmOpen(true);
+                  openHistory();
+                }}
                 placeholder="輸入地址關鍵字，自動填入所有欄位…"
                 className="w-full h-9 pl-8 pr-8 text-sm border rounded-lg bg-muted/30 focus:bg-background focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
               />
@@ -370,7 +449,6 @@ export function TaiwanAddressInput({
               )}
             </div>
 
-            {/* Google Maps suggestion dropdown */}
             {gmOpen && gmSuggestions.length > 0 && (
               <div className="absolute z-50 left-3 right-3 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
                 {gmSuggestions.map(pred => (
@@ -382,6 +460,87 @@ export function TaiwanAddressInput({
                       <p className="text-sm font-medium truncate">{pred.structured_formatting.main_text}</p>
                       <p className="text-xs text-muted-foreground truncate">{pred.structured_formatting.secondary_text}</p>
                     </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* History inline under GM search */}
+            {historyOpen && !gmOpen && history.length > 0 && (
+              <div className="absolute z-50 left-3 right-3 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
+                <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground px-3 pt-2 pb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> 最近使用地址
+                </p>
+                {history.map((addr, i) => (
+                  <button key={i} type="button"
+                    onPointerDown={e => { e.preventDefault(); selectHistory(addr); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/60 text-left border-t first:border-0">
+                    <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-foreground truncate">{addr}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Nominatim quick-search (free fallback when no Google Maps key) ── */}
+        {useNominatim && (
+          <div className="relative border-b px-3 pt-2.5 pb-2.5">
+            <p className="text-[10px] font-semibold text-primary uppercase tracking-wide mb-1.5 flex items-center gap-1">
+              <Search className="w-3 h-3" /> 快速搜尋地址（輸入後自動填入）
+            </p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={nomQuery}
+                onChange={e => handleNomQueryChange(e.target.value)}
+                onFocus={() => {
+                  if (nomSuggestions.length > 0) setNomOpen(true);
+                  openHistory();
+                }}
+                placeholder="例：台北市信義區松仁路、新竹縣竹北市…"
+                className="w-full h-9 pl-8 pr-8 text-sm border rounded-lg bg-muted/30 focus:bg-background focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-colors"
+              />
+              {nomLoading && <Loader2 className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-primary animate-spin" />}
+              {nomQuery && !nomLoading && (
+                <button type="button" onPointerDown={e => { e.preventDefault(); setNomQuery(""); setNomSuggestions([]); setNomOpen(false); }}
+                  className="absolute right-2 top-2 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Nominatim suggestions */}
+            {nomOpen && nomSuggestions.length > 0 && (
+              <div className="absolute z-50 left-3 right-3 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
+                {nomSuggestions.map(r => (
+                  <button key={r.place_id} type="button"
+                    onPointerDown={e => { e.preventDefault(); applyNominatim(r); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 text-left border-b last:border-0">
+                    <Navigation2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{formatNominatim(r)}</p>
+                      <p className="text-xs text-muted-foreground truncate">{r.display_name}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* History inline under Nominatim search */}
+            {historyOpen && !nomOpen && history.length > 0 && (
+              <div className="absolute z-50 left-3 right-3 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
+                <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground px-3 pt-2 pb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> 最近使用地址（點選直接填入）
+                </p>
+                {history.map((addr, i) => (
+                  <button key={i} type="button"
+                    onPointerDown={e => { e.preventDefault(); selectHistory(addr); }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-muted/60 text-left border-t first:border-0">
+                    <Clock className="w-3 h-3 text-primary shrink-0" />
+                    <span className="text-xs text-foreground truncate">{addr}</span>
                   </button>
                 ))}
               </div>
@@ -452,7 +611,6 @@ export function TaiwanAddressInput({
                 {roadLoading && <Loader2 className="absolute right-2 top-2.5 w-3.5 h-3.5 text-muted-foreground animate-spin" />}
               </div>
 
-              {/* Road Google Maps suggestions */}
               {roadSugOpen && roadSuggestions.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
                   {roadSuggestions.map(pred => (
@@ -503,38 +661,40 @@ export function TaiwanAddressInput({
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0 ml-2">
-              {/* History button */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onPointerDown={e => {
-                    e.preventDefault();
-                    const h = loadHistory(historyKey);
-                    setHistory(h);
-                    setHistoryOpen(h.length > 0 ? !historyOpen : false);
-                  }}
-                  title="最近使用地址"
-                  className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                </button>
+              {/* History button (shown when no inline search bar) */}
+              {!gmReady && !useNominatim && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onPointerDown={e => {
+                      e.preventDefault();
+                      const h = loadHistory(historyKey);
+                      setHistory(h);
+                      setHistoryOpen(h.length > 0 ? !historyOpen : false);
+                    }}
+                    title="最近使用地址"
+                    className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                  </button>
 
-                {historyOpen && history.length > 0 && (
-                  <div className="absolute z-50 right-0 bottom-full mb-1 w-72 bg-background border rounded-xl shadow-xl overflow-hidden">
-                    <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground px-3 pt-2 pb-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> 最近使用地址
-                    </p>
-                    {history.map((addr, i) => (
-                      <button key={i} type="button"
-                        onPointerDown={e => { e.preventDefault(); selectHistory(addr); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/60 text-left border-t first:border-0">
-                        <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-foreground truncate">{addr}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  {historyOpen && history.length > 0 && (
+                    <div className="absolute z-50 right-0 bottom-full mb-1 w-72 bg-background border rounded-xl shadow-xl overflow-hidden">
+                      <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground px-3 pt-2 pb-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> 最近使用地址
+                      </p>
+                      {history.map((addr, i) => (
+                        <button key={i} type="button"
+                          onPointerDown={e => { e.preventDefault(); selectHistory(addr); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/60 text-left border-t first:border-0">
+                          <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-foreground truncate">{addr}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {combined && (
                 <button type="button" onPointerDown={e => { e.preventDefault(); clearAll(); }}
