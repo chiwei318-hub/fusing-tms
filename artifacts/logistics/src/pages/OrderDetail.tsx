@@ -1,8 +1,10 @@
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { format } from "date-fns";
-import { ArrowLeft, MapPin, Package, User, Clock, Truck, DollarSign, CheckCircle2, AlertCircle, Leaf } from "lucide-react";
+import { ArrowLeft, MapPin, Package, User, Clock, Truck, DollarSign, CheckCircle2, AlertCircle, Leaf, FileText, Printer } from "lucide-react";
 import { Link } from "wouter";
 import { useOrderDetail } from "@/hooks/use-orders";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiUrl } from "@/lib/api";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,77 @@ const FEE_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   paid:     { label: "已收款", color: "bg-green-100 text-green-700 border-green-200" },
   invoiced: { label: "已開票", color: "bg-blue-100 text-blue-700 border-blue-200" },
 };
+
+function InvoiceSection({ orderId }: { orderId: number }) {
+  const [, navigate] = useLocation();
+  const { data: invoices = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["invoices-for-order", orderId],
+    queryFn: () => fetch(apiUrl(`/invoices?orderId=${orderId}`)).then(r => r.json()),
+  });
+  const autoMut = useMutation({
+    mutationFn: () => fetch(apiUrl(`/invoices/order/${orderId}/auto`), { method: "POST" }).then(r => r.json()),
+    onSuccess: () => refetch(),
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <Card className="border shadow-sm">
+      <CardHeader className="bg-muted/30 border-b pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600" /> 電子發票
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-5">
+        {invoices.length === 0 ? (
+          <div className="text-center py-3">
+            <p className="text-sm text-muted-foreground mb-3">尚未開立發票</p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={autoMut.isPending}
+              onClick={() => autoMut.mutate()}
+              className="gap-1.5"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              {autoMut.isPending ? "開立中..." : "立即開立發票"}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {invoices.map((inv: any) => (
+              <div key={inv.id} className={`rounded-lg border p-3 ${inv.status === "voided" ? "opacity-50" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-mono font-bold text-sm text-blue-700">{inv.invoice_number}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{inv.buyer_name}</div>
+                    {inv.buyer_tax_id && <div className="text-xs text-muted-foreground">統編：{inv.buyer_tax_id}</div>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-black text-emerald-600">NT${Number(inv.total_amount).toLocaleString()}</div>
+                    <Badge variant="outline" className={`text-[10px] mt-0.5 ${inv.status === "voided" ? "border-red-300 text-red-600" : "border-green-300 text-green-700"}`}>
+                      {inv.status === "voided" ? "已作廢" : "已開立"}
+                    </Badge>
+                  </div>
+                </div>
+                {inv.status !== "voided" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2 gap-1.5 text-xs h-7 px-2"
+                    onClick={() => navigate(`/invoice-print/${inv.id}`)}
+                  >
+                    <Printer className="w-3 h-3" /> 列印 / PDF
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function OrderDetail() {
   const [, params] = useRoute("/orders/:id");
@@ -322,6 +395,9 @@ export default function OrderDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Invoice */}
+          <InvoiceSection orderId={order.id} />
 
           {/* Last updated */}
           <Card className="border shadow-sm bg-muted/20">

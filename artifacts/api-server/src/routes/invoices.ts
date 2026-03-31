@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { autoIssueInvoice } from "../lib/autoInvoice.js";
 
 export const invoicesRouter = Router();
 
@@ -133,6 +134,19 @@ invoicesRouter.patch("/invoices/:id/void", async (req, res) => {
     UPDATE invoices SET status = 'voided', voided_at = NOW() WHERE id = ${Number(req.params.id)}
   `);
   res.json({ ok: true });
+});
+
+// POST /api/invoices/order/:orderId/auto - manually trigger auto-invoice for an order
+invoicesRouter.post("/invoices/order/:orderId/auto", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (isNaN(orderId)) return res.status(400).json({ error: "Invalid order ID" });
+  try {
+    const result = await autoIssueInvoice(orderId, "admin_manual");
+    if (!result) return res.status(422).json({ error: "無法開立發票（訂單不存在或金額為0）" });
+    res.json({ ok: true, invoice: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/invoices/stats/monthly - monthly invoice stats

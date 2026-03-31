@@ -154,6 +154,7 @@ async function ensureTestAccounts() {
       username: 'admin',
       password: 'admin123',
       vehicleType: 'truck',
+      licensePlate: 'TEST-0000',
       isAvailable: true,
     } as any).onConflictDoNothing();
 

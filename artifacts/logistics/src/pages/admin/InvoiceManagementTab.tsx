@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiUrl } from "@/lib/api";
 import {
   FileText, Plus, X, Download, CheckCircle, AlertCircle,
-  Search, Filter, Calendar, Building2, TrendingUp
+  Search, Calendar, TrendingUp, Printer, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { zhTW } from "date-fns/locale";
@@ -19,6 +20,7 @@ async function fetchStats() {
 
 export default function InvoiceManagementTab() {
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState("");
   const [searchText, setSearchText] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -187,15 +189,15 @@ export default function InvoiceManagementTab() {
                 {inv.order_id && <p className="text-xs text-blue-600">訂單 #{inv.order_id}</p>}
               </div>
             </div>
-            {inv.status !== "voided" && (
-              <div className="mt-3 flex gap-2" onClick={e => e.stopPropagation()}>
-                <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1 text-xs px-3 py-1 border rounded-lg hover:bg-muted transition-colors"
-                >
-                  <Download className="w-3 h-3" />
-                  列印/下載
-                </button>
+            <div className="mt-3 flex gap-2" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => navigate(`/invoice-print/${inv.id}`)}
+                className="flex items-center gap-1 text-xs px-3 py-1 border rounded-lg hover:bg-muted transition-colors"
+              >
+                <Printer className="w-3 h-3" />
+                列印 / PDF
+              </button>
+              {inv.status !== "voided" && (
                 <button
                   onClick={() => {
                     if (confirm(`確定作廢發票 ${inv.invoice_number}？此動作無法撤銷`)) {
@@ -207,8 +209,8 @@ export default function InvoiceManagementTab() {
                   <X className="w-3 h-3" />
                   作廢
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ))}
 

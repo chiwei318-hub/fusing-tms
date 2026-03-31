@@ -388,7 +388,59 @@ export async function sendRejectAlertToCompany(order: OrderInfo, driverName: str
   await Promise.allSettled(all.map(uid => pushFlex(uid, altText, bubble)));
 }
 
-/* ─── 7. 回覆訊息（含多則） ─── */
+/* ─── 7. 發票通知（推播給客戶） ─── */
+export async function sendInvoiceNotification(
+  lineUserId: string,
+  info: { invoiceNumber: string; orderId: number; buyerName: string; totalAmount: number; taxAmount: number }
+): Promise<void> {
+  if (!channelAccessToken) return;
+  const bubble: line.messagingApi.FlexBubble = {
+    type: "bubble",
+    size: "kilo",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#1e40af",
+      paddingAll: "md",
+      contents: [
+        { type: "text", text: "📄 電子發票開立通知", color: "#ffffff", size: "md", weight: "bold" },
+        { type: "text", text: "富詠運輸", color: "#93c5fd", size: "xs" },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      paddingAll: "md",
+      contents: [
+        row("發票號碼", info.invoiceNumber),
+        row("買　　方", info.buyerName),
+        row("訂單編號", `#${info.orderId}`),
+        { type: "separator" },
+        row("未稅金額", `NT$${(info.totalAmount - info.taxAmount).toLocaleString()}`),
+        row("稅　　額", `NT$${info.taxAmount.toLocaleString()}`),
+        {
+          type: "box", layout: "baseline", spacing: "sm",
+          contents: [
+            { type: "text", text: "含稅合計", color: "#64748b", size: "sm", flex: 2 },
+            { type: "text", text: `NT$${info.totalAmount.toLocaleString()}`, wrap: true, color: "#1e40af", size: "lg", flex: 5, weight: "bold" },
+          ],
+        },
+      ],
+    },
+    footer: {
+      type: "box", layout: "vertical", paddingAll: "md",
+      contents: [{
+        type: "text",
+        text: "如有疑問請聯絡客服，感謝您的使用！",
+        color: "#94a3b8", size: "xs", wrap: true, align: "center",
+      }],
+    },
+  };
+  await pushFlex(lineUserId, `【富詠運輸】電子發票 ${info.invoiceNumber} 已開立，合計 NT$${info.totalAmount.toLocaleString()}`, bubble);
+}
+
+/* ─── 8. 回覆訊息（含多則） ─── */
 export async function replyMessages(replyToken: string, messages: line.messagingApi.Message[]): Promise<void> {
   if (!channelAccessToken) return;
   await getClient().replyMessage({ replyToken, messages });

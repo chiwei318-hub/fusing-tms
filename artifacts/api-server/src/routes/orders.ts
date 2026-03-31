@@ -21,6 +21,7 @@ import {
   sendCustomerDispatch,
   sendCustomerStatusUpdate,
 } from "../lib/line.js";
+import { autoIssueInvoice } from "../lib/autoInvoice.js";
 import { customersTable } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -316,6 +317,11 @@ router.patch("/orders/:id", async (req, res) => {
     const order = await fetchOrderWithDriver(id);
     res.json(order);
 
+    // 自動開發票（後台手動將狀態改為 delivered）
+    if (body.status === "delivered" && order?.id) {
+      setImmediate(() => autoIssueInvoice(order.id, "admin_delivered").catch(() => {}));
+    }
+
     // 客戶通知：狀態變更
     if (body.status && ["in_transit", "delivered", "assigned"].includes(body.status) && order) {
       setImmediate(async () => {
@@ -434,6 +440,11 @@ router.post("/orders/:id/driver-action", async (req, res) => {
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
     const order = await fetchOrderWithDriver(id);
     res.json(order);
+
+    // 自動開發票（訂單完成時）
+    if (body.action === "complete") {
+      setImmediate(() => autoIssueInvoice(id, "driver_complete").catch(() => {}));
+    }
 
     // 通知客戶：到達 / 完成
     const notifyStatus = body.action === "checkin" ? "in_transit" : body.action === "complete" ? "delivered" : null;

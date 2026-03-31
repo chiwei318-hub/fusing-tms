@@ -38,6 +38,7 @@ import QuickTrack from "@/pages/QuickTrack";
 import CustomerRegister from "@/pages/register/CustomerRegister";
 import EnterpriseRegister from "@/pages/register/EnterpriseRegister";
 import DriverRegister from "@/pages/register/DriverRegister";
+import InvoicePrint from "@/pages/InvoicePrint";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -161,6 +162,9 @@ function AppRouter() {
       return <div className="h-dvh overflow-y-auto"><QuickTrack /></div>;
     }
     return <div className="h-dvh overflow-y-auto"><QuickOrder /></div>;
+  }
+  if (location.startsWith("/invoice-print/")) {
+    return <InvoicePrint />;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;
