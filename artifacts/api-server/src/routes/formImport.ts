@@ -2,16 +2,12 @@
  * Google Form response import
  *
  * POST /api/orders/form-import/preview
- *   Body: { csvUrl?, csvText? } — parse only, no DB writes
- *   Returns: { ok, rows, warnings, columns, summary }
+ *   Body: { csvUrl?, csvText?, fieldMap? }
+ *   fieldMap: { customerName: 2, customerPhone: 3, ... }  (column indices, 0-based)
+ *   Returns: { ok, rows, warnings, columns, autoMap, summary }
  *
  * POST /api/orders/form-import
- *   Body: { rows, fieldMap? } — insert orders
- *   Returns: { ok, inserted, errors }
- *
- * CSV format: Google Form export to Google Sheets
- *   Row 1: headers (time, customer questions...)
- *   Row 2+: one customer order per row
+ *   Body: { rows, defaultPickupAddress? }
  */
 
 import { Router } from "express";
@@ -35,18 +31,30 @@ export interface FormRow {
   raw: Record<string, string>;
 }
 
-// ── Column alias map ───────────────────────────────────────────────────────
-// Keys = internal field; values = substrings that identify the column header
-const FIELD_ALIASES: Record<keyof Omit<FormRow, "rowIndex" | "raw">, string[]> = {
+export type FieldKey =
+  | "customerName"
+  | "customerPhone"
+  | "pickupAddress"
+  | "deliveryAddress"
+  | "cargoDescription"
+  | "vehicleType"
+  | "pickupDate"
+  | "pickupTime"
+  | "notes";
+
+export type FieldMap = Partial<Record<FieldKey, number>>;
+
+// ── Column alias map (auto-detect) ─────────────────────────────────────────
+const FIELD_ALIASES: Record<FieldKey, string[]> = {
   customerName:    ["姓名", "客戶姓名", "聯絡人", "客戶名稱", "訂購人", "下單者", "寄件人", "name"],
   customerPhone:   ["電話", "手機", "連絡電話", "客戶電話", "聯絡電話", "phone", "mobile"],
-  pickupAddress:   ["取貨地址", "起點", "出發地", "取件地址", "寄件地址", "pickup", "取貨"],
-  deliveryAddress: ["送貨地址", "目的地", "送達地址", "收件地址", "收貨地址", "delivery", "送達", "送貨"],
-  cargoDescription:["貨物", "品項", "貨物說明", "貨品", "物品", "內容物", "cargo", "item"],
-  vehicleType:     ["車型", "車輛", "需要車型", "vehicle"],
-  pickupDate:      ["取貨日期", "配送日期", "日期", "date"],
-  pickupTime:      ["取貨時間", "配送時間", "時間", "time"],
-  notes:           ["備註", "注意事項", "特殊需求", "note", "remark"],
+  pickupAddress:   ["取貨地址", "起點", "出發地", "取件地址", "寄件地址", "pickup", "取貨地點", "取件地點", "取貨"],
+  deliveryAddress: ["送貨地址", "目的地", "送達地址", "收件地址", "收貨地址", "delivery", "送達", "送貨", "送貨地點", "送達地點", "配送地址", "收件地點"],
+  cargoDescription:["貨物", "品項", "貨物說明", "貨品", "物品", "內容物", "cargo", "item", "貨品名稱", "品名"],
+  vehicleType:     ["車型", "車輛", "需要車型", "車型需求", "vehicle"],
+  pickupDate:      ["取貨日期", "配送日期", "日期", "date", "預約日", "預計日期", "需求日"],
+  pickupTime:      ["取貨時間", "配送時間", "時間", "time", "預約時間", "需求時間"],
+  notes:           ["備註", "注意事項", "特殊需求", "note", "remark", "附加說明", "說明"],
 };
 
 const TIMESTAMP_KEYWORDS = ["時間戳記", "timestamp", "提交時間", "填寫時間"];
@@ -56,9 +64,9 @@ function detectField(header: string, aliases: string[]): boolean {
   return aliases.some((a) => h.includes(a.toLowerCase()));
 }
 
-function buildColumnMap(headers: string[]): Record<string, number> {
-  const map: Record<string, number> = {};
-  for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+function buildAutoMap(headers: string[]): FieldMap {
+  const map: FieldMap = {};
+  for (const [field, aliases] of Object.entries(FIELD_ALIASES) as [FieldKey, string[]][]) {
     const idx = headers.findIndex((h) => detectField(h, aliases));
     if (idx >= 0) map[field] = idx;
   }
@@ -66,9 +74,13 @@ function buildColumnMap(headers: string[]): Record<string, number> {
 }
 
 // ── CSV Parser ────────────────────────────────────────────────────────────
-export function parseFormCsv(text: string): {
+export function parseFormCsv(
+  text: string,
+  manualMap?: FieldMap
+): {
   rows: FormRow[];
   columns: string[];
+  autoMap: FieldMap;
   warnings: string[];
 } {
   const lines = text.split("\n").filter((l) => l.trim());
@@ -76,31 +88,35 @@ export function parseFormCsv(text: string): {
   const rows: FormRow[] = [];
 
   if (lines.length < 2) {
-    return { rows: [], columns: [], warnings: ["試算表資料不足，至少需要表頭列與一筆資料"] };
+    return { rows: [], columns: [], autoMap: {}, warnings: ["試算表資料不足，至少需要表頭列與一筆資料"] };
   }
 
-  // Parse headers — skip if first column looks like a timestamp
   const rawHeaders = lines[0].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+
   const isTimestampFirst = TIMESTAMP_KEYWORDS.some((kw) =>
     rawHeaders[0].toLowerCase().includes(kw.toLowerCase())
   );
 
-  const colMap = buildColumnMap(rawHeaders);
+  // Auto-detect column positions
+  const autoMap = buildAutoMap(rawHeaders);
 
-  // Report unmapped critical fields
-  const critical: (keyof typeof FIELD_ALIASES)[] = ["customerName", "customerPhone", "pickupAddress", "deliveryAddress"];
+  // Merge: manual map overrides auto map
+  const colMap: FieldMap = { ...autoMap, ...manualMap };
+
+  // Report unmapped critical fields (only warn if NO manual map provided)
+  const critical: FieldKey[] = ["customerName", "customerPhone", "pickupAddress", "deliveryAddress"];
   const unmapped = critical.filter((f) => colMap[f] === undefined);
-  if (unmapped.length > 0) {
+  if (unmapped.length > 0 && !manualMap) {
     const labels: Record<string, string> = {
-      customerName: "姓名",
-      customerPhone: "電話",
-      pickupAddress: "取貨地址",
-      deliveryAddress: "送貨地址",
+      customerName: "姓名", customerPhone: "電話",
+      pickupAddress: "取貨地址", deliveryAddress: "送貨地址",
     };
-    warnings.push(`找不到以下必要欄位：${unmapped.map((f) => labels[f]).join("、")}（請確認欄位標題包含對應關鍵字）`);
+    warnings.push(
+      `自動偵測無法對應以下欄位：${unmapped.map((f) => labels[f]).join("、")}（請使用下方的「手動設定欄位對應」）`
+    );
   }
 
-  const get = (cols: string[], field: string): string => {
+  const get = (cols: string[], field: FieldKey): string => {
     const idx = colMap[field];
     if (idx === undefined || idx < 0) return "";
     return (cols[idx] ?? "").trim().replace(/^"|"$/g, "");
@@ -109,11 +125,10 @@ export function parseFormCsv(text: string): {
   // Parse data rows
   for (let i = 1; i < lines.length; i++) {
     const raw = lines[i];
-    // Simple CSV split (handles quoted commas)
     const cols = splitCsvLine(raw);
     if (cols.every((c) => !c.trim())) continue;
 
-    // Skip if this looks like another header row
+    // Skip duplicate header rows
     if (isTimestampFirst && TIMESTAMP_KEYWORDS.some((kw) =>
       (cols[0] ?? "").toLowerCase().includes(kw.toLowerCase())
     )) continue;
@@ -137,7 +152,6 @@ export function parseFormCsv(text: string): {
       raw: rawObj,
     };
 
-    // Skip rows with no delivery address (likely empty/filler rows)
     if (!row.deliveryAddress && !row.pickupAddress) {
       warnings.push(`第 ${i + 1} 列：取貨地址與送貨地址均為空，已略過`);
       continue;
@@ -146,10 +160,10 @@ export function parseFormCsv(text: string): {
     rows.push(row);
   }
 
-  return { rows, columns: rawHeaders, warnings };
+  return { rows, columns: rawHeaders, autoMap, warnings };
 }
 
-// ── Simple CSV line splitter (handles quoted fields) ──────────────────────
+// ── Simple CSV line splitter ──────────────────────────────────────────────
 function splitCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = "";
@@ -169,33 +183,53 @@ function splitCsvLine(line: string): string[] {
   return result;
 }
 
+// ── Cache fetched CSV text (keyed by URL) for re-parse with manual map ────
+const csvCache = new Map<string, string>();
+
 // ── Preview endpoint ──────────────────────────────────────────────────────
 formImportRouter.post("/orders/form-import/preview", async (req, res) => {
   try {
-    const { csvUrl, csvText } = req.body as { csvUrl?: string; csvText?: string };
+    const {
+      csvUrl,
+      csvText,
+      fieldMap,
+    } = req.body as { csvUrl?: string; csvText?: string; fieldMap?: FieldMap };
 
     let text = csvText ?? "";
+    let fetchedUrl = csvUrl ?? "(csvText)";
+
     if (!text && csvUrl) {
-      const r = await fetch(csvUrl);
-      if (!r.ok) return res.status(400).json({ error: `無法取得試算表：HTTP ${r.status}` });
-      text = await r.text();
-      if (text.trim().startsWith("<!DOCTYPE")) {
-        return res.status(400).json({
-          error: "無法取得 CSV，請確認試算表已設為「知道連結的人可查看」",
-        });
+      // Check cache first (avoid re-fetching when user adjusts fieldMap)
+      if (csvCache.has(csvUrl)) {
+        text = csvCache.get(csvUrl)!;
+      } else {
+        const r = await fetch(csvUrl);
+        if (!r.ok) {
+          return res.status(400).json({ error: `無法取得試算表：HTTP ${r.status}` });
+        }
+        text = await r.text();
+        if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+          return res.status(400).json({
+            error: "無法取得 CSV，請確認試算表已設為「知道連結的人可查看」，然後重試",
+          });
+        }
+        // Cache for 5 minutes
+        csvCache.set(csvUrl, text);
+        setTimeout(() => csvCache.delete(csvUrl), 5 * 60 * 1000);
       }
     }
 
     if (!text) return res.status(400).json({ error: "請提供 csvUrl 或 csvText" });
 
-    const { rows, columns, warnings } = parseFormCsv(text);
+    const { rows, columns, autoMap, warnings } = parseFormCsv(text, fieldMap);
 
     res.json({
       ok: true,
       rows,
       columns,
+      autoMap,
       warnings,
-      fetchedUrl: csvUrl ?? "(csvText)",
+      fetchedUrl,
       summary: { rowCount: rows.length },
     });
   } catch (e: any) {
