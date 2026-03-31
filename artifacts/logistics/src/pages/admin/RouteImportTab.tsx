@@ -162,7 +162,9 @@ export default function RouteImportTab() {
           {previewMutation.isError && (
             <Alert variant="destructive" className="py-2">
               <AlertTriangle className="w-4 h-4" />
-              <AlertDescription>{previewMutation.error.message}</AlertDescription>
+              <AlertDescription className="break-all text-xs font-mono">
+                錯誤：{previewMutation.error.message}
+              </AlertDescription>
             </Alert>
           )}
         </CardContent>
