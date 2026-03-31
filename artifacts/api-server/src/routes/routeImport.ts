@@ -218,7 +218,7 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
           `SELECT id FROM orders
            WHERE source = 'route_import'
              AND notes LIKE $1
-             AND ($2::date IS NULL OR pickup_date = $2::date)
+             AND ($2::text IS NULL OR pickup_date = $2::text)
            LIMIT 1`,
           [`路線：${route.routeId}｜%`, pickupDate || null]
         );
