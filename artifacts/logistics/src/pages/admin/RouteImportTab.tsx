@@ -62,7 +62,7 @@ export default function RouteImportTab() {
   const previewMutation = useMutation({
     mutationFn: async () => {
       const csvUrl = toCsvUrl(sheetUrl.trim());
-      const r = await fetch(apiUrl("/api/orders/route-import/preview"), {
+      const r = await fetch(apiUrl("/orders/route-import/preview"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth-jwt")}` },
         body: JSON.stringify({ csvUrl }),
@@ -84,7 +84,7 @@ export default function RouteImportTab() {
     mutationFn: async () => {
       if (!preview) throw new Error("請先預覽");
       const routes = preview.routes.filter(r => selectedRoutes.has(r.routeId));
-      const r = await fetch(apiUrl("/api/orders/route-import"), {
+      const r = await fetch(apiUrl("/orders/route-import"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth-jwt")}` },
         body: JSON.stringify({ routes, pickupAddress, customerName, pickupDate: pickupDate || null }),
