@@ -227,10 +227,13 @@ export default function FormImportTab() {
               預覽
             </Button>
           </div>
-          <div className="text-xs text-muted-foreground space-y-0.5">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p>取得方式：Google 表單 → 回應 → 試算表圖示 → 開啟試算表 → 從瀏覽器網址列複製連結</p>
             <p className="text-amber-700 font-medium">
               ⚠ 試算表必須設為「知道連結的人可查看」才能匯入
+            </p>
+            <p className="text-green-700">
+              ✓ 取/送地址可填門市名稱、倉庫名稱等地點名稱，不限完整地址
             </p>
           </div>
           {previewMutation.isError && (
