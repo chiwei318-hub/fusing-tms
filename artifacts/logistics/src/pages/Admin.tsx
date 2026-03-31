@@ -32,6 +32,7 @@ import FleetManagementTab from "./admin/FleetManagementTab";
 import OutsourcingTab from "./admin/OutsourcingTab";
 import PaymentCenter from "./admin/PaymentCenter";
 import QuotationTab from "./admin/QuotationTab";
+import QuotesTab from "./admin/QuotesTab";
 import RoutePriceTab from "./admin/RoutePriceTab";
 import VehicleCostTab from "./admin/VehicleCostTab";
 import PermissionTab from "./admin/PermissionTab";
@@ -1482,7 +1483,8 @@ export default function Admin() {
               <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">帳務<br/>財務</span>
               <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
-                    { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                 label: "報價" },
+                    { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                 label: "報價試算" },
+                    { value: "quotes",      icon: <span className="text-sm leading-none">📋</span>,                 label: "報價管理" },
                     { value: "routeprice",  icon: <MapPin className="w-3.5 h-3.5" />,                               label: "路線報價" },
                     { value: "vehiclecost", icon: <span className="text-sm leading-none">💰</span>,                 label: "車輛成本" },
                     { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,          label: "電子發票" },
@@ -3318,6 +3320,11 @@ export default function Admin() {
         {/* ===== 報價試算 TAB ===== */}
         <TabsContent value="quotation" className="outline-none">
           <QuotationTab />
+        </TabsContent>
+
+        {/* ===== 報價管理 TAB ===== */}
+        <TabsContent value="quotes" className="outline-none">
+          <QuotesTab />
         </TabsContent>
 
         {/* ===== 路線報價表 TAB ===== */}

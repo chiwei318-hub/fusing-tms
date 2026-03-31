@@ -120,10 +120,10 @@ export default function Landing() {
               司機登入
             </button>
           </Link>
-          <Link href="/chat">
-            <button className="w-full flex items-center justify-center gap-1.5 border border-white/15 bg-white/6 hover:bg-white/12 text-slate-200 text-xs sm:text-sm font-semibold px-3 py-3 rounded-xl transition-colors">
-              <span className="text-base leading-none">💬</span>
-              AI客服報價
+          <Link href="/quote">
+            <button className="w-full flex items-center justify-center gap-1.5 border border-orange-400/40 bg-orange-400/10 hover:bg-orange-400/20 text-orange-300 text-xs sm:text-sm font-semibold px-3 py-3 rounded-xl transition-colors">
+              <span className="text-base leading-none">🧮</span>
+              立即報價試算
             </button>
           </Link>
         </div>

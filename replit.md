@@ -38,6 +38,13 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Dispatch & Routing:** Auto-dispatch engine, Dispatch Suggestion Engine based on multi-factor scoring, and an Auto-Routing Rules Engine for automated order assignment. Dispatch concurrency lock prevents double assignments.
 *   **Fleet & Driver Management:** Carpool panel, Outsourcing System for partner fleets, Fleet Onboarding System, Driver Rating System, Driver Income Dashboard, and GPS/Service Area/Capability Settings for drivers.
 *   **Financials:** E-Invoice Management with **auto-invoice trigger** on order completion (driver complete or admin delivered), A4 print/PDF page at `/invoice-print/:id`, manual trigger per order in OrderDetail, LINE push notification to customer on invoice issue, idempotent auto-issue logic, bulk monthly invoice for enterprise accounts, void invoice, and monthly stats. Customer `tax_id` and `invoice_title` auto-populated. Invoices stored in `invoices` table with line items (JSONB). Various Payment Methods & Cash Management, and Order Bidding/Price Comparison.
+*   **報價引擎 (Quoting Engine):** Full-featured vehicle-type-based pricing engine with DB-persisted rate cards (`pricing_config.vehicle_rate_cards`). Key components:
+    - `pricingEngine.ts` — core calculation: per-vehicle base price, km charge, weight/volume tiers, cold chain (冷鏈溫控) fee (冷凍/冷藏/恆溫), special cargo surcharges, waiting fee, tolls, tax+profit — all loaded from DB with 30s cache, falls back to DEFAULT_RULES.
+    - `quotes.ts` — public `/api/quotes/estimate` (no auth), `/api/quotes` (save), `/api/quotes/:token` (get), `/api/quotes` (admin list), `/api/pricing/vehicle-rates` (GET/PUT).
+    - `QuotePage.tsx` — customer-facing public quote calculator at `/quote`, accessible from Landing page.
+    - `QuotesTab.tsx` — admin quote management tab with status tracking (pending/confirmed/converted/expired/cancelled) and one-click status transitions.
+    - `QuotationTab.tsx` — admin rate card editor now syncs to DB via PUT `/api/pricing/vehicle-rates` on save (previously localStorage-only).
+    - `quote_requests` DB table stores all quote history with token, customer info, price breakdown, status, and expiry.
 *   **Analytics & Reporting:** Performance Audit & Bonus System, KPI Dashboard for daily operations, and Fleet Analytics (demand forecast, fleet recommendation, exception analysis).
 *   **Customization:** System Config Management via admin UI, and dynamic Order Custom Fields defined by administrators.
 *   **Integrations:** LINE Integration for driver notifications and AI chatbot, Google Maps for location services.

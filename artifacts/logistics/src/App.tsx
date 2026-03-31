@@ -39,6 +39,7 @@ import CustomerRegister from "@/pages/register/CustomerRegister";
 import EnterpriseRegister from "@/pages/register/EnterpriseRegister";
 import DriverRegister from "@/pages/register/DriverRegister";
 import InvoicePrint from "@/pages/InvoicePrint";
+import QuotePage from "@/pages/QuotePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -165,6 +166,9 @@ function AppRouter() {
   }
   if (location.startsWith("/invoice-print/")) {
     return <InvoicePrint />;
+  }
+  if (location === "/quote" || location.startsWith("/quote/")) {
+    return <div className="h-dvh overflow-y-auto"><QuotePage /></div>;
   }
   if (location.startsWith("/customer")) {
     return <CustomerPortal />;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
+import { getApiUrl } from '@/lib/api';
 import ExcelJS from 'exceljs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -357,8 +358,19 @@ export default function QuotationTab() {
     setDirty(true);
   }, []);
 
-  const saveAllRules = () => {
+  const saveAllRules = async () => {
     saveRules(rules);
+    try {
+      const token = localStorage.getItem('auth-jwt');
+      await fetch(getApiUrl('pricing/vehicle-rates'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(rules),
+      });
+      toast({ title: '費率已同步至雲端', description: '所有設備即時生效' });
+    } catch {
+      toast({ title: '本機已儲存', description: '雲端同步失敗，稍後重試', variant: 'destructive' });
+    }
     setDirty(false);
   };
 
@@ -367,6 +379,22 @@ export default function QuotationTab() {
     saveRules(DEFAULT_RULES);
     setDirty(false);
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth-jwt');
+    fetch(getApiUrl('pricing/vehicle-rates'), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.rates?.vehicles) {
+          const merged = { ...DEFAULT_RULES, ...data.rates };
+          setRules(merged);
+          saveRules(merged);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleCalc = () => {
     const wkg = parseFloat(weightKg) || 0;
