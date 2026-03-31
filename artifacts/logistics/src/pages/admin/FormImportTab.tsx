@@ -89,6 +89,7 @@ export default function FormImportTab() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [defaultPickupAddress, setDefaultPickupAddress] = useState("");
+  const [defaultDeliveryAddress, setDefaultDeliveryAddress] = useState("");
   const [showMapping, setShowMapping] = useState(false);
   const [manualMap, setManualMap] = useState<FieldMap>({});
 
@@ -140,7 +141,7 @@ export default function FormImportTab() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("auth-jwt")}`,
         },
-        body: JSON.stringify({ rows, defaultPickupAddress }),
+        body: JSON.stringify({ rows, defaultPickupAddress, defaultDeliveryAddress }),
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({ error: res.statusText }));
@@ -384,23 +385,45 @@ export default function FormImportTab() {
             )}
           </div>
 
-          {/* Default pickup address */}
+          {/* Default addresses */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <StepBadge n={2} />
-                預設取貨地址（選填）
+                預設地址設定（選填）
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="max-w-md space-y-1.5">
-                <p className="text-xs text-muted-foreground">若表單未填取貨地址，套用此預設值</p>
-                <Input
-                  value={defaultPickupAddress}
-                  onChange={(e) => setDefaultPickupAddress(e.target.value)}
-                  placeholder="例：台北市內湖區某某倉庫"
-                  className="text-sm"
-                />
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-600 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-blue-400" />
+                    預設取貨地址
+                  </Label>
+                  <Input
+                    value={defaultPickupAddress}
+                    onChange={(e) => setDefaultPickupAddress(e.target.value)}
+                    placeholder="例：蝦皮取貨倉庫"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">表單未填取貨地址時套用</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-gray-600 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-red-400" />
+                    預設送貨地址
+                  </Label>
+                  <Input
+                    value={defaultDeliveryAddress}
+                    onChange={(e) => setDefaultDeliveryAddress(e.target.value)}
+                    placeholder="例：各門市（由配送模式決定）"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">表單無送貨地址欄位時套用</p>
+                </div>
+              </div>
+              <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-2.5 py-1.5">
+                ✓ 「配送模式」欄位會自動儲存至備註欄，方便調度員參考
               </div>
             </CardContent>
           </Card>

@@ -72,8 +72,8 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
     "送貨地點", "送件地點", "送貨門市", "收件門市",
     "送達地點", "配送地點", "配送門市",
     "送件站", "收件站", "目的地", "終點",
-    // 短關鍵字
-    "送貨", "送件", "送達", "收件", "配送", "delivery",
+    // 短關鍵字（不加「配送」避免和「配送模式」衝突）
+    "送貨", "送件", "送達", "收件", "delivery",
   ],
   cargoDescription: [
     "貨物", "品項", "貨物說明", "貨品", "物品", "內容物",
@@ -89,11 +89,14 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
   ],
   pickupTime: [
     "取貨時間", "配送時間", "取件時間", "預約時間",
-    "時間", "需求時間", "time",
+    "需求時間", "叫車時間", "time",
+    // 不加裸「時間」避免和「時間戳記」衝突
   ],
   notes: [
     "備註", "注意事項", "特殊需求", "附加說明",
-    "說明", "補充說明", "其他說明", "note", "remark",
+    "說明", "補充說明", "其他說明",
+    "配送模式", "配送方式", "運送方式", "服務類型", "配送類型",
+    "note", "remark",
   ],
 };
 
@@ -140,6 +143,13 @@ export function parseFormCsv(
   // Auto-detect column positions
   const autoMap = buildAutoMap(rawHeaders);
 
+  // Remove timestamp column from autoMap (col 0) to avoid misleading UI
+  if (isTimestampFirst) {
+    for (const k of Object.keys(autoMap) as FieldKey[]) {
+      if (autoMap[k] === 0) delete autoMap[k];
+    }
+  }
+
   // Merge: manual map overrides auto map
   const colMap: FieldMap = { ...autoMap, ...manualMap };
 
@@ -159,6 +169,8 @@ export function parseFormCsv(
   const get = (cols: string[], field: FieldKey): string => {
     const idx = colMap[field];
     if (idx === undefined || idx < 0) return "";
+    // Never extract pickupTime/pickupDate from the timestamp column (col 0)
+    if (isTimestampFirst && idx === 0 && (field === "pickupTime" || field === "pickupDate")) return "";
     return (cols[idx] ?? "").trim().replace(/^"|"$/g, "");
   };
 
@@ -192,9 +204,10 @@ export function parseFormCsv(
       raw: rawObj,
     };
 
-    if (!row.deliveryAddress && !row.pickupAddress) {
-      warnings.push(`第 ${i + 1} 列：取貨地址與送貨地址均為空，已略過`);
-      continue;
+    // Skip only truly blank rows (no name AND no address at all)
+    const hasAnyData = row.customerName || row.pickupAddress || row.deliveryAddress || row.customerPhone;
+    if (!hasAnyData) {
+      continue; // Silent skip for completely blank rows
     }
 
     rows.push(row);
@@ -280,9 +293,10 @@ formImportRouter.post("/orders/form-import/preview", async (req, res) => {
 // ── Import endpoint ───────────────────────────────────────────────────────
 formImportRouter.post("/orders/form-import", async (req, res) => {
   try {
-    const { rows, defaultPickupAddress = "" } = req.body as {
+    const { rows, defaultPickupAddress = "", defaultDeliveryAddress = "" } = req.body as {
       rows: FormRow[];
       defaultPickupAddress?: string;
+      defaultDeliveryAddress?: string;
     };
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -295,10 +309,11 @@ formImportRouter.post("/orders/form-import", async (req, res) => {
     for (const row of rows) {
       try {
         const pickupAddr = row.pickupAddress || defaultPickupAddress;
+        const deliveryAddr = row.deliveryAddress || defaultDeliveryAddress;
 
         const routing = await applyAutoRoutingToOrder({
           pickup_address: pickupAddr,
-          delivery_address: row.deliveryAddress,
+          delivery_address: deliveryAddr,
           required_vehicle_type: row.vehicleType || null,
           cargo_description: row.cargoDescription || "客戶訂單",
           region: null,
@@ -322,7 +337,7 @@ formImportRouter.post("/orders/form-import", async (req, res) => {
             row.customerName || "（未填）",
             row.customerPhone || "",
             pickupAddr,
-            row.deliveryAddress,
+            deliveryAddr,
             row.cargoDescription || "客戶表單訂單",
             row.vehicleType || null,
             row.pickupDate || null,
