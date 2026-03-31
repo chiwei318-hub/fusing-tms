@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { db, adminRoles, adminUsers, customFields, auditLogs } from '@workspace/db';
-import { eq, desc, and, gte, lte, like, or } from 'drizzle-orm';
+import { db, adminRoles, adminUsers, customFields, auditLogs, driversTable, customersTable } from '@workspace/db';
+import { enterpriseAccountsTable } from '@workspace/db/schema';
+import { eq, desc, and, gte, lte, like, or, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 
 const router = Router();
@@ -116,6 +117,11 @@ const DEFAULT_ROLES = [
   },
 ];
 
+// Enterprise password: sha256(pw + "fuyi_salt_2024")
+function hashEnterprisePw(pw: string) {
+  return createHash('sha256').update(pw + 'fuyi_salt_2024').digest('hex');
+}
+
 async function seedDefaultData() {
   const existing = await db.select().from(adminRoles).limit(1);
   if (existing.length > 0) return;
@@ -138,7 +144,45 @@ async function seedDefaultData() {
   }
 }
 
+// Ensure test accounts exist for all roles (runs every startup, safe to repeat)
+async function ensureTestAccounts() {
+  try {
+    // ── Driver: admin / admin123 (stored as plain text) ──
+    await db.insert(driversTable).values({
+      name: '測試司機',
+      phone: '0900000000',
+      username: 'admin',
+      password: 'admin123',
+      isAvailable: true,
+    } as any).onConflictDoNothing();
+
+    // ── Customer: phone/username = "admin", password = "admin123" ──
+    await db.insert(customersTable).values({
+      name: '測試客戶',
+      phone: 'admin',
+      username: 'admin',
+      password: 'admin123',
+      isActive: true,
+    } as any).onConflictDoNothing();
+
+    // ── Enterprise: accountCode = "ADMIN", password = "admin123" ──
+    await db.insert(enterpriseAccountsTable).values({
+      accountCode: 'ADMIN',
+      companyName: '測試企業帳號',
+      contactPerson: '管理員',
+      phone: '0900000001',
+      status: 'active',
+      billingType: 'monthly',
+      discountPercent: 0,
+      passwordHash: hashEnterprisePw('admin123'),
+    } as any).onConflictDoNothing();
+  } catch (e) {
+    console.error('[ensureTestAccounts] error:', e);
+  }
+}
+
 seedDefaultData().catch(console.error);
+ensureTestAccounts().catch(console.error);
 
 // ===== ROLES =====
 router.get('/admin/roles', async (_req, res) => {
