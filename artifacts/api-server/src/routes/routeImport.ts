@@ -1,17 +1,18 @@
 /**
  * Route-based multi-stop order import
  *
- * POST /api/orders/route-import
- *   Body: { csvUrl?: string, rows?: ParsedRoute[] }
- *   - csvUrl: Google Sheets public CSV export URL
- *   - rows: already-parsed routes (for preview/confirm flow)
- *
  * POST /api/orders/route-import/preview
- *   Body: { csvUrl } — parse only, no DB writes
+ *   Body: { csvUrl?, csvText? } — parse only, no DB writes
+ *   Returns: { ok, routes, warnings, summary }
  *
- * Format:
- *   col[0] timestamp  col[2] routeId  col[3] vehicleType  col[4] driverId
- *   col[5] timeSlot   col[6] dockNo   col[7] stopSeq      col[8] storeName  col[9] storeAddress
+ * POST /api/orders/route-import
+ *   Body: { routes, pickupAddress?, cargoDescription?, pickupDate?, customerName?, customerPhone? }
+ *   Returns: { ok, inserted, orders, errors, duplicates }
+ *
+ * CSV format (dynamic column detection via header keywords):
+ *   Supports both: standalone sheets (no timestamp prefix)
+ *                  and Google Forms exports (timestamp in col[0])
+ *   Route ID formats: FN-01-395-1, A3-41-1, B2-12, etc.
  */
 
 import { Router } from "express";
@@ -200,10 +201,25 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
 
     const inserted: { orderId: number; routeId: string; stopCount: number }[] = [];
     const errors: { routeId: string; error: string }[] = [];
+    const duplicates: { routeId: string; existingOrderId: number }[] = [];
 
     for (const route of routes) {
       try {
         if (route.stops.length === 0) continue;
+
+        // Duplicate check: same route ID + same pickup date already imported?
+        const dupCheck = await pool.query(
+          `SELECT id FROM orders
+           WHERE source = 'route_import'
+             AND notes LIKE $1
+             AND ($2::date IS NULL OR pickup_date = $2::date)
+           LIMIT 1`,
+          [`路線：${route.routeId}｜%`, pickupDate || null]
+        );
+        if (dupCheck.rows.length > 0) {
+          duplicates.push({ routeId: route.routeId, existingOrderId: dupCheck.rows[0].id });
+          continue;
+        }
 
         const firstStop = route.stops[0];
         const extraStops = route.stops.slice(1);
@@ -272,6 +288,7 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
       inserted: inserted.length,
       orders: inserted,
       errors,
+      duplicates,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
