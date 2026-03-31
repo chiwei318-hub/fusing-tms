@@ -52,6 +52,7 @@ import { DemandForecastTab } from "./admin/DemandForecastTab";
 import { ZoneManagementTab } from "./admin/ZoneManagementTab";
 import { DailyOpsTab } from "./admin/DailyOpsTab";
 import { AutoRoutingTab } from "./admin/AutoRoutingTab";
+import RouteImportTab from "./admin/RouteImportTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1458,6 +1459,7 @@ export default function Admin() {
                     { value: "smart",       icon: <Layers className="w-3.5 h-3.5" />,                                label: "智慧調度" },
                     { value: "dispatch",    icon: <Zap className="w-3.5 h-3.5" />,                                  label: "派單優化" },
                     { value: "autorouting", icon: <Navigation className="w-3.5 h-3.5 text-indigo-500" />,           label: "自動分單" },
+                    { value: "routeimport", icon: <Upload className="w-3.5 h-3.5 text-blue-500" />,                label: "路線匯入" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3419,6 +3421,11 @@ export default function Admin() {
         {/* ===== 自動分單規則 TAB ===== */}
         <TabsContent value="autorouting" className="outline-none">
           <AutoRoutingTab />
+        </TabsContent>
+
+        {/* ===== 路線匯入 TAB ===== */}
+        <TabsContent value="routeimport" className="outline-none">
+          <RouteImportTab />
         </TabsContent>
       </Tabs>
 

@@ -40,6 +40,7 @@ import { dispatchSuggestRouter } from "./dispatchSuggest";
 import { zonesRouter } from "./zones";
 import { dailyOpsRouter } from "./dailyOps";
 import { orderImportRouter } from "./orderImport";
+import { routeImportRouter } from "./routeImport";
 import { autoRoutingRouter } from "./autoRouting";
 import { zonePermissionsRouter } from "../middleware/zoneScope";
 import { presenceRouter } from "./presence";
@@ -51,6 +52,7 @@ router.use(auditMiddleware);
 
 router.use(healthRouter);
 router.use(orderImportRouter);
+router.use(routeImportRouter);
 router.use(ordersRouter);
 router.use(driversRouter);
 router.use(lineRouter);
