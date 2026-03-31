@@ -43,7 +43,8 @@ interface ImportResult {
 }
 
 export default function RouteImportTab() {
-  const [sheetUrl, setSheetUrl] = useState("");
+  const [sheetUrl, setSheetUrl] = useState(() => sessionStorage.getItem("routeImport_url") ?? "");
+  const updateSheetUrl = (v: string) => { setSheetUrl(v); sessionStorage.setItem("routeImport_url", v); };
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [selectedRoutes, setSelectedRoutes] = useState<Set<string>>(new Set());
@@ -144,7 +145,7 @@ export default function RouteImportTab() {
             <Input
               placeholder="https://docs.google.com/spreadsheets/d/xxx/edit#gid=yyy"
               value={sheetUrl}
-              onChange={e => setSheetUrl(e.target.value)}
+              onChange={e => updateSheetUrl(e.target.value)}
               className="flex-1 text-sm font-mono"
             />
             <Button

@@ -37,41 +37,82 @@ export interface ParsedRoute {
   stops: RouteStop[];
 }
 
-// ── CSV Parser ────────────────────────────────────────────────────────────
+// ── CSV Parser (dynamic column detection) ────────────────────────────────
 export function parseRoutesCsv(text: string): { routes: ParsedRoute[]; warnings: string[] } {
   const lines = text.split("\n").filter(l => l.trim());
   const routes: ParsedRoute[] = [];
   const warnings: string[] = [];
   let current: ParsedRoute | null = null;
 
+  // Column index map — detected from header row
+  let colMap: Record<string, number> = {};
+  let headerFound = false;
+
+  // Known header names for each field (handles slight variations)
+  const HEADER_ALIASES: Record<string, string[]> = {
+    routeId:    ["路線編號", "路線編號（預排）", "路线编号"],
+    vehicle:    ["車型", "车型"],
+    driverId:   ["司機ID", "司機id", "司机ID", "司机id"],
+    timeSlot:   ["出車時段", "出车时段"],
+    dockNo:     ["碼頭編號", "码头编号"],
+    seq:        ["路線順序", "路线顺序"],
+    storeName:  ["門市名稱", "门市名称"],
+    address:    ["門市地址", "门市地址"],
+    dailyStore: ["日配門市", "日配门市"],
+  };
+
+  function findColIdx(headers: string[], aliases: string[]): number {
+    for (const alias of aliases) {
+      const idx = headers.findIndex(h => h.includes(alias));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    // Split CSV by comma (addresses don't contain commas in this format)
     const cols = raw.split(",").map(c => c.trim());
 
-    if (cols.length < 8) continue;
-    // Skip header row
-    if (cols[2] === "路線編號（預排）") continue;
+    // Detect header row — look for a row containing 路線 or routeId keyword
+    if (!headerFound) {
+      const joined = cols.join(",");
+      if (joined.includes("路線") && joined.includes("門市") && joined.includes("地址")) {
+        for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+          colMap[field] = findColIdx(cols, aliases);
+        }
+        headerFound = true;
+      }
+      continue; // skip the header row itself
+    }
 
-    const routeId = cols[2] ?? "";
-    const vehicleType = cols[3] ?? "";
-    const driverId = cols[4] ?? "";
-    const timeSlot = cols[5] ?? "";
-    const dockNo = cols[6] ?? "";
-    const seqStr = cols[7] ?? "";
-    const storeName = cols[8] ?? "";
-    const storeAddress = cols[9] ?? "";
-    const dailyStore = cols[10] ?? "";
+    if (cols.length < 3) continue;
 
-    // New route header row (route ID present and matches pattern)
-    if (routeId && routeId.match(/^F[A-Z]+-\d+-\d+/)) {
-      // Clean up Excel's null date artifact "1899/12/30"
-      const cleanTimeSlot = timeSlot.startsWith("1899") ? "" : timeSlot;
+    const get = (field: string): string => {
+      const idx = colMap[field];
+      if (idx === undefined || idx < 0 || idx >= cols.length) return "";
+      return cols[idx]?.trim() ?? "";
+    };
+
+    const routeId   = get("routeId");
+    const vehicleType = get("vehicle");
+    const driverId  = get("driverId");
+    const timeSlot  = get("timeSlot");
+    const dockNo    = get("dockNo");
+    const seqStr    = get("seq");
+    const storeName = get("storeName");
+    const storeAddress = get("address");
+    const dailyStore = get("dailyStore");
+
+    // Detect new route row: routeId is non-empty and looks like a route code
+    // Accepts formats: FN-01-395-1, A3-41-1, B2-12, etc. (alphanumeric + dash)
+    const isRouteRow = routeId && /^[A-Za-z0-9][\w-]+-\d+$/.test(routeId);
+    if (isRouteRow) {
+      const cleanTimeSlot = timeSlot.startsWith("1899") || timeSlot.startsWith("0000") ? "" : timeSlot;
       current = { routeId, vehicleType, driverId, timeSlot: cleanTimeSlot, dockNo, stops: [] };
       routes.push(current);
     }
 
-    // Stop row (has seq number and address) — same row may also have route info
+    // Stop row — has a sequence number and address
     const seq = parseInt(seqStr, 10);
     if (!isNaN(seq) && seq > 0 && storeAddress) {
       if (!current) {
@@ -87,10 +128,14 @@ export function parseRoutesCsv(text: string): { routes: ParsedRoute[]; warnings:
     }
   }
 
+  if (!headerFound) {
+    return { routes: [], warnings: ["找不到表頭列，請確認試算表包含「路線編號」、「門市名稱」、「門市地址」欄位"] };
+  }
+
   // Filter routes with at least 1 stop
   const validRoutes = routes.filter(r => r.stops.length > 0);
   if (routes.length > validRoutes.length) {
-    warnings.push(`${routes.length - validRoutes.length} 條路線沒有站點資料已略過`);
+    warnings.push(`${routes.length - validRoutes.length} 條路線無站點資料已略過`);
   }
 
   return { routes: validRoutes, warnings };
