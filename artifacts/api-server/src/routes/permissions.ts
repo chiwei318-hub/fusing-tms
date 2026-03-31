@@ -153,6 +153,7 @@ async function ensureTestAccounts() {
       phone: '0900000000',
       username: 'admin',
       password: 'admin123',
+      vehicleType: 'truck',
       isAvailable: true,
     } as any).onConflictDoNothing();
 

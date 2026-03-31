@@ -2,13 +2,15 @@ import { Router, type IRouter } from "express";
 import crypto from "crypto";
 import * as lineLib from "@line/bot-sdk";
 import { db, ordersTable, customersTable, driversTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { lineAccountsTable } from "@workspace/db/schema";
+import { eq, sql } from "drizzle-orm";
 import {
   replyTextMessage,
   replyMessages,
   isLineConfigured,
   sendPaymentReminder,
   sendRejectAlertToCompany,
+  getOrderNotifyReceivers,
 } from "../lib/line.js";
 
 const router: IRouter = Router();
@@ -313,6 +315,83 @@ router.post("/line/send-payment-reminder/:orderId", async (req, res) => {
     res.json({ ok: true, sentTo: customer.lineUserId });
   } catch (err) {
     res.status(500).json({ error: "Failed to send reminder" });
+  }
+});
+
+/* ─── Admin: LINE Notification Receiver Management ─── */
+
+/** GET /api/line/receivers — list all LINE accounts with notify flag */
+router.get("/line/receivers", async (_req, res) => {
+  try {
+    const currentIds = await getOrderNotifyReceivers();
+    const envId = process.env.LINE_COMPANY_USER_ID;
+    const allReceiverIds = new Set([...currentIds, ...(envId ? [envId] : [])]);
+
+    const accounts = await db.select().from(lineAccountsTable);
+    const result = accounts.map(a => ({
+      lineUserId: a.lineUserId,
+      displayName: a.displayName,
+      pictureUrl: a.pictureUrl,
+      userType: a.userType,
+      userRefId: a.userRefId,
+      createdAt: a.createdAt,
+      isReceiver: allReceiverIds.has(a.lineUserId),
+    }));
+
+    // Also include env-only receiver if not in lineAccountsTable
+    if (envId && !accounts.find(a => a.lineUserId === envId)) {
+      result.unshift({
+        lineUserId: envId,
+        displayName: "(env 設定)",
+        pictureUrl: null,
+        userType: "admin",
+        userRefId: "env",
+        createdAt: new Date(),
+        isReceiver: true,
+      } as any);
+    }
+
+    res.json({ receivers: [...allReceiverIds], accounts: result });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** POST /api/line/receivers — add a LINE user ID as receiver */
+router.post("/line/receivers", async (req, res) => {
+  try {
+    const { lineUserId } = req.body as { lineUserId: string };
+    if (!lineUserId) return res.status(400).json({ error: "lineUserId required" });
+
+    const current = await getOrderNotifyReceivers();
+    if (!current.includes(lineUserId)) {
+      const updated = [...current, lineUserId];
+      await db.execute(sql`
+        INSERT INTO pricing_config (key, value, label, updated_at)
+        VALUES ('line_notify_ids', ${JSON.stringify(updated)}, 'LINE訂單通知接收者', NOW())
+        ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(updated)}, updated_at = NOW()
+      `);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** DELETE /api/line/receivers/:lineUserId — remove a LINE user ID from receivers */
+router.delete("/line/receivers/:lineUserId", async (req, res) => {
+  try {
+    const { lineUserId } = req.params;
+    const current = await getOrderNotifyReceivers();
+    const updated = current.filter(id => id !== lineUserId);
+    await db.execute(sql`
+      INSERT INTO pricing_config (key, value, label, updated_at)
+      VALUES ('line_notify_ids', ${JSON.stringify(updated)}, 'LINE訂單通知接收者', NOW())
+      ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(updated)}, updated_at = NOW()
+    `);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

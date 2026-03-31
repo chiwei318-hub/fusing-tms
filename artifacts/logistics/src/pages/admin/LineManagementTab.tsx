@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import {
   MessageCircle,
@@ -19,6 +21,7 @@ import {
   AlertCircle,
   Copy,
   Link2,
+  BellRing,
 } from "lucide-react";
 
 interface LineStatus {
@@ -509,6 +512,117 @@ function PaymentReminderPanel() {
   );
 }
 
+/* ─── 新訂單通知接收者管理 ─── */
+const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+const api = (p: string) => `${BASE_URL}${p}`;
+const authHdr = () => { const t = localStorage.getItem("auth-jwt"); return t ? { Authorization: `Bearer ${t}` } : {}; };
+
+interface LineAccount {
+  lineUserId: string;
+  displayName: string | null;
+  pictureUrl: string | null;
+  userType: string;
+  isReceiver: boolean;
+}
+
+function NotifyReceiversPanel() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const { data, isLoading, refetch } = useQuery<{ accounts: LineAccount[]; receivers: string[] }>({
+    queryKey: ["line-receivers"],
+    queryFn: () => fetch(api("/api/line/receivers"), { headers: authHdr() }).then(r => r.json()),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: async ({ lineUserId, enable }: { lineUserId: string; enable: boolean }) => {
+      if (enable) {
+        const r = await fetch(api("/api/line/receivers"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHdr() },
+          body: JSON.stringify({ lineUserId }),
+        });
+        if (!r.ok) throw new Error("新增失敗");
+      } else {
+        const r = await fetch(api(`/api/line/receivers/${encodeURIComponent(lineUserId)}`), {
+          method: "DELETE",
+          headers: authHdr(),
+        });
+        if (!r.ok) throw new Error("移除失敗");
+      }
+    },
+    onSuccess: (_d, vars) => {
+      toast({ title: vars.enable ? "✅ 已加入訂單通知接收者" : "已移除訂單通知接收者" });
+      qc.invalidateQueries({ queryKey: ["line-receivers"] });
+    },
+    onError: (e: any) => toast({ title: "操作失敗", description: e.message, variant: "destructive" }),
+  });
+
+  const userTypeLabel: Record<string, string> = {
+    customer: "客戶", driver: "司機", admin: "管理員",
+  };
+
+  if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">載入中…</div>;
+
+  const accounts = data?.accounts ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+        <div className="font-semibold flex items-center gap-1.5 mb-1"><BellRing className="w-3.5 h-3.5" /> 訂單通知接收者</div>
+        <p>開啟後，每有新訂單進來，該 LINE 帳號會同時收到訂單提醒通知。</p>
+        <p className="mt-1 text-blue-600">📌 需要對方先傳過訊息給官方帳號（例如綁定電話），才會出現在此列表。</p>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="py-10 text-center text-muted-foreground text-sm">
+          <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          尚無綁定的 LINE 帳號<br />
+          <span className="text-xs">客戶或司機傳送「綁定 電話」後才會出現</span>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {accounts.map(acc => (
+            <div key={acc.lineUserId} className="flex items-center gap-3 p-3 bg-card border rounded-lg">
+              <Avatar className="w-9 h-9 shrink-0">
+                <AvatarImage src={acc.pictureUrl ?? undefined} />
+                <AvatarFallback className="text-xs bg-green-100 text-green-700">
+                  {(acc.displayName ?? "?").charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm truncate">{acc.displayName ?? "（未知）"}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                    {userTypeLabel[acc.userType] ?? acc.userType}
+                  </Badge>
+                  <span className="font-mono text-[10px] truncate max-w-[160px]">{acc.lineUserId}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {acc.isReceiver && (
+                  <span className="text-[10px] text-green-600 font-semibold flex items-center gap-1">
+                    <BellRing className="w-3 h-3" /> 接收中
+                  </span>
+                )}
+                <Switch
+                  checked={acc.isReceiver}
+                  disabled={toggleMut.isPending}
+                  onCheckedChange={enabled => toggleMut.mutate({ lineUserId: acc.lineUserId, enable: enabled })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => refetch()}>
+        <RefreshCw className="w-3 h-3" /> 重新整理
+      </Button>
+    </div>
+  );
+}
+
 export default function LineManagementTab() {
   const { data: status, isLoading } = useQuery<LineStatus>({
     queryKey: ["line-status"],
@@ -551,8 +665,11 @@ export default function LineManagementTab() {
       {status && <SetupCard status={status} />}
 
       {/* Tabs */}
-      <Tabs defaultValue="customers">
+      <Tabs defaultValue="notify">
         <TabsList className="w-full">
+          <TabsTrigger value="notify" className="flex-1 gap-1 text-xs">
+            <BellRing className="w-3.5 h-3.5 text-green-600" /> 通知設定
+          </TabsTrigger>
           <TabsTrigger value="customers" className="flex-1 gap-1 text-xs">
             <Users className="w-3.5 h-3.5" /> 客戶綁定
           </TabsTrigger>
@@ -563,6 +680,9 @@ export default function LineManagementTab() {
             <Bell className="w-3.5 h-3.5" /> 付款提醒
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="notify" className="mt-4">
+          <NotifyReceiversPanel />
+        </TabsContent>
         <TabsContent value="customers" className="mt-4">
           <CustomerBindings />
         </TabsContent>

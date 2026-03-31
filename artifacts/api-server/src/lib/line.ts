@@ -1,7 +1,24 @@
 import * as line from "@line/bot-sdk";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
 const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
+
+/** Query all LINE user IDs that should receive company order notifications */
+export async function getOrderNotifyReceivers(): Promise<string[]> {
+  try {
+    const rows = await db.execute(
+      sql`SELECT value FROM pricing_config WHERE key = 'line_notify_ids' LIMIT 1`
+    );
+    const row = (rows.rows as any[])[0];
+    if (!row?.value) return [];
+    const ids: string[] = JSON.parse(row.value);
+    return Array.isArray(ids) ? ids.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
 
 let client: line.messagingApi.MessagingApiClient | null = null;
 
@@ -111,10 +128,16 @@ export async function sendDispatchNotification(lineUserId: string, order: OrderI
   await pushFlex(lineUserId, `【派車通知】訂單 #${order.id} 已指派給您`, bubble);
 }
 
-/* ─── 2. 新訂單提醒 → 公司 ─── */
+/* ─── 2. 新訂單提醒 → 公司（所有已設定接收者） ─── */
 export async function sendNewOrderAlertToCompany(order: OrderInfo): Promise<void> {
-  const companyUserId = process.env.LINE_COMPANY_USER_ID;
-  if (!companyUserId) return;
+  // Collect all receiver IDs: DB-stored list + legacy env var
+  const dbReceivers = await getOrderNotifyReceivers();
+  const envId = process.env.LINE_COMPANY_USER_ID;
+  const all = [...new Set([...dbReceivers, ...(envId ? [envId] : [])])];
+  if (all.length === 0) return;
+
+  // Use first valid receiver to check access token (existing guard)
+  const companyUserId = all[0];
 
   const bubble: line.messagingApi.FlexBubble = {
     type: "bubble",
@@ -157,7 +180,9 @@ export async function sendNewOrderAlertToCompany(order: OrderInfo): Promise<void
     },
   };
 
-  await pushFlex(companyUserId, `【新訂單】#${order.id} ${order.customerName} 已下單`, bubble);
+  // Send to ALL receivers concurrently
+  const altText = `【新訂單】#${order.id} ${order.customerName} 已下單`;
+  await Promise.allSettled(all.map(uid => pushFlex(uid, altText, bubble)));
 }
 
 /* ─── 3. 派車成功 → 客戶（含司機/車牌/時間） ─── */
@@ -304,10 +329,13 @@ export async function sendPaymentReminder(
   await pushFlex(lineUserId, `【付款提醒】訂單 #${orderId} 未付 ${nt(amountDue)}`, bubble);
 }
 
-/* ─── 6. 拒單提醒 → 公司 ─── */
+/* ─── 6. 拒單提醒 → 公司（所有已設定接收者） ─── */
 export async function sendRejectAlertToCompany(order: OrderInfo, driverName: string): Promise<void> {
-  const companyUserId = process.env.LINE_COMPANY_USER_ID;
-  if (!companyUserId) return;
+  const dbReceivers = await getOrderNotifyReceivers();
+  const envId = process.env.LINE_COMPANY_USER_ID;
+  const all = [...new Set([...dbReceivers, ...(envId ? [envId] : [])])];
+  if (all.length === 0) return;
+  const companyUserId = all[0];
 
   const bubble: line.messagingApi.FlexBubble = {
     type: "bubble",
@@ -356,7 +384,8 @@ export async function sendRejectAlertToCompany(order: OrderInfo, driverName: str
     },
   };
 
-  await pushFlex(companyUserId, `【拒單警告】司機 ${driverName} 拒絕訂單 #${order.id}`, bubble);
+  const altText = `【拒單警告】司機 ${driverName} 拒絕訂單 #${order.id}`;
+  await Promise.allSettled(all.map(uid => pushFlex(uid, altText, bubble)));
 }
 
 /* ─── 7. 回覆訊息（含多則） ─── */
