@@ -113,18 +113,30 @@ export function parseRoutesCsv(text: string): { routes: ParsedRoute[]; warnings:
       routes.push(current);
     }
 
-    // Stop row — has a sequence number and address
+    // Stop row — use seq from 路線順序, fall back to 日配門市 number
     const seq = parseInt(seqStr, 10);
-    if (!isNaN(seq) && seq > 0 && storeAddress) {
+    const dailySeq = parseInt(dailyStore, 10);
+    const effectiveSeq = (!isNaN(seq) && seq > 0) ? seq : (!isNaN(dailySeq) && dailySeq > 0 ? dailySeq : NaN);
+
+    // Address: prefer dedicated address col; fall back to extracting from storeName
+    // e.g. "高安 - 貨取到 台北市中山區農安街166號1樓" → address after last "市|縣" start
+    let effectiveAddress = storeAddress;
+    if (!effectiveAddress && storeName) {
+      // Try to extract Taiwanese address from storeName (starts with 台北市, 新北市, etc.)
+      const addrMatch = storeName.match(/(台[北南中東西]市|新北市|桃園市|台中市|台南市|高雄市|基隆市|新竹[市縣]|苗栗縣|彰化縣|南投縣|雲林縣|嘉義[市縣]|屏東縣|宜蘭縣|花蓮縣|台東縣|澎湖縣|金門縣|連江縣).+/);
+      if (addrMatch) effectiveAddress = addrMatch[0];
+    }
+
+    if (!isNaN(effectiveSeq) && effectiveSeq > 0 && (effectiveAddress || storeName)) {
       if (!current) {
         warnings.push(`第 ${i + 1} 行有站點資料但找不到對應路線：${storeName}`);
         continue;
       }
       current.stops.push({
-        seq,
+        seq: effectiveSeq,
         storeName,
-        address: storeAddress,
-        isDailyStore: !!dailyStore.trim(),
+        address: effectiveAddress || storeName,
+        isDailyStore: !isNaN(dailySeq) && dailySeq > 0,
       });
     }
   }
