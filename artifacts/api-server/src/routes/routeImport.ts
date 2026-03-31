@@ -139,6 +139,10 @@ export function parseRoutesCsv(text: string): { routes: ParsedRoute[]; warnings:
     warnings.push(`${routes.length - validRoutes.length} 條路線無站點資料已略過`);
   }
 
+  if (validRoutes.length === 0 && headerFound) {
+    warnings.push("找到表頭列但未解析到任何路線，請確認路線編號格式正確（例：A3-41-1、FN-01-395-1）");
+  }
+
   return { routes: validRoutes, warnings };
 }
 
@@ -161,11 +165,13 @@ routeImportRouter.post("/orders/route-import/preview", async (req, res) => {
     if (!text) return res.status(400).json({ error: "請提供 csvUrl 或 csvText" });
 
     const { routes, warnings } = parseRoutesCsv(text);
+    const fetchedUrl = csvUrl ?? "(csvText)";
 
     res.json({
       ok: true,
       routes,
       warnings,
+      fetchedUrl,
       summary: {
         routeCount: routes.length,
         stopCount: routes.reduce((s, r) => s + r.stops.length, 0),
