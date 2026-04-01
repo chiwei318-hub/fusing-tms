@@ -146,28 +146,33 @@ async function seedDefaultData() {
 
 // Ensure test accounts exist for all roles (runs every startup, safe to repeat)
 async function ensureTestAccounts() {
+  const seedPassword = process.env.SEED_ACCOUNT_PASSWORD;
+  if (!seedPassword) {
+    console.warn('[ensureTestAccounts] SEED_ACCOUNT_PASSWORD is not set — skipping seed account creation.');
+    return;
+  }
   try {
-    // ── Driver: admin / admin123 (stored as plain text) ──
+    // ── Driver: username = "admin", password from SEED_ACCOUNT_PASSWORD ──
     await db.insert(driversTable).values({
       name: '測試司機',
       phone: '0900000000',
       username: 'admin',
-      password: 'admin123',
+      password: seedPassword,
       vehicleType: 'truck',
       licensePlate: 'TEST-0000',
       isAvailable: true,
     } as any).onConflictDoNothing();
 
-    // ── Customer: phone/username = "admin", password = "admin123" ──
+    // ── Customer: phone/username = "admin", password from SEED_ACCOUNT_PASSWORD ──
     await db.insert(customersTable).values({
       name: '測試客戶',
       phone: 'admin',
       username: 'admin',
-      password: 'admin123',
+      password: seedPassword,
       isActive: true,
     } as any).onConflictDoNothing();
 
-    // ── Enterprise: accountCode = "ADMIN", password = "admin123" ──
+    // ── Enterprise: accountCode = "ADMIN", password from SEED_ACCOUNT_PASSWORD ──
     await db.insert(enterpriseAccountsTable).values({
       accountCode: 'ADMIN',
       companyName: '測試企業帳號',
@@ -176,7 +181,7 @@ async function ensureTestAccounts() {
       status: 'active',
       billingType: 'monthly',
       discountPercent: 0,
-      passwordHash: hashEnterprisePw('admin123'),
+      passwordHash: hashEnterprisePw(seedPassword),
     } as any).onConflictDoNothing();
   } catch (e) {
     console.error('[ensureTestAccounts] error:', e);
