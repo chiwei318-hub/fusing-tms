@@ -41,19 +41,18 @@ apiKeysRouter.post("/api-keys", async (req, res) => {
     ? scope
     : ["orders:read", "orders:create", "quote"];
 
-  const scopeStr = `{${scopeArr.map((s: string) => `"${s}"`).join(",")}}`;
-  await db.execute(sql.raw(`
+  await db.execute(sql`
     INSERT INTO api_keys (name, key_prefix, key_hash, scope, rate_limit, note, expires_at)
     VALUES (
-      '${name.replace(/'/g,"''")}',
-      '${prefix}',
-      '${hash}',
-      '${scopeStr}'::text[],
+      ${name},
+      ${prefix},
+      ${hash},
+      ${scopeArr}::text[],
       ${Number(rate_limit)},
-      ${note ? `'${String(note).replace(/'/g,"''")}'` : "NULL"},
-      ${expires_at ? `'${expires_at}'` : "NULL"}
+      ${note ? String(note) : null},
+      ${expires_at ?? null}
     )
-  `));
+  `);
 
   // Return the raw key ONCE — never stored in plain text again
   res.status(201).json({ key: raw, prefix, name, scope: scopeArr, note });
@@ -64,14 +63,14 @@ apiKeysRouter.patch("/api-keys/:id", async (req, res) => {
   const { id } = req.params;
   const { status, note, rate_limit } = req.body ?? {};
 
-  const parts: string[] = [];
-  if (status    !== undefined) parts.push(`status = '${status === "active" ? "active" : "revoked"}'`);
-  if (note      !== undefined) parts.push(`note = ${note ? `'${note.replace(/'/g, "''")}'` : "NULL"}`);
-  if (rate_limit !== undefined) parts.push(`rate_limit = ${Number(rate_limit)}`);
-  if (!parts.length) return res.status(400).json({ error: "沒有可更新的欄位" });
+  const setClauses: ReturnType<typeof sql>[] = [];
+  if (status    !== undefined) setClauses.push(sql`status = ${status === "active" ? "active" : "revoked"}`);
+  if (note      !== undefined) setClauses.push(sql`note = ${note ? String(note) : null}`);
+  if (rate_limit !== undefined) setClauses.push(sql`rate_limit = ${Number(rate_limit)}`);
+  if (!setClauses.length) return res.status(400).json({ error: "沒有可更新的欄位" });
 
-  parts.push(`updated_at = NOW()`);
-  await db.execute(sql.raw(`UPDATE api_keys SET ${parts.join(", ")} WHERE id = ${Number(id)}`));
+  setClauses.push(sql`updated_at = NOW()`);
+  await db.execute(sql`UPDATE api_keys SET ${sql.join(setClauses, sql`, `)} WHERE id = ${Number(id)}`);
   res.json({ ok: true });
 });
 
