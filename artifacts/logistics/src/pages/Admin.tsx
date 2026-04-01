@@ -14,6 +14,7 @@ import {
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
   Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText, Globe,
+  RotateCcw,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,6 +59,7 @@ import FormImportTab from "./admin/FormImportTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
+import BillingFlowTab from "./admin/BillingFlowTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1493,6 +1495,7 @@ export default function Admin() {
                     { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,          label: "電子發票" },
                     { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,         label: "結算" },
                     { value: "cashflow",   icon: <Layers className="w-3.5 h-3.5 text-indigo-500" />,              label: "金流拆解" },
+                    { value: "billingflow", icon: <RotateCcw className="w-3.5 h-3.5 text-violet-500" />,          label: "金流閉環" },
                     { value: "bidding",    icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,              label: "競標比價" },
                     { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,               label: "審批" },
                   ].map(t => (
@@ -3361,6 +3364,11 @@ export default function Admin() {
         {/* ===== 金流拆解 TAB ===== */}
         <TabsContent value="cashflow" className="outline-none">
           <CashFlowTab />
+        </TabsContent>
+
+        {/* ===== 訂單金流閉環 TAB ===== */}
+        <TabsContent value="billingflow" className="outline-none">
+          <BillingFlowTab />
         </TabsContent>
 
         {/* ===== API 開放接口 TAB ===== */}

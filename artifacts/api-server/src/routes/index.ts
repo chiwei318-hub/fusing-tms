@@ -52,6 +52,8 @@ import { cashFlowRouter } from "./cashFlow";
 import { apiKeysRouter } from "./apiKeys";
 import { webhooksRouter } from "./webhooks";
 import { openApiRouter } from "./openApi";
+import { arLedgerRouter } from "./arLedger";
+import { monthlyBillingRouter } from "./monthlyBilling";
 
 const router: IRouter = Router();
 
@@ -109,5 +111,7 @@ router.use(cashFlowRouter);
 router.use(apiKeysRouter);
 router.use(webhooksRouter);
 router.use(openApiRouter);
+router.use(arLedgerRouter);
+router.use(monthlyBillingRouter);
 
 export default router;

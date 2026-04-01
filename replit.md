@@ -116,6 +116,40 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
   - 按司機 / 按加盟主 匯總表（含合計列）
 - **位置：** 後台 → 帳務財務 → 金流拆解 Tab
 
+## 訂單金流閉環（Billing Flow）
+
+- **DB 新增表格：**
+  - `ar_ledger`：應收帳款分類帳（receivable/payment/credit_note，正數=應收、負數=收款，含 `reconciled` 旗標）
+  - `monthly_bills`：月結帳單（enterprise_id/customer_id, period_year/month, status: draft→confirmed→invoiced→paid）
+  - `orders.order_no`：自動產生的訂單編號（FY20260401-XXXX 格式）
+  - `orders.invoice_id`：關聯已開立發票
+  - `orders.monthly_bill_id`：關聯月結帳單
+  - `customers.billing_type`：散客結帳類型（cash/monthly）
+- **autoInvoice.ts（重構）：** 根據 `enterprise_accounts.billing_type` 分流
+  - 現結：立即開票（invoice）→ 寫 AR receivable → LINE/Email 通知
+  - 月結：掛 AR receivable → 更新 `fee_status = 'monthly_pending'`（不開票）
+- **arLedger.ts：** 應收帳款路由
+  - `GET /api/ar-ledger/summary` — 各企業/散客帳款餘額彙總
+  - `GET /api/ar-ledger` — 全部分錄（分頁 + type filter）
+  - `GET /api/ar-ledger/enterprise/:id` — 單一企業明細
+  - `POST /api/ar-ledger/payment` — 收款入帳（自動對帳未結分錄）
+  - `PATCH /api/ar-ledger/:id/reconcile` — 手動對帳
+- **monthlyBilling.ts：** 月結帳單路由
+  - `GET /api/monthly-bills` — 帳單列表
+  - `GET /api/monthly-bills/:id` — 帳單明細含訂單列表
+  - `POST /api/monthly-bills/generate` — 掃描月結訂單產出帳單（upsert）
+  - `PATCH /api/monthly-bills/:id/confirm` — 客戶確認帳單
+  - `POST /api/monthly-bills/:id/invoice` — 批次開立電子發票
+  - `PATCH /api/monthly-bills/:id/pay` — 收款 + 自動對帳
+- **BillingFlowTab.tsx：** 後台「金流閉環」Tab
+  - 全流程圖示（現結/月結 分叉路徑，含完成狀態）
+  - 4 張 KPI 卡片（總應收/月結客戶/現結客戶/散客）
+  - 月結帳單管理：產出→確認→開票→收款 四步驟流程卡
+  - 應收餘額表（企業/散客分開顯示）
+  - AR 分類帳明細（type filter + 分頁 + 對帳狀態）
+  - 收款登錄 Dialog
+- **位置：** 後台 → 帳務財務 → 金流閉環 Tab
+
 ## 報價引擎（Pricing Engine）
 
 - **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）

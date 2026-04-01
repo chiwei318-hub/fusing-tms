@@ -1,6 +1,8 @@
 /**
  * autoInvoice.ts
- * 訂單完成後自動開立電子發票，並回傳發票號碼
+ * 訂單完成後根據客戶類型分流：
+ *   現結 → 立即開票 → AR receivable → LINE/Email 通知
+ *   月結 → 掛入 AR receivable → 等月底批次開票
  */
 
 import { db } from "@workspace/db";
@@ -9,9 +11,11 @@ import { sendInvoiceNotification } from "./line";
 import { sendInvoiceEmail } from "./email";
 
 export interface AutoInvoiceResult {
-  invoiceId: number;
-  invoiceNumber: string;
+  invoiceId?: number;
+  invoiceNumber?: string;
   totalAmount: number;
+  flow: "cash" | "monthly";  // 判斷走哪條路
+  arEntryId?: number;
 }
 
 function generateInvoiceNumber(): string {
@@ -22,36 +26,52 @@ function generateInvoiceNumber(): string {
   return `FY${y}${m}-${seq}`;
 }
 
-/**
- * 根據訂單 ID 自動開立電子發票
- * - 若訂單已有發票，則跳過（idempotent）
- * - 帶入客戶統編（tax_id）與發票抬頭（invoice_title）
- * - 開立後傳 LINE 通知給客戶
- */
-export async function autoIssueInvoice(orderId: number, triggeredBy = "system"): Promise<AutoInvoiceResult | null> {
-  // 避免重複開立
-  const existing = await db.execute(sql`
-    SELECT id, invoice_number, total_amount FROM invoices WHERE order_id = ${orderId} LIMIT 1
+/** 寫入 AR 分類帳（應收或收款） */
+async function writeArEntry(params: {
+  enterpriseId: number | null;
+  customerId: number | null;
+  orderId: number;
+  entryType: string;
+  amount: number;
+  note: string;
+  refInvoiceId?: number;
+}): Promise<number> {
+  const r = await db.execute(sql`
+    INSERT INTO ar_ledger
+      (enterprise_id, customer_id, order_id, entry_type, amount, note, ref_invoice_id)
+    VALUES
+      (${params.enterpriseId}, ${params.customerId}, ${params.orderId},
+       ${params.entryType}, ${params.amount}, ${params.note},
+       ${params.refInvoiceId ?? null})
+    RETURNING id
   `);
-  if ((existing.rows as any[]).length > 0) {
-    const row = (existing.rows as any[])[0];
-    return { invoiceId: row.id, invoiceNumber: row.invoice_number, totalAmount: row.total_amount };
-  }
+  return Number((r.rows[0] as any).id);
+}
 
-  // 取得訂單資料（含客戶統編，用電話號碼關聯）
+/**
+ * 根據訂單 ID 自動決定開票或掛帳
+ */
+export async function autoIssueInvoice(
+  orderId: number,
+  triggeredBy = "system"
+): Promise<AutoInvoiceResult | null> {
+  // ── 取訂單 + 企業帳號 + 散客資料 ──────────────────────────────────────
   const orderRows = await db.execute(sql`
     SELECT
-      o.id, o.total_fee, o.base_price, o.customer_name, o.customer_phone,
-      o.customer_email,
+      o.id, o.order_no, o.total_fee, o.base_price,
+      o.customer_name, o.customer_phone, o.customer_email,
       o.pickup_address, o.delivery_address, o.cargo_description,
       o.enterprise_id,
-      c.id            AS customer_db_id,
-      c.tax_id        AS customer_tax_id,
-      c.invoice_title AS customer_invoice_title,
-      c.email         AS customer_email_db,
-      c.line_user_id  AS customer_line_user_id,
-      ea.tax_id       AS enterprise_tax_id,
-      ea.company_name AS enterprise_name
+      c.id              AS customer_db_id,
+      c.tax_id          AS customer_tax_id,
+      c.invoice_title   AS customer_invoice_title,
+      c.email           AS customer_email_db,
+      c.line_user_id    AS customer_line_user_id,
+      c.billing_type    AS customer_billing_type,
+      ea.tax_id         AS enterprise_tax_id,
+      ea.company_name   AS enterprise_name,
+      ea.billing_type   AS enterprise_billing_type,
+      ea.email          AS enterprise_email
     FROM orders o
     LEFT JOIN customers c ON c.phone = o.customer_phone
     LEFT JOIN enterprise_accounts ea ON ea.id = o.enterprise_id
@@ -64,8 +84,15 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
   const rawAmount = Number(order.total_fee ?? order.base_price ?? 0);
   if (rawAmount <= 0) return null;
 
-  // 決定買方資訊（企業客戶優先）
+  // ── 判斷客戶類型與計費方式 ────────────────────────────────────────────
   const isEnterprise = !!order.enterprise_id;
+  const billingType: string = isEnterprise
+    ? (order.enterprise_billing_type ?? "prepaid")
+    : (order.customer_billing_type ?? "cash");
+
+  const isMonthly = billingType === "monthly";
+
+  // ── 買方資訊 ──────────────────────────────────────────────────────────
   const buyerName = isEnterprise
     ? order.enterprise_name
     : order.customer_invoice_title || order.customer_name;
@@ -73,15 +100,69 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
     ? order.enterprise_tax_id
     : order.customer_tax_id;
 
-  const invoiceType = isEnterprise ? "monthly" : buyerTaxId ? "b2b" : "receipt";
   const taxRate = 5;
   const taxAmount = Math.round(rawAmount * (taxRate / 100));
   const totalAmount = rawAmount + taxAmount;
-  const invoiceNumber = generateInvoiceNumber();
-
   const itemDesc = order.cargo_description
     ? `物流服務（${order.cargo_description}）`
     : "物流運送服務";
+
+  const toEmail: string | null =
+    order.customer_email ||
+    order.customer_email_db ||
+    (isEnterprise ? order.enterprise_email : null) ||
+    null;
+
+  // ══════════════════════════════════════════════════════════════════════
+  //  月結路徑：掛應收，不開票
+  // ══════════════════════════════════════════════════════════════════════
+  if (isMonthly) {
+    // 檢查是否已掛帳（idempotent）
+    const existAr = await db.execute(sql`
+      SELECT id FROM ar_ledger
+      WHERE order_id = ${orderId} AND entry_type = 'receivable'
+      LIMIT 1
+    `);
+    if ((existAr.rows as any[]).length > 0) {
+      return {
+        totalAmount,
+        flow: "monthly",
+        arEntryId: Number((existAr.rows[0] as any).id),
+      };
+    }
+
+    const arId = await writeArEntry({
+      enterpriseId: order.enterprise_id ?? null,
+      customerId:   order.customer_db_id ?? null,
+      orderId,
+      entryType:    "receivable",
+      amount:       totalAmount,
+      note:         `月結應收 ${order.order_no ?? `#${orderId}`}（${triggeredBy}）`,
+    });
+
+    // 更新訂單 fee_status = 'monthly_pending'
+    await db.execute(sql`
+      UPDATE orders SET fee_status = 'monthly_pending' WHERE id = ${orderId}
+    `);
+
+    return { totalAmount, flow: "monthly", arEntryId: arId };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  //  現結路徑：立即開票 → AR receivable → 通知
+  // ══════════════════════════════════════════════════════════════════════
+  // idempotent check
+  const existing = await db.execute(sql`
+    SELECT id, invoice_number, total_amount FROM invoices
+    WHERE order_id = ${orderId} LIMIT 1
+  `);
+  if ((existing.rows as any[]).length > 0) {
+    const row = (existing.rows as any[])[0];
+    return { invoiceId: row.id, invoiceNumber: row.invoice_number, totalAmount: row.total_amount, flow: "cash" };
+  }
+
+  const invoiceType = isEnterprise ? "b2b" : buyerTaxId ? "b2b" : "receipt";
+  const invoiceNumber = generateInvoiceNumber();
 
   const result = await db.execute(sql`
     INSERT INTO invoices (
@@ -97,54 +178,57 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
       ${invoiceType},
       ${buyerName ?? order.customer_name},
       ${buyerTaxId ?? null},
-      ${rawAmount},
-      ${taxAmount},
-      ${totalAmount},
+      ${rawAmount}, ${taxAmount}, ${totalAmount},
       ${JSON.stringify([{ description: itemDesc, qty: 1, unitPrice: rawAmount, total: rawAmount }])},
-      ${`訂單 #${orderId} 自動開立（${triggeredBy}）`}
+      ${`訂單 ${order.order_no ?? `#${orderId}`} 自動開立（${triggeredBy}）`}
     ) RETURNING id, invoice_number, total_amount
   `);
 
   const inv = (result.rows as any[])[0];
 
-  // 決定 Email 收件人：訂單 > 客戶資料表
-  const toEmail: string | null =
-    order.customer_email ||
-    order.customer_email_db ||
-    null;
+  // 寫 AR 應收
+  const arId = await writeArEntry({
+    enterpriseId: order.enterprise_id ?? null,
+    customerId:   order.customer_db_id ?? null,
+    orderId,
+    entryType:    "receivable",
+    amount:       totalAmount,
+    note:         `現結應收 ${order.order_no ?? `#${orderId}`}`,
+    refInvoiceId: Number(inv.id),
+  });
 
-  // 非同步通知 — 失敗不影響主流程
+  // 更新 fee_status = 'invoiced'
+  await db.execute(sql`
+    UPDATE orders SET fee_status = 'invoiced', invoice_id = ${Number(inv.id)}
+    WHERE id = ${orderId}
+  `);
+
+  // 非同步通知
   setImmediate(() => {
-    // LINE 推播
     if (order.customer_line_user_id) {
       sendInvoiceNotification(order.customer_line_user_id, {
-        invoiceNumber,
-        orderId,
+        invoiceNumber, orderId,
         buyerName: buyerName ?? order.customer_name,
-        totalAmount,
-        taxAmount,
+        totalAmount, taxAmount,
       }).catch(() => {});
     }
-
-    // Email 發票通知
     if (toEmail) {
       sendInvoiceEmail({
-        to: toEmail,
-        invoiceNumber,
-        orderId,
+        to: toEmail, invoiceNumber, orderId,
         buyerName: buyerName ?? order.customer_name,
-        totalAmount,
-        taxAmount,
-        amount: rawAmount,
-        invoiceType,
-        itemDesc,
-        pickupAddress: order.pickup_address ?? undefined,
+        totalAmount, taxAmount, amount: rawAmount,
+        invoiceType, itemDesc,
+        pickupAddress:   order.pickup_address  ?? undefined,
         deliveryAddress: order.delivery_address ?? undefined,
       }).catch(() => {});
-    } else {
-      console.log(`[autoInvoice] Order #${orderId}: no email address found, skipping email notification`);
     }
   });
 
-  return { invoiceId: inv.id, invoiceNumber: inv.invoice_number, totalAmount: inv.total_amount };
+  return {
+    invoiceId:     Number(inv.id),
+    invoiceNumber: inv.invoice_number,
+    totalAmount:   inv.total_amount,
+    flow:          "cash",
+    arEntryId:     arId,
+  };
 }
