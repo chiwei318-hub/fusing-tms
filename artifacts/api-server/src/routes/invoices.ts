@@ -2,7 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { autoIssueInvoice } from "../lib/autoInvoice.js";
-import { sendTestEmail, invalidateSmtpCache } from "../lib/email.js";
+import { sendTestEmail, invalidateSmtpCache, sendInvoiceEmail } from "../lib/email.js";
+import { sendInvoiceNotification, getOrderNotifyReceivers } from "../lib/line.js";
+import { voidInvoice, allowanceInvoice } from "../lib/invoiceProvider.js";
+import { buildInvoicePdf } from "../lib/invoicePdf.js";
 
 export const invoicesRouter = Router();
 
@@ -129,12 +132,232 @@ invoicesRouter.post("/invoices/bulk-monthly", async (req, res) => {
   res.json({ ok: true, created: created.length, invoices: created });
 });
 
-// PATCH /api/invoices/:id/void - void an invoice
+// PATCH /api/invoices/:id/void - void an invoice (calls ECPay API in ecpay mode)
 invoicesRouter.patch("/invoices/:id/void", async (req, res) => {
+  const id = Number(req.params.id);
+  const { reason } = req.body ?? {};
+
+  const invRows = await db.execute(sql`
+    SELECT id, invoice_number, invoice_date, status, random_number
+    FROM invoices WHERE id = ${id}
+  `);
+  const inv = (invRows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+  if (inv.status === "voided") return res.status(409).json({ error: "已作廢" });
+
+  // Call ECPay API (or mock)
+  const voidResult = await voidInvoice({
+    invoiceNo:   inv.invoice_number,
+    invoiceDate: inv.invoice_date ? new Date(inv.invoice_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+    reason:      reason ?? "作廢",
+  }).catch((err: Error) => ({ ok: false, raw: err.message }));
+
+  if (!voidResult.ok) {
+    console.warn(`[invoices] voidInvoice provider error:`, voidResult.raw);
+    // In ECPay mode we reject; in mock we proceed
+    if (process.env.INVOICE_PROVIDER === "ecpay") {
+      return res.status(502).json({ error: "綠界作廢失敗", detail: voidResult.raw });
+    }
+  }
+
   await db.execute(sql`
-    UPDATE invoices SET status = 'voided', voided_at = NOW() WHERE id = ${Number(req.params.id)}
+    UPDATE invoices SET status = 'voided', voided_at = NOW() WHERE id = ${id}
   `);
   res.json({ ok: true });
+});
+
+// POST /api/invoices/:id/allowance — 開立折讓（Credit Note）
+invoicesRouter.post("/invoices/:id/allowance", async (req, res) => {
+  const id = Number(req.params.id);
+  const { allowanceAmt, taxAmt, buyerEmail, buyerIdentifier, reason } = req.body ?? {};
+
+  if (!allowanceAmt || isNaN(Number(allowanceAmt))) {
+    return res.status(400).json({ error: "缺少 allowanceAmt" });
+  }
+
+  const invRows = await db.execute(sql`
+    SELECT id, invoice_number, invoice_date, status, buyer_identifier, buyer_email
+    FROM invoices WHERE id = ${id}
+  `);
+  const inv = (invRows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+  if (inv.status === "voided") return res.status(409).json({ error: "已作廢，不可折讓" });
+
+  const result = await allowanceInvoice({
+    invoiceNo:       inv.invoice_number,
+    invoiceDate:     inv.invoice_date ? new Date(inv.invoice_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+    allowanceAmt:    Number(allowanceAmt),
+    taxAmt:          Number(taxAmt ?? Math.round(Number(allowanceAmt) * 0.05)),
+    buyerEmail:      buyerEmail ?? inv.buyer_email,
+    buyerIdentifier: buyerIdentifier ?? inv.buyer_identifier,
+    items: reason ? [{ itemName: reason, itemUnit: "式", itemPrice: Number(allowanceAmt), itemTaxType: "1", itemAmt: Number(allowanceAmt) }] : undefined,
+  });
+
+  if (!result.ok && process.env.INVOICE_PROVIDER === "ecpay") {
+    return res.status(502).json({ error: "綠界折讓失敗", detail: result.raw });
+  }
+
+  // Record credit note in ar_ledger
+  await db.execute(sql`
+    INSERT INTO ar_ledger (invoice_id, amount, entry_type, notes, created_at)
+    VALUES (${id}, ${-Number(allowanceAmt)}, 'credit_note',
+            ${"折讓: " + (reason ?? "") + " 折讓單號: " + (result.allowanceNo ?? "mock")},
+            NOW())
+  `).catch(console.error);
+
+  // Update invoice notes
+  await db.execute(sql`
+    UPDATE invoices
+    SET notes = COALESCE(notes, '') || ' [折讓 ' || ${result.allowanceNo ?? "mock"} || ' -' || ${allowanceAmt} || ']'
+    WHERE id = ${id}
+  `);
+
+  res.json({ ok: true, allowanceNo: result.allowanceNo });
+});
+
+// GET /api/invoices/:id/pdf — 下載電子發票 PDF
+invoicesRouter.get("/invoices/:id/pdf", async (req, res) => {
+  const id = Number(req.params.id);
+
+  const rows = await db.execute(sql`
+    SELECT inv.*, o.cargo_description, o.order_no, o.payment_method,
+           c.name AS customer_name,
+           ea.company_name AS enterprise_name, ea.tax_id AS enterprise_tax_id
+    FROM invoices inv
+    LEFT JOIN orders o        ON o.id = inv.order_id
+    LEFT JOIN customers c     ON c.id = inv.customer_id
+    LEFT JOIN enterprise_accounts ea ON ea.id = inv.enterprise_id
+    WHERE inv.id = ${id}
+  `);
+  const inv = (rows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+  const buyerName   = inv.enterprise_name ?? inv.customer_name ?? inv.buyer_name ?? "買受人";
+  const buyerTaxId  = inv.enterprise_tax_id ?? inv.buyer_tax_id;
+
+  const pdf = await buildInvoicePdf({
+    invoiceNumber:  inv.invoice_number,
+    randomNumber:   inv.random_number,
+    invoiceDate:    inv.invoice_date ?? inv.issued_at,
+    provider:       inv.provider ?? "mock",
+    buyerName,
+    buyerTaxId,
+    amount:         Number(inv.amount ?? 0),
+    taxAmount:      Number(inv.tax_amount ?? 0),
+    totalAmount:    Number(inv.total_amount ?? inv.amount ?? 0),
+    invoiceType:    buyerTaxId ? "b2b" : "b2c",
+    notes:          inv.notes,
+    qrCodeLeft:     inv.qr_code_left,
+    qrCodeRight:    inv.qr_code_right,
+    items: inv.cargo_description
+      ? [{ description: inv.cargo_description, qty: 1, unitPrice: Number(inv.amount ?? 0), total: Number(inv.amount ?? 0) }]
+      : undefined,
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="invoice-${inv.invoice_number}.pdf"`);
+  res.send(pdf);
+});
+
+// POST /api/invoices/:id/send-email — 寄發電子發票（含 PDF 附件）
+invoicesRouter.post("/invoices/:id/send-email", async (req, res) => {
+  const id = Number(req.params.id);
+  const { toEmail } = req.body ?? {};
+
+  const rows = await db.execute(sql`
+    SELECT inv.*, o.cargo_description, o.order_no,
+           c.name AS customer_name, c.email AS customer_email,
+           ea.company_name AS enterprise_name, ea.tax_id AS enterprise_tax_id, ea.email AS enterprise_email
+    FROM invoices inv
+    LEFT JOIN orders o        ON o.id = inv.order_id
+    LEFT JOIN customers c     ON c.id = inv.customer_id
+    LEFT JOIN enterprise_accounts ea ON ea.id = inv.enterprise_id
+    WHERE inv.id = ${id}
+  `);
+  const inv = (rows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+  const recipientEmail = toEmail ?? inv.enterprise_email ?? inv.customer_email;
+  if (!recipientEmail) return res.status(422).json({ error: "找不到收件 Email，請手動指定 toEmail" });
+
+  const buyerName = inv.enterprise_name ?? inv.customer_name ?? "客戶";
+
+  const pdf = await buildInvoicePdf({
+    invoiceNumber:  inv.invoice_number,
+    randomNumber:   inv.random_number,
+    invoiceDate:    inv.invoice_date ?? inv.issued_at,
+    provider:       inv.provider ?? "mock",
+    buyerName,
+    buyerTaxId:     inv.enterprise_tax_id ?? inv.buyer_tax_id,
+    amount:         Number(inv.amount ?? 0),
+    taxAmount:      Number(inv.tax_amount ?? 0),
+    totalAmount:    Number(inv.total_amount ?? inv.amount ?? 0),
+    invoiceType:    (inv.enterprise_tax_id ?? inv.buyer_tax_id) ? "b2b" : "b2c",
+    notes:          inv.notes,
+  });
+
+  const sent = await sendInvoiceEmail({
+    to:            recipientEmail,
+    invoiceNumber: inv.invoice_number,
+    buyerName,
+    amount:        Number(inv.amount ?? 0),
+    taxAmount:     Number(inv.tax_amount ?? 0),
+    totalAmount:   Number(inv.total_amount ?? inv.amount ?? 0),
+    orderId:       inv.order_id,
+    orderNo:       inv.order_no,
+    issuedAt:      inv.issued_at,
+    pdfAttachment: { filename: `invoice-${inv.invoice_number}.pdf`, content: pdf },
+  });
+
+  res.json({ ok: sent, to: recipientEmail });
+});
+
+// POST /api/invoices/:id/send-line — LINE 推播電子發票通知
+invoicesRouter.post("/invoices/:id/send-line", async (req, res) => {
+  const id = Number(req.params.id);
+  const { lineUserId } = req.body ?? {};
+
+  const rows = await db.execute(sql`
+    SELECT inv.*, o.order_no,
+           c.name AS customer_name, c.line_user_id AS customer_line_id,
+           ea.company_name AS enterprise_name
+    FROM invoices inv
+    LEFT JOIN orders o        ON o.id = inv.order_id
+    LEFT JOIN customers c     ON c.id = inv.customer_id
+    LEFT JOIN enterprise_accounts ea ON ea.id = inv.enterprise_id
+    WHERE inv.id = ${id}
+  `);
+  const inv = (rows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+  const targetId = lineUserId ?? inv.customer_line_id;
+  const buyerName = inv.enterprise_name ?? inv.customer_name ?? "客戶";
+
+  if (!targetId) {
+    // Broadcast to all notify receivers
+    const receivers = await getOrderNotifyReceivers();
+    if (!receivers.length) return res.status(422).json({ error: "沒有設定 LINE 通知對象，請至系統設定填入" });
+    for (const uid of receivers) {
+      await sendInvoiceNotification(uid, {
+        invoiceNumber: inv.invoice_number,
+        orderId:       inv.order_id,
+        buyerName,
+        totalAmount:   Number(inv.total_amount ?? inv.amount ?? 0),
+        taxAmount:     Number(inv.tax_amount ?? 0),
+      }).catch(console.error);
+    }
+    return res.json({ ok: true, sentTo: receivers.length });
+  }
+
+  await sendInvoiceNotification(targetId, {
+    invoiceNumber: inv.invoice_number,
+    orderId:       inv.order_id,
+    buyerName,
+    totalAmount:   Number(inv.total_amount ?? inv.amount ?? 0),
+    taxAmount:     Number(inv.tax_amount ?? 0),
+  });
+
+  res.json({ ok: true, lineUserId: targetId });
 });
 
 // POST /api/invoices/order/:orderId/auto - manually trigger auto-invoice for an order

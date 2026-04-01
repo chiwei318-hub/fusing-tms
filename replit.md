@@ -150,6 +150,40 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
   - 收款登錄 Dialog
 - **位置：** 後台 → 帳務財務 → 金流閉環 Tab
 
+## 電子發票完整功能（E-Invoice Complete Module）
+
+### 供應商層 invoiceProvider.ts
+- **雙模式：** `INVOICE_PROVIDER=mock`（預設）或 `ecpay`
+- **AES-256-CBC 加解密**，B2B/B2C 自動分流
+- **`issueInvoice()`**：開立電子發票（mock 立即回傳，ecpay 打 API）
+- **`voidInvoice()`**：作廢發票（呼叫 ECPay `/Invoice/Invalid`）
+- **`allowanceInvoice()`**：折讓發票（呼叫 ECPay `/B2CInvoice/Allowance` 或 `/B2BInvoice/Allowance`）
+
+### PDF 發票產生 invoicePdf.ts
+- 使用 **pdfkit**（外部模組，已加入 build.mjs external 清單）
+- `buildInvoicePdf(params)` → A4 電子發票 PDF Buffer（含公司頁首、品項表、QR Code 文字、稅額）
+- `buildMonthlyBillPdf(params)` → A4 月結帳單 PDF Buffer（含訂單明細、付款資訊）
+
+### 新增 API 端點
+- **`PATCH /api/invoices/:id/void`** — 作廢（呼叫 provider）+ DB 狀態更新
+- **`POST /api/invoices/:id/allowance`** — 開立折讓（allowanceAmt/taxAmt/reason）+ AR 分類帳記錄
+- **`GET /api/invoices/:id/pdf`** — 下載電子發票 PDF
+- **`POST /api/invoices/:id/send-email`** — 寄信含 PDF 附件
+- **`POST /api/invoices/:id/send-line`** — LINE Flex Message 推播
+- **`GET /api/monthly-bills/:id/pdf`** — 下載月結帳單 PDF
+- **`POST /api/webhooks/ecpay-invoice`** — 綠界發票 Webhook 狀態回寫（解密 AES→更新 DB）
+
+### 財務報表 routes/reports.ts
+- **`GET /api/reports/ar-aging`** — 應收帳齡（0-30 / 31-60 / 61-90 / 90+ 天四個桶）
+- **`GET /api/reports/driver-commission?year=&month=`** — 司機抽成（趟次/收入/抽成金額/平台淨收）
+- **`GET /api/reports/gross-margin?months=`** — 毛利報表（月度）含加盟主成本
+
+### 前端 FinanceReportsTab.tsx
+- 後台 → 分析報表 → **財務報表** Tab
+- 應收帳齡：KPI 卡片 + 堆疊長條圖 + 明細表
+- 司機抽成：月份選擇 + 分組長條圖 + 費率/抽成明細
+- 毛利分析：月度 BarChart + 毛利率 LineChart + 逐月明細表
+
 ## 報價引擎（Pricing Engine）
 
 - **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）

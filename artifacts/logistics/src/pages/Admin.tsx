@@ -20,6 +20,7 @@ import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import VehicleTypeTab from "./admin/VehicleTypeTab";
 import ReportCenter from "./admin/ReportCenter";
+import FinanceReportsTab from "./admin/FinanceReportsTab";
 import AdminHome from "./admin/AdminHome";
 import SmartDispatchTab from "./admin/SmartDispatchTab";
 import DispatchOptimizerTab from "./admin/DispatchOptimizerTab";
@@ -1449,6 +1450,7 @@ export default function Admin() {
                     { value: "performance", icon: <Trophy className="w-3.5 h-3.5 text-yellow-500" />,               label: "績效稽核" },
                     { value: "carbon",      icon: <span className="text-sm leading-none">🌱</span>,                 label: "碳排報表" },
                     { value: "auditlog",    icon: <FileText className="w-3.5 h-3.5 text-slate-500" />,             label: "日誌" },
+                    { value: "finance-reports", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,    label: "財務報表" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -3439,6 +3441,11 @@ export default function Admin() {
         {/* ===== 操作日誌 TAB ===== */}
         <TabsContent value="auditlog" className="outline-none">
           <AuditLogTab />
+        </TabsContent>
+
+        {/* ===== 財務報表 TAB ===== */}
+        <TabsContent value="finance-reports" className="outline-none">
+          <FinanceReportsTab />
         </TabsContent>
 
         {/* ===== 預測分析 TAB ===== */}

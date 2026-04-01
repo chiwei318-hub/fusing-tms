@@ -309,3 +309,86 @@ export async function voidInvoice(params: {
 
   return { ok: result.RtnCode === 1, raw: result };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+//  折讓發票（Allowance / Credit Note）
+// ────────────────────────────────────────────────────────────────────────────
+export interface AllowanceParams {
+  invoiceNo:      string;   // 原發票號碼
+  invoiceDate:    string;   // 原發票日期 YYYY-MM-DD
+  allowanceAmt:   number;   // 折讓稅前金額
+  taxAmt:         number;   // 折讓稅額
+  buyerEmail?:    string;   // 通知買方 email（B2C 必填）
+  buyerIdentifier?: string; // 買方統編（B2B）
+  items?: Array<{ itemName: string; itemUnit?: string; itemPrice: number; itemTaxType: string; itemAmt: number }>;
+}
+
+export async function allowanceInvoice(params: AllowanceParams): Promise<{ ok: boolean; allowanceNo?: string; raw?: unknown }> {
+  const provider = (process.env.INVOICE_PROVIDER ?? "mock").toLowerCase();
+
+  if (provider !== "ecpay") {
+    const mockNo = `A${Date.now().toString().slice(-8)}`;
+    console.log(`[invoiceProvider] mock allowance: ${params.invoiceNo} → ${mockNo} amt=${params.allowanceAmt}`);
+    return { ok: true, allowanceNo: mockNo };
+  }
+
+  const apiBase    = process.env.INVOICE_API_BASE    ?? "";
+  const merchantId = process.env.INVOICE_MERCHANT_ID ?? "";
+  const hashKey    = process.env.INVOICE_HASH_KEY    ?? "";
+  const hashIv     = process.env.INVOICE_HASH_IV     ?? "";
+
+  const isB2B = !!params.buyerIdentifier;
+
+  // Build allowance items (at least one required)
+  const itemList = params.items ?? [{
+    itemName:    "折讓",
+    itemUnit:    "式",
+    itemPrice:   params.allowanceAmt,
+    itemTaxType: "1",
+    itemAmt:     params.allowanceAmt,
+  }];
+
+  const dataJson = JSON.stringify({
+    MerchantID:        merchantId,
+    InvoiceNo:         params.invoiceNo,
+    InvoiceDate:       params.invoiceDate,
+    AllowanceNotify:   params.buyerEmail ? "E" : "N",
+    NotifyMail:        params.buyerEmail ?? "",
+    AllowanceAmount:   params.allowanceAmt + params.taxAmt,
+    ...(isB2B && { BuyerIdentifier: params.buyerIdentifier }),
+    InvoiceItemCount:  itemList.length,
+    InvoiceItemName:   itemList.map(i => i.itemName).join("|"),
+    InvoiceItemCount2: itemList.map(i => "1").join("|"),
+    InvoiceItemWord:   itemList.map(i => i.itemUnit ?? "式").join("|"),
+    InvoiceItemPrice:  itemList.map(i => i.itemPrice).join("|"),
+    InvoiceItemTaxType:itemList.map(i => i.itemTaxType).join("|"),
+    InvoiceItemAmt:    itemList.map(i => i.itemAmt).join("|"),
+  });
+
+  const encData   = encodeURIComponent(aesEncrypt(dataJson, hashKey, hashIv));
+  const timestamp = Math.floor(Date.now() / 1000);
+  const endpoint  = isB2B ? "/B2BInvoice/Allowance" : "/B2CInvoice/Allowance";
+
+  const body = new URLSearchParams({
+    MerchantID: merchantId,
+    RqHeader:   JSON.stringify({ Timestamp: timestamp, Revision: "0.1" }),
+    Data:       encData,
+  });
+
+  const resp = await fetch(`${apiBase}${endpoint}`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body:    body.toString(),
+  });
+
+  const json = await resp.json() as { TransCode: number; TransMsg: string; Data?: string };
+
+  if (json.TransCode !== 1) {
+    return { ok: false, raw: json };
+  }
+
+  const dec    = aesDecrypt(decodeURIComponent(json.Data ?? ""), hashKey, hashIv);
+  const result = JSON.parse(dec) as { RtnCode: number; IA_No?: string };
+
+  return { ok: result.RtnCode === 1, allowanceNo: result.IA_No, raw: result };
+}

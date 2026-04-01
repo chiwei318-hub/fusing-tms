@@ -202,15 +202,18 @@ function buildInvoiceEmailHtml(params: {
 export interface InvoiceEmailParams {
   to: string;
   invoiceNumber: string;
-  orderId: number;
+  orderId?: number;
+  orderNo?: string;
   buyerName: string;
   totalAmount: number;
   taxAmount: number;
   amount: number;
-  invoiceType: string;
-  itemDesc: string;
+  invoiceType?: string;
+  itemDesc?: string;
   pickupAddress?: string;
   deliveryAddress?: string;
+  issuedAt?: Date | string;
+  pdfAttachment?: { filename: string; content: Buffer };
 }
 
 export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<boolean> {
@@ -219,25 +222,37 @@ export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<bool
 
   const html = buildInvoiceEmailHtml({
     ...params,
-    issuedAt: new Date(),
+    orderId:     params.orderId ?? 0,
+    invoiceType: params.invoiceType ?? "b2c",
+    itemDesc:    params.itemDesc ?? "物流運送服務",
+    issuedAt:    params.issuedAt ? new Date(params.issuedAt as string) : new Date(),
     appUrl: process.env.APP_BASE_URL ?? "https://app.furyong.com",
   });
 
   if (!transporter) {
     console.log(`[email] SMTP not configured — invoice ${params.invoiceNumber} NOT sent to ${params.to}`);
-    console.log(`[email] To enable email, set smtp_host/smtp_user/smtp_pass in system config (or SMTP_* env vars)`);
     return false;
+  }
+
+  const attachments: any[] = [];
+  if (params.pdfAttachment) {
+    attachments.push({
+      filename:    params.pdfAttachment.filename,
+      content:     params.pdfAttachment.content,
+      contentType: "application/pdf",
+    });
   }
 
   try {
     await transporter.sendMail({
       from,
       to: params.to,
-      subject: `【富詠運輸】電子發票 ${params.invoiceNumber} — 訂單 #${params.orderId} 已完成配送`,
+      subject: `【富詠運輸】電子發票 ${params.invoiceNumber} — ${params.orderNo ? `訂單 ${params.orderNo}` : `訂單 #${params.orderId ?? ""}`} 已完成配送`,
       html,
-      text: `您好 ${params.buyerName}，\n\n訂單 #${params.orderId} 已完成配送。\n發票號碼：${params.invoiceNumber}\n合計金額：NT$${params.totalAmount.toLocaleString()}\n\n感謝您使用富詠運輸服務！`,
+      text: `您好 ${params.buyerName}，\n\n訂單已完成配送。\n發票號碼：${params.invoiceNumber}\n合計金額：NT$${params.totalAmount.toLocaleString()}\n\n感謝您使用富詠運輸服務！`,
+      attachments,
     });
-    console.log(`[email] Invoice ${params.invoiceNumber} sent to ${params.to}`);
+    console.log(`[email] Invoice ${params.invoiceNumber} sent to ${params.to}${params.pdfAttachment ? " (with PDF)" : ""}`);
     return true;
   } catch (e: any) {
     console.error(`[email] Failed to send invoice ${params.invoiceNumber} to ${params.to}:`, e?.message ?? e);

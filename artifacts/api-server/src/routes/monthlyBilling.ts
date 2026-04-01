@@ -339,3 +339,50 @@ monthlyBillingRouter.patch("/monthly-bills/:id/pay", async (req, res) => {
 
   res.json({ ok: true });
 });
+
+// GET /api/monthly-bills/:id/pdf — 下載月結帳單 PDF
+import { buildMonthlyBillPdf } from "../lib/invoicePdf.js";
+
+monthlyBillingRouter.get("/monthly-bills/:id/pdf", async (req, res) => {
+  const id = Number(req.params.id);
+
+  const billRows = await db.execute(sql`
+    SELECT mb.*,
+           ea.company_name AS enterprise_name,
+           c.name          AS customer_name,
+           i.invoice_number
+    FROM monthly_bills mb
+    LEFT JOIN enterprise_accounts ea ON ea.id = mb.enterprise_id
+    LEFT JOIN customers           c  ON c.id  = mb.customer_id
+    LEFT JOIN invoices             i  ON i.id  = mb.invoice_id
+    WHERE mb.id = ${id}
+  `);
+  const bill = (billRows.rows as any[])[0];
+  if (!bill) return res.status(404).json({ error: "Monthly bill not found" });
+
+  const orderRows = await db.execute(sql`
+    SELECT o.id, o.order_no, o.cargo_description, o.total_fee, o.base_price,
+           o.completed_at, c.name AS customer_name
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    WHERE o.monthly_bill_id = ${id}
+    ORDER BY o.completed_at ASC
+  `);
+
+  const pdf = await buildMonthlyBillPdf({
+    billId:        id,
+    enterpriseName: bill.enterprise_name,
+    customerName:   bill.customer_name,
+    periodYear:    Number(bill.period_year),
+    periodMonth:   Number(bill.period_month),
+    totalAmount:   Number(bill.total_amount ?? 0),
+    orderCount:    Number(bill.order_count ?? orderRows.rows.length),
+    status:        bill.status,
+    invoiceNumber: bill.invoice_number,
+    orders:        orderRows.rows as any[],
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="monthly-bill-${id}-${bill.period_year}${String(bill.period_month).padStart(2,"0")}.pdf"`);
+  res.send(pdf);
+});

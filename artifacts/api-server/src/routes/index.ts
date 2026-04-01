@@ -54,6 +54,8 @@ import { webhooksRouter } from "./webhooks";
 import { openApiRouter } from "./openApi";
 import { arLedgerRouter } from "./arLedger";
 import { monthlyBillingRouter } from "./monthlyBilling";
+import { ecpayWebhookRouter } from "./ecpayWebhook";
+import { reportsRouter } from "./reports";
 
 const router: IRouter = Router();
 
@@ -113,5 +115,7 @@ router.use(webhooksRouter);
 router.use(openApiRouter);
 router.use(arLedgerRouter);
 router.use(monthlyBillingRouter);
+router.use(ecpayWebhookRouter);
+router.use(reportsRouter);
 
 export default router;
