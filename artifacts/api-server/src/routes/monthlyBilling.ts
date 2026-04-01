@@ -198,10 +198,12 @@ monthlyBillingRouter.post("/monthly-bills/:id/invoice", async (req, res) => {
   const periodLabel  = `${bill.period_year}年${bill.period_month}月月結帳單（${orderList.length} 筆訂單）`;
 
   const items = orderList.map(o => ({
-    description: `${o.order_no ?? `#${o.id}`} ${o.cargo_description ?? "物流服務"}`,
-    qty: 1,
+    name:      `${o.order_no ?? `#${o.id}`} ${o.cargo_description ?? "物流服務"}`,
+    qty:       1,
+    unit:      "次",
     unitPrice: Number(o.total_fee ?? o.base_price ?? 0),
-    total:     Number(o.total_fee ?? o.base_price ?? 0),
+    amount:    Number(o.total_fee ?? o.base_price ?? 0),
+    taxType:   "1" as const,
   }));
 
   // ── 呼叫電子發票供應商（mock / ECPay）────────────────────────────────

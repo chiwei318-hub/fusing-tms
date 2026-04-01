@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { autoIssueInvoice } from "../lib/autoInvoice.js";
 import { sendTestEmail, invalidateSmtpCache, sendInvoiceEmail } from "../lib/email.js";
 import { sendInvoiceNotification, getOrderNotifyReceivers } from "../lib/line.js";
-import { voidInvoice, allowanceInvoice } from "../lib/invoiceProvider.js";
+import { voidInvoice, allowanceInvoice, queryInvoice } from "../lib/invoiceProvider.js";
 import { buildInvoicePdf } from "../lib/invoicePdf.js";
 
 export const invoicesRouter = Router();
@@ -145,11 +145,18 @@ invoicesRouter.patch("/invoices/:id/void", async (req, res) => {
   if (!inv) return res.status(404).json({ error: "Invoice not found" });
   if (inv.status === "voided") return res.status(409).json({ error: "已作廢" });
 
+  // 轉換日期為綠界格式：YYYY-MM-DD HH:mm:ss
+  const voidDateObj = inv.invoice_date ? new Date(inv.invoice_date) : new Date();
+  const voidDateStr = voidDateObj.toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).replace(/\//g, "-");
+
   // Call ECPay API (or mock)
   const voidResult = await voidInvoice({
     invoiceNo:   inv.invoice_number,
-    invoiceDate: inv.invoice_date ? new Date(inv.invoice_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-    reason:      reason ?? "作廢",
+    invoiceDate: voidDateStr,
+    reason:      (reason ?? "作廢").slice(0, 20),
   }).catch((err: Error) => ({ ok: false, raw: err.message }));
 
   if (!voidResult.ok) {
@@ -169,28 +176,49 @@ invoicesRouter.patch("/invoices/:id/void", async (req, res) => {
 // POST /api/invoices/:id/allowance — 開立折讓（Credit Note）
 invoicesRouter.post("/invoices/:id/allowance", async (req, res) => {
   const id = Number(req.params.id);
-  const { allowanceAmt, taxAmt, buyerEmail, buyerIdentifier, reason } = req.body ?? {};
+  const { allowanceAmt, buyerEmail, buyerIdentifier, customerName, reason } = req.body ?? {};
 
   if (!allowanceAmt || isNaN(Number(allowanceAmt))) {
     return res.status(400).json({ error: "缺少 allowanceAmt" });
   }
 
   const invRows = await db.execute(sql`
-    SELECT id, invoice_number, invoice_date, status, buyer_identifier, buyer_email
-    FROM invoices WHERE id = ${id}
+    SELECT inv.id, inv.invoice_number, inv.invoice_date, inv.status, inv.buyer_name, inv.buyer_tax_id,
+           c.email AS buyer_email
+    FROM invoices inv
+    LEFT JOIN customers c ON c.id = inv.customer_id
+    WHERE inv.id = ${id}
   `);
   const inv = (invRows.rows as any[])[0];
   if (!inv) return res.status(404).json({ error: "Invoice not found" });
   if (inv.status === "voided") return res.status(409).json({ error: "已作廢，不可折讓" });
 
+  // 轉換日期為 YYYY-MM-DD HH:mm:ss（綠界格式）
+  const rawDate = inv.invoice_date ? new Date(inv.invoice_date) : new Date();
+  const invoiceDateStr = rawDate.toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).replace(/\//g, "-");
+
+  const amt = Number(allowanceAmt);
+  const notifyEmail = buyerEmail ?? inv.buyer_email;
+
   const result = await allowanceInvoice({
-    invoiceNo:       inv.invoice_number,
-    invoiceDate:     inv.invoice_date ? new Date(inv.invoice_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-    allowanceAmt:    Number(allowanceAmt),
-    taxAmt:          Number(taxAmt ?? Math.round(Number(allowanceAmt) * 0.05)),
-    buyerEmail:      buyerEmail ?? inv.buyer_email,
-    buyerIdentifier: buyerIdentifier ?? inv.buyer_identifier,
-    items: reason ? [{ itemName: reason, itemUnit: "式", itemPrice: Number(allowanceAmt), itemTaxType: "1", itemAmt: Number(allowanceAmt) }] : undefined,
+    invoiceNo:        inv.invoice_number,
+    invoiceDate:      invoiceDateStr,
+    allNotify:        notifyEmail ? "E" : "N",
+    customerName:     customerName ?? inv.buyer_name ?? "",
+    notifyEmail:      notifyEmail,
+    allowanceAmount:  amt,
+    buyerIdentifier:  buyerIdentifier ?? inv.buyer_tax_id,
+    items: [{
+      name:    reason ?? "折讓",
+      qty:     1,
+      unit:    "式",
+      price:   amt,
+      amount:  amt,
+      taxType: "1",
+    }],
   });
 
   if (!result.ok && process.env.INVOICE_PROVIDER === "ecpay") {
@@ -200,7 +228,7 @@ invoicesRouter.post("/invoices/:id/allowance", async (req, res) => {
   // Record credit note in ar_ledger
   await db.execute(sql`
     INSERT INTO ar_ledger (invoice_id, amount, entry_type, notes, created_at)
-    VALUES (${id}, ${-Number(allowanceAmt)}, 'credit_note',
+    VALUES (${id}, ${-amt}, 'credit_note',
             ${"折讓: " + (reason ?? "") + " 折讓單號: " + (result.allowanceNo ?? "mock")},
             NOW())
   `).catch(console.error);
@@ -208,11 +236,29 @@ invoicesRouter.post("/invoices/:id/allowance", async (req, res) => {
   // Update invoice notes
   await db.execute(sql`
     UPDATE invoices
-    SET notes = COALESCE(notes, '') || ' [折讓 ' || ${result.allowanceNo ?? "mock"} || ' -' || ${allowanceAmt} || ']'
+    SET notes = COALESCE(notes, '') || ' [折讓 ' || ${result.allowanceNo ?? "mock"} || ' -' || ${amt} || ']'
     WHERE id = ${id}
   `);
 
-  res.json({ ok: true, allowanceNo: result.allowanceNo });
+  res.json({ ok: true, allowanceNo: result.allowanceNo, allowanceDate: result.allowanceDate });
+});
+
+// GET /api/invoices/:id/query-ecpay — 向綠界查詢最新發票狀態（ECPay GetIssue）
+invoicesRouter.get("/invoices/:id/query-ecpay", async (req, res) => {
+  const id = Number(req.params.id);
+  const rows = await db.execute(sql`
+    SELECT id, invoice_number, buyer_tax_id FROM invoices WHERE id = ${id}
+  `);
+  const inv = (rows.rows as any[])[0];
+  if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+  const relateNum = inv.invoice_number;
+  const result = await queryInvoice({
+    relateNumber: relateNum,
+    isB2B:        !!inv.buyer_tax_id,
+  });
+
+  res.json(result);
 });
 
 // GET /api/invoices/:id/pdf — 下載電子發票 PDF
