@@ -55,6 +55,7 @@ import { DailyOpsTab } from "./admin/DailyOpsTab";
 import { AutoRoutingTab } from "./admin/AutoRoutingTab";
 import RouteImportTab from "./admin/RouteImportTab";
 import FormImportTab from "./admin/FormImportTab";
+import FranchiseeTab from "./admin/FranchiseeTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1507,6 +1508,7 @@ export default function Admin() {
                   {[
                     { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
                     { value: "join",        icon: <UserPlus className="w-3.5 h-3.5" />,                               label: "加盟審核" },
+                    { value: "franchisee",  icon: <Building2 className="w-3.5 h-3.5 text-indigo-600" />,             label: "加盟主" },
                     { value: "fleetreg",    icon: <Building2 className="w-3.5 h-3.5 text-blue-600" />,               label: "車隊入駐" },
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
                     { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
@@ -3345,6 +3347,11 @@ export default function Admin() {
         {/* ===== 加盟審核 TAB ===== */}
         <TabsContent value="join" className="outline-none">
           <DriverApplicationsTab />
+        </TabsContent>
+
+        {/* ===== 加盟主管理 TAB ===== */}
+        <TabsContent value="franchisee" className="outline-none">
+          <FranchiseeTab />
         </TabsContent>
 
         {/* ===== 廠商管理 TAB ===== */}

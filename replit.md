@@ -52,6 +52,31 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Workflow Enhancements:** Granular Status Flow & Exception SOP for order states, and Order Bulk Import functionality.
 *   **Customer Management:** Expanded customer data fields and a Customer Notification Center.
 
+## 加盟主模組（Franchise Partner Module）
+
+- **DB Tables:** `franchisees`（加盟主基本資料 + 合約）、`franchisee_settlements`（月結分潤）
+- **API Routes:** `artifacts/api-server/src/routes/franchisees.ts`
+  - CRUD 加盟主（GET/POST/PATCH/DELETE `/api/franchisees`）
+  - 月結算產出 `POST /api/franchisees/:id/settlements/generate`（支援手動帶入業績）
+  - 結算狀態流轉 `PATCH /api/franchisee-settlements/:id/status`（pending→confirmed→paid）
+- **Frontend:** `artifacts/logistics/src/pages/admin/FranchiseeTab.tsx`（後台「加盟主」Tab）
+- **分潤計算邏輯：** 業績總額 × 加盟主比例 − 月費 = 實際撥款
+- **合約類型：** 分潤制 / 月費制 / 混合制
+
+## 自動化 Email 發票流程
+
+- **email.ts**：nodemailer HTML 電子發票模板，SMTP 設定從 `pricing_config` 讀取（`smtp_*` 前綴）
+- **autoInvoice.ts**：司機完單後自動開票，成功後非同步發 LINE + Email 通知（互不干擾）
+- **SystemSettingsTab**：後台 SMTP 設定 UI，含快速套用（Gmail/Outlook 等），測試信發送功能
+- **API：** `POST /api/invoices/smtp-test`、`PUT /api/invoices/smtp-config`
+
+## 報價引擎（Pricing Engine）
+
+- **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）
+- **pricingEngine.ts**：30s 快取，從 DB 讀費率，支援 `invalidatePricingCache()`
+- **QuotePage.tsx (`/quote`)：** 公開報價頁面（無需登入）
+- **QuotesTab.tsx：** 後台報價管理（狀態流轉：pending → contacted → booked → rejected）
+
 # External Dependencies
 
 *   **Monorepo Tool:** pnpm workspaces
