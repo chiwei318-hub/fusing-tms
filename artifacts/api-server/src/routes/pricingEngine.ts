@@ -20,6 +20,14 @@ interface PricingRules {
   specialCargoes: { id: string; name: string; surcharge: number }[];
 }
 
+export interface FuelSurchargeConfig {
+  enabled: boolean;
+  rate: number;              // %，套用於 (基本費 + 里程費) 的百分比
+  dieselRefPrice: number;    // 建立費率時的基準油價 (NT$/L)
+  currentDieselPrice: number;// 目前油價 (NT$/L)
+  lastUpdated: string;       // ISO timestamp
+}
+
 const DEFAULT_RULES: PricingRules = {
   vehicles: {
     '1.75T': {
@@ -110,6 +118,44 @@ async function loadRules(): Promise<PricingRules> {
   return _rulesCache;
 }
 
+// ── Fuel surcharge ─────────────────────────────────────────────────────────────
+
+const DEFAULT_FUEL_SURCHARGE: FuelSurchargeConfig = {
+  enabled: false,
+  rate: 0,
+  dieselRefPrice: 30,
+  currentDieselPrice: 30,
+  lastUpdated: new Date().toISOString(),
+};
+
+let _fuelCache: FuelSurchargeConfig | null = null;
+let _fuelCacheTime = 0;
+
+export async function loadFuelSurcharge(): Promise<FuelSurchargeConfig> {
+  if (_fuelCache && Date.now() - _fuelCacheTime < CACHE_TTL) return _fuelCache;
+  try {
+    const rows = await db.execute(
+      sql`SELECT value FROM pricing_config WHERE key = 'fuel_surcharge' LIMIT 1`
+    );
+    const row = rows.rows[0] as any;
+    if (row?.value) {
+      _fuelCache = { ...DEFAULT_FUEL_SURCHARGE, ...JSON.parse(row.value) };
+      _fuelCacheTime = Date.now();
+      return _fuelCache;
+    }
+  } catch (e) {
+    console.error("[pricingEngine] loadFuelSurcharge error", e);
+  }
+  _fuelCache = DEFAULT_FUEL_SURCHARGE;
+  _fuelCacheTime = Date.now();
+  return _fuelCache;
+}
+
+export function invalidateFuelSurchargeCache() {
+  _fuelCache = null;
+  _fuelCacheTime = 0;
+}
+
 function applyTiers(tiers: Tier[], value: number): number {
   let surcharge = 0;
   for (const t of tiers) {
@@ -135,7 +181,7 @@ export async function calculatePricingWithVehicle(params: {
   coldChainTemp?: string;
   specialCargoes?: string[] | string;
 }) {
-  const rules = await loadRules();
+  const [rules, fuelCfg] = await Promise.all([loadRules(), loadFuelSurcharge()]);
 
   const vt = (params.vehicleType ?? "3.5T") as VehicleType;
   const rule = rules.vehicles[vt] ?? rules.vehicles["3.5T"];
@@ -179,9 +225,16 @@ export async function calculatePricingWithVehicle(params: {
     }
   }
 
+  // Fuel surcharge — applies to (基本費 + 里程費) before other surcharges
+  const fuelSurchargeBase = basePrice + distanceCharge;
+  const fuelSurcharge =
+    fuelCfg.enabled && fuelCfg.rate > 0
+      ? Math.round(fuelSurchargeBase * fuelCfg.rate / 100)
+      : 0;
+
   const subtotal =
     basePrice + distanceCharge + weightSurcharge + volumeSurcharge +
-    coldChainFee + specialSurcharge + waitingFee + tolls;
+    coldChainFee + specialSurcharge + waitingFee + tolls + fuelSurcharge;
 
   const taxAmount = Math.round(subtotal * (rule.taxRate / 100));
   const subtotalWithTax = subtotal + taxAmount;
@@ -201,6 +254,9 @@ export async function calculatePricingWithVehicle(params: {
     specialSurcharge,
     waitingFee,
     tolls,
+    fuelSurcharge,
+    fuelSurchargeRate: fuelCfg.rate,
+    fuelSurchargeEnabled: fuelCfg.enabled,
     subtotal,
     taxRate: rule.taxRate,
     taxAmount,

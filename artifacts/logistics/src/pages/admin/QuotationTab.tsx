@@ -146,6 +146,20 @@ function recommendVehicle(weightKg: number, volumeCbm: number, rules: PricingRul
   return null;
 }
 
+interface FuelSurchargeConfig {
+  enabled: boolean;
+  rate: number;
+  dieselRefPrice: number;
+  currentDieselPrice: number;
+  lastUpdated: string;
+}
+
+const DEFAULT_FUEL_CFG: FuelSurchargeConfig = {
+  enabled: false, rate: 0,
+  dieselRefPrice: 30, currentDieselPrice: 30,
+  lastUpdated: new Date().toISOString(),
+};
+
 interface QuoteResult {
   vehicleType: VehicleType;
   basePrice: number;
@@ -157,6 +171,8 @@ interface QuoteResult {
   specialSurcharge: number;
   waitingFee: number;
   tolls: number;
+  fuelSurcharge: number;
+  fuelSurchargeRate: number;
   subtotal: number;
   taxAmount: number;
   profitAmount: number;
@@ -172,6 +188,7 @@ function calcQuote(
   waitingHours: number,
   tollsOverride: number | null,
   rules: PricingRules,
+  fuelCfg?: FuelSurchargeConfig,
 ): QuoteResult {
   const rule = rules.vehicles[vehicleType];
   const basePrice = rule.basePrice;
@@ -183,13 +200,18 @@ function calcQuote(
     weightSurcharge > volumeSurcharge ? 'weight' : volumeSurcharge > weightSurcharge ? 'volume' : 'equal';
   const waitingFee = waitingHours * rule.waitingFeePerHour;
   const tolls = tollsOverride !== null ? tollsOverride : rule.tollsFixed;
-  const subtotal = basePrice + distanceCharge + appliedSurcharge + specialSurcharge + waitingFee + tolls;
+  const fuelSurcharge =
+    fuelCfg?.enabled && (fuelCfg.rate ?? 0) > 0
+      ? Math.round((basePrice + distanceCharge) * fuelCfg.rate / 100)
+      : 0;
+  const subtotal = basePrice + distanceCharge + appliedSurcharge + specialSurcharge + waitingFee + tolls + fuelSurcharge;
   const taxAmount = Math.round(subtotal * rule.taxRate / 100);
   const profitAmount = Math.round(subtotal * rule.profitRate / 100);
   const grandTotal = subtotal + taxAmount + profitAmount;
   return {
     vehicleType, basePrice, distanceCharge, weightSurcharge, volumeSurcharge,
     appliedSurcharge, appliedBy, specialSurcharge, waitingFee, tolls,
+    fuelSurcharge, fuelSurchargeRate: fuelCfg?.rate ?? 0,
     subtotal, taxAmount, profitAmount, grandTotal,
   };
 }
@@ -352,6 +374,8 @@ export default function QuotationTab() {
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [newSpecialName, setNewSpecialName] = useState('');
   const [newSpecialSurcharge, setNewSpecialSurcharge] = useState('');
+  const [fuelCfg, setFuelCfg] = useState<FuelSurchargeConfig>(DEFAULT_FUEL_CFG);
+  const [fuelSaving, setFuelSaving] = useState(false);
 
   const updateRule = useCallback((vt: VehicleType, rule: VehicleRule) => {
     setRules(prev => ({ ...prev, vehicles: { ...prev.vehicles, [vt]: rule } }));
@@ -382,9 +406,8 @@ export default function QuotationTab() {
 
   useEffect(() => {
     const token = localStorage.getItem('auth-jwt');
-    fetch(getApiUrl('pricing/vehicle-rates'), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(getApiUrl('pricing/vehicle-rates'), { headers })
       .then((r) => r.json())
       .then((data) => {
         if (data.ok && data.rates?.vehicles) {
@@ -392,6 +415,12 @@ export default function QuotationTab() {
           setRules(merged);
           saveRules(merged);
         }
+      })
+      .catch(() => {});
+    fetch(getApiUrl('pricing/fuel-surcharge'), { headers })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.config) setFuelCfg(data.config);
       })
       .catch(() => {});
   }, []);
@@ -412,7 +441,7 @@ export default function QuotationTab() {
     }
     setVehicleType(vt);
 
-    const q = calcQuote(vt, wkg, vcbm, dkm, specSurcharge, wh, tollOv, rules);
+    const q = calcQuote(vt, wkg, vcbm, dkm, specSurcharge, wh, tollOv, rules, fuelCfg);
     setResult(q);
   };
 
@@ -906,6 +935,14 @@ tr:last-child td{border-bottom:none}
                           <span className="font-medium">+{fmt(result.tolls)}</span>
                         </div>
                       )}
+                      {result.fuelSurcharge > 0 && (
+                        <div className="flex justify-between text-sm py-1.5 border-b items-center">
+                          <span className="text-amber-600 flex items-center gap-1">
+                            ⛽ 燃油附加費（{result.fuelSurchargeRate}%）
+                          </span>
+                          <span className="font-medium text-amber-600">+{fmt(result.fuelSurcharge)}</span>
+                        </div>
+                      )}
 
                       <Separator />
                       <div className="flex justify-between text-sm py-1.5">
@@ -945,6 +982,7 @@ tr:last-child td{border-bottom:none}
                               parseFloat(waitingHours) || 0,
                               tollsOverride !== '' ? parseFloat(tollsOverride) : null,
                               rules,
+                              fuelCfg,
                             );
                             const isSelected = vt === result.vehicleType;
                             return (
@@ -1045,6 +1083,113 @@ tr:last-child td{border-bottom:none}
                   </div>
                   <Button className="gap-1.5" onClick={addSpecialCargo}>
                     <Plus className="w-4 h-4" />新增
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Fuel Surcharge Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  ⛽ 動態燃油附加費
+                  <Badge variant={fuelCfg.enabled ? "default" : "secondary"} className="text-xs">
+                    {fuelCfg.enabled ? "已啟用" : "已停用"}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  啟用後，燃油附加費將依「基本費 + 里程費」的百分比自動計算並加入報價
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium">啟用燃油附加費</div>
+                    <div className="text-xs text-muted-foreground">開啟後立即套用至所有試算與報價</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFuelCfg(p => ({ ...p, enabled: !p.enabled }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${fuelCfg.enabled ? 'bg-primary' : 'bg-input'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${fuelCfg.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">附加費費率（%）</Label>
+                    <Input
+                      type="number" min={0} max={50} step={0.5}
+                      value={fuelCfg.rate}
+                      onChange={e => setFuelCfg(p => ({ ...p, rate: parseFloat(e.target.value) || 0 }))}
+                      placeholder="例：5.5"
+                    />
+                    <p className="text-xs text-muted-foreground">套用於（基本費 + 里程費）</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">基準柴油價格（NT$/L）</Label>
+                    <Input
+                      type="number" min={0} step={0.1}
+                      value={fuelCfg.dieselRefPrice}
+                      onChange={e => setFuelCfg(p => ({ ...p, dieselRefPrice: parseFloat(e.target.value) || 0 }))}
+                      placeholder="例：30.0"
+                    />
+                    <p className="text-xs text-muted-foreground">制定費率時的油價</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">目前柴油價格（NT$/L）</Label>
+                    <Input
+                      type="number" min={0} step={0.1}
+                      value={fuelCfg.currentDieselPrice}
+                      onChange={e => setFuelCfg(p => ({ ...p, currentDieselPrice: parseFloat(e.target.value) || 0 }))}
+                      placeholder="例：32.5"
+                    />
+                    <p className="text-xs text-muted-foreground">中油公告最新油價</p>
+                  </div>
+                </div>
+
+                {fuelCfg.dieselRefPrice > 0 && fuelCfg.currentDieselPrice > 0 && (
+                  <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${fuelCfg.currentDieselPrice > fuelCfg.dieselRefPrice ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
+                    {fuelCfg.currentDieselPrice > fuelCfg.dieselRefPrice
+                      ? `⚠️ 油價上漲 ${((fuelCfg.currentDieselPrice - fuelCfg.dieselRefPrice) / fuelCfg.dieselRefPrice * 100).toFixed(1)}%，建議調高附加費率`
+                      : `✓ 油價持平或下降，附加費率合理`}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  {fuelCfg.lastUpdated && (
+                    <p className="text-xs text-muted-foreground">
+                      上次更新：{new Date(fuelCfg.lastUpdated).toLocaleString('zh-TW')}
+                    </p>
+                  )}
+                  <Button
+                    size="sm" className="gap-1.5 ml-auto"
+                    disabled={fuelSaving}
+                    onClick={async () => {
+                      setFuelSaving(true);
+                      try {
+                        const token = localStorage.getItem('auth-jwt');
+                        const res = await fetch(getApiUrl('pricing/fuel-surcharge'), {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                          body: JSON.stringify(fuelCfg),
+                        });
+                        const data = await res.json();
+                        if (data.ok) {
+                          if (data.config) setFuelCfg(data.config);
+                          toast({ title: '燃油附加費設定已儲存', description: '即時生效於所有報價試算' });
+                        } else {
+                          throw new Error(data.error);
+                        }
+                      } catch {
+                        toast({ title: '儲存失敗', description: '請稍後再試', variant: 'destructive' });
+                      } finally {
+                        setFuelSaving(false);
+                      }
+                    }}
+                  >
+                    {fuelSaving ? '儲存中…' : '儲存燃油設定'}
                   </Button>
                 </div>
               </CardContent>

@@ -50,6 +50,9 @@ interface Breakdown {
   specialSurcharge: number;
   waitingFee: number;
   tolls: number;
+  fuelSurcharge: number;
+  fuelSurchargeRate: number;
+  fuelSurchargeEnabled: boolean;
   subtotal: number;
   taxRate: number;
   taxAmount: number;
@@ -572,6 +575,14 @@ export default function QuotePage() {
                           <span className="text-white">{fmt(row.val)}</span>
                         </div>
                       ))}
+                      {(breakdown.fuelSurcharge ?? 0) > 0 && (
+                        <div className="flex justify-between items-center bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                          <span className="text-amber-300 flex items-center gap-1.5">
+                            ⛽ 燃油附加費（{breakdown.fuelSurchargeRate}%）
+                          </span>
+                          <span className="text-amber-200 font-medium">+{fmt(breakdown.fuelSurcharge)}</span>
+                        </div>
+                      )}
 
                       <Separator className="bg-white/10 my-2" />
                       <div className="flex justify-between">

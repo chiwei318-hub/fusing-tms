@@ -4,7 +4,12 @@ import { sql } from "drizzle-orm";
 import { quoteRequestsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
-import { calculatePricingWithVehicle } from "./pricingEngine";
+import {
+  calculatePricingWithVehicle,
+  loadFuelSurcharge,
+  invalidateFuelSurchargeCache,
+  type FuelSurchargeConfig,
+} from "./pricingEngine";
 
 export const quotesRouter = Router();
 
@@ -178,5 +183,40 @@ quotesRouter.put("/pricing/vehicle-rates", async (req, res) => {
   } catch (e) {
     console.error("[pricing/vehicle-rates PUT]", e);
     return res.status(500).json({ error: "儲存費率失敗" });
+  }
+});
+
+// GET /api/pricing/fuel-surcharge — 讀取燃油附加費設定（公開）
+quotesRouter.get("/pricing/fuel-surcharge", async (_req, res) => {
+  try {
+    const cfg = await loadFuelSurcharge();
+    return res.json({ ok: true, config: cfg });
+  } catch (e) {
+    console.error("[pricing/fuel-surcharge GET]", e);
+    return res.status(500).json({ error: "讀取燃油附加費設定失敗" });
+  }
+});
+
+// PUT /api/pricing/fuel-surcharge — 更新燃油附加費設定（管理員）
+quotesRouter.put("/pricing/fuel-surcharge", async (req, res) => {
+  try {
+    const body = req.body as Partial<FuelSurchargeConfig>;
+    const current = await loadFuelSurcharge();
+    const updated: FuelSurchargeConfig = {
+      ...current,
+      ...body,
+      lastUpdated: new Date().toISOString(),
+    };
+    const value = JSON.stringify(updated);
+    await db.execute(
+      sql`INSERT INTO pricing_config (key, value, label, updated_at)
+          VALUES ('fuel_surcharge', ${value}, '燃油附加費設定', NOW())
+          ON CONFLICT (key) DO UPDATE SET value = ${value}, updated_at = NOW()`
+    );
+    invalidateFuelSurchargeCache();
+    return res.json({ ok: true, config: updated });
+  } catch (e) {
+    console.error("[pricing/fuel-surcharge PUT]", e);
+    return res.status(500).json({ error: "儲存燃油附加費設定失敗" });
   }
 });
