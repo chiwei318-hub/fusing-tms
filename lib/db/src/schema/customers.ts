@@ -11,6 +11,8 @@ export const customersTable = pgTable("customers", {
   address: text("address"),
   contactPerson: text("contact_person"),
   taxId: text("tax_id"),
+  invoiceTitle: text("invoice_title"),
+  email: text("email"),
   lineUserId: text("line_user_id"),
   lineLinkedAt: timestamp("line_linked_at"),
   isActive: boolean("is_active").notNull().default(true),

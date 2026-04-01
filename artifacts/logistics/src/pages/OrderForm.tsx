@@ -18,6 +18,7 @@ import { motion } from "framer-motion";
 const orderFormSchema = z.object({
   customerName: z.string().min(2, "請輸入完整的客戶名稱"),
   customerPhone: z.string().min(8, "請輸入有效的聯絡電話"),
+  customerEmail: z.string().email("請輸入有效的 Email").optional().or(z.literal("")),
   pickupAddress: z.string().min(5, "請輸入詳細的取貨地址"),
   pickupDate: z.string().optional(),
   pickupTime: z.string().optional(),
@@ -43,6 +44,7 @@ export default function OrderForm() {
     defaultValues: {
       customerName: "",
       customerPhone: "",
+      customerEmail: "",
       pickupAddress: "",
       pickupDate: "",
       pickupTime: "",
@@ -68,6 +70,7 @@ export default function OrderForm() {
           deliveryTime: data.deliveryTime || null,
           pickupContactPerson: data.pickupContactPerson || null,
           deliveryContactPerson: data.deliveryContactPerson || null,
+          customerEmail: data.customerEmail || null,
         } as any,
       });
       setSuccessOrderId(result.id);
@@ -161,6 +164,18 @@ export default function OrderForm() {
                       <FormLabel>聯絡電話 <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
                         <HistoryInput fieldKey="order-customerPhone" placeholder="0912-345-678" inputMode="tel" autoComplete="tel" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="customerEmail" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        客戶 Email
+                        <span className="text-xs text-muted-foreground font-normal">（完單後自動寄送發票）</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="customer@example.com（選填）" autoComplete="email" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

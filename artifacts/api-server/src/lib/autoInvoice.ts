@@ -6,6 +6,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { sendInvoiceNotification } from "./line";
+import { sendInvoiceEmail } from "./email";
 
 export interface AutoInvoiceResult {
   invoiceId: number;
@@ -41,13 +42,15 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
   const orderRows = await db.execute(sql`
     SELECT
       o.id, o.total_fee, o.base_price, o.customer_name, o.customer_phone,
+      o.customer_email,
       o.pickup_address, o.delivery_address, o.cargo_description,
       o.enterprise_id,
-      c.id          AS customer_db_id,
-      c.tax_id      AS customer_tax_id,
+      c.id            AS customer_db_id,
+      c.tax_id        AS customer_tax_id,
       c.invoice_title AS customer_invoice_title,
-      c.line_user_id AS customer_line_user_id,
-      ea.tax_id     AS enterprise_tax_id,
+      c.email         AS customer_email_db,
+      c.line_user_id  AS customer_line_user_id,
+      ea.tax_id       AS enterprise_tax_id,
       ea.company_name AS enterprise_name
     FROM orders o
     LEFT JOIN customers c ON c.phone = o.customer_phone
@@ -104,9 +107,16 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
 
   const inv = (result.rows as any[])[0];
 
-  // 非同步 LINE 推播（客戶）— 失敗不影響主流程
-  if (order.customer_line_user_id) {
-    setImmediate(() => {
+  // 決定 Email 收件人：訂單 > 客戶資料表
+  const toEmail: string | null =
+    order.customer_email ||
+    order.customer_email_db ||
+    null;
+
+  // 非同步通知 — 失敗不影響主流程
+  setImmediate(() => {
+    // LINE 推播
+    if (order.customer_line_user_id) {
       sendInvoiceNotification(order.customer_line_user_id, {
         invoiceNumber,
         orderId,
@@ -114,8 +124,27 @@ export async function autoIssueInvoice(orderId: number, triggeredBy = "system"):
         totalAmount,
         taxAmount,
       }).catch(() => {});
-    });
-  }
+    }
+
+    // Email 發票通知
+    if (toEmail) {
+      sendInvoiceEmail({
+        to: toEmail,
+        invoiceNumber,
+        orderId,
+        buyerName: buyerName ?? order.customer_name,
+        totalAmount,
+        taxAmount,
+        amount: rawAmount,
+        invoiceType,
+        itemDesc,
+        pickupAddress: order.pickup_address ?? undefined,
+        deliveryAddress: order.delivery_address ?? undefined,
+      }).catch(() => {});
+    } else {
+      console.log(`[autoInvoice] Order #${orderId}: no email address found, skipping email notification`);
+    }
+  });
 
   return { invoiceId: inv.id, invoiceNumber: inv.invoice_number, totalAmount: inv.total_amount };
 }

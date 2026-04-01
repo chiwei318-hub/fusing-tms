@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { autoIssueInvoice } from "../lib/autoInvoice.js";
+import { sendTestEmail, invalidateSmtpCache } from "../lib/email.js";
 
 export const invoicesRouter = Router();
 
@@ -164,4 +165,34 @@ invoicesRouter.get("/invoices/stats/monthly", async (_req, res) => {
     ORDER BY month DESC
   `);
   res.json(rows.rows);
+});
+
+// POST /api/invoices/smtp-test — 傳送測試信件驗證 SMTP 設定
+invoicesRouter.post("/invoices/smtp-test", async (req, res) => {
+  const { to } = req.body ?? {};
+  if (!to) return res.status(400).json({ error: "缺少 to Email" });
+  invalidateSmtpCache();
+  const result = await sendTestEmail(to);
+  return res.json(result);
+});
+
+// PUT /api/invoices/smtp-config — 儲存 SMTP 設定並清除快取
+invoicesRouter.put("/invoices/smtp-config", async (req, res) => {
+  try {
+    const fields = req.body as Record<string, string>;
+    const smtpKeys = ["smtp_host","smtp_port","smtp_secure","smtp_user","smtp_pass","smtp_from","smtp_from_name"];
+    for (const key of smtpKeys) {
+      if (fields[key] !== undefined) {
+        await db.execute(sql`
+          INSERT INTO pricing_config (key, value, label, updated_at)
+          VALUES (${key}, ${fields[key]}, ${key}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = ${fields[key]}, updated_at = NOW()
+        `);
+      }
+    }
+    invalidateSmtpCache();
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? "儲存失敗" });
+  }
 });

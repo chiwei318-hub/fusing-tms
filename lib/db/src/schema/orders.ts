@@ -14,6 +14,7 @@ export const ordersTable = pgTable("orders", {
   // 委託方
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
+  customerEmail: text("customer_email"),
   // 收貨方
   pickupDate: text("pickup_date"),
   pickupTime: text("pickup_time"),
