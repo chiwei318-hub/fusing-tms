@@ -48,6 +48,7 @@ import { presenceRouter } from "./presence";
 import { auditMiddleware } from "../middleware/audit";
 import { quotesRouter } from "./quotes";
 import { franchiseesRouter } from "./franchisees";
+import { cashFlowRouter } from "./cashFlow";
 
 const router: IRouter = Router();
 
@@ -101,5 +102,6 @@ router.use(zonePermissionsRouter);
 router.use(presenceRouter);
 router.use(quotesRouter);
 router.use(franchiseesRouter);
+router.use(cashFlowRouter);
 
 export default router;

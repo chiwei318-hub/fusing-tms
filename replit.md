@@ -70,6 +70,25 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 - **SystemSettingsTab**：後台 SMTP 設定 UI，含快速套用（Gmail/Outlook 等），測試信發送功能
 - **API：** `POST /api/invoices/smtp-test`、`PUT /api/invoices/smtp-config`
 
+## 金流拆解模組（Cash Flow Decomposition）
+
+- **cashFlow.ts**：4 支 API，按月拆解每筆訂單的金流去向
+- **API：**
+  - `GET /api/cash-flow/monthly?year=&month=` — 月度摘要（收入/司機薪資/加盟主分潤/平台淨利）
+  - `GET /api/cash-flow/trend?months=N` — 近 N 個月趨勢（帶加盟主結算補充）
+  - `GET /api/cash-flow/orders?year=&month=&page=&limit=` — 逐筆訂單拆解（含司機佔比）
+  - `GET /api/cash-flow/by-driver?year=&month=` — 按司機彙總
+  - `GET /api/cash-flow/by-franchisee?year=&month=` — 按加盟主彙總（整合 franchisee_settlements）
+- **CashFlowTab.tsx**：後台「金流拆解」Tab
+  - 4 張 KPI 卡片（訂單收入、司機薪資、加盟主分潤、平台淨利）
+  - 分配比例長條視覺化（彩色分段）
+  - 6 個月趨勢堆疊柱狀圖 + 收入/淨利面積圖
+  - 本月收入結構甜甜圈圓餅圖
+  - 企業客戶 vs 散客收入拆分卡
+  - 訂單明細分頁表（含分傭比例顯示）
+  - 按司機 / 按加盟主 匯總表（含合計列）
+- **位置：** 後台 → 帳務財務 → 金流拆解 Tab
+
 ## 報價引擎（Pricing Engine）
 
 - **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）

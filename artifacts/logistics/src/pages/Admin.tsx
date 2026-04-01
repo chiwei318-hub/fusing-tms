@@ -56,6 +56,7 @@ import { AutoRoutingTab } from "./admin/AutoRoutingTab";
 import RouteImportTab from "./admin/RouteImportTab";
 import FormImportTab from "./admin/FormImportTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
+import CashFlowTab from "./admin/CashFlowTab";
 import PricingPanel from "@/components/PricingPanel";
 import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
@@ -1490,7 +1491,8 @@ export default function Admin() {
                     { value: "vehiclecost", icon: <span className="text-sm leading-none">💰</span>,                 label: "車輛成本" },
                     { value: "invoice",     icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" />,          label: "電子發票" },
                     { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,         label: "結算" },
-                    { value: "bidding",     icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,              label: "競標比價" },
+                    { value: "cashflow",   icon: <Layers className="w-3.5 h-3.5 text-indigo-500" />,              label: "金流拆解" },
+                    { value: "bidding",    icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,              label: "競標比價" },
                     { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,               label: "審批" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
@@ -3352,6 +3354,11 @@ export default function Admin() {
         {/* ===== 加盟主管理 TAB ===== */}
         <TabsContent value="franchisee" className="outline-none">
           <FranchiseeTab />
+        </TabsContent>
+
+        {/* ===== 金流拆解 TAB ===== */}
+        <TabsContent value="cashflow" className="outline-none">
+          <CashFlowTab />
         </TabsContent>
 
         {/* ===== 廠商管理 TAB ===== */}
