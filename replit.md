@@ -70,6 +70,33 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 - **SystemSettingsTab**：後台 SMTP 設定 UI，含快速套用（Gmail/Outlook 等），測試信發送功能
 - **API：** `POST /api/invoices/smtp-test`、`PUT /api/invoices/smtp-config`
 
+## API 開放接口模組（Open API）
+
+- **DB Tables**：`api_keys`（Key 主檔）、`api_usage_logs`（使用記錄）、`webhooks`（Webhook 設定）、`webhook_deliveries`（送達記錄）
+- **API Keys（`apiKeys.ts`）**：
+  - `GET /api/api-keys` — 列表（含使用次數、最後使用時間）
+  - `POST /api/api-keys` — 建立（回傳一次性 raw key，儲存 SHA-256 hash）
+  - `PATCH /api/api-keys/:id` — 更新狀態/備註/限速
+  - `DELETE /api/api-keys/:id` — 刪除
+  - `GET /api/api-keys/:id/usage` — 使用量統計（小時級 timeline + endpoint breakdown）
+- **Webhooks（`webhooks.ts`）**：
+  - CRUD 管理 + `POST /api/webhooks/:id/test` 測試觸發
+  - `GET /api/webhooks/:id/deliveries` 送達記錄
+  - `broadcastWebhook(event, payload)` — 廣播到所有訂閱該事件的 Webhook（HMAC-SHA256 簽名）
+  - 支援事件：`order.created` / `order.status_changed` / `order.delivered`
+- **開放 API（`openApi.ts`）**：
+  - Header 認證：`X-API-Key: fv1_xxx`（middleware 驗 hash + 自動更新使用統計）
+  - 權限範圍（scope）：`orders:read` / `orders:create` / `quote`
+  - `POST /api/open/v1/quote` — 報價試算（從 pricing_config 讀費率，支援重量分層）
+  - `POST /api/open/v1/orders` — 建立訂單（觸發 order.created Webhook）
+  - `GET /api/open/v1/orders/:id` — 查詢單筆（含司機資訊）
+  - `GET /api/open/v1/orders` — 列表（篩選 source='api'，支援分頁/狀態篩選）
+- **OpenApiTab.tsx**：後台「API 接口」Tab（系統管理群組）
+  - 統計看板（Key 數/Webhook 數/總呼叫次數）
+  - API Key 卡片（展開看使用詳情）、建立 Dialog（一次性顯示 raw key）
+  - Webhook 卡片（測試按鈕、展開看送達記錄）
+  - API 文件 Tab（每個端點附 Request/Response 範例 + Webhook 格式說明）
+
 ## 金流拆解模組（Cash Flow Decomposition）
 
 - **cashFlow.ts**：4 支 API，按月拆解每筆訂單的金流去向

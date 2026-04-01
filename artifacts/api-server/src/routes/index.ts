@@ -49,6 +49,9 @@ import { auditMiddleware } from "../middleware/audit";
 import { quotesRouter } from "./quotes";
 import { franchiseesRouter } from "./franchisees";
 import { cashFlowRouter } from "./cashFlow";
+import { apiKeysRouter } from "./apiKeys";
+import { webhooksRouter } from "./webhooks";
+import { openApiRouter } from "./openApi";
 
 const router: IRouter = Router();
 
@@ -103,5 +106,8 @@ router.use(presenceRouter);
 router.use(quotesRouter);
 router.use(franchiseesRouter);
 router.use(cashFlowRouter);
+router.use(apiKeysRouter);
+router.use(webhooksRouter);
+router.use(openApiRouter);
 
 export default router;
