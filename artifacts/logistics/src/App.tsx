@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -41,11 +42,46 @@ import DriverRegister from "@/pages/register/DriverRegister";
 import InvoicePrint from "@/pages/InvoicePrint";
 import QuotePage from "@/pages/QuotePage";
 
+// ─── Global ErrorBoundary ────────────────────────────────────────────────────
+
+interface EBState { hasError: boolean; message: string }
+class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { hasError: false, message: "" };
+  static getDerivedStateFromError(err: Error): EBState {
+    return { hasError: true, message: err.message };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-dvh gap-4 text-center p-8">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-xl font-black">畫面發生錯誤</h2>
+          <p className="text-muted-foreground text-sm max-w-sm">{this.state.message}</p>
+          <button
+            onClick={() => { this.setState({ hasError: false, message: "" }); window.location.reload(); }}
+            className="mt-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700"
+          >
+            重新載入
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ─── QueryClient ─────────────────────────────────────────────────────────────
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       staleTime: 1000 * 30,
+      retry: 1,
+      retryDelay: (n) => Math.min(1000 * 2 ** n, 10_000),
+    },
+    mutations: {
+      retry: 0,
     },
   },
 });
@@ -191,16 +227,18 @@ function AppRouter() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <AppRouter />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <AppRouter />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

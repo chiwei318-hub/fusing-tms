@@ -184,6 +184,29 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 - 司機抽成：月份選擇 + 分組長條圖 + 費率/抽成明細
 - 毛利分析：月度 BarChart + 毛利率 LineChart + 逐月明細表
 
+## UX 優化（2026-04）
+
+### App.tsx
+- 新增全域 **ErrorBoundary**（React class component）— 任何 render 錯誤顯示友善提示 + 重新載入按鈕
+- **QueryClient** 改進：`retry: 1`（指數退避 max 10s）、`mutations.retry: 0`
+
+### InvoiceManagementTab.tsx（完全重構）
+- 新增 **PDF 下載**按鈕（呼叫 `GET /invoices/:id/pdf`，直接下載 Blob）
+- 新增 **寄信**按鈕（呼叫 `POST /invoices/:id/send-email`）
+- 新增 **折讓 Dialog**（`AllowanceDialog`）含稅額計算預覽
+- 新增 **作廢確認 Dialog**（`VoidConfirmDialog`）含 reason 欄位，傳送給後端
+- 全部使用 `useToast` 取代 `alert()`/`confirm()`
+- 新增「已折讓」篩選 tab
+- 所有 mutation loading 狀態顯示 spinner
+- 統一 `apiJson` helper（含 Authorization header + 錯誤拋出）
+- 發票列表改 `refetchInterval: 60000`
+
+### FinanceReportsTab.tsx（重構）
+- 全部改用 **`useQuery`** 取代 `useCallback + useEffect + setState`
+- 新增 `PanelSkeleton`（spinner）和 `PanelError`（AlertTriangle + 重試）
+- 使用 `apiUrl` 統一 API 路徑（移除 hardcode VITE_API_BASE_URL）
+- DriverCommission 參數（year/month）納入 query key，切換即自動重載
+
 ## 報價引擎（Pricing Engine）
 
 - **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）
