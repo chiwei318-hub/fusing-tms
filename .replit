@@ -32,3 +32,6 @@ channel = "stable-25_05"
 
 [userenv.shared]
 APP_BASE_URL = "https://25aa9280-967a-471c-b4c8-f7fae9a96c57-00-13weca2s6r6nq.worf.replit.dev"
+INVOICE_PROVIDER = "mock"
+INVOICE_API_BASE = ""
+INVOICE_MERCHANT_ID = ""

@@ -12,15 +12,9 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { sendInvoiceEmail } from "../lib/email";
 import { sendInvoiceNotification } from "../lib/line";
+import { issueInvoice } from "../lib/invoiceProvider";
 
 export const monthlyBillingRouter = Router();
-
-function generateInvoiceNumber(): string {
-  const now = new Date();
-  return `FY${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${
-    String(Math.floor(Math.random() * 900000) + 100000)
-  }`;
-}
 
 // ── 列出月結帳單 ──────────────────────────────────────────────────────────
 monthlyBillingRouter.get("/monthly-bills", async (req, res) => {
@@ -199,9 +193,9 @@ monthlyBillingRouter.post("/monthly-bills/:id/invoice", async (req, res) => {
   const totalAmount  = Number(bill.total_amount);
   const taxAmount    = Math.round(totalAmount / 1.05 * 0.05);
   const amount       = totalAmount - taxAmount;
-  const invoiceNumber = generateInvoiceNumber();
   const buyerName    = bill.enterprise_name ?? bill.customer_name_db ?? "客戶";
   const buyerTaxId   = bill.enterprise_tax_id ?? bill.customer_tax_id ?? null;
+  const periodLabel  = `${bill.period_year}年${bill.period_month}月月結帳單（${orderList.length} 筆訂單）`;
 
   const items = orderList.map(o => ({
     description: `${o.order_no ?? `#${o.id}`} ${o.cargo_description ?? "物流服務"}`,
@@ -210,22 +204,43 @@ monthlyBillingRouter.post("/monthly-bills/:id/invoice", async (req, res) => {
     total:     Number(o.total_fee ?? o.base_price ?? 0),
   }));
 
-  // 開立發票
+  // ── 呼叫電子發票供應商（mock / ECPay）────────────────────────────────
+  const invoiceResult = await issueInvoice({
+    relateNumber: `MB-${billId}-${Date.now()}`,
+    buyerName,
+    buyerTaxId:   buyerTaxId ?? undefined,
+    buyerEmail:   bill.enterprise_email ?? bill.customer_email_db ?? undefined,
+    amount,
+    taxAmount,
+    totalAmount,
+    items,
+    remark:       periodLabel,
+  });
+
+  // ── 寫入 invoices 資料表 ─────────────────────────────────────────────
   const inv = await db.execute(sql`
     INSERT INTO invoices (
-      invoice_number, enterprise_id, customer_id,
+      invoice_number, random_number, invoice_date, provider,
+      enterprise_id, customer_id,
       invoice_type, buyer_name, buyer_tax_id,
       amount, tax_amount, total_amount,
-      items, notes
+      items, notes,
+      qr_code_left, qr_code_right, provider_raw
     ) VALUES (
-      ${invoiceNumber},
+      ${invoiceResult.invoiceNo},
+      ${invoiceResult.randomNo},
+      ${invoiceResult.invoiceDate},
+      ${invoiceResult.provider},
       ${bill.enterprise_id ?? null},
       ${bill.customer_id ?? null},
       ${"b2b"},
       ${buyerName}, ${buyerTaxId},
       ${amount}, ${taxAmount}, ${totalAmount},
       ${JSON.stringify(items)},
-      ${`${bill.period_year}年${bill.period_month}月月結帳單（${orderList.length} 筆訂單）`}
+      ${periodLabel},
+      ${invoiceResult.qrCodeLeft  ?? null},
+      ${invoiceResult.qrCodeRight ?? null},
+      ${JSON.stringify(invoiceResult.raw ?? null)}
     ) RETURNING id, invoice_number, total_amount
   `);
   const invoiceId = Number((inv.rows[0] as any).id);
