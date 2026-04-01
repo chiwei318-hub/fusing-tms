@@ -124,16 +124,17 @@ webhooksRouter.patch("/webhooks/:id", async (req, res) => {
   const { id } = req.params;
   const { name, url, events, status, note } = req.body ?? {};
 
-  const parts: string[] = ["updated_at = NOW()"];
-  if (name   !== undefined) parts.push(`name = '${name.replace(/'/g,"''")}'`);
-  if (url    !== undefined) parts.push(`url = '${url.replace(/'/g,"''")}'`);
-  if (status !== undefined) parts.push(`status = '${["active","paused"].includes(status) ? status : "paused"}'`);
-  if (note   !== undefined) parts.push(`note = ${note ? `'${note.replace(/'/g,"''")}'` : "NULL"}`);
+  const setClauses: ReturnType<typeof sql>[] = [sql`updated_at = NOW()`];
+  if (name   !== undefined) setClauses.push(sql`name = ${name}`);
+  if (url    !== undefined) setClauses.push(sql`url = ${url}`);
+  if (status !== undefined) setClauses.push(sql`status = ${["active","paused"].includes(status) ? status : "paused"}`);
+  if (note   !== undefined) setClauses.push(note ? sql`note = ${note}` : sql`note = NULL`);
   if (Array.isArray(events)) {
-    parts.push(`events = ARRAY[${events.map(e => `'${e}'`).join(",")}]::text[]`);
+    setClauses.push(sql`events = ${events}::text[]`);
   }
 
-  await db.execute(sql.raw(`UPDATE webhooks SET ${parts.join(", ")} WHERE id = ${Number(id)}`));
+  const setFragment = sql.join(setClauses, sql`, `);
+  await db.execute(sql`UPDATE webhooks SET ${setFragment} WHERE id = ${Number(id)}`);
   res.json({ ok: true });
 });
 
