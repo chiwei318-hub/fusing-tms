@@ -184,7 +184,9 @@ async function ensureTestAccounts() {
 }
 
 seedDefaultData().catch(console.error);
-ensureTestAccounts().catch(console.error);
+if (process.env.NODE_ENV !== 'production') {
+  ensureTestAccounts().catch(console.error);
+}
 
 // ===== ROLES =====
 router.get('/admin/roles', async (_req, res) => {
