@@ -58,6 +58,7 @@ import { ecpayWebhookRouter } from "./ecpayWebhook";
 import { reportsRouter } from "./reports";
 import { sheetSyncRouter } from "./sheetSync";
 import { penaltiesRouter } from "./penalties";
+import { shopeeRatesRouter } from "./shopeeRates";
 
 const router: IRouter = Router();
 
@@ -121,5 +122,6 @@ router.use(ecpayWebhookRouter);
 router.use(reportsRouter);
 router.use(sheetSyncRouter);
 router.use("/penalties", penaltiesRouter);
+router.use("/shopee-rates", shopeeRatesRouter);
 
 export default router;

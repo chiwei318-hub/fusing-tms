@@ -14,7 +14,7 @@ import {
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
   Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText, Globe,
-  RotateCcw, RefreshCw,
+  RotateCcw, RefreshCw, Tag,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +60,7 @@ import FormImportTab from "./admin/FormImportTab";
 import SheetSyncTab from "./admin/SheetSyncTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
 import PenaltiesTab from "./admin/PenaltiesTab";
+import ShopeeRatesTab from "./admin/ShopeeRatesTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
 import BillingFlowTab from "./admin/BillingFlowTab";
@@ -1501,6 +1502,7 @@ export default function Admin() {
                     { value: "formimport",  icon: <FileText className="w-3.5 h-3.5 text-green-600" />,              label: "表單匯入" },
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
                     { value: "penalties",   icon: <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />,        label: "Shopee罰款" },
+                    { value: "shopeerate",  icon: <Tag className="w-3.5 h-3.5 text-blue-500" />,                    label: "Shopee報價" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3584,6 +3586,11 @@ export default function Admin() {
         {/* ===== Shopee 罰款管理 TAB ===== */}
         <TabsContent value="penalties" className="outline-none">
           <PenaltiesTab />
+        </TabsContent>
+
+        {/* ===== Shopee 報價單 TAB ===== */}
+        <TabsContent value="shopeerate" className="outline-none">
+          <ShopeeRatesTab />
         </TabsContent>
       </Tabs>
 
