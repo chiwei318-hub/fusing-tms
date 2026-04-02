@@ -59,6 +59,7 @@ import { reportsRouter } from "./reports";
 import { sheetSyncRouter } from "./sheetSync";
 import { penaltiesRouter } from "./penalties";
 import { shopeeRatesRouter } from "./shopeeRates";
+import { driverEarningsRouter } from "./driverEarnings";
 
 const router: IRouter = Router();
 
@@ -123,5 +124,6 @@ router.use(reportsRouter);
 router.use(sheetSyncRouter);
 router.use("/penalties", penaltiesRouter);
 router.use("/shopee-rates", shopeeRatesRouter);
+router.use("/driver-earnings", driverEarningsRouter);
 
 export default router;
