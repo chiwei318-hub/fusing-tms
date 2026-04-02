@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
-export type AuthRole = "customer" | "driver" | "admin";
+export type AuthRole = "customer" | "driver" | "admin" | "fusingao_fleet";
 
 export interface AuthUser {
   id: number;
@@ -8,6 +8,7 @@ export interface AuthUser {
   name: string;
   phone?: string;
   username?: string;
+  fleetId?: number;
 }
 
 interface AuthCtxValue {

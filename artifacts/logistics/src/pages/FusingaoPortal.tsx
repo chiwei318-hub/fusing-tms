@@ -4,6 +4,7 @@ import {
   ArrowLeft, RefreshCw, CheckCircle2, Clock, FileText,
   Truck, AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   Download, Tag, Package, MapPin, CheckSquare, Square,
+  Users, Plus, Edit2, Save, X, ShieldCheck, ShieldOff, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,14 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "notify" | "monthly" | "rates";
+type PortalTab = "notify" | "monthly" | "rates" | "fleets";
+
+interface FleetRow {
+  id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
+  username: string; vehicle_types: string | null; notes: string | null; is_active: boolean;
+  created_at: string; total_routes: string; completed_routes: string; billed_routes: string;
+  fleet_payout: string;
+}
 
 const fmt = (n: number | string) => `NT$ ${Math.round(Number(n)).toLocaleString()}`;
 
@@ -70,6 +78,16 @@ export default function FusingaoPortal() {
   const [filterMonth, setFilterMonth]   = useState("");
   const [expandedRoute, setExpandedRoute] = useState<number | null>(null);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+
+  // ── Fleet management state ─────────────────────────────────────────────────
+  const [fleets, setFleets]             = useState<FleetRow[]>([]);
+  const [fleetLoading, setFleetLoading] = useState(false);
+  const [showFleetForm, setShowFleetForm] = useState(false);
+  const [editingFleet, setEditingFleet]   = useState<FleetRow | null>(null);
+  const [fleetForm, setFleetForm]         = useState({
+    fleet_name: "", contact_name: "", contact_phone: "",
+    username: "", password: "", vehicle_types: "", notes: "", rate_override: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +131,51 @@ export default function FusingaoPortal() {
     await fetch(getApiUrl(`/fusingao/monthly/${encodeURIComponent(month)}/bill-all`), { method: "PUT" });
     await load();
     toast({ title: `${month} 整月對帳完成` });
+  };
+
+  // ── Fleet management handlers ──────────────────────────────────────────────
+  const loadFleets = useCallback(async () => {
+    setFleetLoading(true);
+    try {
+      const d = await fetch(getApiUrl("/fusingao/fleets")).then(x => x.json());
+      if (d.ok) setFleets(d.fleets ?? []);
+    } catch { toast({ title: "車隊載入失敗", variant: "destructive" }); }
+    finally { setFleetLoading(false); }
+  }, []); // eslint-disable-line
+
+  useEffect(() => { if (tab === "fleets") loadFleets(); }, [tab]); // eslint-disable-line
+
+  const openNewFleet = () => {
+    setEditingFleet(null);
+    setFleetForm({ fleet_name:"", contact_name:"", contact_phone:"", username:"", password:"", vehicle_types:"", notes:"", rate_override:"" });
+    setShowFleetForm(true);
+  };
+
+  const openEditFleet = (f: FleetRow) => {
+    setEditingFleet(f);
+    setFleetForm({ fleet_name:f.fleet_name, contact_name:f.contact_name??"", contact_phone:f.contact_phone??"", username:f.username, password:"", vehicle_types:f.vehicle_types??"", notes:f.notes??"", rate_override:"" });
+    setShowFleetForm(true);
+  };
+
+  const saveFleet = async () => {
+    if (!fleetForm.fleet_name || !fleetForm.username) return toast({ title: "請填寫車隊名稱與帳號", variant: "destructive" });
+    if (!editingFleet && !fleetForm.password) return toast({ title: "請設定初始密碼", variant: "destructive" });
+    const body = { ...fleetForm, rate_override: fleetForm.rate_override ? Number(fleetForm.rate_override) : undefined };
+    const url  = editingFleet ? getApiUrl(`/fusingao/fleets/${editingFleet.id}`) : getApiUrl("/fusingao/fleets");
+    const method = editingFleet ? "PUT" : "POST";
+    const d = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(x => x.json());
+    if (!d.ok) return toast({ title: d.error ?? "儲存失敗", variant: "destructive" });
+    toast({ title: editingFleet ? "車隊更新成功" : "新增車隊成功" });
+    setShowFleetForm(false);
+    loadFleets();
+  };
+
+  const toggleFleetActive = async (f: FleetRow) => {
+    await fetch(getApiUrl(`/fusingao/fleets/${f.id}`), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...f, is_active: !f.is_active }),
+    });
+    loadFleets();
   };
 
   const exportMonthCSV = (m: MonthRow) => {
@@ -183,6 +246,7 @@ export default function FusingaoPortal() {
           {([
             { id:"notify",  label:"🔔 車趟完成通知", desc:"即時狀態" },
             { id:"monthly", label:"📋 月度對帳",    desc:"逐月結算" },
+            { id:"fleets",  label:"🚚 合作車隊管理", desc:"帳號管理" },
           ] as { id: PortalTab; label: string; desc: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -424,6 +488,127 @@ export default function FusingaoPortal() {
               );
             })}
             {months.length === 0 && <div className="text-center py-12 text-gray-400">尚無對帳資料</div>}
+          </div>
+        )}
+
+        {/* ═══════════════ 合作車隊管理 ════════════════════════════════════════ */}
+        {tab === "fleets" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-gray-800">合作車隊帳號</h2>
+                <p className="text-xs text-gray-400">管理各車隊登入帳號、費率及查看歷史路線</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={loadFleets} disabled={fleetLoading}>
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1 ${fleetLoading ? "animate-spin" : ""}`} />刷新
+                </Button>
+                <Button size="sm" className="h-8 text-xs bg-orange-600 hover:bg-orange-700" onClick={openNewFleet}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />新增車隊
+                </Button>
+              </div>
+            </div>
+
+            {/* Fleet form modal */}
+            {showFleetForm && (
+              <Card className="border-orange-200 bg-orange-50">
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">{editingFleet ? `編輯：${editingFleet.fleet_name}` : "新增合作車隊"}</CardTitle>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setShowFleetForm(false)}><X className="h-4 w-4" /></Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label:"車隊名稱 *", key:"fleet_name",    type:"text", placeholder:"例：台北物流車隊" },
+                      { label:"帳號 *",     key:"username",      type:"text", placeholder:"login username" },
+                      { label:"聯絡人",     key:"contact_name",  type:"text", placeholder:"負責人姓名" },
+                      { label:"聯絡電話",   key:"contact_phone", type:"text", placeholder:"09xx-xxx-xxx" },
+                      { label:"車輛類型",   key:"vehicle_types", type:"text", placeholder:"例：一般, 冷藏" },
+                      { label:`密碼${editingFleet?" (留空保持不變)":""}`,  key:"password",     type:"password", placeholder:editingFleet?"不改請留空":"設定初始密碼" },
+                      { label:"每趟費率覆蓋 (NT$)", key:"rate_override", type:"number", placeholder:"留空使用路線預設" },
+                      { label:"備註",       key:"notes",         type:"text", placeholder:"內部備註" },
+                    ].map(f => (
+                      <div key={f.key} className={f.key === "notes" ? "col-span-2" : ""}>
+                        <label className="text-xs font-medium text-gray-600">{f.label}</label>
+                        <input
+                          type={f.type}
+                          placeholder={f.placeholder}
+                          className="w-full h-8 px-2 border rounded text-sm bg-white mt-1"
+                          value={(fleetForm as any)[f.key]}
+                          onChange={e => setFleetForm(p => ({ ...p, [f.key]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-3 justify-end">
+                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowFleetForm(false)}>取消</Button>
+                    <Button size="sm" className="h-8 text-xs bg-orange-600 hover:bg-orange-700" onClick={saveFleet}>
+                      <Save className="h-3.5 w-3.5 mr-1" />{editingFleet ? "儲存變更" : "建立車隊"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Fleet list */}
+            {fleets.length === 0 && !fleetLoading ? (
+              <div className="text-center py-12 text-gray-400">
+                <Users className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                尚無合作車隊，點「新增車隊」開始建立
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {fleets.map(f => (
+                  <Card key={f.id} className={`overflow-hidden ${!f.is_active ? "opacity-60" : ""}`}>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-800">{f.fleet_name}</span>
+                            {f.is_active
+                              ? <Badge className="bg-green-100 text-green-700 text-xs"><ShieldCheck className="h-3 w-3 mr-1 inline"/>啟用</Badge>
+                              : <Badge className="bg-gray-100 text-gray-500 text-xs"><ShieldOff className="h-3 w-3 mr-1 inline"/>停用</Badge>}
+                            {f.vehicle_types && <span className="text-xs text-gray-400">{f.vehicle_types}</span>}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            帳號：<span className="font-mono font-medium text-gray-700">{f.username}</span>
+                            {f.contact_name && <> ・ {f.contact_name}</>}
+                            {f.contact_phone && <> ・ {f.contact_phone}</>}
+                          </div>
+                          <div className="flex gap-4 mt-2 text-xs text-gray-500 flex-wrap">
+                            <span><Package className="h-3 w-3 inline mr-1 text-orange-400"/>路線 {f.total_routes} 趟</span>
+                            <span><CheckCircle2 className="h-3 w-3 inline mr-1 text-green-500"/>完成 {f.completed_routes} 趟</span>
+                            <span><DollarSign className="h-3 w-3 inline mr-1 text-blue-400"/>應付 {fmt(f.fleet_payout)}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <a href={`/fleet`} target="_blank" rel="noreferrer"
+                            className="h-7 w-7 flex items-center justify-center rounded border text-gray-400 hover:text-orange-500 hover:border-orange-300 text-xs"
+                            title="開啟車隊入口預覽">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600"
+                            onClick={() => openEditFleet(f)} title="編輯">
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 p-1.5 text-xs text-gray-400 hover:text-orange-600"
+                            onClick={() => toggleFleetActive(f)}>
+                            {f.is_active ? "停用" : "啟用"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-600 flex gap-2">
+              <FileText className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>車隊帳號建立後，合作夥伴可從 <strong>/login/fleet</strong> 登入，搶取可用路線並回報完成狀態。</span>
+            </div>
           </div>
         )}
       </div>

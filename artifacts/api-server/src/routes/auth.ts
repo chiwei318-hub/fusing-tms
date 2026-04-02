@@ -174,6 +174,29 @@ router.post("/auth/login/driver", async (req, res) => {
   }
 });
 
+// ── POST /auth/login/fleet ── (Fusingao sub-contractor fleet) ────────────────
+router.post("/auth/login/fleet", async (req, res) => {
+  try {
+    const { username, password } = req.body as { username: string; password: string };
+    if (!username || !password) return res.status(400).json({ error: "請提供帳號與密碼" });
+    const [fleet] = await db.execute(sql`
+      SELECT id, fleet_name, username, password, is_active
+      FROM fusingao_fleets WHERE lower(username)=${username.toLowerCase().trim()}
+    `).then(r => r.rows as any[]);
+    if (!fleet) return res.status(401).json({ error: "帳號不存在" });
+    if (!fleet.is_active) return res.status(403).json({ error: "帳號已停用" });
+    const ok = fleet.password.includes(":")
+      ? checkPassword(password, fleet.password)
+      : fleet.password === password;
+    if (!ok) return res.status(401).json({ error: "密碼錯誤" });
+    const token = signJwt({ role: "fusingao_fleet" as any, id: fleet.id, name: fleet.fleet_name, username: fleet.username, fleetId: fleet.id } as any);
+    return res.json({ token, user: { id: fleet.id, role: "fusingao_fleet", name: fleet.fleet_name, username: fleet.username, fleetId: fleet.id } });
+  } catch (err) {
+    req.log.error({ err }, "fleet login failed");
+    return res.status(500).json({ error: "登入失敗" });
+  }
+});
+
 // ── POST /auth/login/admin ───────────────────────────────────────────────────
 router.post("/auth/login/admin", async (req, res) => {
   try {

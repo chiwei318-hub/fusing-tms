@@ -1,6 +1,6 @@
 # Overview
 
-This project is a TypeScript-based pnpm workspace monorepo for a logistics dispatch management system. Its core purpose is to automate and optimize logistics operations, covering customer order management, driver and fleet administration, dispatch processes, and financial reporting. Key features include efficient order handling and tracking, comprehensive driver/fleet management, an administrative control panel, and an enterprise client portal. The system also facilitates outsourcing to partner fleets and integrates communication via LINE and an AI chatbot. The overarching vision is to enhance operational efficiency, reduce manual effort, and leverage data analytics and AI for strategic insights, thereby establishing a competitive advantage in the logistics industry.
+This project is a TypeScript-based pnpm workspace monorepo for a logistics dispatch management system. Its core purpose is to automate and optimize logistics operations, covering customer order management, driver and fleet administration, dispatch processes, and financial reporting. The system integrates communication via LINE and an AI chatbot, facilitating outsourcing to partner fleets. The overarching vision is to enhance operational efficiency, reduce manual effort, and leverage data analytics and AI for strategic insights, thereby establishing a competitive advantage in the logistics industry.
 
 # User Preferences
 
@@ -29,226 +29,27 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Type Safety:** Extensive TypeScript usage across the monorepo.
 *   **Build System:** `esbuild` for CJS bundle generation.
 *   **Error Handling:** Zod for request validation.
+*   **Email Service:** Nodemailer for automated email invoicing with configurable SMTP settings.
+*   **PDF Generation:** `pdfkit` for generating A4 electronic invoices and monthly bills.
 
 ## Feature Specifications
 
-*   **Admin Panel:** Comprehensive dashboard with tabs for Order Dispatch, Driver/Customer Management, Reporting, Vehicle Type Database, Smart Scheduling, Heat Maps, Fleet Maps, Carpool Panel, AI Analysis (forecasting, auto-dispatch, dynamic pricing), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, Vehicle Cost Calculator, and Permission Management.
+*   **Admin Panel:** Comprehensive dashboard with tabs for Order Dispatch, Driver/Customer Management, Reporting, Smart Scheduling, AI Analysis (forecasting, auto-dispatch, dynamic pricing), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, and Permission Management.
 *   **Permission Management:** Role-based access control with customizable permissions and audit logging, including zone-scoped permissions.
-*   **Order Management:** Supports multi-stop deliveries, full order editing by administrators with real-time synchronization, and a Quick Order mode for guest users.
-*   **Dispatch & Routing:** Auto-dispatch engine, Dispatch Suggestion Engine based on multi-factor scoring, and an Auto-Routing Rules Engine for automated order assignment. Dispatch concurrency lock prevents double assignments.
+*   **Order Management:** Supports multi-stop deliveries, full order editing by administrators, and a Quick Order mode for guest users. Includes auto-dispatch, a Dispatch Suggestion Engine, and an Auto-Routing Rules Engine.
 *   **Fleet & Driver Management:** Carpool panel, Outsourcing System for partner fleets, Fleet Onboarding System, Driver Rating System, Driver Income Dashboard, and GPS/Service Area/Capability Settings for drivers.
-*   **Financials:** E-Invoice Management with **auto-invoice trigger** on order completion (driver complete or admin delivered), A4 print/PDF page at `/invoice-print/:id`, manual trigger per order in OrderDetail, LINE push notification to customer on invoice issue, idempotent auto-issue logic, bulk monthly invoice for enterprise accounts, void invoice, and monthly stats. Customer `tax_id` and `invoice_title` auto-populated. Invoices stored in `invoices` table with line items (JSONB). Various Payment Methods & Cash Management, and Order Bidding/Price Comparison.
-*   **報價引擎 (Quoting Engine):** Full-featured vehicle-type-based pricing engine with DB-persisted rate cards (`pricing_config.vehicle_rate_cards`). Key components:
-    - `pricingEngine.ts` — core calculation: per-vehicle base price, km charge, weight/volume tiers, cold chain (冷鏈溫控) fee (冷凍/冷藏/恆溫), special cargo surcharges, waiting fee, tolls, tax+profit — all loaded from DB with 30s cache, falls back to DEFAULT_RULES.
-    - `quotes.ts` — public `/api/quotes/estimate` (no auth), `/api/quotes` (save), `/api/quotes/:token` (get), `/api/quotes` (admin list), `/api/pricing/vehicle-rates` (GET/PUT).
-    - `QuotePage.tsx` — customer-facing public quote calculator at `/quote`, accessible from Landing page.
-    - `QuotesTab.tsx` — admin quote management tab with status tracking (pending/confirmed/converted/expired/cancelled) and one-click status transitions.
-    - `QuotationTab.tsx` — admin rate card editor now syncs to DB via PUT `/api/pricing/vehicle-rates` on save (previously localStorage-only).
-    - `quote_requests` DB table stores all quote history with token, customer info, price breakdown, status, and expiry.
-*   **Analytics & Reporting:** Performance Audit & Bonus System, KPI Dashboard for daily operations, and Fleet Analytics (demand forecast, fleet recommendation, exception analysis).
-*   **Customization:** System Config Management via admin UI, and dynamic Order Custom Fields defined by administrators.
-*   **Integrations:** LINE Integration for driver notifications and AI chatbot, Google Maps for location services.
-*   **Enterprise Features:** Enterprise Customer Portal with advanced functionalities, and Enterprise Architecture Upgrade including Multi-depot Zone/Team structure and Master Data completeness.
-*   **Workflow Enhancements:** Granular Status Flow & Exception SOP for order states, and Order Bulk Import functionality.
-*   **Customer Management:** Expanded customer data fields and a Customer Notification Center.
-
-## 加盟主模組（Franchise Partner Module）
-
-- **DB Tables:** `franchisees`（加盟主基本資料 + 合約）、`franchisee_settlements`（月結分潤）
-- **API Routes:** `artifacts/api-server/src/routes/franchisees.ts`
-  - CRUD 加盟主（GET/POST/PATCH/DELETE `/api/franchisees`）
-  - 月結算產出 `POST /api/franchisees/:id/settlements/generate`（支援手動帶入業績）
-  - 結算狀態流轉 `PATCH /api/franchisee-settlements/:id/status`（pending→confirmed→paid）
-- **Frontend:** `artifacts/logistics/src/pages/admin/FranchiseeTab.tsx`（後台「加盟主」Tab）
-- **分潤計算邏輯：** 業績總額 × 加盟主比例 − 月費 = 實際撥款
-- **合約類型：** 分潤制 / 月費制 / 混合制
-
-## 自動化 Email 發票流程
-
-- **email.ts**：nodemailer HTML 電子發票模板，SMTP 設定從 `pricing_config` 讀取（`smtp_*` 前綴）
-- **autoInvoice.ts**：司機完單後自動開票，成功後非同步發 LINE + Email 通知（互不干擾）
-- **SystemSettingsTab**：後台 SMTP 設定 UI，含快速套用（Gmail/Outlook 等），測試信發送功能
-- **API：** `POST /api/invoices/smtp-test`、`PUT /api/invoices/smtp-config`
-
-## API 開放接口模組（Open API）
-
-- **DB Tables**：`api_keys`（Key 主檔）、`api_usage_logs`（使用記錄）、`webhooks`（Webhook 設定）、`webhook_deliveries`（送達記錄）
-- **API Keys（`apiKeys.ts`）**：
-  - `GET /api/api-keys` — 列表（含使用次數、最後使用時間）
-  - `POST /api/api-keys` — 建立（回傳一次性 raw key，儲存 SHA-256 hash）
-  - `PATCH /api/api-keys/:id` — 更新狀態/備註/限速
-  - `DELETE /api/api-keys/:id` — 刪除
-  - `GET /api/api-keys/:id/usage` — 使用量統計（小時級 timeline + endpoint breakdown）
-- **Webhooks（`webhooks.ts`）**：
-  - CRUD 管理 + `POST /api/webhooks/:id/test` 測試觸發
-  - `GET /api/webhooks/:id/deliveries` 送達記錄
-  - `broadcastWebhook(event, payload)` — 廣播到所有訂閱該事件的 Webhook（HMAC-SHA256 簽名）
-  - 支援事件：`order.created` / `order.status_changed` / `order.delivered`
-- **開放 API（`openApi.ts`）**：
-  - Header 認證：`X-API-Key: fv1_xxx`（middleware 驗 hash + 自動更新使用統計）
-  - 權限範圍（scope）：`orders:read` / `orders:create` / `quote`
-  - `POST /api/open/v1/quote` — 報價試算（從 pricing_config 讀費率，支援重量分層）
-  - `POST /api/open/v1/orders` — 建立訂單（觸發 order.created Webhook）
-  - `GET /api/open/v1/orders/:id` — 查詢單筆（含司機資訊）
-  - `GET /api/open/v1/orders` — 列表（篩選 source='api'，支援分頁/狀態篩選）
-- **OpenApiTab.tsx**：後台「API 接口」Tab（系統管理群組）
-  - 統計看板（Key 數/Webhook 數/總呼叫次數）
-  - API Key 卡片（展開看使用詳情）、建立 Dialog（一次性顯示 raw key）
-  - Webhook 卡片（測試按鈕、展開看送達記錄）
-  - API 文件 Tab（每個端點附 Request/Response 範例 + Webhook 格式說明）
-
-## 金流拆解模組（Cash Flow Decomposition）
-
-- **cashFlow.ts**：4 支 API，按月拆解每筆訂單的金流去向
-- **API：**
-  - `GET /api/cash-flow/monthly?year=&month=` — 月度摘要（收入/司機薪資/加盟主分潤/平台淨利）
-  - `GET /api/cash-flow/trend?months=N` — 近 N 個月趨勢（帶加盟主結算補充）
-  - `GET /api/cash-flow/orders?year=&month=&page=&limit=` — 逐筆訂單拆解（含司機佔比）
-  - `GET /api/cash-flow/by-driver?year=&month=` — 按司機彙總
-  - `GET /api/cash-flow/by-franchisee?year=&month=` — 按加盟主彙總（整合 franchisee_settlements）
-- **CashFlowTab.tsx**：後台「金流拆解」Tab
-  - 4 張 KPI 卡片（訂單收入、司機薪資、加盟主分潤、平台淨利）
-  - 分配比例長條視覺化（彩色分段）
-  - 6 個月趨勢堆疊柱狀圖 + 收入/淨利面積圖
-  - 本月收入結構甜甜圈圓餅圖
-  - 企業客戶 vs 散客收入拆分卡
-  - 訂單明細分頁表（含分傭比例顯示）
-  - 按司機 / 按加盟主 匯總表（含合計列）
-- **位置：** 後台 → 帳務財務 → 金流拆解 Tab
-
-## 訂單金流閉環（Billing Flow）
-
-- **DB 新增表格：**
-  - `ar_ledger`：應收帳款分類帳（receivable/payment/credit_note，正數=應收、負數=收款，含 `reconciled` 旗標）
-  - `monthly_bills`：月結帳單（enterprise_id/customer_id, period_year/month, status: draft→confirmed→invoiced→paid）
-  - `orders.order_no`：自動產生的訂單編號（FY20260401-XXXX 格式）
-  - `orders.invoice_id`：關聯已開立發票
-  - `orders.monthly_bill_id`：關聯月結帳單
-  - `customers.billing_type`：散客結帳類型（cash/monthly）
-- **autoInvoice.ts（重構）：** 根據 `enterprise_accounts.billing_type` 分流
-  - 現結：立即開票（invoice）→ 寫 AR receivable → LINE/Email 通知
-  - 月結：掛 AR receivable → 更新 `fee_status = 'monthly_pending'`（不開票）
-- **arLedger.ts：** 應收帳款路由
-  - `GET /api/ar-ledger/summary` — 各企業/散客帳款餘額彙總
-  - `GET /api/ar-ledger` — 全部分錄（分頁 + type filter）
-  - `GET /api/ar-ledger/enterprise/:id` — 單一企業明細
-  - `POST /api/ar-ledger/payment` — 收款入帳（自動對帳未結分錄）
-  - `PATCH /api/ar-ledger/:id/reconcile` — 手動對帳
-- **monthlyBilling.ts：** 月結帳單路由
-  - `GET /api/monthly-bills` — 帳單列表
-  - `GET /api/monthly-bills/:id` — 帳單明細含訂單列表
-  - `POST /api/monthly-bills/generate` — 掃描月結訂單產出帳單（upsert）
-  - `PATCH /api/monthly-bills/:id/confirm` — 客戶確認帳單
-  - `POST /api/monthly-bills/:id/invoice` — 批次開立電子發票
-  - `PATCH /api/monthly-bills/:id/pay` — 收款 + 自動對帳
-- **BillingFlowTab.tsx：** 後台「金流閉環」Tab
-  - 全流程圖示（現結/月結 分叉路徑，含完成狀態）
-  - 4 張 KPI 卡片（總應收/月結客戶/現結客戶/散客）
-  - 月結帳單管理：產出→確認→開票→收款 四步驟流程卡
-  - 應收餘額表（企業/散客分開顯示）
-  - AR 分類帳明細（type filter + 分頁 + 對帳狀態）
-  - 收款登錄 Dialog
-- **位置：** 後台 → 帳務財務 → 金流閉環 Tab
-
-## 電子發票完整功能（E-Invoice Complete Module）
-
-### 供應商層 invoiceProvider.ts
-- **雙模式：** `INVOICE_PROVIDER=mock`（預設）或 `ecpay`
-- **AES-256-CBC 加解密**，B2B/B2C 自動分流
-- **`issueInvoice()`**：開立電子發票（mock 立即回傳，ecpay 打 API）
-- **`voidInvoice()`**：作廢發票（呼叫 ECPay `/Invoice/Invalid`）
-- **`allowanceInvoice()`**：折讓發票（呼叫 ECPay `/B2CInvoice/Allowance` 或 `/B2BInvoice/Allowance`）
-
-### PDF 發票產生 invoicePdf.ts
-- 使用 **pdfkit**（外部模組，已加入 build.mjs external 清單）
-- `buildInvoicePdf(params)` → A4 電子發票 PDF Buffer（含公司頁首、品項表、QR Code 文字、稅額）
-- `buildMonthlyBillPdf(params)` → A4 月結帳單 PDF Buffer（含訂單明細、付款資訊）
-
-### 新增 API 端點
-- **`PATCH /api/invoices/:id/void`** — 作廢（呼叫 provider）+ DB 狀態更新
-- **`POST /api/invoices/:id/allowance`** — 開立折讓（allowanceAmt/taxAmt/reason）+ AR 分類帳記錄
-- **`GET /api/invoices/:id/pdf`** — 下載電子發票 PDF
-- **`POST /api/invoices/:id/send-email`** — 寄信含 PDF 附件
-- **`POST /api/invoices/:id/send-line`** — LINE Flex Message 推播
-- **`GET /api/monthly-bills/:id/pdf`** — 下載月結帳單 PDF
-- **`POST /api/webhooks/ecpay-invoice`** — 綠界發票 Webhook 狀態回寫（解密 AES→更新 DB）
-
-### 財務報表 routes/reports.ts
-- **`GET /api/reports/ar-aging`** — 應收帳齡（0-30 / 31-60 / 61-90 / 90+ 天四個桶）
-- **`GET /api/reports/driver-commission?year=&month=`** — 司機抽成（趟次/收入/抽成金額/平台淨收）
-- **`GET /api/reports/gross-margin?months=`** — 毛利報表（月度）含加盟主成本
-
-### 前端 FinanceReportsTab.tsx
-- 後台 → 分析報表 → **財務報表** Tab
-- 應收帳齡：KPI 卡片 + 堆疊長條圖 + 明細表
-- 司機抽成：月份選擇 + 分組長條圖 + 費率/抽成明細
-- 毛利分析：月度 BarChart + 毛利率 LineChart + 逐月明細表
-
-## UX 優化（2026-04）
-
-### App.tsx
-- 新增全域 **ErrorBoundary**（React class component）— 任何 render 錯誤顯示友善提示 + 重新載入按鈕
-- **QueryClient** 改進：`retry: 1`（指數退避 max 10s）、`mutations.retry: 0`
-
-### InvoiceManagementTab.tsx（完全重構）
-- 新增 **PDF 下載**按鈕（呼叫 `GET /invoices/:id/pdf`，直接下載 Blob）
-- 新增 **寄信**按鈕（呼叫 `POST /invoices/:id/send-email`）
-- 新增 **折讓 Dialog**（`AllowanceDialog`）含稅額計算預覽
-- 新增 **作廢確認 Dialog**（`VoidConfirmDialog`）含 reason 欄位，傳送給後端
-- 全部使用 `useToast` 取代 `alert()`/`confirm()`
-- 新增「已折讓」篩選 tab
-- 所有 mutation loading 狀態顯示 spinner
-- 統一 `apiJson` helper（含 Authorization header + 錯誤拋出）
-- 發票列表改 `refetchInterval: 60000`
-
-### FinanceReportsTab.tsx（重構）
-- 全部改用 **`useQuery`** 取代 `useCallback + useEffect + setState`
-- 新增 `PanelSkeleton`（spinner）和 `PanelError`（AlertTriangle + 重試）
-- 使用 `apiUrl` 統一 API 路徑（移除 hardcode VITE_API_BASE_URL）
-- DriverCommission 參數（year/month）納入 query key，切換即自動重載
-
-## 蝦皮財務分析套件（Shopee Finance Module）
-
-### 新增 DB 表
-- **`route_prefix_rates`** — 路線前綴費率（FN/FM/A3/NB/WB/WD）含 `rate_per_trip`（蝦皮收入）和 `driver_pay_rate`（司機費用）
-- **`shopee_drivers`** — 蝦皮工號資料（shopee_id, name, vehicle_plate, fleet_name）
-- **`shopee_penalties`** — 蝦皮罰款（NDD異常/罰款統計，213筆）
-- **`shopee_rate_cards`** — 蝦皮報價單（231筆，6種服務類型）
-
-### 新增 API endpoints
-- **`/api/penalties`** — 罰款列表/統計
-- **`/api/shopee-rates`** — 蝦皮報價單
-- **`/api/driver-earnings`** — 司機運費試算（依工號/路線彙整）
-- **`/api/pnl/overview`** — 平台總盈虧（收入/費用/罰款/淨利率）
-- **`/api/pnl/by-vehicle`** — 依車輛盈虧
-- **`/api/pnl/by-fleet`** — 依車隊盈虧
-- **`/api/pnl/prefix-rates/:prefix`** — 更新路線費率
-- **`/api/fusingao/summary`** — 福興高客戶總覽
-- **`/api/fusingao/routes`** — 福興高路線列表（支援月份/狀態篩選）
-- **`/api/fusingao/monthly`** — 月度對帳資料
-- **`/api/fusingao/routes/:id/complete`** — 標記完成
-- **`/api/fusingao/routes/:id/billing`** — 標記對帳
-- **`/api/fusingao/monthly/:month/bill-all`** — 整月對帳
-
-### 新增前端頁面/分頁
-- **後台 → 運費試算 Tab** (`DriverEarningsTab.tsx`) — 依工號試算/路線費率設定/司機設定
-- **後台 → 盈虧分析 Tab** (`PnLTab.tsx`) — 平台總覽/依車輛/依車隊/費率設定
-- **後台 → Shopee罰款 Tab** (`PenaltiesTab.tsx`)
-- **後台 → Shopee報價 Tab** (`ShopeeRatesTab.tsx`)
-- **`/fusingao` 福興高專屬窗口** (`FusingaoPortal.tsx`) — 車趟完成通知/月度對帳/CSV匯出（admin 登入後可存取）
-
-### P&L 計算邏輯
-- **蝦皮收入** = 路線趟數 × `route_prefix_rates.rate_per_trip`
-- **司機費用** = 路線趟數 × `route_prefix_rates.driver_pay_rate`
-- **罰款** = `shopee_penalties.fine_amount` WHERE source='NDD過刷異常'
-- **淨利潤** = 蝦皮收入 − 司機費用 − 罰款
-
-## 報價引擎（Pricing Engine）
-
-- **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）
-- **pricingEngine.ts**：30s 快取，從 DB 讀費率，支援 `invalidatePricingCache()`
-- **QuotePage.tsx (`/quote`)：** 公開報價頁面（無需登入）
-- **QuotesTab.tsx：** 後台報價管理（狀態流轉：pending → contacted → booked → rejected）
+*   **Financials:** E-Invoice Management with auto-triggering, PDF generation, LINE push notifications, bulk monthly invoicing, void/allowance invoice capabilities, and various payment methods. Includes a full billing flow with AR ledger, monthly bills, and payment reconciliation.
+*   **Quoting Engine:** Full-featured vehicle-type-based pricing engine with DB-persisted and cached rate cards, providing public and admin-facing quote functionalities.
+*   **Analytics & Reporting:** KPI Dashboard, Performance Audit & Bonus System, Fleet Analytics, and financial reports including AR aging, driver commission, and gross margin analysis.
+*   **Customization:** System Config Management via admin UI and dynamic Order Custom Fields.
+*   **Integrations:** LINE Integration for notifications and AI chatbot, Google Maps for location services.
+*   **Enterprise Features:** Enterprise Customer Portal, Multi-depot Zone/Team structure, and Master Data completeness.
+*   **Franchise Partner Module:** Manages franchisee data, contracts, and monthly settlement calculations with dedicated DB tables, APIs, and admin UI.
+*   **Open API Module:** Provides external API access with API key management (SHA-256 hashed keys), usage logging, webhook support for order events, and rate limiting.
+*   **Cash Flow Decomposition:** APIs and admin UI for monthly cash flow summaries, trends, and detailed breakdowns by order, driver, and franchisee.
+*   **Shopee Finance Module:** Integrates specific financial analysis for Shopee logistics, including managing route prefix rates, driver earnings calculations, penalties tracking, and profit & loss analysis by vehicle and fleet, with dedicated DB tables and APIs. Includes a Fusingao customer portal for route management and billing.
+*   **福興高車隊帳號系統 (Fleet Sub-contractor):** Full fleet management system for the Fusingao client. Admin creates fleet accounts via `/fusingao` → 合作車隊管理 tab. Fleets log in at `/login/fleet` and access their portal at `/fleet`. Fleet portal provides: (1) 可搶路線 — atomic grab of available Shopee routes; (2) 我的任務 — manage grabbed routes, mark complete; (3) 月結帳單 — monthly billing reconciliation with CSV export. DB: `fusingao_fleets` table + `orders.fusingao_fleet_id/fleet_grabbed_at/fleet_completed_at` columns. Auth: `POST /api/auth/login/fleet` JWT endpoint, role `fusingao_fleet`.
+*   **API URL Pattern (Frontend):** Admin login and fleet login use `${BASE_URL}/api/<path>` pattern directly. Other data-fetching components use `getApiUrl()` from `@/lib/api`. Never pass `/api/` prefix to `getApiUrl()` — it prepends BASE_URL which already maps to the api root.
 
 # External Dependencies
 
@@ -265,3 +66,6 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Mapping/Location Services:** Google Maps API
 *   **Frontend Libraries:** React, Vite, React Query, wouter
 *   **Data Manipulation/Utility:** `exceljs`, `date-fns`, `lucide-react`
+*   **Email Client:** Nodemailer
+*   **PDF Generation:** `pdfkit`
+*   **Payment Gateway:** ECPay (for e-invoicing)

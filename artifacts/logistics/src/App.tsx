@@ -42,6 +42,8 @@ import DriverRegister from "@/pages/register/DriverRegister";
 import InvoicePrint from "@/pages/InvoicePrint";
 import QuotePage from "@/pages/QuotePage";
 import FusingaoPortal from "@/pages/FusingaoPortal";
+import FleetLogin from "@/pages/fleet/FleetLogin";
+import FusingaoFleetPortal from "@/pages/fleet/FusingaoFleetPortal";
 
 // ─── Global ErrorBoundary ────────────────────────────────────────────────────
 
@@ -157,6 +159,14 @@ function AdminPortal() {
   );
 }
 
+function FleetPortal() {
+  const { user } = useAuth();
+  if (!user || user.role !== "fusingao_fleet") {
+    return <Redirect to="/login/fleet" />;
+  }
+  return <FusingaoFleetPortal />;
+}
+
 function AppRouter() {
   const [location] = useLocation();
 
@@ -174,6 +184,9 @@ function AppRouter() {
   }
   if (location === "/login/admin") {
     return <AdminLogin />;
+  }
+  if (location === "/login/fleet") {
+    return <FleetLogin />;
   }
   if (location === "/login/callback") {
     return <LineCallback />;
@@ -216,6 +229,9 @@ function AppRouter() {
   }
   if (location.startsWith("/enterprise")) {
     return <EnterprisePortal />;
+  }
+  if (location.startsWith("/fleet")) {
+    return <FleetPortal />;
   }
   if (
     location.startsWith("/admin") ||
