@@ -69,3 +69,7 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Email Client:** Nodemailer
 *   **PDF Generation:** `pdfkit`
 *   **Payment Gateway:** ECPay (for e-invoicing)
+
+# Pending Integrations
+
+*   **Google Sheets（福興高派車表）**: User provided Google Sheets URL (`https://docs.google.com/spreadsheets/d/1Z65luSGOGNYpFPyL1apLR8kxOvYV-U2VvPcVrmC5TzI/edit?gid=547652343`) for auto-sync of dispatch data. Replit Google Sheets connector was dismissed (connector ID: `ccfg_google-sheet_E42A9F6CA62546F68A1FECA0E8`). Next step: User needs to either (a) make the sheet publicly viewable so the server can fetch via CSV export URL, or (b) re-authorize the Replit Google Sheets integration. Once accessible, build an import endpoint `POST /fusingao/sync-dispatch` that reads the sheet and creates/updates `orders` rows with route data.
