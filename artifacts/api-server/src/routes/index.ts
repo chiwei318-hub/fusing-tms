@@ -56,6 +56,7 @@ import { arLedgerRouter } from "./arLedger";
 import { monthlyBillingRouter } from "./monthlyBilling";
 import { ecpayWebhookRouter } from "./ecpayWebhook";
 import { reportsRouter } from "./reports";
+import { sheetSyncRouter } from "./sheetSync";
 
 const router: IRouter = Router();
 
@@ -117,5 +118,6 @@ router.use(arLedgerRouter);
 router.use(monthlyBillingRouter);
 router.use(ecpayWebhookRouter);
 router.use(reportsRouter);
+router.use(sheetSyncRouter);
 
 export default router;

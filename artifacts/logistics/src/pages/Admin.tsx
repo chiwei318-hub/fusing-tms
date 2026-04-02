@@ -14,7 +14,7 @@ import {
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
   Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText, Globe,
-  RotateCcw,
+  RotateCcw, RefreshCw,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,6 +57,7 @@ import { DailyOpsTab } from "./admin/DailyOpsTab";
 import { AutoRoutingTab } from "./admin/AutoRoutingTab";
 import RouteImportTab from "./admin/RouteImportTab";
 import FormImportTab from "./admin/FormImportTab";
+import SheetSyncTab from "./admin/SheetSyncTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
@@ -1470,6 +1471,7 @@ export default function Admin() {
                     { value: "autorouting", icon: <Navigation className="w-3.5 h-3.5 text-indigo-500" />,           label: "自動分單" },
                     { value: "routeimport", icon: <Upload className="w-3.5 h-3.5 text-blue-500" />,                label: "路線匯入" },
                     { value: "formimport",  icon: <FileText className="w-3.5 h-3.5 text-green-600" />,              label: "表單匯入" },
+                    { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3476,6 +3478,11 @@ export default function Admin() {
         {/* ===== 客戶表單匯入 TAB ===== */}
         <TabsContent value="formimport" className="outline-none">
           <FormImportTab />
+        </TabsContent>
+
+        {/* ===== 試算表自動同步 TAB ===== */}
+        <TabsContent value="sheetsync" className="outline-none">
+          <SheetSyncTab />
         </TabsContent>
       </Tabs>
 

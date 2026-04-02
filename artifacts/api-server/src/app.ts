@@ -4,6 +4,8 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startAlertScheduler } from "./lib/alertScheduler";
+import { startSheetSyncScheduler } from "./lib/sheetSyncScheduler";
+import { ensureSheetSyncTable } from "./routes/sheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
@@ -38,5 +40,8 @@ app.use("/api", router);
 
 startAlertScheduler();
 ensureDbIndexes().catch((e) => console.error("[dbIndexes] Failed:", e));
+ensureSheetSyncTable()
+  .then(() => startSheetSyncScheduler())
+  .catch((e) => console.error("[SheetSync] table setup failed:", e));
 
 export default app;
