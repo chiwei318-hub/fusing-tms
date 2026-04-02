@@ -5,7 +5,7 @@
  * - Pickup/Delivery date + time pickers
  * - Multiple delivery stops
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Phone, Package, Truck, ChevronDown, ChevronUp,
   Zap, UserCheck, X, Check, Clock, Plus, User, Calendar,
@@ -17,7 +17,7 @@ import { SmartDatePicker } from "@/components/SmartDatePicker";
 import { useCustomersData } from "@/hooks/use-customers";
 import { useDriversData } from "@/hooks/use-drivers";
 import { getApiUrl } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 const VEHICLE_TYPES = ["箱型車", "冷藏車", "尾門車", "平板車", "貨車", "機車"];
 
@@ -61,6 +61,54 @@ function CustomerPicker({ customers, onSelect }: CustomerPickerProps) {
                 className="px-3 py-2 hover:bg-amber-50 cursor-pointer flex flex-col">
                 <span className="text-sm font-medium">{c.name}</span>
                 <span className="text-xs text-muted-foreground">{c.phone}{c.address ? ` · ${c.address}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 自動建議輸入框 ────────────────────────────────────────────────────────── */
+interface AutoSuggestInputProps {
+  value: string;
+  onChange: (v: string) => void;
+  suggestions: string[];
+  placeholder?: string;
+  required?: boolean;
+  icon?: React.ReactNode;
+  className?: string;
+}
+function AutoSuggestInput({ value, onChange, suggestions, placeholder, required, icon, className }: AutoSuggestInputProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const filtered = value
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()) && s !== value)
+    : suggestions;
+
+  return (
+    <div ref={ref} className="relative">
+      {icon && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">{icon}</span>}
+      <input
+        required={required}
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className={`w-full h-9 ${icon ? "pl-8" : "pl-3"} pr-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400 ${className ?? ""}`}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-amber-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="px-3 py-1 border-b bg-amber-50/60 text-[10px] text-amber-600 font-medium">歷史紀錄</div>
+          <div className="max-h-44 overflow-y-auto">
+            {filtered.slice(0, 10).map((s, i) => (
+              <div key={i} onMouseDown={() => { onChange(s); setOpen(false); }}
+                className="px-3 py-2 hover:bg-amber-50 cursor-pointer text-sm truncate">
+                {s}
               </div>
             ))}
           </div>
@@ -150,6 +198,15 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
   const { data: customers = [] } = useCustomersData();
   const { data: drivers = [] } = useDriversData();
   const queryClient = useQueryClient();
+
+  const { data: suggestions = { cargo: [], notes: [] } } = useQuery({
+    queryKey: ["order-suggestions"],
+    queryFn: async () => {
+      const r = await fetch(getApiUrl("/api/orders/suggestions"));
+      return r.ok ? r.json() : { cargo: [], notes: [] };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Phone → auto-lookup customer
   useEffect(() => {
@@ -370,12 +427,14 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
               <div className="space-y-1.5">
                 <p className="text-[11px] font-bold text-violet-700 uppercase tracking-wide">貨物與車型</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="relative">
-                    <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-violet-400 pointer-events-none" />
-                    <input required value={cargo} onChange={e => setCargo(e.target.value)}
-                      placeholder="貨物描述 *"
-                      className="w-full h-9 pl-8 pr-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400" />
-                  </div>
+                  <AutoSuggestInput
+                    required
+                    value={cargo}
+                    onChange={setCargo}
+                    suggestions={suggestions.cargo}
+                    placeholder="貨物描述 *"
+                    icon={<Package className="w-3.5 h-3.5 text-violet-400" />}
+                  />
                   <div className="relative">
                     <Truck className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-orange-400 pointer-events-none" />
                     <select value={vehicleType} onChange={e => setVehicleType(e.target.value)}
@@ -398,9 +457,12 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                     </option>
                   ))}
                 </select>
-                <input value={notes} onChange={e => setNotes(e.target.value)}
+                <AutoSuggestInput
+                  value={notes}
+                  onChange={setNotes}
+                  suggestions={suggestions.notes}
                   placeholder="備註（選填）"
-                  className="h-9 px-3 text-sm bg-white border rounded-lg outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400" />
+                />
               </div>
 
               {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
