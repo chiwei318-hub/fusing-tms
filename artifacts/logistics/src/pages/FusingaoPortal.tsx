@@ -36,7 +36,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "notify" | "monthly" | "rates" | "fleets";
+type PortalTab = "notify" | "monthly" | "rates" | "fleets" | "settlement";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -79,6 +79,18 @@ export default function FusingaoPortal() {
   const [expandedRoute, setExpandedRoute] = useState<number | null>(null);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
+  // ── Admin settlement state ─────────────────────────────────────────────────
+  const [adminSettlement, setAdminSettlement] = useState<any[]>([]);
+  const [adminSetMonth, setAdminSetMonth] = useState("");
+
+  const loadAdminSettlement = useCallback(async () => {
+    const params = adminSetMonth ? `?month=${adminSetMonth}` : "";
+    const d = await fetch(getApiUrl(`/fusingao/settlement${params}`)).then(x => x.json());
+    if (d.ok) setAdminSettlement(d.fleets ?? []);
+  }, [adminSetMonth]); // eslint-disable-line
+
+  useEffect(() => { if (tab === "settlement") loadAdminSettlement(); }, [tab, adminSetMonth]); // eslint-disable-line
+
   // ── Fleet management state ─────────────────────────────────────────────────
   const [fleets, setFleets]             = useState<FleetRow[]>([]);
   const [fleetLoading, setFleetLoading] = useState(false);
@@ -87,6 +99,7 @@ export default function FusingaoPortal() {
   const [fleetForm, setFleetForm]         = useState({
     fleet_name: "", contact_name: "", contact_phone: "",
     username: "", password: "", vehicle_types: "", notes: "", rate_override: "",
+    commission_rate: "15", bank_account: "", bank_name: "",
   });
 
   const load = useCallback(async () => {
@@ -147,13 +160,13 @@ export default function FusingaoPortal() {
 
   const openNewFleet = () => {
     setEditingFleet(null);
-    setFleetForm({ fleet_name:"", contact_name:"", contact_phone:"", username:"", password:"", vehicle_types:"", notes:"", rate_override:"" });
+    setFleetForm({ fleet_name:"", contact_name:"", contact_phone:"", username:"", password:"", vehicle_types:"", notes:"", rate_override:"", commission_rate:"15", bank_account:"", bank_name:"" });
     setShowFleetForm(true);
   };
 
   const openEditFleet = (f: FleetRow) => {
     setEditingFleet(f);
-    setFleetForm({ fleet_name:f.fleet_name, contact_name:f.contact_name??"", contact_phone:f.contact_phone??"", username:f.username, password:"", vehicle_types:f.vehicle_types??"", notes:f.notes??"", rate_override:"" });
+    setFleetForm({ fleet_name:f.fleet_name, contact_name:f.contact_name??"", contact_phone:f.contact_phone??"", username:f.username, password:"", vehicle_types:f.vehicle_types??"", notes:f.notes??"", rate_override:"", commission_rate:String((f as any).commission_rate??15), bank_account:(f as any).bank_account??"", bank_name:(f as any).bank_name??"" });
     setShowFleetForm(true);
   };
 
@@ -242,11 +255,12 @@ export default function FusingaoPortal() {
         )}
 
         {/* ── Tab nav ─────────────────────────────────────────────────── */}
-        <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2">
+        <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2 overflow-x-auto">
           {([
-            { id:"notify",  label:"🔔 車趟完成通知", desc:"即時狀態" },
-            { id:"monthly", label:"📋 月度對帳",    desc:"逐月結算" },
-            { id:"fleets",  label:"🚚 合作車隊管理", desc:"帳號管理" },
+            { id:"notify",     label:"🔔 車趟完成通知", desc:"即時狀態" },
+            { id:"monthly",    label:"📋 月度對帳",    desc:"逐月結算" },
+            { id:"fleets",     label:"🚚 合作車隊管理", desc:"帳號管理" },
+            { id:"settlement", label:"📊 結算總覽",    desc:"結算鏈" },
           ] as { id: PortalTab; label: string; desc: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -528,6 +542,9 @@ export default function FusingaoPortal() {
                       { label:"車輛類型",   key:"vehicle_types", type:"text", placeholder:"例：一般, 冷藏" },
                       { label:`密碼${editingFleet?" (留空保持不變)":""}`,  key:"password",     type:"password", placeholder:editingFleet?"不改請留空":"設定初始密碼" },
                       { label:"每趟費率覆蓋 (NT$)", key:"rate_override", type:"number", placeholder:"留空使用路線預設" },
+                      { label:"平台抽佣率 (%)", key:"commission_rate", type:"number", placeholder:"預設 15" },
+                      { label:"銀行名稱", key:"bank_name", type:"text", placeholder:"例：台灣銀行" },
+                      { label:"匯款帳號", key:"bank_account", type:"text", placeholder:"帳戶號碼" },
                       { label:"備註",       key:"notes",         type:"text", placeholder:"內部備註" },
                     ].map(f => (
                       <div key={f.key} className={f.key === "notes" ? "col-span-2" : ""}>
@@ -609,6 +626,89 @@ export default function FusingaoPortal() {
               <FileText className="h-4 w-4 shrink-0 mt-0.5" />
               <span>車隊帳號建立後，合作夥伴可從 <strong>/login/fleet</strong> 登入，搶取可用路線並回報完成狀態。</span>
             </div>
+          </div>
+        )}
+
+        {/* ═══════════════ 結算總覽 ═══════════════════════════════════════════ */}
+        {tab === "settlement" && (
+          <div className="space-y-4">
+            <div className="flex gap-3 items-center">
+              <Select value={adminSetMonth || "all"} onValueChange={v => setAdminSetMonth(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-8 w-36 text-sm"><SelectValue placeholder="全部期間" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部期間</SelectItem>
+                  {months.map(m => <SelectItem key={m.month} value={m.month}>{m.month_label ?? m.month}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadAdminSettlement}>
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />重新整理
+              </Button>
+            </div>
+
+            {/* Global totals */}
+            {adminSettlement.length > 0 && (() => {
+              const totShopee = adminSettlement.reduce((a, f) => a + Number(f.shopee_income || 0), 0);
+              const totFleet  = adminSettlement.reduce((a, f) => a + Number(f.fleet_payout || 0), 0);
+              const totComm   = totShopee - totFleet;
+              return (
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label:"Shopee 總收入", val:totShopee, cls:"text-blue-700 bg-blue-50 border-blue-200" },
+                    { label:"平台佣金",      val:totComm,   cls:"text-orange-700 bg-orange-50 border-orange-200" },
+                    { label:"付出車隊",      val:totFleet,  cls:"text-green-700 bg-green-50 border-green-200" },
+                  ].map(k => (
+                    <Card key={k.label} className={`border ${k.cls}`}>
+                      <CardContent className="p-3 text-center">
+                        <p className="text-xs text-gray-500 mb-1">{k.label}</p>
+                        <p className={`font-bold text-lg ${k.cls.split(" ")[0]}`}>NT$ {Math.round(k.val).toLocaleString()}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Per-fleet breakdown */}
+            {adminSettlement.length > 0 ? (
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-sm text-gray-700">各車隊結算明細</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b bg-gray-50 text-gray-500">
+                          <th className="text-left p-3">車隊</th>
+                          <th className="text-right p-3">路線</th>
+                          <th className="text-right p-3">抽佣%</th>
+                          <th className="text-right p-3">Shopee 收入</th>
+                          <th className="text-right p-3">平台佣金</th>
+                          <th className="text-right p-3">車隊應付</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminSettlement.map((f: any) => (
+                          <tr key={f.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3 font-medium">{f.fleet_name}</td>
+                            <td className="p-3 text-right">{f.route_count}</td>
+                            <td className="p-3 text-right">{Number(f.commission_rate ?? 15).toFixed(0)}%</td>
+                            <td className="p-3 text-right text-blue-600 font-mono">NT$ {Math.round(Number(f.shopee_income || 0)).toLocaleString()}</td>
+                            <td className="p-3 text-right text-orange-600 font-mono">NT$ {Math.round(Number(f.commission_earned || 0)).toLocaleString()}</td>
+                            <td className="p-3 text-right text-green-700 font-bold font-mono">NT$ {Math.round(Number(f.fleet_payout || 0)).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="text-center py-12 text-gray-400">
+                <DollarSign className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                尚無結算資料
+              </div>
+            )}
           </div>
         )}
       </div>

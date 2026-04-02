@@ -465,3 +465,177 @@ fusingaoRouter.put("/fleets/:id/monthly/:month/bill-all", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+//  FLEET DRIVER MANAGEMENT (Layer 3 → Layer 4: fleet manages its own drivers)
+// ════════════════════════════════════════════════════════════════════════════
+
+// GET /fusingao/fleets/:id/drivers
+fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await db.execute(sql`
+      SELECT
+        fd.*,
+        COUNT(o.id)                                                  AS total_routes,
+        COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL)  AS completed_routes,
+        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings
+      FROM fleet_drivers fd
+      LEFT JOIN fusingao_fleets f ON f.id = ${Number(id)}
+      LEFT JOIN orders o ON o.fleet_driver_id = fd.id
+      LEFT JOIN route_prefix_rates pr
+        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      WHERE fd.fleet_id = ${Number(id)}
+      GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
+               fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at
+      ORDER BY fd.is_active DESC, fd.name
+    `);
+    res.json({ ok: true, drivers: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/drivers
+fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes } = req.body;
+    if (!name) return res.status(400).json({ ok: false, error: "司機姓名為必填" });
+    const [row] = await db.execute(sql`
+      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes)
+      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null})
+      RETURNING *
+    `).then(r => r.rows as any[]);
+    res.json({ ok: true, driver: row });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/fleets/:id/drivers/:driverId
+fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
+  try {
+    const { id, driverId } = req.params;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active } = req.body;
+    await db.execute(sql`
+      UPDATE fleet_drivers SET
+        name          = ${name},
+        phone         = ${phone??null},
+        id_number     = ${id_number??null},
+        vehicle_plate = ${vehicle_plate??null},
+        vehicle_type  = ${vehicle_type??"一般"},
+        line_id       = ${line_id??null},
+        notes         = ${notes??null},
+        is_active     = ${is_active??true},
+        updated_at    = NOW()
+      WHERE id = ${Number(driverId)} AND fleet_id = ${Number(id)}
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/routes/:id/assign-driver — fleet assigns route to one of its drivers
+fusingaoRouter.put("/routes/:id/assign-driver", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fleetId, driverId } = req.body as { fleetId: number; driverId: number | null };
+    await db.execute(sql`
+      UPDATE orders SET fleet_driver_id=${driverId??null}, updated_at=NOW()
+      WHERE id=${Number(id)} AND fusingao_fleet_id=${fleetId}
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SETTLEMENT CHAIN: 福興高 → Platform (抽成) → Fleet → Fleet Driver
+// ════════════════════════════════════════════════════════════════════════════
+
+// GET /fusingao/settlement?month=YYYY-MM  — admin view of full settlement chain
+fusingaoRouter.get("/settlement", async (req, res) => {
+  try {
+    const { month } = req.query as Record<string, string>;
+    const monthFilter = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+
+    // Top-level summary
+    const [summary] = await db.execute(sql`
+      SELECT
+        COUNT(o.id)                              AS total_routes,
+        COALESCE(SUM(pr.rate_per_trip),0)        AS platform_income,
+        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0))),0) AS fleet_payout,
+        COALESCE(SUM(pr.rate_per_trip) - SUM(COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0))),0) AS platform_commission
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      WHERE o.notes LIKE '路線：%' ${monthFilter}
+    `).then(r => r.rows as any[]);
+
+    // Per-fleet breakdown
+    const fleets = await db.execute(sql`
+      SELECT
+        f.id, f.fleet_name, f.commission_rate,
+        COUNT(o.id)                              AS route_count,
+        COALESCE(SUM(pr.rate_per_trip),0)        AS shopee_income,
+        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0))),0) AS fleet_payout,
+        COALESCE(SUM(pr.rate_per_trip) - SUM(COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0))),0) AS commission_earned,
+        COUNT(o.id) FILTER (WHERE o.driver_payment_status='paid') AS billed_count,
+        COUNT(o.fleet_completed_at)              AS completed_count
+      FROM fusingao_fleets f
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.notes LIKE '路線：%' ${monthFilter}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      GROUP BY f.id, f.fleet_name, f.commission_rate
+      ORDER BY shopee_income DESC
+    `);
+
+    res.json({ ok: true, summary: summary ?? {}, fleets: fleets.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/fleets/:id/settlement?month=YYYY-MM — fleet-level settlement (for fleet portal)
+fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query as Record<string, string>;
+    const monthFilter = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+
+    // Summary
+    const [summary] = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(pr.rate_per_trip),0)  AS shopee_income,
+        COALESCE(SUM(COALESCE(fl.rate_override, pr.rate_per_trip * (1 - COALESCE(fl.commission_rate,15)/100.0))),0) AS fleet_receive,
+        COALESCE(MAX(fl.commission_rate), 15)    AS commission_rate
+      FROM orders o
+      LEFT JOIN fusingao_fleets fl ON fl.id = ${Number(id)}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
+    `).then(r => r.rows as any[]);
+
+    // Per-driver breakdown
+    const drivers = await db.execute(sql`
+      SELECT
+        COALESCE(fd.name,'未指派') AS driver_name,
+        fd.vehicle_plate,
+        COUNT(o.id)               AS route_count,
+        COUNT(o.fleet_completed_at) AS completed_count,
+        COALESCE(SUM(COALESCE(fl2.rate_override, pr.rate_per_trip * (1 - COALESCE(fl2.commission_rate,15)/100.0))),0) AS earnings
+      FROM orders o
+      LEFT JOIN fusingao_fleets fl2 ON fl2.id = ${Number(id)}
+      LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
+      GROUP BY fd.name, fd.vehicle_plate
+      ORDER BY earnings DESC
+    `);
+
+    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
