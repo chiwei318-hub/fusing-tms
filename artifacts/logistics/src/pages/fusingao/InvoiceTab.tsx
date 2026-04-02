@@ -3,7 +3,7 @@ import { Download, RefreshCw, FileText, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export default function InvoiceTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(getApiUrl(`/fusingao/invoice?month=${month}`));
+      const res = await fetch(apiUrl(`/fusingao/invoice?month=${month}`));
       const j = await res.json();
       if (j.ok) setData(j);
       else throw new Error(j.error);

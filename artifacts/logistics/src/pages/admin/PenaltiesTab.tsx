@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 
 interface PenaltyRecord {
   id: number;
@@ -63,7 +63,7 @@ export default function PenaltiesTab() {
       const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
       if (sourceFilter !== "all") params.set("source", sourceFilter);
       if (appealFilter !== "all") params.set("appeal_status", appealFilter);
-      const r = await fetch(getApiUrl(`/penalties?${params}`));
+      const r = await fetch(apiUrl(`/penalties?${params}`));
       const d = await r.json();
       setData(d);
     } catch {

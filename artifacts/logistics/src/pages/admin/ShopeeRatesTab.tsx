@@ -9,7 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 
 interface RateItem {
   id: number;
@@ -122,7 +122,7 @@ export default function ShopeeRatesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(getApiUrl("/shopee-rates"));
+      const r = await fetch(apiUrl("/shopee-rates"));
       const d = await r.json();
       setData(d);
     } catch {

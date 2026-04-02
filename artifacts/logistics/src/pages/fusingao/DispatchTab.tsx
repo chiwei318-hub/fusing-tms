@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export default function DispatchTab() {
     setLoading(true);
     const { start, end } = weekStart(offset);
     try {
-      const d = await fetch(getApiUrl(`/fusingao/dispatch?startDate=${start}&endDate=${end}`))
+      const d = await fetch(apiUrl(`/fusingao/dispatch?startDate=${start}&endDate=${end}`))
         .then(r => r.json());
       if (d.ok) setData(d);
       else toast({ title: "載入失敗", description: d.error, variant: "destructive" });
@@ -164,7 +164,7 @@ export default function DispatchTab() {
   useEffect(() => { load(weekOffset); }, [weekOffset, load]);
 
   async function handleSave(orderId: number, code: string) {
-    const r = await fetch(getApiUrl(`/fusingao/routes/${orderId}/dispatch-code`), {
+    const r = await fetch(apiUrl(`/fusingao/routes/${orderId}/dispatch-code`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dispatch_driver_code: code || null }),

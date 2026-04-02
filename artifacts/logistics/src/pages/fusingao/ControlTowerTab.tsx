@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,8 +68,8 @@ export default function ControlTowerTab() {
     setLoading(true);
     try {
       const [ct, fl] = await Promise.all([
-        fetch(getApiUrl("/fusingao/control-tower")).then(r => r.json()),
-        fetch(getApiUrl("/fusingao/fleets")).then(r => r.json()),
+        fetch(apiUrl("/fusingao/control-tower")).then(r => r.json()),
+        fetch(apiUrl("/fusingao/fleets")).then(r => r.json()),
       ]);
       if (ct.ok) {
         setKpi(ct.kpi);
@@ -93,7 +93,7 @@ export default function ControlTowerTab() {
   const assignFleet = async (routeId: number, fleetId: number, fleetName: string) => {
     setAssigningId(routeId);
     try {
-      await fetch(getApiUrl(`/fusingao/routes/${routeId}/grab`), {
+      await fetch(apiUrl(`/fusingao/routes/${routeId}/grab`), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fleetId }),
       });

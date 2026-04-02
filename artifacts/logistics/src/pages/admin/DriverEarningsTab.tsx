@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 
 interface RouteDetail {
   id: number;
@@ -78,7 +78,7 @@ export default function DriverEarningsTab() {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
       if (to) params.set("to", to);
-      const r = await fetch(getApiUrl(`/driver-earnings?${params}`));
+      const r = await fetch(apiUrl(`/driver-earnings?${params}`));
       const d = await r.json();
       setDrivers(d.drivers ?? []);
       setSummary(d.summary ?? null);
@@ -90,13 +90,13 @@ export default function DriverEarningsTab() {
   }, [from, to, toast]);
 
   const loadPrefixRates = useCallback(async () => {
-    const r = await fetch(getApiUrl("/driver-earnings/prefix-rates"));
+    const r = await fetch(apiUrl("/driver-earnings/prefix-rates"));
     const d = await r.json();
     setPrefixRates(d.items ?? []);
   }, []);
 
   const loadShopeeDrivers = useCallback(async () => {
-    const r = await fetch(getApiUrl("/driver-earnings/shopee-drivers"));
+    const r = await fetch(apiUrl("/driver-earnings/shopee-drivers"));
     const d = await r.json();
     setShopeeDrivers(d.items ?? []);
   }, []);
@@ -108,7 +108,7 @@ export default function DriverEarningsTab() {
   }, [loadEarnings, loadPrefixRates, loadShopeeDrivers]);
 
   const savePrefixRate = async (prefix: string) => {
-    await fetch(getApiUrl(`/driver-earnings/prefix-rates/${encodeURIComponent(prefix)}`), {
+    await fetch(apiUrl(`/driver-earnings/prefix-rates/${encodeURIComponent(prefix)}`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editPrefixData),
@@ -120,7 +120,7 @@ export default function DriverEarningsTab() {
   };
 
   const saveShopeeDriver = async (shopee_id: string) => {
-    await fetch(getApiUrl(`/driver-earnings/shopee-drivers/${encodeURIComponent(shopee_id)}`), {
+    await fetch(apiUrl(`/driver-earnings/shopee-drivers/${encodeURIComponent(shopee_id)}`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editDriverData),

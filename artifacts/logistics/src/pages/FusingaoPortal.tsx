@@ -10,12 +10,18 @@ import {
 import ControlTowerTab from "./fusingao/ControlTowerTab";
 import DispatchTab from "./fusingao/DispatchTab";
 import InvoiceTab from "./fusingao/InvoiceTab";
+import ShopeeRatesTab from "./admin/ShopeeRatesTab";
+import PenaltiesTab from "./admin/PenaltiesTab";
+import RouteImportTab from "./admin/RouteImportTab";
+import SheetSyncTab from "./admin/SheetSyncTab";
+import PnLTab from "./admin/PnLTab";
+import DriverEarningsTab from "./admin/DriverEarningsTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Summary {
@@ -40,7 +46,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -89,7 +95,7 @@ export default function FusingaoPortal() {
 
   const loadAdminSettlement = useCallback(async () => {
     const params = adminSetMonth ? `?month=${adminSetMonth}` : "";
-    const d = await fetch(getApiUrl(`/fusingao/settlement${params}`)).then(x => x.json());
+    const d = await fetch(apiUrl(`/fusingao/settlement${params}`)).then(x => x.json());
     if (d.ok) setAdminSettlement(d.fleets ?? []);
   }, [adminSetMonth]); // eslint-disable-line
 
@@ -113,9 +119,9 @@ export default function FusingaoPortal() {
       if (filterStatus !== "all") params.set("status", filterStatus);
       if (filterMonth) params.set("month", filterMonth);
       const [s, r, m] = await Promise.all([
-        fetch(getApiUrl("/fusingao/summary")).then(x => x.json()),
-        fetch(getApiUrl(`/fusingao/routes?${params}`)).then(x => x.json()),
-        fetch(getApiUrl("/fusingao/monthly")).then(x => x.json()),
+        fetch(apiUrl("/fusingao/summary")).then(x => x.json()),
+        fetch(apiUrl(`/fusingao/routes?${params}`)).then(x => x.json()),
+        fetch(apiUrl("/fusingao/monthly")).then(x => x.json()),
       ]);
       if (s.ok) setSummary(s.summary);
       if (r.ok) setRoutes(r.routes);
@@ -127,7 +133,7 @@ export default function FusingaoPortal() {
   useEffect(() => { load(); }, [load]);
 
   const markComplete = async (id: number, completed: boolean) => {
-    await fetch(getApiUrl(`/fusingao/routes/${id}/complete`), {
+    await fetch(apiUrl(`/fusingao/routes/${id}/complete`), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ completed }),
     });
@@ -136,7 +142,7 @@ export default function FusingaoPortal() {
   };
 
   const markBilling = async (id: number, status: string) => {
-    await fetch(getApiUrl(`/fusingao/routes/${id}/billing`), {
+    await fetch(apiUrl(`/fusingao/routes/${id}/billing`), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
@@ -145,7 +151,7 @@ export default function FusingaoPortal() {
   };
 
   const billAllMonth = async (month: string) => {
-    await fetch(getApiUrl(`/fusingao/monthly/${encodeURIComponent(month)}/bill-all`), { method: "PUT" });
+    await fetch(apiUrl(`/fusingao/monthly/${encodeURIComponent(month)}/bill-all`), { method: "PUT" });
     await load();
     toast({ title: `${month} 整月對帳完成` });
   };
@@ -154,7 +160,7 @@ export default function FusingaoPortal() {
   const loadFleets = useCallback(async () => {
     setFleetLoading(true);
     try {
-      const d = await fetch(getApiUrl("/fusingao/fleets")).then(x => x.json());
+      const d = await fetch(apiUrl("/fusingao/fleets")).then(x => x.json());
       if (d.ok) setFleets(d.fleets ?? []);
     } catch { toast({ title: "車隊載入失敗", variant: "destructive" }); }
     finally { setFleetLoading(false); }
@@ -178,7 +184,7 @@ export default function FusingaoPortal() {
     if (!fleetForm.fleet_name || !fleetForm.username) return toast({ title: "請填寫車隊名稱與帳號", variant: "destructive" });
     if (!editingFleet && !fleetForm.password) return toast({ title: "請設定初始密碼", variant: "destructive" });
     const body = { ...fleetForm, rate_override: fleetForm.rate_override ? Number(fleetForm.rate_override) : undefined };
-    const url  = editingFleet ? getApiUrl(`/fusingao/fleets/${editingFleet.id}`) : getApiUrl("/fusingao/fleets");
+    const url  = editingFleet ? apiUrl(`/fusingao/fleets/${editingFleet.id}`) : apiUrl("/fusingao/fleets");
     const method = editingFleet ? "PUT" : "POST";
     const d = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(x => x.json());
     if (!d.ok) return toast({ title: d.error ?? "儲存失敗", variant: "destructive" });
@@ -188,7 +194,7 @@ export default function FusingaoPortal() {
   };
 
   const toggleFleetActive = async (f: FleetRow) => {
-    await fetch(getApiUrl(`/fusingao/fleets/${f.id}`), {
+    await fetch(apiUrl(`/fusingao/fleets/${f.id}`), {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...f, is_active: !f.is_active }),
     });
@@ -261,13 +267,19 @@ export default function FusingaoPortal() {
         {/* ── Tab nav ─────────────────────────────────────────────────── */}
         <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2 overflow-x-auto">
           {([
-            { id:"control",    label:"🗼 調度控制中心", desc:"例外管理" },
-            { id:"dispatch",   label:"📅 派車管理",    desc:"週間派車" },
-            { id:"invoice",    label:"🧾 請款單",      desc:"自動請款單" },
-            { id:"notify",     label:"🔔 車趟完成通知", desc:"即時狀態" },
-            { id:"monthly",    label:"📋 月度對帳",    desc:"逐月結算" },
-            { id:"fleets",     label:"🚚 合作車隊管理", desc:"帳號管理" },
-            { id:"settlement", label:"📊 結算總覽",    desc:"結算鏈" },
+            { id:"control",     label:"🗼 調度控制中心", desc:"例外管理" },
+            { id:"dispatch",    label:"📅 派車管理",    desc:"週間派車" },
+            { id:"invoice",     label:"🧾 請款單",      desc:"自動請款單" },
+            { id:"notify",      label:"🔔 車趟完成通知", desc:"即時狀態" },
+            { id:"monthly",     label:"📋 月度對帳",    desc:"逐月結算" },
+            { id:"fleets",      label:"🚚 合作車隊管理", desc:"帳號管理" },
+            { id:"settlement",  label:"📊 結算總覽",    desc:"結算鏈" },
+            { id:"rates",       label:"🏷️ Shopee費率",  desc:"報價管理" },
+            { id:"penalties",   label:"⚠️ Shopee罰款",  desc:"罰款紀錄" },
+            { id:"earnings",    label:"💰 運費試算",    desc:"司機收益" },
+            { id:"pnl",         label:"📈 盈虧分析",    desc:"P&L" },
+            { id:"routeimport", label:"📤 路線匯入",    desc:"批次匯入" },
+            { id:"sheetsync",   label:"🔄 試算表同步",  desc:"Google Sheet" },
           ] as { id: PortalTab; label: string; desc: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -727,6 +739,23 @@ export default function FusingaoPortal() {
             )}
           </div>
         )}
+        {/* ═══════════════ Shopee費率 ════════════════════════════════════════ */}
+        {tab === "rates" && <ShopeeRatesTab />}
+
+        {/* ═══════════════ Shopee罰款 ════════════════════════════════════════ */}
+        {tab === "penalties" && <PenaltiesTab />}
+
+        {/* ═══════════════ 運費試算 ══════════════════════════════════════════ */}
+        {tab === "earnings" && <DriverEarningsTab />}
+
+        {/* ═══════════════ 盈虧分析 ══════════════════════════════════════════ */}
+        {tab === "pnl" && <PnLTab />}
+
+        {/* ═══════════════ 路線匯入 ══════════════════════════════════════════ */}
+        {tab === "routeimport" && <RouteImportTab />}
+
+        {/* ═══════════════ 試算表同步 ═══════════════════════════════════════ */}
+        {tab === "sheetsync" && <SheetSyncTab />}
       </div>
     </div>
   );
