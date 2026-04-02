@@ -36,6 +36,7 @@ interface Customer {
   is_blacklisted: boolean; blacklist_reason: string | null;
   monthly_statement_day: number; notes: string | null; industry: string | null;
   invoice_title: string | null; company_address: string | null; factory_address: string | null;
+  credit_days: number | null;
   total_orders: number; total_revenue: number; outstanding_amount: number;
   last_order_at: string | null;
 }
@@ -103,6 +104,7 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
     invoiceTitle: customer?.invoice_title ?? "",
     companyAddress: customer?.company_address ?? "",
     factoryAddress: customer?.factory_address ?? "",
+    creditDays: String(customer?.credit_days ?? ""),
   });
   const [loading, setLoading] = useState(false);
 
@@ -224,7 +226,11 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               </div>
               <div>
                 <Label className="text-xs">結帳日（每月幾號）</Label>
-                <Input className="mt-1" type="number" min="1" max="28" placeholder="5" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
+                <Input className="mt-1" type="number" min="1" max="31" placeholder="5" value={form.monthlyStatementDay} onChange={e => f("monthlyStatementDay", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">付款期限（天）</Label>
+                <Input className="mt-1" type="number" min="0" placeholder="例：30" value={form.creditDays} onChange={e => f("creditDays", e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs">價格等級</Label>

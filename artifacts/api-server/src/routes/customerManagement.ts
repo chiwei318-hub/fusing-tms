@@ -114,35 +114,37 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
       priceLevel: z.enum(["standard", "vip", "enterprise", "custom"]).optional(),
       discountPct: z.coerce.number().min(0).max(100).optional(),
       isVip: z.boolean().optional(),
-      monthlyStatementDay: z.coerce.number().min(1).max(28).optional(),
+      monthlyStatementDay: z.coerce.number().min(1).max(31).optional(),
       notes: z.string().optional(),
       invoiceTitle: z.string().optional(),
       companyAddress: z.string().optional(),
       factoryAddress: z.string().optional(),
+      creditDays: z.coerce.number().min(0).optional(),
     });
     const data = schema.parse(req.body);
     await db.execute(sql`
       UPDATE customers SET
         name = COALESCE(${data.name ?? null}, name),
-        short_name = COALESCE(${data.shortName ?? null}, short_name),
+        short_name = ${data.shortName !== undefined ? (data.shortName || null) : sql`short_name`},
         phone = COALESCE(${data.phone ?? null}, phone),
-        tax_id = COALESCE(${data.taxId ?? null}, tax_id),
-        contact_person = COALESCE(${data.contactPerson ?? null}, contact_person),
-        address = COALESCE(${data.address ?? null}, address),
-        postal_code = COALESCE(${data.postalCode ?? null}, postal_code),
-        email = COALESCE(${data.email ?? null}, email),
+        tax_id = ${data.taxId !== undefined ? (data.taxId || null) : sql`tax_id`},
+        contact_person = ${data.contactPerson !== undefined ? (data.contactPerson || null) : sql`contact_person`},
+        address = ${data.address !== undefined ? (data.address || null) : sql`address`},
+        postal_code = ${data.postalCode !== undefined ? (data.postalCode || null) : sql`postal_code`},
+        email = ${data.email !== undefined ? (data.email || null) : sql`email`},
         company_type = COALESCE(${data.companyType ?? null}, company_type),
-        industry = COALESCE(${data.industry ?? null}, industry),
+        industry = ${data.industry !== undefined ? (data.industry || null) : sql`industry`},
         payment_type = COALESCE(${data.paymentType ?? null}, payment_type),
         credit_limit = COALESCE(${data.creditLimit ?? null}, credit_limit),
         price_level = COALESCE(${data.priceLevel ?? null}, price_level),
         discount_pct = COALESCE(${data.discountPct ?? null}, discount_pct),
         is_vip = COALESCE(${data.isVip ?? null}, is_vip),
         monthly_statement_day = COALESCE(${data.monthlyStatementDay ?? null}, monthly_statement_day),
-        notes = COALESCE(${data.notes ?? null}, notes),
-        invoice_title = COALESCE(${data.invoiceTitle ?? null}, invoice_title),
-        company_address = COALESCE(${data.companyAddress ?? null}, company_address),
-        factory_address = COALESCE(${data.factoryAddress ?? null}, factory_address)
+        notes = ${data.notes !== undefined ? (data.notes || null) : sql`notes`},
+        invoice_title = ${data.invoiceTitle !== undefined ? (data.invoiceTitle || null) : sql`invoice_title`},
+        company_address = ${data.companyAddress !== undefined ? (data.companyAddress || null) : sql`company_address`},
+        factory_address = ${data.factoryAddress !== undefined ? (data.factoryAddress || null) : sql`factory_address`},
+        credit_days = ${data.creditDays !== undefined ? data.creditDays : sql`credit_days`}
       WHERE id = ${id}
     `);
     const updated = (await db.execute(sql`SELECT * FROM customers WHERE id = ${id}`)).rows[0];

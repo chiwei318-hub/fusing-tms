@@ -110,6 +110,15 @@ router.patch("/customers/:id", async (req, res) => {
     if (b.monthlyStatementDay !== undefined) addField("monthly_statement_day", parseInt(b.monthlyStatementDay) || 5);
     if (b.companyType !== undefined) addField("company_type", b.companyType || null);
     if (b.isActive !== undefined) addField("is_active", Boolean(b.isActive));
+    if (b.invoiceTitle !== undefined) addField("invoice_title", b.invoiceTitle || null);
+    if (b.companyAddress !== undefined) addField("company_address", b.companyAddress || null);
+    if (b.factoryAddress !== undefined) addField("factory_address", b.factoryAddress || null);
+    if (b.creditLimit !== undefined) addField("credit_limit", parseFloat(b.creditLimit) || 0);
+    if (b.priceLevel !== undefined) addField("price_level", b.priceLevel || null);
+    if (b.discountPct !== undefined) addField("discount_pct", parseFloat(b.discountPct) || 0);
+    if (b.isVip !== undefined) addField("is_vip", Boolean(b.isVip));
+    if (b.notes !== undefined) addField("notes", b.notes || null);
+    if (b.creditDays !== undefined) addField("credit_days", parseInt(b.creditDays) || null);
 
     if (setClauses.length === 0) {
       const { rows } = await pool.query("SELECT * FROM customers WHERE id = $1", [id]);
