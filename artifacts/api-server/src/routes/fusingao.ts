@@ -553,6 +553,124 @@ fusingaoRouter.put("/routes/:id/assign-driver", async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+//  CONTROL TOWER: Exception-management dashboard
+// ════════════════════════════════════════════════════════════════════════════
+
+// GET /fusingao/control-tower  — real-time dispatch control dashboard
+fusingaoRouter.get("/control-tower", async (req, res) => {
+  try {
+    // ── Today's KPIs ─────────────────────────────────────────────────────────
+    const kpi = await db.execute(sql`
+      SELECT
+        COUNT(*)                                                                       AS total,
+        COUNT(*) FILTER (WHERE fleet_completed_at IS NOT NULL OR completed_at IS NOT NULL) AS completed,
+        COUNT(*) FILTER (WHERE fleet_completed_at IS NULL AND completed_at IS NULL AND fusingao_fleet_id IS NOT NULL) AS in_progress,
+        COUNT(*) FILTER (WHERE fusingao_fleet_id IS NULL)                              AS unassigned,
+        COUNT(*) FILTER (WHERE
+          fleet_completed_at IS NULL AND completed_at IS NULL
+          AND created_at < NOW() - INTERVAL '36 hours'
+        )                                                                              AS overdue
+      FROM orders
+      WHERE notes LIKE '路線：%'
+        AND created_at >= NOW() - INTERVAL '30 days'
+    `).then(r => r.rows[0] as any);
+
+    // ── Exception routes: overdue + recently created but unassigned ───────────
+    const exceptions = await db.execute(sql`
+      SELECT
+        o.id,
+        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]              AS route_id,
+        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int                AS stations,
+        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]                  AS prefix,
+        o.fusingao_fleet_id,
+        f.fleet_name,
+        o.created_at,
+        o.fleet_completed_at,
+        o.completed_at,
+        CASE
+          WHEN o.fleet_completed_at IS NOT NULL OR o.completed_at IS NOT NULL THEN 'done'
+          WHEN o.fusingao_fleet_id IS NULL THEN 'unassigned'
+          WHEN o.created_at < NOW() - INTERVAL '36 hours' THEN 'overdue'
+          WHEN o.created_at < NOW() - INTERVAL '20 hours' THEN 'warning'
+          ELSE 'normal'
+        END AS status
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      WHERE o.notes LIKE '路線：%'
+        AND o.created_at >= NOW() - INTERVAL '7 days'
+        AND (
+          o.fusingao_fleet_id IS NULL
+          OR (o.fleet_completed_at IS NULL AND o.completed_at IS NULL AND o.created_at < NOW() - INTERVAL '20 hours')
+        )
+      ORDER BY
+        CASE
+          WHEN o.fusingao_fleet_id IS NULL THEN 1
+          WHEN o.created_at < NOW() - INTERVAL '36 hours' THEN 2
+          ELSE 3
+        END,
+        o.created_at ASC
+      LIMIT 50
+    `).then(r => r.rows as any[]);
+
+    // ── Fleet performance ranking ─────────────────────────────────────────────
+    const fleetPerf = await db.execute(sql`
+      SELECT
+        f.id,
+        f.fleet_name,
+        f.commission_rate,
+        f.is_active,
+        COUNT(o.id)                                                                    AS total_routes,
+        COUNT(o.id) FILTER (WHERE o.fusingao_fleet_id IS NOT NULL)                    AS grabbed,
+        COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL OR o.completed_at IS NOT NULL) AS completed,
+        COUNT(o.id) FILTER (WHERE
+          o.fleet_completed_at IS NULL AND o.completed_at IS NULL AND o.created_at < NOW() - INTERVAL '36 hours'
+        )                                                                              AS overdue_count,
+        ROUND(
+          100.0 * COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL OR o.completed_at IS NOT NULL)
+          / NULLIF(COUNT(o.id), 0), 1
+        )                                                                              AS completion_rate,
+        MAX(o.fleet_completed_at)                                                      AS last_activity
+      FROM fusingao_fleets f
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.notes LIKE '路線：%'
+        AND o.created_at >= NOW() - INTERVAL '30 days'
+      WHERE f.is_active = true
+      GROUP BY f.id, f.fleet_name, f.commission_rate, f.is_active
+      ORDER BY completion_rate DESC NULLS LAST, total_routes DESC
+    `).then(r => r.rows as any[]);
+
+    // ── Available routes for grab (unassigned) ───────────────────────────────
+    const unassigned = await db.execute(sql`
+      SELECT
+        o.id,
+        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]  AS route_id,
+        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int   AS stations,
+        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]     AS prefix,
+        o.created_at,
+        pr.rate_per_trip                                    AS shopee_rate
+      FROM orders o
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      WHERE o.notes LIKE '路線：%'
+        AND o.fusingao_fleet_id IS NULL
+        AND o.fleet_completed_at IS NULL
+        AND o.completed_at IS NULL
+        AND o.created_at >= NOW() - INTERVAL '7 days'
+      ORDER BY o.created_at ASC
+      LIMIT 20
+    `).then(r => r.rows as any[]);
+
+    res.json({
+      ok: true,
+      kpi,
+      exceptions,
+      fleet_performance: fleetPerf,
+      unassigned_routes: unassigned,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 //  SETTLEMENT CHAIN: 福興高 → Platform (抽成) → Fleet → Fleet Driver
 // ════════════════════════════════════════════════════════════════════════════
 

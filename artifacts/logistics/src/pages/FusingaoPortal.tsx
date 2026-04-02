@@ -5,7 +5,9 @@ import {
   Truck, AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   Download, Tag, Package, MapPin, CheckSquare, Square,
   Users, Plus, Edit2, Save, X, ShieldCheck, ShieldOff, ExternalLink,
+  LayoutDashboard,
 } from "lucide-react";
+import ControlTowerTab from "./fusingao/ControlTowerTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +38,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "notify" | "monthly" | "rates" | "fleets" | "settlement";
+type PortalTab = "control" | "notify" | "monthly" | "rates" | "fleets" | "settlement";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -69,7 +71,7 @@ const prefixColor: Record<string, string> = {
 export default function FusingaoPortal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [tab, setTab]           = useState<PortalTab>("notify");
+  const [tab, setTab]           = useState<PortalTab>("control");
   const [loading, setLoading]   = useState(false);
   const [summary, setSummary]   = useState<Summary | null>(null);
   const [routes, setRoutes]     = useState<RouteItem[]>([]);
@@ -257,6 +259,7 @@ export default function FusingaoPortal() {
         {/* ── Tab nav ─────────────────────────────────────────────────── */}
         <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2 overflow-x-auto">
           {([
+            { id:"control",    label:"🗼 調度控制中心", desc:"例外管理" },
             { id:"notify",     label:"🔔 車趟完成通知", desc:"即時狀態" },
             { id:"monthly",    label:"📋 月度對帳",    desc:"逐月結算" },
             { id:"fleets",     label:"🚚 合作車隊管理", desc:"帳號管理" },
@@ -268,6 +271,9 @@ export default function FusingaoPortal() {
             </button>
           ))}
         </div>
+
+        {/* ═══════════════ 調度控制中心 ══════════════════════════════════════ */}
+        {tab === "control" && <ControlTowerTab />}
 
         {/* ═══════════════ 車趟完成通知 ═══════════════════════════════════ */}
         {tab === "notify" && (
