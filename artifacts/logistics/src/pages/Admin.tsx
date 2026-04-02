@@ -59,6 +59,7 @@ import RouteImportTab from "./admin/RouteImportTab";
 import FormImportTab from "./admin/FormImportTab";
 import SheetSyncTab from "./admin/SheetSyncTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
+import PenaltiesTab from "./admin/PenaltiesTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
 import BillingFlowTab from "./admin/BillingFlowTab";
@@ -1499,6 +1500,7 @@ export default function Admin() {
                     { value: "routeimport", icon: <Upload className="w-3.5 h-3.5 text-blue-500" />,                label: "路線匯入" },
                     { value: "formimport",  icon: <FileText className="w-3.5 h-3.5 text-green-600" />,              label: "表單匯入" },
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
+                    { value: "penalties",   icon: <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />,        label: "Shopee罰款" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3577,6 +3579,11 @@ export default function Admin() {
         {/* ===== 試算表自動同步 TAB ===== */}
         <TabsContent value="sheetsync" className="outline-none">
           <SheetSyncTab />
+        </TabsContent>
+
+        {/* ===== Shopee 罰款管理 TAB ===== */}
+        <TabsContent value="penalties" className="outline-none">
+          <PenaltiesTab />
         </TabsContent>
       </Tabs>
 
