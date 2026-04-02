@@ -830,3 +830,63 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// GET /fusingao/invoice?month=YYYY-MM
+// 自動計算每月請款單（依路線前綴分組）
+// ════════════════════════════════════════════════════════════════════════════
+fusingaoRouter.get("/invoice", async (req, res) => {
+  try {
+    const { month } = req.query as Record<string, string>;
+    const m = month ?? new Date().toISOString().slice(0, 7);
+
+    // 依前綴分組統計趟次 + 金額
+    const rows = await db.execute(sql`
+      WITH base AS (
+        SELECT
+          (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1] AS prefix
+        FROM orders o
+        WHERE o.notes LIKE '路線：%'
+          AND TO_CHAR(o.created_at AT TIME ZONE 'Asia/Taipei', 'YYYY-MM') = ${m}
+      )
+      SELECT
+        b.prefix,
+        pr.service_type,
+        pr.rate_per_trip,
+        COUNT(*)                         AS trip_count,
+        COUNT(*) * pr.rate_per_trip      AS gross_amount
+      FROM base b
+      JOIN route_prefix_rates pr ON pr.prefix = b.prefix
+      WHERE b.prefix IS NOT NULL
+      GROUP BY b.prefix, pr.service_type, pr.rate_per_trip
+      ORDER BY b.prefix
+    `).then(r => r.rows as any[]);
+
+    // 前綴 → 請款單分類對應
+    const CATEGORY_MAP: Record<string, string> = {
+      FM: "店配車", WB: "店配車", WD: "店配車",
+      FN: "NDD",   A3: "NDD",
+      NB: "WHNDD",
+    };
+
+    // 合併到分類
+    const catMap: Record<string, { trips: number; gross: number; rate: number }> = {};
+    for (const r of rows) {
+      const cat = CATEGORY_MAP[r.prefix] ?? r.prefix ?? "其他";
+      if (!catMap[cat]) catMap[cat] = { trips: 0, gross: 0, rate: Number(r.rate_per_trip) };
+      catMap[cat].trips += Number(r.trip_count);
+      catMap[cat].gross += Number(r.gross_amount);
+    }
+
+    const categories = Object.entries(catMap).map(([name, v]) => ({
+      name, trips: v.trips, gross: v.gross, rate: v.rate,
+    }));
+
+    // 自動趟次合計（未含手動項目）
+    const autoGross = categories.reduce((s, c) => s + c.gross, 0);
+
+    res.json({ ok: true, month: m, categories, autoGross });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
