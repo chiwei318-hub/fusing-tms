@@ -198,6 +198,9 @@ export const UpdateOrderBody = zod.object({
   extraDeliveryAddresses: zod.string().nullish(),
   orderGroupId: zod.string().nullish(),
   customFieldValues: zod.record(zod.string()).nullish(),
+  // 付款給司機 / 付款給加盟主
+  driverPaymentStatus: zod.enum(["unpaid", "paid"]).optional(),
+  franchiseePaymentStatus: zod.enum(["unpaid", "paid"]).optional(),
 });
 
 export const UpdateOrderStopsBody = zod.object({

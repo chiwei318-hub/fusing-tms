@@ -142,6 +142,8 @@ export interface UpdateOrderInput {
   extraFee?: number | null;
   totalFee?: number | null;
   feeStatus?: FeeStatus;
+  driverPaymentStatus?: 'unpaid' | 'paid';
+  franchiseePaymentStatus?: 'unpaid' | 'paid';
 }
 
 export interface DriverActionInput {

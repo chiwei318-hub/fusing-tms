@@ -9,6 +9,9 @@ export type OrderStatus = typeof orderStatusEnum[number];
 export const feeStatusEnum = ["unpaid", "paid", "invoiced"] as const;
 export type FeeStatus = typeof feeStatusEnum[number];
 
+export const payoutStatusEnum = ["unpaid", "paid"] as const;
+export type PayoutStatus = typeof payoutStatusEnum[number];
+
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
   // 委託方
@@ -64,6 +67,9 @@ export const ordersTable = pgTable("orders", {
   // Customer payment fields
   paymentNote: text("payment_note"),
   paymentConfirmedAt: timestamp("payment_confirmed_at"),
+  // 付款給司機 / 付款給加盟主
+  driverPaymentStatus: text("driver_payment_status").notNull().default("unpaid"),
+  franchiseePaymentStatus: text("franchisee_payment_status").notNull().default("unpaid"),
   // ── Pricing & Arrival Notification ──────────────────────
   distanceKm: real("distance_km"),                          // estimated route distance
   pricingBreakdown: text("pricing_breakdown"),              // JSON {base,weight,volume,time,special,surcharge}
@@ -85,6 +91,8 @@ export const ordersTable = pgTable("orders", {
 export const insertOrderSchema = createInsertSchema(ordersTable, {
   status: z.enum(orderStatusEnum).default("pending"),
   feeStatus: z.enum(feeStatusEnum).default("unpaid"),
+  driverPaymentStatus: z.enum(payoutStatusEnum).default("unpaid"),
+  franchiseePaymentStatus: z.enum(payoutStatusEnum).default("unpaid"),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof ordersTable.$inferSelect;

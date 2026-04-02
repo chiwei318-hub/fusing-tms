@@ -1109,6 +1109,26 @@ export default function Admin() {
     }
   };
 
+  const handleDriverPaymentToggle = async (orderId: number, current: string) => {
+    const next = current === "paid" ? "unpaid" : "paid";
+    try {
+      await updateOrder({ id: orderId, data: { driverPaymentStatus: next as "paid" | "unpaid" } });
+      toast({ title: next === "paid" ? "✅ 已標記付款給司機" : "付款狀態已重置" });
+    } catch {
+      toast({ title: "更新失敗", variant: "destructive" });
+    }
+  };
+
+  const handleFranchiseePaymentToggle = async (orderId: number, current: string) => {
+    const next = current === "paid" ? "unpaid" : "paid";
+    try {
+      await updateOrder({ id: orderId, data: { franchiseePaymentStatus: next as "paid" | "unpaid" } });
+      toast({ title: next === "paid" ? "✅ 已標記付款給加盟主" : "付款狀態已重置" });
+    } catch {
+      toast({ title: "更新失敗", variant: "destructive" });
+    }
+  };
+
   const handleSmartDispatch = async (orderId: number) => {
     const available = drivers?.filter(d => d.status === "available");
     if (!available || available.length === 0) {
@@ -1619,6 +1639,8 @@ export default function Admin() {
                     <th className="px-3 py-2.5 font-semibold">狀態</th>
                     <th className="px-3 py-2.5 font-semibold">指派司機</th>
                     <th className="px-3 py-2.5 font-semibold text-right hidden sm:table-cell">更改狀態</th>
+                    <th className="px-3 py-2.5 font-semibold text-center hidden lg:table-cell">付司機</th>
+                    <th className="px-3 py-2.5 font-semibold text-center hidden lg:table-cell">付加盟主</th>
                     <th className="px-3 py-2.5 font-semibold text-right">操作</th>
                   </tr>
                 </thead>
@@ -1702,6 +1724,30 @@ export default function Admin() {
                             <SelectItem value="cancelled" className="text-xs">已取消</SelectItem>
                           </SelectContent>
                         </Select>
+                      </td>
+                      <td className="px-3 py-2.5 text-center hidden lg:table-cell">
+                        <button
+                          onClick={() => handleDriverPaymentToggle(order.id, (order as any).driverPaymentStatus ?? "unpaid")}
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+                            (order as any).driverPaymentStatus === "paid"
+                              ? "bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                              : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                          }`}
+                        >
+                          {(order as any).driverPaymentStatus === "paid" ? "已付款" : "未付款"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5 text-center hidden lg:table-cell">
+                        <button
+                          onClick={() => handleFranchiseePaymentToggle(order.id, (order as any).franchiseePaymentStatus ?? "unpaid")}
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+                            (order as any).franchiseePaymentStatus === "paid"
+                              ? "bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                              : "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
+                          }`}
+                        >
+                          {(order as any).franchiseePaymentStatus === "paid" ? "已付款" : "未付款"}
+                        </button>
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">

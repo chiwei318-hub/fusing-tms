@@ -286,6 +286,8 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.extraFee !== undefined) updates.extraFee = body.extraFee ?? null;
     if (body.totalFee !== undefined) updates.totalFee = body.totalFee ?? null;
     if (body.feeStatus !== undefined) updates.feeStatus = body.feeStatus;
+    if (body.driverPaymentStatus !== undefined) updates.driverPaymentStatus = body.driverPaymentStatus;
+    if (body.franchiseePaymentStatus !== undefined) updates.franchiseePaymentStatus = body.franchiseePaymentStatus;
     // Editable content fields
     if (body.pickupDate !== undefined) updates.pickupDate = body.pickupDate ?? null;
     if (body.pickupTime !== undefined) updates.pickupTime = body.pickupTime ?? null;
