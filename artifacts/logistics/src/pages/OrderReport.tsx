@@ -76,6 +76,15 @@ export default function OrderReport() {
   const set = (key: keyof FilterState) => (val: string) =>
     setFilter(f => ({ ...f, [key]: val }));
 
+  // Customers list
+  const { data: customers = [] } = useQuery({
+    queryKey: ["customers-list"],
+    queryFn: async () => {
+      const r = await fetch(API("/customers"), { headers: authHeaders() });
+      return r.ok ? r.json() : [];
+    },
+  });
+
   // Drivers list
   const { data: drivers = [] } = useQuery({
     queryKey: ["drivers-list"],
@@ -183,16 +192,20 @@ export default function OrderReport() {
               <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
                 <User className="w-3 h-3" /> 客戶名稱
               </Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-9 text-sm"
-                  placeholder="輸入客戶名稱（留空為全部）"
-                  value={filter.customerName}
-                  onChange={e => set("customerName")(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleSearch()}
-                />
-              </div>
+              <Select
+                value={filter.customerName || ALL}
+                onValueChange={v => set("customerName")(v === ALL ? "" : v)}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="全部客戶" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>全部客戶</SelectItem>
+                  {(customers as any[]).map((c: any) => (
+                    <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* 選擇司機 */}
