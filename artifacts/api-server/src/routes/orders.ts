@@ -79,30 +79,25 @@ router.get("/orders/track", async (req, res) => {
 // ─── GET /orders/suggestions — autocomplete for cargo descriptions & notes ────
 router.get("/orders/suggestions", async (req, res) => {
   try {
-    const { rows } = await pool.query<{ cargo: string | null; note: string | null }>(`
-      SELECT DISTINCT cargo_description AS cargo, notes AS note
-      FROM orders
-      WHERE cargo_description IS NOT NULL AND cargo_description != ''
-      ORDER BY cargo_description
-      LIMIT 200
-    `);
-    const cargoSet = new Set<string>();
-    const notesSet = new Set<string>();
-    for (const r of rows) {
-      if (r.cargo) cargoSet.add(r.cargo.trim());
-    }
-    // also collect non-empty notes
-    const { rows: noteRows } = await pool.query<{ note: string | null }>(`
-      SELECT DISTINCT notes AS note FROM orders
-      WHERE notes IS NOT NULL AND notes != ''
-      ORDER BY notes LIMIT 100
-    `);
-    for (const r of noteRows) {
-      if (r.note) notesSet.add(r.note.trim());
-    }
+    const [{ rows: cargoRows }, { rows: noteRows }] = await Promise.all([
+      pool.query<{ cargo: string }>(`
+        SELECT DISTINCT cargo_description AS cargo
+        FROM orders
+        WHERE cargo_description IS NOT NULL AND cargo_description <> ''
+        ORDER BY cargo_description
+        LIMIT 200
+      `),
+      pool.query<{ note: string }>(`
+        SELECT DISTINCT notes AS note
+        FROM orders
+        WHERE notes IS NOT NULL AND notes <> ''
+        ORDER BY notes
+        LIMIT 100
+      `),
+    ]);
     res.json({
-      cargo: Array.from(cargoSet).sort(),
-      notes: Array.from(notesSet).sort(),
+      cargo: cargoRows.map(r => r.cargo.trim()).filter(Boolean),
+      notes: noteRows.map(r => r.note.trim()).filter(Boolean),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch order suggestions");

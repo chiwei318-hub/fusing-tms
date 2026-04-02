@@ -5,7 +5,7 @@
  * - Pickup/Delivery date + time pickers
  * - Multiple delivery stops
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Phone, Package, Truck, ChevronDown, ChevronUp,
   Zap, UserCheck, X, Check, Clock, Plus, User, Calendar,
@@ -77,19 +77,18 @@ interface AutoSuggestInputProps {
   suggestions: string[];
   placeholder?: string;
   required?: boolean;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   className?: string;
 }
 function AutoSuggestInput({ value, onChange, suggestions, placeholder, required, icon, className }: AutoSuggestInputProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
 
   const filtered = value
     ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()) && s !== value)
     : suggestions;
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       {icon && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">{icon}</span>}
       <input
         required={required}
