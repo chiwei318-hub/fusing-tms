@@ -63,7 +63,12 @@ import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
 import BillingFlowTab from "./admin/BillingFlowTab";
 import PricingPanel from "@/components/PricingPanel";
-import { useOrdersData, useUpdateOrderMutation } from "@/hooks/use-orders";
+import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useDriversData, useCreateDriverMutation, useUpdateDriverMutation, useDeleteDriverMutation } from "@/hooks/use-drivers";
 import { useCustomersData, useCreateCustomerMutation, useUpdateCustomerMutation, useDeleteCustomerMutation } from "@/hooks/use-customers";
 import { OrderStatusBadge, DriverStatusBadge } from "@/components/StatusBadge";
@@ -630,6 +635,8 @@ export default function Admin() {
   const { data: drivers, isLoading: driversLoading } = useDriversData();
   const { data: customers, isLoading: customersLoading } = useCustomersData();
   const { mutateAsync: updateOrder } = useUpdateOrderMutation();
+  const { mutateAsync: deleteOrder, isPending: deletingOrder } = useDeleteOrderMutation();
+  const [deleteOrderTarget, setDeleteOrderTarget] = useState<{ id: number; label: string } | null>(null);
   const { mutateAsync: createDriver, isPending: creatingDriver } = useCreateDriverMutation();
   const { mutateAsync: updateDriver, isPending: updatingDriver } = useUpdateDriverMutation();
   const { mutateAsync: deleteDriver } = useDeleteDriverMutation();
@@ -1709,6 +1716,14 @@ export default function Admin() {
                           <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden text-orange-500 hover:bg-orange-50" onClick={() => openQuoteDialog(order as Order)} title="估價">
                             <Calculator className="w-3.5 h-3.5" />
                           </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => setDeleteOrderTarget({ id: order.id, label: `#${order.id}` })}
+                            title="刪除訂單"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -1717,6 +1732,39 @@ export default function Admin() {
               </table>
             </div>
           </Card>
+
+          {/* 刪除訂單確認 */}
+          <AlertDialog open={!!deleteOrderTarget} onOpenChange={v => !v && setDeleteOrderTarget(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                  <Trash2 className="w-5 h-5" /> 確認刪除訂單
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  訂單 <span className="font-bold text-foreground">{deleteOrderTarget?.label}</span> 刪除後無法復原，確定要繼續嗎？
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={deletingOrder}
+                  onClick={async () => {
+                    if (!deleteOrderTarget) return;
+                    try {
+                      await deleteOrder(deleteOrderTarget.id);
+                      toast({ title: `訂單 ${deleteOrderTarget.label} 已刪除` });
+                      setDeleteOrderTarget(null);
+                    } catch {
+                      toast({ title: "刪除失敗", variant: "destructive" });
+                    }
+                  }}
+                >
+                  {deletingOrder ? "刪除中…" : "確認刪除"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Auto-quote Dialog */}
           <Dialog open={!!quoteOrder} onOpenChange={(o) => !o && setQuoteOrder(null)}>
