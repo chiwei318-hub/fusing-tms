@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import ControlTowerTab from "./fusingao/ControlTowerTab";
+import DispatchTab from "./fusingao/DispatchTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +39,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "notify" | "monthly" | "rates" | "fleets" | "settlement";
+type PortalTab = "control" | "dispatch" | "notify" | "monthly" | "rates" | "fleets" | "settlement";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -260,6 +261,7 @@ export default function FusingaoPortal() {
         <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2 overflow-x-auto">
           {([
             { id:"control",    label:"🗼 調度控制中心", desc:"例外管理" },
+            { id:"dispatch",   label:"📅 派車管理",    desc:"週間派車" },
             { id:"notify",     label:"🔔 車趟完成通知", desc:"即時狀態" },
             { id:"monthly",    label:"📋 月度對帳",    desc:"逐月結算" },
             { id:"fleets",     label:"🚚 合作車隊管理", desc:"帳號管理" },
@@ -274,6 +276,9 @@ export default function FusingaoPortal() {
 
         {/* ═══════════════ 調度控制中心 ══════════════════════════════════════ */}
         {tab === "control" && <ControlTowerTab />}
+
+        {/* ═══════════════ 派車管理 ════════════════════════════════════════ */}
+        {tab === "dispatch" && <DispatchTab />}
 
         {/* ═══════════════ 車趟完成通知 ═══════════════════════════════════ */}
         {tab === "notify" && (

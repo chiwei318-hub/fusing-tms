@@ -553,8 +553,81 @@ fusingaoRouter.put("/routes/:id/assign-driver", async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  CONTROL TOWER: Exception-management dashboard
+//  DISPATCH MANAGEMENT  — weekly route × driver grid
 // ════════════════════════════════════════════════════════════════════════════
+
+// GET /fusingao/dispatch?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+fusingaoRouter.get("/dispatch", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query as Record<string, string>;
+    // Default: current week Mon–Sun in Taiwan time (UTC+8)
+    const nowTW = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const dowTW = nowTW.getUTCDay() === 0 ? 6 : nowTW.getUTCDay() - 1; // Mon=0
+    const monTW = new Date(nowTW); monTW.setUTCDate(nowTW.getUTCDate() - dowTW);
+    const sunTW = new Date(monTW); sunTW.setUTCDate(monTW.getUTCDate() + 6);
+    const start = startDate ?? monTW.toISOString().slice(0, 10);
+    const end   = endDate   ?? sunTW.toISOString().slice(0, 10);
+
+    const rows = await db.execute(sql`
+      SELECT
+        o.id,
+        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]  AS route_id,
+        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]        AS prefix,
+        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int      AS stations,
+        o.dispatch_driver_code,
+        o.fusingao_fleet_id,
+        f.fleet_name,
+        o.fleet_completed_at,
+        o.completed_at,
+        (o.created_at AT TIME ZONE 'Asia/Taipei')::date        AS dispatch_date
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      WHERE o.notes LIKE '路線：%'
+        AND (o.created_at AT TIME ZONE 'Asia/Taipei')::date BETWEEN ${start}::date AND ${end}::date
+      ORDER BY (o.created_at AT TIME ZONE 'Asia/Taipei')::date, route_id
+    `).then(r => r.rows as any[]);
+
+    // Build grid: route_id → date → entry
+    const routeMap = new Map<string, any>();
+    for (const r of rows) {
+      if (!r.route_id) continue;
+      if (!routeMap.has(r.route_id)) {
+        routeMap.set(r.route_id, { route_id: r.route_id, prefix: r.prefix, stations: r.stations, dates: {} });
+      }
+      routeMap.get(r.route_id).dates[r.dispatch_date] = {
+        order_id: r.id,
+        dispatch_driver_code: r.dispatch_driver_code,
+        fleet_name: r.fleet_name,
+        done: !!(r.fleet_completed_at || r.completed_at),
+      };
+    }
+
+    // Build date range array
+    const dates: string[] = [];
+    const cur = new Date(start);
+    const endD = new Date(end);
+    while (cur <= endD) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+
+    res.json({ ok: true, dates, routes: Array.from(routeMap.values()), range: { start, end } });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/routes/:id/dispatch-code
+fusingaoRouter.put("/routes/:id/dispatch-code", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dispatch_driver_code } = req.body as { dispatch_driver_code: string };
+    await db.execute(sql`
+      UPDATE orders SET dispatch_driver_code = ${dispatch_driver_code ?? null}
+      WHERE id = ${Number(id)} AND notes LIKE '路線：%'
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // GET /fusingao/control-tower  — real-time dispatch control dashboard
 fusingaoRouter.get("/control-tower", async (req, res) => {
