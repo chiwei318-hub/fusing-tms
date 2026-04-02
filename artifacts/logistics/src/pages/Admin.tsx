@@ -62,6 +62,7 @@ import FranchiseeTab from "./admin/FranchiseeTab";
 import PenaltiesTab from "./admin/PenaltiesTab";
 import ShopeeRatesTab from "./admin/ShopeeRatesTab";
 import DriverEarningsTab from "./admin/DriverEarningsTab";
+import PnLTab from "./admin/PnLTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
 import BillingFlowTab from "./admin/BillingFlowTab";
@@ -1505,6 +1506,7 @@ export default function Admin() {
                     { value: "penalties",   icon: <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />,        label: "Shopee罰款" },
                     { value: "shopeerate",  icon: <Tag className="w-3.5 h-3.5 text-blue-500" />,                    label: "Shopee報價" },
                     { value: "driverearnings", icon: <Calculator className="w-3.5 h-3.5 text-green-600" />,          label: "運費試算" },
+                    { value: "pnl",           icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,          label: "盈虧分析" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3598,6 +3600,11 @@ export default function Admin() {
         {/* ===== 運費試算 TAB ===== */}
         <TabsContent value="driverearnings" className="outline-none">
           <DriverEarningsTab />
+        </TabsContent>
+
+        {/* ===== 盈虧分析 TAB ===== */}
+        <TabsContent value="pnl" className="outline-none">
+          <PnLTab />
         </TabsContent>
       </Tabs>
 
