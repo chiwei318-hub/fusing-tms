@@ -109,7 +109,7 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
       email: z.string().optional(),
       companyType: z.string().optional(),
       industry: z.string().optional(),
-      paymentType: z.enum(["cash", "monthly", "transfer"]).optional(),
+      paymentType: z.enum(["cash", "monthly", "transfer", "check", "cod", "credit_card", "eft"]).optional(),
       creditLimit: z.coerce.number().optional(),
       priceLevel: z.enum(["standard", "vip", "enterprise", "custom"]).optional(),
       discountPct: z.coerce.number().min(0).max(100).optional(),

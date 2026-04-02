@@ -56,9 +56,13 @@ interface StatementOrder {
 // ─── Label Maps ───────────────────────────────────────────────────────────────
 
 const PAYMENT_LABELS: Record<string, { label: string; color: string }> = {
-  cash:     { label: "現金",     color: "bg-green-50 text-green-700 border-green-200" },
-  monthly:  { label: "月結",     color: "bg-blue-50 text-blue-700 border-blue-200" },
-  transfer: { label: "銀行轉帳", color: "bg-purple-50 text-purple-700 border-purple-200" },
+  cash:        { label: "現金",         color: "bg-green-50 text-green-700 border-green-200" },
+  monthly:     { label: "月結",         color: "bg-blue-50 text-blue-700 border-blue-200" },
+  transfer:    { label: "銀行轉帳",     color: "bg-purple-50 text-purple-700 border-purple-200" },
+  check:       { label: "支票",         color: "bg-orange-50 text-orange-700 border-orange-200" },
+  cod:         { label: "代收貨款",     color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+  credit_card: { label: "信用卡",       color: "bg-pink-50 text-pink-700 border-pink-200" },
+  eft:         { label: "電匯",         color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
 };
 const PRICE_LABELS: Record<string, { label: string; color: string }> = {
   standard:   { label: "標準",   color: "bg-slate-50 text-slate-600 border-slate-200" },
@@ -221,6 +225,10 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
                     <SelectItem value="cash">現金</SelectItem>
                     <SelectItem value="monthly">月結</SelectItem>
                     <SelectItem value="transfer">銀行轉帳</SelectItem>
+                    <SelectItem value="check">支票</SelectItem>
+                    <SelectItem value="cod">代收貨款</SelectItem>
+                    <SelectItem value="credit_card">信用卡</SelectItem>
+                    <SelectItem value="eft">電匯</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -769,6 +777,10 @@ export default function CustomerManagementTab() {
             <SelectItem value="cash">現金</SelectItem>
             <SelectItem value="monthly">月結</SelectItem>
             <SelectItem value="transfer">銀行轉帳</SelectItem>
+            <SelectItem value="check">支票</SelectItem>
+            <SelectItem value="cod">代收貨款</SelectItem>
+            <SelectItem value="credit_card">信用卡</SelectItem>
+            <SelectItem value="eft">電匯</SelectItem>
           </SelectContent>
         </Select>
 
