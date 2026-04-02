@@ -207,6 +207,42 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 - 使用 `apiUrl` 統一 API 路徑（移除 hardcode VITE_API_BASE_URL）
 - DriverCommission 參數（year/month）納入 query key，切換即自動重載
 
+## 蝦皮財務分析套件（Shopee Finance Module）
+
+### 新增 DB 表
+- **`route_prefix_rates`** — 路線前綴費率（FN/FM/A3/NB/WB/WD）含 `rate_per_trip`（蝦皮收入）和 `driver_pay_rate`（司機費用）
+- **`shopee_drivers`** — 蝦皮工號資料（shopee_id, name, vehicle_plate, fleet_name）
+- **`shopee_penalties`** — 蝦皮罰款（NDD異常/罰款統計，213筆）
+- **`shopee_rate_cards`** — 蝦皮報價單（231筆，6種服務類型）
+
+### 新增 API endpoints
+- **`/api/penalties`** — 罰款列表/統計
+- **`/api/shopee-rates`** — 蝦皮報價單
+- **`/api/driver-earnings`** — 司機運費試算（依工號/路線彙整）
+- **`/api/pnl/overview`** — 平台總盈虧（收入/費用/罰款/淨利率）
+- **`/api/pnl/by-vehicle`** — 依車輛盈虧
+- **`/api/pnl/by-fleet`** — 依車隊盈虧
+- **`/api/pnl/prefix-rates/:prefix`** — 更新路線費率
+- **`/api/fusingao/summary`** — 福興高客戶總覽
+- **`/api/fusingao/routes`** — 福興高路線列表（支援月份/狀態篩選）
+- **`/api/fusingao/monthly`** — 月度對帳資料
+- **`/api/fusingao/routes/:id/complete`** — 標記完成
+- **`/api/fusingao/routes/:id/billing`** — 標記對帳
+- **`/api/fusingao/monthly/:month/bill-all`** — 整月對帳
+
+### 新增前端頁面/分頁
+- **後台 → 運費試算 Tab** (`DriverEarningsTab.tsx`) — 依工號試算/路線費率設定/司機設定
+- **後台 → 盈虧分析 Tab** (`PnLTab.tsx`) — 平台總覽/依車輛/依車隊/費率設定
+- **後台 → Shopee罰款 Tab** (`PenaltiesTab.tsx`)
+- **後台 → Shopee報價 Tab** (`ShopeeRatesTab.tsx`)
+- **`/fusingao` 福興高專屬窗口** (`FusingaoPortal.tsx`) — 車趟完成通知/月度對帳/CSV匯出（admin 登入後可存取）
+
+### P&L 計算邏輯
+- **蝦皮收入** = 路線趟數 × `route_prefix_rates.rate_per_trip`
+- **司機費用** = 路線趟數 × `route_prefix_rates.driver_pay_rate`
+- **罰款** = `shopee_penalties.fine_amount` WHERE source='NDD過刷異常'
+- **淨利潤** = 蝦皮收入 − 司機費用 − 罰款
+
 ## 報價引擎（Pricing Engine）
 
 - **DB Key：** `vehicle_rate_cards`（JSON，存放 8 種車型費率）

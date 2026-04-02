@@ -41,6 +41,7 @@ import EnterpriseRegister from "@/pages/register/EnterpriseRegister";
 import DriverRegister from "@/pages/register/DriverRegister";
 import InvoicePrint from "@/pages/InvoicePrint";
 import QuotePage from "@/pages/QuotePage";
+import FusingaoPortal from "@/pages/FusingaoPortal";
 
 // ─── Global ErrorBoundary ────────────────────────────────────────────────────
 
@@ -147,6 +148,7 @@ function AdminPortal() {
             <Route path="/report" component={OrderReport} />
             <Route path="/fees" component={Fees} />
             <Route path="/admin" component={Admin} />
+            <Route path="/fusingao" component={FusingaoPortal} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

@@ -61,6 +61,7 @@ import { penaltiesRouter } from "./penalties";
 import { shopeeRatesRouter } from "./shopeeRates";
 import { driverEarningsRouter } from "./driverEarnings";
 import { pnlRouter } from "./pnl";
+import { fusingaoRouter } from "./fusingao";
 
 const router: IRouter = Router();
 
@@ -127,5 +128,6 @@ router.use("/penalties", penaltiesRouter);
 router.use("/shopee-rates", shopeeRatesRouter);
 router.use("/driver-earnings", driverEarningsRouter);
 router.use("/pnl", pnlRouter);
+router.use("/fusingao", fusingaoRouter);
 
 export default router;

@@ -1519,6 +1519,11 @@ export default function Admin() {
                       {t.icon}<span>{t.label}</span>
                     </TabsTrigger>
                   ))}
+                  <a href="/fusingao"
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 font-medium transition-colors whitespace-nowrap">
+                    <span className="text-sm leading-none">🏪</span>
+                    <span>福興高窗口</span>
+                  </a>
               </TabsList>
             </div>
 
