@@ -76,7 +76,7 @@ export default function SheetSyncTab() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch(apiUrl("/api/sheet-sync"));
+      const r = await fetch(apiUrl("/sheet-sync"));
       const d = await r.json();
       if (d.ok) setConfigs(d.configs);
       else setError(d.error ?? "載入失敗");
@@ -113,8 +113,8 @@ export default function SheetSyncTab() {
     setSaving(true);
     try {
       const url = editingId
-        ? apiUrl(`/api/sheet-sync/${editingId}`)
-        : apiUrl("/api/sheet-sync");
+        ? apiUrl(`/sheet-sync/${editingId}`)
+        : apiUrl("/sheet-sync");
       const method = editingId ? "PATCH" : "POST";
       const r = await fetch(url, {
         method,
@@ -134,7 +134,7 @@ export default function SheetSyncTab() {
 
   async function del(id: number, name: string) {
     if (!confirm(`確定要刪除「${name}」的同步設定？`)) return;
-    await fetch(apiUrl(`/api/sheet-sync/${id}`), { method: "DELETE" });
+    await fetch(apiUrl(`/sheet-sync/${id}`), { method: "DELETE" });
     load();
   }
 
@@ -142,7 +142,7 @@ export default function SheetSyncTab() {
     setRunningId(cfg.id);
     setRunResult(null);
     try {
-      const r = await fetch(apiUrl(`/api/sheet-sync/${cfg.id}/run`), { method: "POST" });
+      const r = await fetch(apiUrl(`/sheet-sync/${cfg.id}/run`), { method: "POST" });
       const d = await r.json();
       if (d.ok) {
         setRunResult({ id: cfg.id, result: d.result });
@@ -158,7 +158,7 @@ export default function SheetSyncTab() {
   }
 
   async function toggleActive(cfg: SyncConfig) {
-    await fetch(apiUrl(`/api/sheet-sync/${cfg.id}`), {
+    await fetch(apiUrl(`/sheet-sync/${cfg.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_active: !cfg.is_active }),
@@ -171,7 +171,7 @@ export default function SheetSyncTab() {
     setLogsId(id);
     setLogsLoading(true);
     try {
-      const r = await fetch(apiUrl(`/api/sheet-sync/${id}/logs`));
+      const r = await fetch(apiUrl(`/sheet-sync/${id}/logs`));
       const d = await r.json();
       setLogs(d.logs ?? []);
     } finally {
