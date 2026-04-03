@@ -890,3 +890,151 @@ fusingaoRouter.get("/invoice", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /fusingao/invoice-sheet-import?sheetUrl=...&gid=...
+//   解析 Google Sheet 請款單（GID=0），回傳結構化資料供前端填入
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 預設 Shopee 福星高請款試算表
+const DEFAULT_INVOICE_SHEET_ID = "1Z65luSGOGNYpFPyL1apLR8kxOvYV-U2VvPcVrmC5TzI";
+const DEFAULT_INVOICE_GID = "0";
+
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+      else { inQuote = !inQuote; }
+    } else if (ch === "," && !inQuote) {
+      result.push(cur.trim()); cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function normAmt(raw: string): number {
+  const n = parseFloat(raw.replace(/,/g, "").replace(/[（(）)]/g, "-").trim());
+  return isNaN(n) ? 0 : n;
+}
+
+// Items that should come from route orders (auto-calculated in the system)
+const AUTO_TYPES = new Set(["店配車", "NDD", "WHNDD"]);
+// Items that are manually entered (will be auto-filled from sheet)
+const MANUAL_TYPES = new Set(["上收", "招募獎金", "交通罰單補助"]);
+
+fusingaoRouter.get("/invoice-sheet-import", async (req, res) => {
+  try {
+    const sheetId = (req.query.sheetId as string) ?? DEFAULT_INVOICE_SHEET_ID;
+    const gid     = (req.query.gid as string) ?? DEFAULT_INVOICE_GID;
+    const csvUrl  = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+
+    const r = await fetch(csvUrl);
+    if (!r.ok) throw new Error(`無法取得試算表（HTTP ${r.status}）`);
+
+    const text = await r.text();
+    // Split carefully – some cells have multi-line content inside quotes
+    // Strategy: split by \n but only outside quotes
+    const lines: string[] = [];
+    let cur = ""; let inQ = false;
+    for (const ch of text + "\n") {
+      if (ch === '"') { inQ = !inQ; cur += ch; }
+      else if ((ch === '\n' || ch === '\r') && !inQ) {
+        if (cur || lines.length > 0) lines.push(cur);
+        cur = "";
+      } else { cur += ch; }
+    }
+
+    const parsed = lines.map(l => parseCsvLine(l));
+
+    // ── Determine which side has actual data (V1 vs V2) ───────────────────
+    // The sheet has two versions side by side separated by a blank column.
+    // V2 is on the left (cols 0-3), V1 is on the right (cols 5-8).
+    // We pick the side where 請款金額 > 0.
+
+    // Find 請款金額 rows for each side
+    let leftAmt = 0; let rightAmt = 0;
+    let month = "";
+    const summary: { netAmount: number; tax: number; invoiceAmount: number } = { netAmount: 0, tax: 0, invoiceAmount: 0 };
+    const items: { name: string; total: number; fusingao: number; net: number; type: string }[] = [];
+    let billPeriod = "";
+
+    for (let i = 0; i < parsed.length; i++) {
+      const row = parsed[i];
+      // Month label  e.g. "2026年01月份"
+      if (!month && row[0]?.match(/^\d{4}年\d{1,2}月份/)) {
+        month = row[0];
+      }
+      // Bill period e.g. "請款區間"
+      if (row[0] === "請款區間" && row[1]) {
+        billPeriod = `${row[1]} ~ ${row[3] ?? ""}`.trim();
+      }
+      // 請款金額 amounts on each side
+      if (row[0] === "請款金額") leftAmt = normAmt(row[1] ?? "0");
+      if (row[5] === "請款金額") rightAmt = normAmt(row[6] ?? "0");
+    }
+
+    // Pick the side with data; prefer right (V1)
+    const useRight = rightAmt > 0 || leftAmt === 0;
+    const colOffset = useRight ? 5 : 0; // start column for the active side
+
+    // ── Second pass: extract items and summary ─────────────────────────────
+    let inItemSection = false;
+    for (const row of parsed) {
+      // Month (col offset)
+      if (!month && row[colOffset]?.match(/^\d{4}年\d{1,2}月份/)) {
+        month = row[colOffset];
+      }
+      // Bill period
+      if (row[colOffset] === "請款區間" && row[colOffset + 1]) {
+        billPeriod = `${row[colOffset + 1]} ~ ${row[colOffset + 3] ?? ""}`.trim();
+      }
+      // Summary rows
+      if (row[colOffset] === "未稅金額") summary.netAmount = normAmt(row[colOffset + 1] ?? "0");
+      if (row[colOffset] === "營業稅金") summary.tax = normAmt(row[colOffset + 1] ?? "0");
+      if (row[colOffset] === "請款金額") summary.invoiceAmount = normAmt(row[colOffset + 1] ?? "0");
+      // Header marker
+      if (row[colOffset] === "項目" && row[colOffset + 1] === "趟次總金額") {
+        inItemSection = true; continue;
+      }
+      // Item rows
+      if (inItemSection && row[colOffset]) {
+        const name = row[colOffset];
+        if (!name || name.startsWith("合計") || name.startsWith("扣") || name.startsWith("※")) {
+          inItemSection = false; continue;
+        }
+        const total    = normAmt(row[colOffset + 1] ?? "0");
+        const fusingao = normAmt(row[colOffset + 2] ?? "0");
+        const net      = normAmt(row[colOffset + 3] ?? "0");
+        const type = AUTO_TYPES.has(name) ? "auto" : MANUAL_TYPES.has(name) ? "manual" : "other";
+        items.push({ name, total, fusingao, net, type });
+      }
+    }
+
+    // Convert month label "2026年01月份" → "2026-01"
+    const monthKey = month
+      ? (() => {
+          const m2 = month.match(/(\d{4})年(\d{1,2})月/);
+          return m2 ? `${m2[1]}-${m2[2].padStart(2, "0")}` : "";
+        })()
+      : "";
+
+    res.json({
+      ok: true,
+      month: monthKey,
+      monthLabel: month,
+      billPeriod,
+      version: useRight ? "V1" : "V2",
+      summary,
+      items,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
