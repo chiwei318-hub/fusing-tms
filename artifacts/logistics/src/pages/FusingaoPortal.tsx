@@ -266,28 +266,43 @@ export default function FusingaoPortal() {
         )}
 
         {/* ── Tab nav ─────────────────────────────────────────────────── */}
-        <div className="flex gap-1 border-b bg-white rounded-t-lg px-4 pt-2 overflow-x-auto">
-          {([
-            { id:"control",     label:"🗼 調度控制中心", desc:"例外管理" },
-            { id:"dispatch",    label:"📅 派車管理",    desc:"週間派車" },
-            { id:"invoice",     label:"🧾 請款單",      desc:"自動請款單" },
-            { id:"notify",      label:"🔔 車趟完成通知", desc:"即時狀態" },
-            { id:"monthly",     label:"📋 月度對帳",    desc:"逐月結算" },
-            { id:"fleets",      label:"🚚 合作車隊管理", desc:"帳號管理" },
-            { id:"settlement",  label:"📊 結算總覽",    desc:"結算鏈" },
-            { id:"rates",       label:"🏷️ Shopee費率",  desc:"報價管理" },
-            { id:"penalties",   label:"⚠️ Shopee罰款",  desc:"罰款紀錄" },
-            { id:"earnings",    label:"💰 運費試算",    desc:"司機收益" },
-            { id:"pnl",         label:"📈 盈虧分析",    desc:"P&L" },
-            { id:"routeimport", label:"📤 路線匯入",    desc:"批次匯入" },
-            { id:"sheetsync",   label:"🔄 試算表同步",  desc:"Google Sheet" },
-            { id:"drivers",     label:"👨‍✈️ 司機管理",    desc:"工號CRUD" },
-          ] as { id: PortalTab; label: string; desc: string }[]).map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
-              {t.label}
-            </button>
-          ))}
+        <div className="bg-white rounded-t-lg border-b px-3 pt-2">
+          {/* Group 1: 派車營運 */}
+          <div className="flex flex-wrap gap-x-0.5 gap-y-0">
+            {([
+              { id:"control",     label:"🗼 控制中心",    group:1 },
+              { id:"dispatch",    label:"📅 派車管理",    group:1 },
+              { id:"invoice",     label:"🧾 請款單",      group:1 },
+              { id:"notify",      label:"🔔 完成通知",    group:1 },
+              { id:"monthly",     label:"📋 月度對帳",    group:1 },
+              { id:"fleets",      label:"🚚 車隊管理",    group:1 },
+              { id:"drivers",     label:"👤 司機管理",    group:1 },
+            ] as { id: PortalTab; label: string; group: number }[]).map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  t.id===tab ? "border-orange-500 text-orange-600 bg-orange-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}>
+                {t.label}
+              </button>
+            ))}
+            <div className="border-r border-gray-200 mx-1 my-1" />
+            {([
+              { id:"settlement",  label:"📊 結算總覽",    group:2 },
+              { id:"rates",       label:"🏷️ Shopee費率",  group:2 },
+              { id:"penalties",   label:"⚠️ Shopee罰款",  group:2 },
+              { id:"earnings",    label:"💰 運費試算",    group:2 },
+              { id:"pnl",         label:"📈 盈虧分析",    group:2 },
+              { id:"routeimport", label:"📤 路線匯入",    group:2 },
+              { id:"sheetsync",   label:"🔄 試算表同步",  group:2 },
+            ] as { id: PortalTab; label: string; group: number }[]).map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  t.id===tab ? "border-blue-500 text-blue-600 bg-blue-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ═══════════════ 調度控制中心 ══════════════════════════════════════ */}
