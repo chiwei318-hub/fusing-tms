@@ -57,3 +57,69 @@ shopeeRatesRouter.get("/lookup", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ── POST /import ──────────────────────────────────────────────────────────────
+// body: { rows: RateRow[], mode: "replace" | "merge" }
+// mode "replace" → truncate then insert
+// mode "merge"   → upsert per (service_type, route, vehicle_type)
+interface RateRow {
+  service_type: string;
+  route: string;
+  vehicle_type: string;
+  unit_price: number;
+  price_unit: string;
+  notes: string | null;
+}
+
+shopeeRatesRouter.post("/import", async (req, res) => {
+  try {
+    const { rows, mode } = req.body as { rows: RateRow[]; mode: "replace" | "merge" };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ ok: false, error: "rows 不得為空" });
+    }
+
+    if (mode === "replace") {
+      await db.execute(sql`TRUNCATE TABLE shopee_rate_cards RESTART IDENTITY`);
+    }
+
+    let inserted = 0;
+    let updated = 0;
+
+    for (const row of rows) {
+      const { service_type, route, vehicle_type, unit_price, price_unit, notes } = row;
+      if (!service_type || !route || !vehicle_type) continue;
+
+      if (mode === "merge") {
+        const existing = await db.execute(sql`
+          SELECT id FROM shopee_rate_cards
+          WHERE service_type = ${service_type}
+            AND route = ${route}
+            AND vehicle_type = ${vehicle_type}
+          LIMIT 1
+        `);
+        if ((existing.rows as any[]).length > 0) {
+          const existingId = (existing.rows as any[])[0].id;
+          await db.execute(sql`
+            UPDATE shopee_rate_cards
+            SET unit_price = ${unit_price ?? null},
+                price_unit = ${price_unit ?? "趟"},
+                notes      = ${notes ?? null}
+            WHERE id = ${existingId}
+          `);
+          updated++;
+          continue;
+        }
+      }
+
+      await db.execute(sql`
+        INSERT INTO shopee_rate_cards (service_type, route, vehicle_type, unit_price, price_unit, notes)
+        VALUES (${service_type}, ${route}, ${vehicle_type}, ${unit_price ?? null}, ${price_unit ?? "趟"}, ${notes ?? null})
+      `);
+      inserted++;
+    }
+
+    res.json({ ok: true, inserted, updated, total: rows.length });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});

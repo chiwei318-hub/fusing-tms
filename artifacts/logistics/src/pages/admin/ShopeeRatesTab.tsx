@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Tag, RefreshCw, Search, Truck, DollarSign } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Tag, RefreshCw, Search, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,29 +26,178 @@ interface RateData {
   summary: { service_type: string; count: string }[];
 }
 
+interface ParsedRow {
+  service_type: string;
+  route: string;
+  vehicle_type: string;
+  unit_price: number | null;
+  price_unit: string;
+  notes: string | null;
+}
+
 const SERVICE_TYPES = [
-  { value: "店配模式",   label: "店配模式", color: "bg-blue-100 text-blue-800" },
+  { value: "店配模式",    label: "店配模式",   color: "bg-blue-100 text-blue-800" },
   { value: "NDD快速到貨", label: "NDD快速到貨", color: "bg-purple-100 text-purple-800" },
-  { value: "轉運車-趟次", label: "轉運車趟次", color: "bg-orange-100 text-orange-800" },
-  { value: "賣家上收",   label: "賣家上收", color: "bg-green-100 text-green-800" },
-  { value: "轉運車-包時", label: "轉運車包時", color: "bg-yellow-100 text-yellow-800" },
-  { value: "WH NDD",    label: "WH NDD", color: "bg-red-100 text-red-800" },
+  { value: "轉運車-趟次", label: "轉運車趟次",  color: "bg-orange-100 text-orange-800" },
+  { value: "賣家上收",   label: "賣家上收",    color: "bg-green-100 text-green-800" },
+  { value: "轉運車-包時", label: "轉運車包時",  color: "bg-yellow-100 text-yellow-800" },
+  { value: "WH NDD",    label: "WH NDD",     color: "bg-red-100 text-red-800" },
 ];
 
 const VEHICLE_ORDER = ["6.2T", "8.5T", "11T", "17T", "26T", "35T", "46T"];
 
-// Format price as NT$
+const VEHICLE_TYPE_RE = /^\d+(\.\d+)?T$/i;
+
 const fmt = (p: number | null) =>
   p ? `NT$${p.toLocaleString()}` : "—";
 
-function RateTable({ items, search }: { items: RateItem[]; search: string }) {
-  // Filter by search
-  const filtered = items.filter((r) => {
-    if (!search) return true;
-    return r.route.includes(search);
+// ── Excel parser ──────────────────────────────────────────────────────────────
+async function parseRateExcel(file: File): Promise<{ rows: ParsedRow[]; warnings: string[] }> {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+
+  const rows: ParsedRow[] = [];
+  const warnings: string[] = [];
+
+  const normText = (v: any): string => {
+    if (v == null) return "";
+    if (typeof v === "object" && "text" in v) return String(v.text).trim();
+    return String(v).trim();
+  };
+  const normNum = (v: any): number | null => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return isNaN(n) ? null : Math.round(n);
+  };
+
+  wb.worksheets.forEach((ws) => {
+    const sheetName = ws.name.trim();
+
+    // Collect all non-empty rows as arrays of cell values
+    const rawRows: string[][] = [];
+    ws.eachRow((row) => {
+      const cells = row.values as any[];
+      rawRows.push(cells.slice(1).map(normText));
+    });
+
+    if (rawRows.length < 2) return;
+
+    // ── Detect format ──────────────────────────────────────────────────────
+    // Try flat format first: look for a header row with "route"/"路線" and "vehicle"/"車型"
+    const flatHdrIdx = rawRows.findIndex((r) => {
+      const lower = r.map((c) => c.toLowerCase());
+      return (lower.includes("路線") || lower.includes("route")) &&
+             (lower.includes("車型") || lower.includes("vehicle_type") || lower.includes("vehicletype"));
+    });
+
+    if (flatHdrIdx >= 0) {
+      // ── Flat format ──────────────────────────────────────────────────────
+      const hdr = rawRows[flatHdrIdx].map((c) => c.toLowerCase());
+      const colServiceType = hdr.findIndex((c) => c.includes("服務") || c.includes("service"));
+      const colRoute       = hdr.findIndex((c) => c === "路線" || c === "route");
+      const colVehicle     = hdr.findIndex((c) => c.includes("車型") || c.includes("vehicle"));
+      const colPrice       = hdr.findIndex((c) => c.includes("單價") || c.includes("price") || c.includes("運費"));
+      const colUnit        = hdr.findIndex((c) => c.includes("計價") || c.includes("unit") || c.includes("單位"));
+      const colNotes       = hdr.findIndex((c) => c.includes("備") || c.includes("note"));
+
+      let currentServiceType = sheetName;
+      for (let i = flatHdrIdx + 1; i < rawRows.length; i++) {
+        const r = rawRows[i];
+        if (r.every((c) => !c)) continue;
+        const st = colServiceType >= 0 ? (r[colServiceType] || currentServiceType) : currentServiceType;
+        if (st && r.every((c, j) => j === 0 || !c)) { currentServiceType = st; continue; }
+        const route   = colRoute >= 0 ? r[colRoute] : "";
+        const vehicle = colVehicle >= 0 ? r[colVehicle] : "";
+        const price   = colPrice >= 0 ? normNum(r[colPrice]) : null;
+        const unit    = colUnit >= 0 ? r[colUnit] || "趟" : "趟";
+        const notes   = colNotes >= 0 ? r[colNotes] || null : null;
+        if (!route || !vehicle) continue;
+        rows.push({ service_type: st || currentServiceType, route, vehicle_type: vehicle, unit_price: price, price_unit: unit, notes });
+      }
+      return;
+    }
+
+    // ── Wide / pivot format ───────────────────────────────────────────────
+    // Find the header row that contains vehicle type columns
+    let hdrRowIdx = -1;
+    let vehicleCols: { col: number; type: string }[] = [];
+
+    for (let i = 0; i < Math.min(rawRows.length, 6); i++) {
+      const r = rawRows[i];
+      const vCols = r
+        .map((c, idx) => ({ c, idx }))
+        .filter(({ c }) => VEHICLE_TYPE_RE.test(c));
+      if (vCols.length >= 2) {
+        hdrRowIdx = i;
+        vehicleCols = vCols.map(({ c, idx }) => ({ col: idx, type: c }));
+        break;
+      }
+    }
+
+    if (hdrRowIdx < 0) {
+      warnings.push(`工作表「${sheetName}」：找不到車型欄位（6.2T / 8.5T / 11T ...），已略過`);
+      return;
+    }
+
+    // Determine price_unit from header area
+    let price_unit = "趟";
+    for (let i = 0; i <= hdrRowIdx; i++) {
+      const txt = rawRows[i].join(" ");
+      if (txt.includes("小時")) { price_unit = "小時"; break; }
+      if (txt.includes("趟"))   { price_unit = "趟";   break; }
+    }
+
+    // Route column is the first column (index 0 in rawRows[hdrRowIdx])
+    // Service_type comes from the sheet name OR from section header rows
+    let currentServiceType = sheetName || "未分類";
+
+    // Check if sheet name maps to a known service type
+    const matchedSt = SERVICE_TYPES.find(
+      (st) => sheetName.includes(st.value) || st.value.includes(sheetName)
+    );
+    if (matchedSt) currentServiceType = matchedSt.value;
+
+    for (let i = hdrRowIdx + 1; i < rawRows.length; i++) {
+      const r = rawRows[i];
+      if (r.every((c) => !c)) continue;
+
+      const firstCell = r[0] || "";
+      const hasAnyPrice = vehicleCols.some(({ col }) => normNum(r[col]) !== null);
+
+      // Section header: first cell is non-empty, vehicle cols all empty → it's a service_type label
+      if (firstCell && !hasAnyPrice) {
+        const matchedInRow = SERVICE_TYPES.find((st) => firstCell.includes(st.value));
+        if (matchedInRow) { currentServiceType = matchedInRow.value; continue; }
+        // Also accept if it's a short label (< 15 chars) with no price
+        if (firstCell.length < 20) { currentServiceType = firstCell; continue; }
+      }
+
+      const route = firstCell;
+      if (!route) continue;
+
+      for (const { col, type } of vehicleCols) {
+        const price = normNum(r[col]);
+        if (price === null) continue;
+        rows.push({
+          service_type: currentServiceType,
+          route,
+          vehicle_type: type,
+          unit_price: price,
+          price_unit,
+          notes: null,
+        });
+      }
+    }
   });
 
-  // Group by route
+  return { rows, warnings };
+}
+
+// ── Rate table display ────────────────────────────────────────────────────────
+function RateTable({ items, search }: { items: RateItem[]; search: string }) {
+  const filtered = items.filter((r) => !search || r.route.includes(search));
+
   const byRoute: Record<string, Record<string, number>> = {};
   const vehicleSet = new Set<string>();
   for (const item of filtered) {
@@ -112,12 +261,64 @@ function RateTable({ items, search }: { items: RateItem[]; search: string }) {
   );
 }
 
+// ── Preview table ─────────────────────────────────────────────────────────────
+function PreviewTable({ rows }: { rows: ParsedRow[] }) {
+  const display = rows.slice(0, 50);
+  const byServiceType: Record<string, ParsedRow[]> = {};
+  for (const r of display) {
+    if (!byServiceType[r.service_type]) byServiceType[r.service_type] = [];
+    byServiceType[r.service_type].push(r);
+  }
+
+  return (
+    <div className="overflow-x-auto max-h-64 overflow-y-auto border rounded text-xs">
+      <table className="w-full">
+        <thead className="sticky top-0 bg-gray-100">
+          <tr>
+            <th className="text-left p-2">服務類型</th>
+            <th className="text-left p-2">路線</th>
+            <th className="text-left p-2">車型</th>
+            <th className="text-right p-2">單價</th>
+            <th className="text-left p-2">計價</th>
+          </tr>
+        </thead>
+        <tbody>
+          {display.map((r, i) => (
+            <tr key={i} className={`border-b ${i % 2 === 0 ? "" : "bg-gray-50"}`}>
+              <td className="p-2 text-blue-700">{r.service_type}</td>
+              <td className="p-2">{r.route}</td>
+              <td className="p-2 font-mono">{r.vehicle_type}</td>
+              <td className="p-2 text-right font-mono text-green-700">
+                {r.unit_price != null ? r.unit_price.toLocaleString() : "—"}
+              </td>
+              <td className="p-2">{r.price_unit}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > 50 && (
+        <p className="text-center text-gray-400 py-2">僅顯示前 50 筆，共 {rows.length} 筆</p>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function ShopeeRatesTab() {
   const { toast } = useToast();
-  const [data, setData] = useState<RateData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
+  const [data, setData]             = useState<RateData | null>(null);
+  const [loading, setLoading]       = useState(false);
+  const [search, setSearch]         = useState("");
   const [activeService, setActiveService] = useState("店配模式");
+
+  // Import state
+  const [showImport, setShowImport] = useState(false);
+  const [parsing, setParsing]       = useState(false);
+  const [importing, setImporting]   = useState(false);
+  const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,9 +341,188 @@ export default function ShopeeRatesTab() {
   const getCountForService = (serviceType: string) =>
     data?.summary.find((s) => s.service_type === serviceType)?.count ?? "0";
 
+  // ── Handle file selection ──────────────────────────────────────────────────
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setParsedRows(null);
+    setParseWarnings([]);
+    setParsing(true);
+    try {
+      const { rows, warnings } = await parseRateExcel(file);
+      if (rows.length === 0) {
+        toast({
+          title: "解析失敗",
+          description: "未能在檔案中識別費率資料，請確認格式。",
+          variant: "destructive",
+        });
+      } else {
+        setParsedRows(rows);
+        setParseWarnings(warnings);
+        toast({ title: `解析完成`, description: `共識別 ${rows.length} 筆費率資料` });
+      }
+    } catch (err: any) {
+      toast({ title: "解析失敗", description: err.message, variant: "destructive" });
+    } finally {
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  // ── Execute import ─────────────────────────────────────────────────────────
+  const handleImport = async () => {
+    if (!parsedRows || parsedRows.length === 0) return;
+    setImporting(true);
+    try {
+      const r = await fetch(apiUrl("/shopee-rates/import"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: parsedRows, mode: importMode }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      toast({
+        title: "匯入成功",
+        description: `新增 ${d.inserted} 筆・更新 ${d.updated} 筆`,
+      });
+      setParsedRows(null);
+      setShowImport(false);
+      load();
+    } catch (err: any) {
+      toast({ title: "匯入失敗", description: err.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header Stats */}
+      {/* ── Import Panel ──────────────────────────────────────────────────── */}
+      <Card className={showImport ? "border-blue-300 shadow-sm" : ""}>
+        <CardHeader className="pb-2 pt-3 px-4">
+          <button
+            className="flex items-center justify-between w-full text-left"
+            onClick={() => setShowImport((p) => !p)}
+          >
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-semibold text-gray-700">Excel 報價單匯入</span>
+            </div>
+            {showImport ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          </button>
+        </CardHeader>
+
+        {showImport && (
+          <CardContent className="pt-0 space-y-4">
+            {/* Format hint */}
+            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700 space-y-1">
+              <p className="font-semibold">支援的 Excel 格式：</p>
+              <p>・<b>寬表格式</b>：第一列為車型（6.2T / 8.5T / 11T …），每行為一條路線，工作表名稱作為服務類型</p>
+              <p>・<b>平坦格式</b>：欄位標題含「路線」「車型」「單價」，每行為一筆費率</p>
+              <p>・支援多個工作表（每個 sheet 對應一個服務類型）</p>
+            </div>
+
+            {/* File input + mode */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">選擇 Excel 檔案（.xlsx）</label>
+                <Input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="h-9 text-sm w-64"
+                  onChange={handleFile}
+                  disabled={parsing}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">匯入模式</label>
+                <Select value={importMode} onValueChange={(v) => setImportMode(v as any)}>
+                  <SelectTrigger className="h-9 w-40 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="replace">覆蓋全部（清空重匯）</SelectItem>
+                    <SelectItem value="merge">合併（保留舊資料）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {parsing && (
+                <div className="flex items-center gap-1 text-sm text-blue-600">
+                  <RefreshCw className="h-4 w-4 animate-spin" /> 解析中...
+                </div>
+              )}
+            </div>
+
+            {/* Warnings */}
+            {parseWarnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                {parseWarnings.map((w, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs text-amber-700">
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    {w}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Preview */}
+            {parsedRows && parsedRows.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    解析結果：共 <span className="text-blue-600 font-bold">{parsedRows.length}</span> 筆費率
+                  </p>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => { setParsedRows(null); setParseWarnings([]); }}
+                    className="h-7 text-xs text-gray-400"
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" /> 清除
+                  </Button>
+                </div>
+
+                <PreviewTable rows={parsedRows} />
+
+                {/* Service type summary */}
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(
+                    parsedRows.reduce((acc, r) => {
+                      acc[r.service_type] = (acc[r.service_type] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  ).map(([st, cnt]) => (
+                    <Badge key={st} variant="outline" className="text-xs">
+                      {st}: {cnt} 筆
+                    </Badge>
+                  ))}
+                </div>
+
+                {importMode === "replace" && (
+                  <div className="bg-red-50 border border-red-200 rounded p-2 text-xs text-red-700">
+                    ⚠️ 覆蓋模式：將刪除現有全部 {data?.items.length ?? 0} 筆費率，再匯入 {parsedRows.length} 筆新資料
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleImport}
+                  disabled={importing}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {importing ? (
+                    <><RefreshCw className="h-4 w-4 mr-1 animate-spin" />匯入中...</>
+                  ) : (
+                    <><Upload className="h-4 w-4 mr-1" />確認匯入 {parsedRows.length} 筆</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* ── Header Stats ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {SERVICE_TYPES.map((st) => (
           <Card
@@ -165,7 +545,7 @@ export default function ShopeeRatesTab() {
         ))}
       </div>
 
-      {/* Main Rate Table */}
+      {/* ── Main Rate Table ───────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -212,7 +592,7 @@ export default function ShopeeRatesTab() {
         </CardContent>
       </Card>
 
-      {/* Notes */}
+      {/* ── Notes ────────────────────────────────────────────────────────── */}
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-3">
           <p className="text-xs font-semibold text-amber-700 mb-1">計費注意事項</p>
