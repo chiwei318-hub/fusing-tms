@@ -8,6 +8,7 @@ import { startSheetSyncScheduler } from "./lib/sheetSyncScheduler";
 import { ensureSheetSyncTable } from "./routes/sheetSync";
 import { ensurePenaltySyncTables, startPenaltySyncScheduler } from "./routes/penaltySync";
 import { startRateSyncScheduler } from "./lib/rateSyncScheduler";
+import { ensureRateTables } from "./routes/rateSync";
 import { ensureShopeeDriversTable } from "./routes/shopeeDrivers";
 import { ensureDispatchOrdersTable } from "./routes/dispatchOrders";
 import { ensureDbIndexes } from "./lib/dbIndexes";
@@ -50,7 +51,9 @@ ensureSheetSyncTable()
 ensurePenaltySyncTables()
   .then(() => startPenaltySyncScheduler())
   .catch((e) => console.error("[PenaltySync] table setup failed:", e));
-startRateSyncScheduler();
+ensureRateTables()
+  .then(() => startRateSyncScheduler())
+  .catch((e) => console.error("[RateSync] table setup failed:", e));
 ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
 ensureDispatchOrdersTable().catch((e) => console.error("[DispatchOrders] table setup failed:", e));
 
