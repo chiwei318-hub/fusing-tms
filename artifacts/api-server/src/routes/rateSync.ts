@@ -77,12 +77,12 @@ const SEED_RATES: [string, string, string, number | null, string][] = [
   ["WH NDD","安南<->彰化","6.2T",5000,"趟"],
   ["WH NDD","安南<->雲林","6.2T",4050,"趟"],
   ["WH NDD","安南<->高雄","6.2T",3650,"趟"],
-  ["WH NDD","楠梅<->台中","6.2T",5000,"趟"],
-  ["WH NDD","楠梅<->基隆","6.2T",4000,"趟"],
-  ["WH NDD","楠梅<->新竹縣市","6.2T",3200,"趟"],
-  ["WH NDD","楠梅<->桃園","6.2T",3050,"趟"],
-  ["WH NDD","楠梅<->苗栗","6.2T",4100,"趟"],
-  ["WH NDD","楠梅<->雙北地區","6.2T",3400,"趟"],
+  ["WH NDD","桃園<->台中","6.2T",5000,"趟"],
+  ["WH NDD","桃園<->基隆","6.2T",4000,"趟"],
+  ["WH NDD","桃園<->新竹縣市","6.2T",3200,"趟"],
+  ["WH NDD","桃園<->桃園","6.2T",3050,"趟"],
+  ["WH NDD","桃園<->苗栗","6.2T",4100,"趟"],
+  ["WH NDD","桃園<->雙北地區","6.2T",3400,"趟"],
   ["店配模式","嘉義<->北屏東","11T",6200,"趟"],
   ["店配模式","嘉義<->北屏東","6.2T",4365,"趟"],
   ["店配模式","嘉義<->北屏東","8.5T",5200,"趟"],
@@ -292,6 +292,11 @@ export async function ensureRateTables() {
       detail     JSONB
     )
   `);
+
+  const { rowCount } = await pool.query(
+    `UPDATE shopee_rate_cards SET route = REPLACE(route, '楠梅', '桃園') WHERE route LIKE '楠梅%'`
+  );
+  if ((rowCount ?? 0) > 0) console.log(`[RateSync] corrected ${rowCount} '楠梅' routes → '桃園'`);
 
   const { rows: countRows } = await pool.query(`SELECT COUNT(*) AS n FROM shopee_rate_cards`);
   const count = parseInt(countRows[0].n, 10);
