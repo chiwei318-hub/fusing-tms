@@ -1,13 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Tag, RefreshCw, Search, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, X } from "lucide-react";
+import {
+  Tag, RefreshCw, Search, Upload, FileSpreadsheet, AlertTriangle,
+  CheckCircle2, ChevronDown, ChevronUp, X, Plus, Trash2, Play,
+  Clock, Link2, History, Settings,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
 
@@ -303,6 +312,385 @@ function PreviewTable({ rows }: { rows: ParsedRow[] }) {
   );
 }
 
+// ── Rate Sync Panel ───────────────────────────────────────────────────────────
+interface RateSyncConfig {
+  id: number;
+  name: string;
+  sheet_url: string;
+  interval_minutes: number;
+  import_mode: string;
+  effective_month: string | null;
+  is_active: boolean;
+  last_sync_at: string | null;
+  last_sync_result: { inserted?: number; updated?: number; errors?: number; warnings?: number; error?: string } | null;
+}
+
+interface RateSyncLog {
+  id: number;
+  synced_at: string;
+  inserted: number;
+  updated: number;
+  errors: number;
+  warnings: number;
+}
+
+const EMPTY_RATE_FORM = {
+  name: "",
+  sheet_url: "",
+  interval_minutes: 60,
+  import_mode: "merge",
+  effective_month: "",
+  is_active: true,
+};
+
+function RateSyncPanel({ onSynced }: { onSynced: () => void }) {
+  const { toast } = useToast();
+  const [configs, setConfigs] = useState<RateSyncConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_RATE_FORM });
+  const [saving, setSaving] = useState(false);
+  const [runningId, setRunningId] = useState<number | null>(null);
+  const [logsId, setLogsId] = useState<number | null>(null);
+  const [logs, setLogs] = useState<RateSyncLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(apiUrl("/rate-sync"));
+      const d = await r.json();
+      if (d.ok) setConfigs(d.configs);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm({ ...EMPTY_RATE_FORM });
+    setDialogOpen(true);
+  }
+
+  function openEdit(cfg: RateSyncConfig) {
+    setEditingId(cfg.id);
+    setForm({
+      name: cfg.name,
+      sheet_url: cfg.sheet_url,
+      interval_minutes: cfg.interval_minutes,
+      import_mode: cfg.import_mode,
+      effective_month: cfg.effective_month ?? "",
+      is_active: cfg.is_active,
+    });
+    setDialogOpen(true);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const url = editingId ? apiUrl(`/rate-sync/${editingId}`) : apiUrl("/rate-sync");
+      const method = editingId ? "PATCH" : "POST";
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          effective_month: form.effective_month || null,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error ?? "儲存失敗");
+      setDialogOpen(false);
+      load();
+    } catch (e: unknown) {
+      toast({ title: "儲存失敗", description: String(e), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function del(id: number, name: string) {
+    if (!confirm(`確定要刪除「${name}」的費率同步設定？`)) return;
+    await fetch(apiUrl(`/rate-sync/${id}`), { method: "DELETE" });
+    load();
+  }
+
+  async function runNow(cfg: RateSyncConfig) {
+    setRunningId(cfg.id);
+    try {
+      const r = await fetch(apiUrl(`/rate-sync/${cfg.id}/run`), { method: "POST" });
+      const d = await r.json();
+      if (d.ok) {
+        const res = d.result;
+        toast({
+          title: "費率同步完成",
+          description: `新增 ${res.inserted} 筆・更新 ${res.updated} 筆・錯誤 ${res.errors}`,
+        });
+        load();
+        onSynced();
+      } else {
+        toast({ title: "同步失敗", description: d.error ?? "未知錯誤", variant: "destructive" });
+      }
+    } catch (e: unknown) {
+      toast({ title: "同步失敗", description: String(e), variant: "destructive" });
+    } finally {
+      setRunningId(null);
+    }
+  }
+
+  async function toggleActive(cfg: RateSyncConfig) {
+    await fetch(apiUrl(`/rate-sync/${cfg.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !cfg.is_active }),
+    });
+    load();
+  }
+
+  async function loadLogs(id: number) {
+    if (logsId === id) { setLogsId(null); return; }
+    setLogsId(id);
+    setLogsLoading(true);
+    try {
+      const r = await fetch(apiUrl(`/rate-sync/${id}/logs`));
+      const d = await r.json();
+      setLogs(d.logs ?? []);
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
+  function fmtTime(iso: string | null) {
+    if (!iso) return "從未";
+    return new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false });
+  }
+
+  return (
+    <Card className="border-green-200">
+      <CardHeader className="py-3 px-4">
+        <button
+          className="flex items-center justify-between w-full text-left"
+          onClick={() => setOpen(p => !p)}
+        >
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-green-600" />
+            <span className="text-sm font-semibold text-gray-700">試算表自動同步</span>
+            <Badge variant="outline" className="text-[10px] px-1.5 border-green-300 text-green-700">
+              {configs.filter(c => c.is_active).length} 個啟用
+            </Badge>
+          </div>
+          {open ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </button>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="pt-0 space-y-3">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={openCreate} className="h-7 text-xs">
+              <Plus className="h-3.5 w-3.5 mr-1" />新增同步來源
+            </Button>
+          </div>
+
+          {configs.length === 0 && !loading && (
+            <div className="text-center py-6 text-muted-foreground text-sm">
+              <Link2 className="w-6 h-6 mx-auto mb-2 opacity-30" />
+              <p>尚未設定費率同步來源</p>
+              <p className="text-xs mt-1">點擊「新增同步來源」貼上 Google Sheets 連結</p>
+            </div>
+          )}
+
+          {configs.map(cfg => {
+            const lr = cfg.last_sync_result;
+            const hasErr = lr?.error || (lr?.errors && lr.errors > 0);
+            const isRunning = runningId === cfg.id;
+            return (
+              <div key={cfg.id} className={`border rounded-lg p-3 space-y-2 ${cfg.is_active ? "" : "opacity-60"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{cfg.name}</span>
+                      <Badge variant={cfg.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                        {cfg.is_active ? "啟用" : "暫停"}
+                      </Badge>
+                      {cfg.effective_month && (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700">
+                          {cfg.effective_month}
+                        </Badge>
+                      )}
+                      <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        每 {cfg.interval_minutes} 分鐘
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{cfg.sheet_url}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Switch checked={cfg.is_active} onCheckedChange={() => toggleActive(cfg)} />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(cfg)}>
+                      <Settings className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600"
+                      onClick={() => runNow(cfg)} disabled={isRunning}>
+                      {isRunning
+                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        : <Play className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                      onClick={() => del(cfg.id, cfg.name)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-[11px] flex-wrap">
+                  <span className="text-muted-foreground">上次同步：{fmtTime(cfg.last_sync_at)}</span>
+                  {lr && !lr.error && (
+                    <>
+                      <span className="text-green-600 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />新增 {lr.inserted ?? 0}・更新 {lr.updated ?? 0}
+                      </span>
+                      {(lr.errors ?? 0) > 0 && (
+                        <span className="text-red-500 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />錯誤 {lr.errors}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {lr?.error && (
+                    <span className="text-red-500 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />{lr.error.slice(0, 60)}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  className="text-[11px] text-muted-foreground flex items-center gap-1 hover:text-foreground"
+                  onClick={() => loadLogs(cfg.id)}
+                >
+                  <History className="w-3 h-3" />同步記錄
+                  {logsId === cfg.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+
+                {logsId === cfg.id && (
+                  <div className="rounded border text-[11px] overflow-hidden">
+                    {logsLoading ? (
+                      <p className="p-3 text-center text-muted-foreground">載入中…</p>
+                    ) : logs.length === 0 ? (
+                      <p className="p-3 text-center text-muted-foreground">尚無記錄</p>
+                    ) : (
+                      <table className="w-full">
+                        <thead className="bg-muted/60">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 font-medium">時間</th>
+                            <th className="text-center px-2 py-1.5">新增</th>
+                            <th className="text-center px-2 py-1.5">更新</th>
+                            <th className="text-center px-2 py-1.5">錯誤</th>
+                            <th className="text-center px-2 py-1.5">警告</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {logs.map(log => (
+                            <tr key={log.id} className="border-t">
+                              <td className="px-3 py-1.5 text-muted-foreground">{fmtTime(log.synced_at)}</td>
+                              <td className="text-center px-2 py-1.5 text-green-600 font-medium">{log.inserted}</td>
+                              <td className="text-center px-2 py-1.5 text-blue-600 font-medium">{log.updated}</td>
+                              <td className={`text-center px-2 py-1.5 ${log.errors > 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>{log.errors}</td>
+                              <td className={`text-center px-2 py-1.5 ${log.warnings > 0 ? "text-amber-500" : "text-muted-foreground"}`}>{log.warnings}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add/Edit Dialog */}
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{editingId ? "編輯費率同步設定" : "新增費率同步來源"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>名稱</Label>
+                  <Input
+                    placeholder="例：蝦皮費率（2026年Q2）"
+                    value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Google Sheets 連結</Label>
+                  <Input
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    value={form.sheet_url}
+                    onChange={e => setForm(f => ({ ...f, sheet_url: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    含 gid 參數的分頁連結，試算表需設為「知道連結的人可查看」
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>有效月份（選填）</Label>
+                    <Input
+                      placeholder="例：2026-04"
+                      value={form.effective_month}
+                      onChange={e => setForm(f => ({ ...f, effective_month: e.target.value }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">如 2026-04，留空表示通用費率</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>同步間隔（分鐘）</Label>
+                    <Input
+                      type="number" min={5} max={1440}
+                      value={form.interval_minutes}
+                      onChange={e => setForm(f => ({ ...f, interval_minutes: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>匯入模式</Label>
+                  <Select value={form.import_mode} onValueChange={v => setForm(f => ({ ...f, import_mode: v }))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="merge">合併（有則更新，無則新增）</SelectItem>
+                      <SelectItem value="replace">覆蓋（清除當月費率後重寫）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={form.is_active}
+                    onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))}
+                  />
+                  <Label>立即啟用自動同步</Label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
+                <Button onClick={save} disabled={saving || !form.name || !form.sheet_url}>
+                  {saving ? "儲存中…" : "儲存"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ShopeeRatesTab() {
   const { toast } = useToast();
@@ -318,6 +706,7 @@ export default function ShopeeRatesTab() {
   const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
+  const [importMonth, setImportMonth] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -377,7 +766,7 @@ export default function ShopeeRatesTab() {
       const r = await fetch(apiUrl("/shopee-rates/import"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: parsedRows, mode: importMode }),
+        body: JSON.stringify({ rows: parsedRows, mode: importMode, effective_month: importMonth || null }),
       });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error);
@@ -397,6 +786,9 @@ export default function ShopeeRatesTab() {
 
   return (
     <div className="space-y-4">
+      {/* ── Rate Sheet Sync Panel ─────────────────────────────────────────── */}
+      <RateSyncPanel onSynced={load} />
+
       {/* ── Import Panel ──────────────────────────────────────────────────── */}
       <Card className={showImport ? "border-blue-300 shadow-sm" : ""}>
         <CardHeader className="pb-2 pt-3 px-4">
@@ -422,7 +814,7 @@ export default function ShopeeRatesTab() {
               <p>・支援多個工作表（每個 sheet 對應一個服務類型）</p>
             </div>
 
-            {/* File input + mode */}
+            {/* File input + mode + month */}
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">選擇 Excel 檔案（.xlsx）</label>
@@ -446,6 +838,15 @@ export default function ShopeeRatesTab() {
                     <SelectItem value="merge">合併（保留舊資料）</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">有效月份（選填）</label>
+                <Input
+                  className="h-9 text-sm w-32"
+                  placeholder="2026-04"
+                  value={importMonth}
+                  onChange={e => setImportMonth(e.target.value)}
+                />
               </div>
               {parsing && (
                 <div className="flex items-center gap-1 text-sm text-blue-600">

@@ -63,6 +63,7 @@ import { driverEarningsRouter } from "./driverEarnings";
 import { pnlRouter } from "./pnl";
 import { fusingaoRouter } from "./fusingao";
 import { penaltySyncRouter } from "./penaltySync";
+import { rateSyncRouter } from "./rateSync";
 
 const router: IRouter = Router();
 
@@ -131,5 +132,6 @@ router.use("/driver-earnings", driverEarningsRouter);
 router.use("/pnl", pnlRouter);
 router.use("/fusingao", fusingaoRouter);
 router.use(penaltySyncRouter);
+router.use(rateSyncRouter);
 
 export default router;

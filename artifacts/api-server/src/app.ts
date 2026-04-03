@@ -7,6 +7,7 @@ import { startAlertScheduler } from "./lib/alertScheduler";
 import { startSheetSyncScheduler } from "./lib/sheetSyncScheduler";
 import { ensureSheetSyncTable } from "./routes/sheetSync";
 import { ensurePenaltySyncTables, startPenaltySyncScheduler } from "./routes/penaltySync";
+import { startRateSyncScheduler } from "./lib/rateSyncScheduler";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
@@ -47,5 +48,6 @@ ensureSheetSyncTable()
 ensurePenaltySyncTables()
   .then(() => startPenaltySyncScheduler())
   .catch((e) => console.error("[PenaltySync] table setup failed:", e));
+startRateSyncScheduler();
 
 export default app;

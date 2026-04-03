@@ -69,17 +69,26 @@ interface RateRow {
   unit_price: number;
   price_unit: string;
   notes: string | null;
+  effective_month?: string | null;
 }
 
 shopeeRatesRouter.post("/import", async (req, res) => {
   try {
-    const { rows, mode } = req.body as { rows: RateRow[]; mode: "replace" | "merge" };
+    const { rows, mode, effective_month = null } = req.body as {
+      rows: RateRow[];
+      mode: "replace" | "merge";
+      effective_month?: string | null;
+    };
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ ok: false, error: "rows 不得為空" });
     }
 
     if (mode === "replace") {
-      await db.execute(sql`TRUNCATE TABLE shopee_rate_cards RESTART IDENTITY`);
+      if (effective_month) {
+        await db.execute(sql`DELETE FROM shopee_rate_cards WHERE effective_month = ${effective_month}`);
+      } else {
+        await db.execute(sql`TRUNCATE TABLE shopee_rate_cards RESTART IDENTITY`);
+      }
     }
 
     let inserted = 0;
@@ -88,6 +97,7 @@ shopeeRatesRouter.post("/import", async (req, res) => {
     for (const row of rows) {
       const { service_type, route, vehicle_type, unit_price, price_unit, notes } = row;
       if (!service_type || !route || !vehicle_type) continue;
+      const effMonth = row.effective_month ?? effective_month ?? null;
 
       if (mode === "merge") {
         const existing = await db.execute(sql`
@@ -95,6 +105,7 @@ shopeeRatesRouter.post("/import", async (req, res) => {
           WHERE service_type = ${service_type}
             AND route = ${route}
             AND vehicle_type = ${vehicle_type}
+            AND (effective_month = ${effMonth} OR (effective_month IS NULL AND ${effMonth} IS NULL))
           LIMIT 1
         `);
         if ((existing.rows as any[]).length > 0) {
@@ -103,7 +114,8 @@ shopeeRatesRouter.post("/import", async (req, res) => {
             UPDATE shopee_rate_cards
             SET unit_price = ${unit_price ?? null},
                 price_unit = ${price_unit ?? "趟"},
-                notes      = ${notes ?? null}
+                notes      = ${notes ?? null},
+                effective_month = ${effMonth}
             WHERE id = ${existingId}
           `);
           updated++;
@@ -112,8 +124,8 @@ shopeeRatesRouter.post("/import", async (req, res) => {
       }
 
       await db.execute(sql`
-        INSERT INTO shopee_rate_cards (service_type, route, vehicle_type, unit_price, price_unit, notes)
-        VALUES (${service_type}, ${route}, ${vehicle_type}, ${unit_price ?? null}, ${price_unit ?? "趟"}, ${notes ?? null})
+        INSERT INTO shopee_rate_cards (service_type, route, vehicle_type, unit_price, price_unit, notes, effective_month)
+        VALUES (${service_type}, ${route}, ${vehicle_type}, ${unit_price ?? null}, ${price_unit ?? "趟"}, ${notes ?? null}, ${effective_month})
       `);
       inserted++;
     }
