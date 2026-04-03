@@ -1,8 +1,6 @@
-import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import express, { type Express, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import path from "path";
-import { existsSync } from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startAlertScheduler } from "./lib/alertScheduler";
@@ -44,20 +42,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
-
-// ── Production: serve logistics SPA static files ──────────────────────────
-if (process.env.NODE_ENV === "production") {
-  const staticDir = path.resolve(process.cwd(), "artifacts/logistics/dist/public");
-  if (existsSync(staticDir)) {
-    app.use(express.static(staticDir, { index: "index.html" }));
-    app.get("/{*splat}", (_req: Request, res: Response) => {
-      res.sendFile(path.join(staticDir, "index.html"));
-    });
-    console.log(`[SPA] serving frontend from ${staticDir}`);
-  } else {
-    console.warn(`[SPA] static dir not found: ${staticDir} — skipping`);
-  }
-}
 
 startAlertScheduler();
 ensureDbIndexes().catch((e) => console.error("[dbIndexes] Failed:", e));
