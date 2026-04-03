@@ -66,6 +66,7 @@ import { penaltySyncRouter } from "./penaltySync";
 import { rateSyncRouter } from "./rateSync";
 import { shopeeDriversRouter } from "./shopeeDrivers";
 import { dispatchOrdersRouter } from "./dispatchOrders";
+import { shopeeBillingRouter } from "./shopeeBillingImport";
 
 const router: IRouter = Router();
 
@@ -137,5 +138,6 @@ router.use(penaltySyncRouter);
 router.use(rateSyncRouter);
 router.use(shopeeDriversRouter);
 router.use("/dispatch-orders", dispatchOrdersRouter);
+router.use(shopeeBillingRouter);
 
 export default router;

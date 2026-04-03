@@ -14,7 +14,7 @@ import {
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
   Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText, Globe,
-  RotateCcw, RefreshCw, Tag,
+  RotateCcw, RefreshCw, Tag, FileSpreadsheet,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,6 +62,7 @@ import FranchiseeTab from "./admin/FranchiseeTab";
 import PenaltiesTab from "./admin/PenaltiesTab";
 import ShopeeRatesTab from "./admin/ShopeeRatesTab";
 import DriverEarningsTab from "./admin/DriverEarningsTab";
+import ShopeeBillingTab from "./admin/ShopeeBillingTab";
 import PnLTab from "./admin/PnLTab";
 import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
@@ -1573,6 +1574,7 @@ export default function Admin() {
                     { value: "routeimport", icon: <Upload className="w-3.5 h-3.5 text-blue-500" />,                label: "路線匯入" },
                     { value: "formimport",  icon: <FileText className="w-3.5 h-3.5 text-green-600" />,              label: "表單匯入" },
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
+                    { value: "shopeebilling", icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,        label: "月結對帳匯入" },
                     { value: "penalties",   icon: <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />,        label: "Shopee罰款" },
                     { value: "shopeerate",  icon: <Tag className="w-3.5 h-3.5 text-blue-500" />,                    label: "Shopee報價" },
                     { value: "driverearnings", icon: <Calculator className="w-3.5 h-3.5 text-green-600" />,          label: "運費試算" },
@@ -3831,6 +3833,11 @@ export default function Admin() {
         {/* ===== 試算表自動同步 TAB ===== */}
         <TabsContent value="sheetsync" className="outline-none">
           <SheetSyncTab />
+        </TabsContent>
+
+        {/* ===== 蝦皮月結對帳匯入 TAB ===== */}
+        <TabsContent value="shopeebilling" className="outline-none">
+          <ShopeeBillingTab />
         </TabsContent>
 
         {/* ===== Shopee 罰款管理 TAB ===== */}

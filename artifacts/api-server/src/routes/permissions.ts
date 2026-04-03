@@ -3,6 +3,7 @@ import { db, adminRoles, adminUsers, customFields, auditLogs, driversTable, cust
 import { enterpriseAccountsTable, enterpriseSubAccountsTable } from '@workspace/db/schema';
 import { eq, desc, and, gte, lte, like, or, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
+import { ensureShopeeSettlementTables } from './shopeeBillingImport';
 
 const router = Router();
 
@@ -260,6 +261,7 @@ if (process.env.NODE_ENV !== 'production') {
   ensureTestAccounts().catch(console.error);
 }
 ensureFusingaoAccounts().catch(console.error);
+ensureShopeeSettlementTables().catch(console.error);
 
 // ===== ROLES =====
 router.get('/admin/roles', async (_req, res) => {
