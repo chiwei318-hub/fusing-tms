@@ -13,6 +13,7 @@ import { ensureShopeeDriversTable } from "./routes/shopeeDrivers";
 import { ensureDispatchOrdersTable } from "./routes/dispatchOrders";
 import { ensureScheduleTables } from "./routes/fusingaoScheduleImport";
 import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport";
+import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "./routes/fusingaoSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
@@ -60,5 +61,8 @@ ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table set
 ensureDispatchOrdersTable().catch((e) => console.error("[DispatchOrders] table setup failed:", e));
 ensureScheduleTables().catch((e) => console.error("[ScheduleTables] setup failed:", e));
 ensureBillingDetailTables().catch((e) => console.error("[BillingDetailTables] setup failed:", e));
+ensureFusingaoSheetSyncTables()
+  .then(() => startFusingaoSheetSyncScheduler())
+  .catch((e) => console.error("[FusingaoSheetSync] setup failed:", e));
 
 export default app;
