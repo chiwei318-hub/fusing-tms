@@ -67,6 +67,8 @@ import { rateSyncRouter } from "./rateSync";
 import { shopeeDriversRouter } from "./shopeeDrivers";
 import { dispatchOrdersRouter } from "./dispatchOrders";
 import { shopeeBillingRouter } from "./shopeeBillingImport";
+import { fusingaoScheduleRouter } from "./fusingaoScheduleImport";
+import { fusingaoBillingDetailRouter } from "./fusingaoBillingDetailImport";
 
 const router: IRouter = Router();
 
@@ -139,5 +141,7 @@ router.use(rateSyncRouter);
 router.use(shopeeDriversRouter);
 router.use("/dispatch-orders", dispatchOrdersRouter);
 router.use(shopeeBillingRouter);
+router.use("/fusingao", fusingaoScheduleRouter);
+router.use("/fusingao", fusingaoBillingDetailRouter);
 
 export default router;

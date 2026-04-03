@@ -18,6 +18,8 @@ import PnLTab from "./admin/PnLTab";
 import DriverEarningsTab from "./admin/DriverEarningsTab";
 import ShopeeDriversTab from "./fusingao/ShopeeDriversTab";
 import SettlementChainTab from "./fusingao/SettlementChainTab";
+import FusingaoScheduleTab from "./fusingao/FusingaoScheduleTab";
+import FusingaoBillingDetailTab from "./fusingao/FusingaoBillingDetailTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +50,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -281,8 +283,10 @@ export default function FusingaoPortal() {
               { id:"penalties",   label:"⚠️ Shopee罰款",  group:2 },
               { id:"earnings",    label:"💰 運費試算",    group:2 },
               { id:"pnl",         label:"📈 盈虧分析",    group:2 },
-              { id:"routeimport", label:"📤 路線匯入",    group:2 },
-              { id:"sheetsync",   label:"🔄 試算表同步",  group:2 },
+              { id:"routeimport",   label:"📤 路線匯入",    group:2 },
+              { id:"sheetsync",     label:"🔄 試算表同步",  group:2 },
+              { id:"schedule",      label:"🗺️ 班表地址",    group:2 },
+              { id:"billingdetail", label:"💹 對帳明細",    group:2 },
             ] as { id: PortalTab; label: string; group: number }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -683,6 +687,12 @@ export default function FusingaoPortal() {
         {/* ═══════════════ 試算表同步 ═══════════════════════════════════════ */}
         {tab === "sheetsync" && <SheetSyncTab />}
         {tab === "drivers" && <ShopeeDriversTab />}
+
+        {/* ═══════════════ 班表地址 ═══════════════════════════════════════════ */}
+        {tab === "schedule" && <FusingaoScheduleTab />}
+
+        {/* ═══════════════ 對帳明細 ════════════════════════════════════════════ */}
+        {tab === "billingdetail" && <FusingaoBillingDetailTab />}
       </div>
     </div>
   );

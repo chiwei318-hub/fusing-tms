@@ -11,6 +11,8 @@ import { startRateSyncScheduler } from "./lib/rateSyncScheduler";
 import { ensureRateTables } from "./routes/rateSync";
 import { ensureShopeeDriversTable } from "./routes/shopeeDrivers";
 import { ensureDispatchOrdersTable } from "./routes/dispatchOrders";
+import { ensureScheduleTables } from "./routes/fusingaoScheduleImport";
+import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
@@ -56,5 +58,7 @@ ensureRateTables()
   .catch((e) => console.error("[RateSync] table setup failed:", e));
 ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
 ensureDispatchOrdersTable().catch((e) => console.error("[DispatchOrders] table setup failed:", e));
+ensureScheduleTables().catch((e) => console.error("[ScheduleTables] setup failed:", e));
+ensureBillingDetailTables().catch((e) => console.error("[BillingDetailTables] setup failed:", e));
 
 export default app;
