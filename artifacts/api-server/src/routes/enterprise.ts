@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   db,
   enterpriseAccountsTable,
@@ -11,6 +12,8 @@ import {
 import { eq, and, gte, lte, desc, sql, ne } from "drizzle-orm";
 import { createHash } from "crypto";
 import ExcelJS from "exceljs";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -601,6 +604,206 @@ router.patch("/enterprise/:id/settings", async (req, res) => {
       .where(eq(enterpriseAccountsTable.id, id)).returning();
     const { passwordHash: _, ...safe } = acc;
     res.json(safe);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/* ─── Enterprise Bulk Import: Template Download ─────────────────────────── */
+const ENT_REQUIRED_COLS = ["取貨地址", "送貨地址"];
+const ENT_OPTIONAL_COLS = [
+  "貨物描述", "件數", "重量(kg)", "車型",
+  "取貨日期(YYYY-MM-DD)", "取貨時間(HH:MM)", "送貨日期(YYYY-MM-DD)", "送貨時間(HH:MM)",
+  "收件人姓名", "收件人電話", "取貨聯絡人", "取貨電話",
+  "備註",
+];
+const ENT_ALL_COLS = [...ENT_REQUIRED_COLS, ...ENT_OPTIONAL_COLS];
+const ENT_SAMPLE_ROWS = [
+  {
+    取貨地址: "台北市松山區南京東路五段（倉庫）",
+    送貨地址: "新北市板橋區文化路1段100號",
+    貨物描述: "蝦皮包裹 #SH20260401-001", 件數: 5, "重量(kg)": 8, 車型: "小貨車",
+    "取貨日期(YYYY-MM-DD)": "2026-04-05", "取貨時間(HH:MM)": "09:00",
+    "送貨日期(YYYY-MM-DD)": "2026-04-05", "送貨時間(HH:MM)": "14:00",
+    收件人姓名: "王小明", 收件人電話: "0912345678",
+    取貨聯絡人: "陳倉管", 取貨電話: "02-12345678", 備註: "",
+  },
+  {
+    取貨地址: "台北市松山區南京東路五段（倉庫）",
+    送貨地址: "桃園市中壢區中山路200號",
+    貨物描述: "蝦皮包裹 #SH20260401-002", 件數: 3, "重量(kg)": 5, 車型: "小貨車",
+    "取貨日期(YYYY-MM-DD)": "2026-04-05", "取貨時間(HH:MM)": "09:00",
+    "送貨日期(YYYY-MM-DD)": "2026-04-05", "送貨時間(HH:MM)": "16:00",
+    收件人姓名: "李美華", 收件人電話: "0923456789",
+    取貨聯絡人: "陳倉管", 取貨電話: "02-12345678", 備註: "請先電聯",
+  },
+];
+
+router.get("/enterprise/orders/import-template", async (_req, res) => {
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "富詠運輸 - 企業版";
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet("訂單批量匯入", {
+      views: [{ state: "frozen", xSplit: 0, ySplit: 1 }],
+    });
+
+    ws.columns = ENT_ALL_COLS.map(h => ({ header: h, key: h, width: Math.max(16, h.length * 2) }));
+
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell((cell, colNum) => {
+      const isRequired = colNum <= ENT_REQUIRED_COLS.length;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: isRequired ? "FF1A56DB" : "FF4B83D2" } };
+      cell.font = { color: { argb: "FFFFFFFF" }, bold: true, size: 11 };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = { bottom: { style: "thin", color: { argb: "FF1A56DB" } }, right: { style: "thin", color: { argb: "FFAAAAAA" } } };
+    });
+    headerRow.height = 30;
+
+    const noteRow = ws.addRow(["★ 深藍欄位必填（取貨地址、送貨地址），其餘選填。日期格式：2026-04-05，時間格式：09:00"]);
+    noteRow.getCell(1).font = { italic: true, color: { argb: "FF555555" }, size: 10 };
+    ws.mergeCells(`A2:${String.fromCharCode(64 + ENT_ALL_COLS.length)}2`);
+    noteRow.height = 18;
+
+    for (const row of ENT_SAMPLE_ROWS) {
+      const r = ws.addRow(ENT_ALL_COLS.map(col => (row as any)[col] ?? ""));
+      r.eachCell(cell => {
+        cell.alignment = { vertical: "middle" };
+        cell.border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } }, right: { style: "hair", color: { argb: "FFDDDDDD" } } };
+      });
+      r.height = 18;
+    }
+
+    const googleSheetNote = ws.addRow([]);
+    const gsRow = ws.addRow([
+      "💡 Google 試算表用戶：在 Google Sheets 以同樣欄位填寫後，點「檔案 → 下載 → CSV 格式」或「Excel(.xlsx)」，再上傳本系統即可。"
+    ]);
+    gsRow.getCell(1).font = { italic: true, color: { argb: "FF1A7F37" }, size: 10 };
+    ws.mergeCells(`A${gsRow.number}:${String.fromCharCode(64 + ENT_ALL_COLS.length)}${gsRow.number}`);
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename*=UTF-8\'\'%E4%BC%81%E6%A5%AD%E8%A8%82%E5%96%AE%E6%89%B9%E9%87%8F%E5%8C%AF%E5%85%A5%E7%AF%84%E6%9C%AC.xlsx');
+    const buf = await wb.xlsx.writeBuffer();
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/* ─── Enterprise Bulk Import: Upload & Process ───────────────────────────── */
+router.post("/enterprise/:id/orders/bulk-import", upload.single("file"), async (req, res) => {
+  try {
+    const enterpriseId = Number(req.params.id);
+    const dryRun = req.query.dry_run === "1";
+    if (!req.file) return res.status(400).json({ error: "未收到檔案" });
+
+    const [acc] = await db.select().from(enterpriseAccountsTable).where(eq(enterpriseAccountsTable.id, enterpriseId));
+    if (!acc) return res.status(404).json({ error: "企業帳號不存在" });
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(req.file.buffer);
+
+    let ws = wb.getWorksheet(1);
+    if (!ws) return res.status(400).json({ error: "找不到工作表" });
+
+    // Try CSV fallback if xlsx fails
+    const rows: any[] = [];
+    let headers: string[] = [];
+    ws.eachRow((row, rowNum) => {
+      if (rowNum === 1) {
+        headers = (row.values as any[]).slice(1).map((v: any) => String(v ?? "").trim());
+        return;
+      }
+      if (rowNum === 2) {
+        // Skip the note row if it starts with "★"
+        const firstCell = String((row.values as any[])[1] ?? "").trim();
+        if (firstCell.startsWith("★") || firstCell.startsWith("💡") || firstCell === "") return;
+      }
+      const vals = (row.values as any[]).slice(1);
+      const obj: Record<string, any> = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+      rows.push({ rowNum, obj });
+    });
+
+    const results: any[] = [];
+    let validCount = 0;
+    let errorCount = 0;
+
+    for (const { rowNum, obj } of rows) {
+      const errors: string[] = [];
+      const pickupAddr = String(obj["取貨地址"] ?? "").trim();
+      const deliveryAddr = String(obj["送貨地址"] ?? "").trim();
+      if (!pickupAddr) errors.push("取貨地址必填");
+      if (!deliveryAddr) errors.push("送貨地址必填");
+
+      const valid = errors.length === 0;
+      if (valid) validCount++; else errorCount++;
+
+      results.push({
+        rowNum,
+        valid,
+        errors,
+        preview: {
+          pickup_address: pickupAddr,
+          delivery_address: deliveryAddr,
+          cargo_description: String(obj["貨物描述"] ?? "").trim(),
+          quantity: obj["件數"] || "",
+          weight: obj["重量(kg)"] || "",
+          pickup_date: String(obj["取貨日期(YYYY-MM-DD)"] ?? "").trim(),
+          pickup_time: String(obj["取貨時間(HH:MM)"] ?? "").trim(),
+          delivery_date: String(obj["送貨日期(YYYY-MM-DD)"] ?? "").trim(),
+          delivery_time: String(obj["送貨時間(HH:MM)"] ?? "").trim(),
+          receiver_name: String(obj["收件人姓名"] ?? "").trim(),
+          receiver_phone: String(obj["收件人電話"] ?? "").trim(),
+          notes: String(obj["備註"] ?? "").trim(),
+          vehicle_type: String(obj["車型"] ?? "").trim(),
+        },
+      });
+    }
+
+    if (dryRun) {
+      return res.json({ total: rows.length, valid: validCount, errors: errorCount, rows: results });
+    }
+
+    // Commit valid rows
+    let inserted = 0;
+    const now = new Date();
+    for (const r of results) {
+      if (!r.valid) continue;
+      const p = r.preview;
+      const pickupDt = p.pickup_date
+        ? new Date(`${p.pickup_date}T${p.pickup_time || "09:00"}:00`)
+        : new Date(now.getTime() + 86400000);
+      const deliveryDt = p.delivery_date
+        ? new Date(`${p.delivery_date}T${p.delivery_time || "18:00"}:00`)
+        : new Date(pickupDt.getTime() + 28800000);
+
+      await db.insert(ordersTable).values({
+        customerName: acc.companyName,
+        customerPhone: acc.phone ?? "",
+        pickupAddress: p.pickup_address,
+        deliveryAddress: p.delivery_address,
+        cargoDescription: p.cargo_description || null,
+        pickupTime: pickupDt,
+        deliveryTime: deliveryDt,
+        requiredVehicleType: p.vehicle_type || null,
+        notes: [
+          p.receiver_name ? `收件人：${p.receiver_name}` : "",
+          p.receiver_phone ? `電話：${p.receiver_phone}` : "",
+          p.notes,
+        ].filter(Boolean).join("；") || null,
+        status: "pending",
+        source: "enterprise",
+        enterpriseId,
+      } as any);
+      inserted++;
+    }
+
+    await createNotification(enterpriseId, null, "import", "批量匯入完成",
+      `已成功匯入 ${inserted} 筆訂單${errorCount > 0 ? `，${errorCount} 筆因格式問題跳過` : ""}`);
+
+    res.json({ inserted, skipped_errors: errorCount });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

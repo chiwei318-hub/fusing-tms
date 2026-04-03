@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Building2, LayoutDashboard, FileText, Zap, UserCircle, LogOut, ChevronRight, Bell, Users, ShoppingCart } from "lucide-react";
+import { Building2, LayoutDashboard, FileText, Zap, UserCircle, LogOut, ChevronRight, Bell, Users, ShoppingCart, FileSpreadsheet } from "lucide-react";
 
 export type EnterpriseSubAccountInfo = {
   id: number;
@@ -84,6 +84,7 @@ export function EnterpriseLayout({ children, session, onLogout }: { children: Re
   const navItems = [
     { href: "/enterprise", icon: LayoutDashboard, label: "總覽", exact: true, badge: 0 },
     ...(canOrder ? [{ href: "/enterprise/place-order", icon: ShoppingCart, label: "快速下單", exact: false, badge: 0 }] : []),
+    ...(canOrder ? [{ href: "/enterprise/import", icon: FileSpreadsheet, label: "批量匯入", exact: false, badge: 0 }] : []),
     { href: "/enterprise/orders", icon: FileText, label: "訂單記錄", exact: false, badge: 0 },
     ...(isAdmin ? [{ href: "/enterprise/sub-accounts", icon: Users, label: "子帳號", exact: false, badge: 0 }] : []),
     { href: "/enterprise/notifications", icon: Bell, label: "通知", exact: false, badge: unread },
