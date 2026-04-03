@@ -4,6 +4,7 @@ import { enterpriseAccountsTable, enterpriseSubAccountsTable } from '@workspace/
 import { eq, desc, and, gte, lte, like, or, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { ensureShopeeSettlementTables } from './shopeeBillingImport';
+import { ensureFleetSubAccountsTable } from './fusingao';
 
 const router = Router();
 
@@ -262,6 +263,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 ensureFusingaoAccounts().catch(console.error);
 ensureShopeeSettlementTables().catch(console.error);
+ensureFleetSubAccountsTable().catch(console.error);
 
 // ===== ROLES =====
 router.get('/admin/roles', async (_req, res) => {

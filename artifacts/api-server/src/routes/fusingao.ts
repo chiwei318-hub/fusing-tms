@@ -3,9 +3,10 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 
-function hashPw(pw: string, salt?: string) {
-  const s = salt ?? randomBytes(16).toString("hex");
-  return `${s}:${createHash("sha256").update(s + pw).digest("hex")}`;
+function hashPw(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = createHash("sha256").update(salt + password).digest("hex");
+  return `${salt}:${hash}`;
 }
 
 export const fusingaoRouter = Router();
@@ -1034,6 +1035,170 @@ fusingaoRouter.get("/invoice-sheet-import", async (req, res) => {
       summary,
       items,
     });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  FLEET SUB-ACCOUNTS (fleet creates driver sub-accounts with login)
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function ensureFleetSubAccountsTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fleet_sub_accounts (
+      id               SERIAL PRIMARY KEY,
+      fleet_id         INTEGER NOT NULL,
+      fleet_driver_id  INTEGER,
+      username         TEXT NOT NULL,
+      password_hash    TEXT NOT NULL,
+      display_name     TEXT NOT NULL,
+      shopee_driver_id TEXT,
+      role             TEXT NOT NULL DEFAULT 'driver',
+      is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at       TIMESTAMP DEFAULT NOW(),
+      updated_at       TIMESTAMP DEFAULT NOW(),
+      UNIQUE(fleet_id, username)
+    )
+  `);
+}
+
+// GET /fusingao/fleets/:id/sub-accounts
+fusingaoRouter.get("/fleets/:id/sub-accounts", async (req, res) => {
+  try {
+    const fleetId = Number(req.params.id);
+    const rows = await db.execute(sql`
+      SELECT sa.id, sa.fleet_id, sa.fleet_driver_id, sa.username, sa.display_name,
+             sa.shopee_driver_id, sa.role, sa.is_active, sa.created_at,
+             fd.name AS driver_name, fd.vehicle_plate, fd.vehicle_type
+      FROM fleet_sub_accounts sa
+      LEFT JOIN fleet_drivers fd ON fd.id = sa.fleet_driver_id
+      WHERE sa.fleet_id = ${fleetId}
+      ORDER BY sa.created_at DESC
+    `);
+    res.json({ ok: true, subAccounts: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/sub-accounts
+fusingaoRouter.post("/fleets/:id/sub-accounts", async (req, res) => {
+  try {
+    const fleetId = Number(req.params.id);
+    const { username, password, display_name, shopee_driver_id, role, fleet_driver_id } = req.body;
+    if (!username || !password || !display_name) {
+      return res.status(400).json({ ok: false, error: "帳號、密碼、顯示名稱為必填" });
+    }
+    const pwhash = hashPw(password);
+    const [row] = await db.execute(sql`
+      INSERT INTO fleet_sub_accounts
+        (fleet_id, fleet_driver_id, username, password_hash, display_name, shopee_driver_id, role)
+      VALUES (
+        ${fleetId},
+        ${fleet_driver_id ?? null},
+        ${username.trim()},
+        ${pwhash},
+        ${display_name.trim()},
+        ${shopee_driver_id?.trim() ?? null},
+        ${role ?? "driver"}
+      )
+      RETURNING id, username, display_name, shopee_driver_id, role, is_active, created_at
+    `).then(r => r.rows as any[]);
+    res.json({ ok: true, subAccount: row });
+  } catch (err: any) {
+    if (err.message?.includes("unique")) {
+      return res.status(409).json({ ok: false, error: "此帳號名稱已存在" });
+    }
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/fleets/:id/sub-accounts/:subId
+fusingaoRouter.put("/fleets/:id/sub-accounts/:subId", async (req, res) => {
+  try {
+    const { id, subId } = req.params;
+    const { display_name, shopee_driver_id, role, is_active, fleet_driver_id } = req.body;
+    await db.execute(sql`
+      UPDATE fleet_sub_accounts SET
+        display_name     = COALESCE(${display_name ?? null}, display_name),
+        shopee_driver_id = ${shopee_driver_id ?? null},
+        role             = COALESCE(${role ?? null}, role),
+        is_active        = COALESCE(${is_active ?? null}, is_active),
+        fleet_driver_id  = ${fleet_driver_id ?? null},
+        updated_at       = NOW()
+      WHERE id = ${Number(subId)} AND fleet_id = ${Number(id)}
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/sub-accounts/:subId/reset-password
+fusingaoRouter.post("/fleets/:id/sub-accounts/:subId/reset-password", async (req, res) => {
+  try {
+    const { id, subId } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 4) {
+      return res.status(400).json({ ok: false, error: "密碼至少 4 個字元" });
+    }
+    const pwhash = hashPw(newPassword);
+    await db.execute(sql`
+      UPDATE fleet_sub_accounts
+      SET password_hash = ${pwhash}, updated_at = NOW()
+      WHERE id = ${Number(subId)} AND fleet_id = ${Number(id)}
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// DELETE /fusingao/fleets/:id/sub-accounts/:subId
+fusingaoRouter.delete("/fleets/:id/sub-accounts/:subId", async (req, res) => {
+  try {
+    const { id, subId } = req.params;
+    await db.execute(sql`
+      DELETE FROM fleet_sub_accounts WHERE id = ${Number(subId)} AND fleet_id = ${Number(id)}
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/sub-account-routes — for sub-account logged-in view (filtered by shopee_driver_id)
+fusingaoRouter.get("/sub-account-routes", async (req, res) => {
+  try {
+    const { fleetId, shopeeDriverId, month } = req.query as Record<string, string>;
+    let extra = "";
+    if (month) extra += ` AND to_char(o.created_at,'YYYY-MM') = '${month}'`;
+    if (shopeeDriverId) {
+      extra += ` AND o.notes ILIKE '%司機ID：${shopeeDriverId}%'`;
+    }
+    const rows = await db.execute(sql.raw(`
+      SELECT
+        o.id, o.status, o.notes, o.completed_at, o.fleet_completed_at,
+        o.driver_payment_status, o.created_at,
+        COALESCE(f.rate_override, pr.rate_per_trip, 0) AS shopee_rate,
+        COALESCE(f.rate_override, pr.rate_per_trip, 0)
+          * (1 - COALESCE(f.commission_rate,15)/100.0) AS fleet_rate,
+        o.required_vehicle_type AS service_type,
+        fd.name AS driver_name,
+        fd.vehicle_plate
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      LEFT JOIN route_prefix_rates pr
+        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
+      WHERE o.fusingao_fleet_id = ${Number(fleetId)}
+        AND o.notes LIKE '路線：%'
+        ${extra}
+      ORDER BY o.created_at DESC
+      LIMIT 200
+    `));
+    res.json({ ok: true, routes: rows.rows });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

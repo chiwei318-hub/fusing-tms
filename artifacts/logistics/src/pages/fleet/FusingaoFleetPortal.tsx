@@ -3,7 +3,7 @@ import {
   Truck, LogOut, RefreshCw, CheckCircle2, Clock, Package,
   DollarSign, ChevronDown, ChevronRight, Zap, Download,
   CheckSquare, Square, AlertCircle, UserPlus, User, Edit2, Save, X,
-  TrendingUp, ArrowRight, ClipboardList, Send, Bell,
+  TrendingUp, ArrowRight, ClipboardList, Send, Bell, Shield, Key, Trash2, UserCheck, Eye, EyeOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,22 @@ interface DispatchOrderRoute {
   assigned_at: string | null;
 }
 
-type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement" | "dispatch";
+interface FleetSubAccount {
+  id: number; fleet_id: number; fleet_driver_id: number | null;
+  username: string; display_name: string; shopee_driver_id: string | null;
+  role: string; is_active: boolean; created_at: string;
+  driver_name: string | null; vehicle_plate: string | null;
+}
+interface SubAccountForm {
+  display_name: string; username: string; password: string;
+  shopee_driver_id: string; role: string; fleet_driver_id: string;
+}
+const DEFAULT_SUB_FORM: SubAccountForm = {
+  display_name: "", username: "", password: "",
+  shopee_driver_id: "", role: "driver", fleet_driver_id: "",
+};
+
+type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement" | "dispatch" | "sub-accounts";
 
 const fmt = (n: number | string) => `NT$ ${Math.round(Number(n)).toLocaleString()}`;
 
@@ -87,8 +102,10 @@ export default function FusingaoFleetPortal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const fleetId = user?.fleetId ?? user?.id;
+  const isSubAccount   = user?.role === "fleet_sub";
+  const shopeeDriverId = (user as any)?.shopeeDriverId as string | null;
 
-  const [tab, setTab]           = useState<PortalTab>("available");
+  const [tab, setTab]           = useState<PortalTab>(isSubAccount ? "mine" : "available");
   const [loading, setLoading]   = useState(false);
   const [grabbingId, setGrabbingId] = useState<number | null>(null);
 
@@ -117,6 +134,16 @@ export default function FusingaoFleetPortal() {
   const [expandedOrder, setExpandedOrder]     = useState<number | null>(null);
   const [orderRoutes, setOrderRoutes]         = useState<Record<number, DispatchOrderRoute[]>>({});
   const [assigningRouteItem, setAssigningRouteItem] = useState<number | null>(null);
+
+  // ── Sub-accounts state ────────────────────────────────────────────────────
+  const [subAccounts, setSubAccounts]           = useState<FleetSubAccount[]>([]);
+  const [showSubForm, setShowSubForm]           = useState(false);
+  const [editingSub, setEditingSub]             = useState<FleetSubAccount | null>(null);
+  const [subForm, setSubForm]                   = useState<SubAccountForm>(DEFAULT_SUB_FORM);
+  const [showPw, setShowPw]                     = useState(false);
+  const [resetPwId, setResetPwId]               = useState<number | null>(null);
+  const [resetPwVal, setResetPwVal]             = useState("");
+  const [subLoading, setSubLoading]             = useState(false);
 
   const load = useCallback(async () => {
     if (!fleetId) return;
@@ -291,6 +318,84 @@ export default function FusingaoFleetPortal() {
     a.download = `車隊對帳_${m.month}.csv`; a.click();
   };
 
+  // ── Sub-accounts handlers ─────────────────────────────────────────────────
+  const loadSubAccounts = useCallback(async () => {
+    if (!fleetId) return;
+    setSubLoading(true);
+    try {
+      const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts`)).then(x => x.json());
+      if (d.ok) setSubAccounts(d.subAccounts ?? []);
+    } finally { setSubLoading(false); }
+  }, [fleetId]); // eslint-disable-line
+
+  useEffect(() => { if (tab === "sub-accounts") loadSubAccounts(); }, [tab]); // eslint-disable-line
+
+  const saveSub = async () => {
+    if (!subForm.display_name || !subForm.username || (!editingSub && !subForm.password)) {
+      return toast({ title: "請填入顯示名稱、帳號" + (!editingSub ? "、密碼" : ""), variant: "destructive" });
+    }
+    setSubLoading(true);
+    try {
+      if (editingSub) {
+        const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts/${editingSub.id}`), {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            display_name: subForm.display_name,
+            shopee_driver_id: subForm.shopee_driver_id || null,
+            role: subForm.role,
+            fleet_driver_id: subForm.fleet_driver_id ? Number(subForm.fleet_driver_id) : null,
+          }),
+        }).then(x => x.json());
+        if (!d.ok) return toast({ title: d.error ?? "更新失敗", variant: "destructive" });
+        toast({ title: "子帳號已更新" });
+      } else {
+        const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts`), {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: subForm.username.trim(),
+            password: subForm.password,
+            display_name: subForm.display_name.trim(),
+            shopee_driver_id: subForm.shopee_driver_id || null,
+            role: subForm.role,
+            fleet_driver_id: subForm.fleet_driver_id ? Number(subForm.fleet_driver_id) : null,
+          }),
+        }).then(x => x.json());
+        if (!d.ok) return toast({ title: d.error ?? "建立失敗", variant: "destructive" });
+        toast({ title: "子帳號已建立", description: `帳號：${subForm.username}` });
+      }
+      setShowSubForm(false); setEditingSub(null); setSubForm(DEFAULT_SUB_FORM);
+      loadSubAccounts();
+    } finally { setSubLoading(false); }
+  };
+
+  const deleteSub = async (sub: FleetSubAccount) => {
+    if (!confirm(`確定要刪除子帳號「${sub.display_name}」(${sub.username})？`)) return;
+    await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts/${sub.id}`), { method: "DELETE" });
+    toast({ title: "子帳號已刪除" });
+    loadSubAccounts();
+  };
+
+  const toggleSubActive = async (sub: FleetSubAccount) => {
+    await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts/${sub.id}`), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !sub.is_active }),
+    });
+    loadSubAccounts();
+  };
+
+  const doResetPw = async (subId: number) => {
+    if (!resetPwVal || resetPwVal.length < 4) {
+      return toast({ title: "密碼至少 4 個字元", variant: "destructive" });
+    }
+    const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/sub-accounts/${subId}/reset-password`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword: resetPwVal }),
+    }).then(x => x.json());
+    if (!d.ok) return toast({ title: d.error ?? "重設失敗", variant: "destructive" });
+    toast({ title: "密碼已重設" });
+    setResetPwId(null); setResetPwVal("");
+  };
+
   // ── Month options
   const monthOptions = months.map(m => ({ value: m.month, label: m.month_label }));
 
@@ -389,9 +494,13 @@ export default function FusingaoFleetPortal() {
     );
   };
 
-  const totalMine = mine.length;
-  const doneMine  = mine.filter(r => !!r.fleet_completed_at || !!r.completed_at).length;
-  const totalPay  = mine.reduce((s, r) => s + Number(r.fleet_rate ?? r.shopee_rate ?? 0), 0);
+  // For sub-accounts, only show routes assigned to their driverId
+  const visibleMine = isSubAccount && shopeeDriverId
+    ? mine.filter(r => r.driverId === shopeeDriverId)
+    : mine;
+  const totalMine = visibleMine.length;
+  const doneMine  = visibleMine.filter(r => !!r.fleet_completed_at || !!r.completed_at).length;
+  const totalPay  = visibleMine.reduce((s, r) => s + Number(r.fleet_rate ?? r.shopee_rate ?? 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -402,7 +511,12 @@ export default function FusingaoFleetPortal() {
             <div className="bg-orange-500 rounded-lg p-2"><Truck className="h-5 w-5 text-white" /></div>
             <div>
               <h1 className="text-white font-bold">{user?.name}</h1>
-              <p className="text-orange-200 text-xs">福興高合作車隊 · 富詠運輸蝦皮路線</p>
+              <p className="text-orange-200 text-xs">
+                {isSubAccount
+                  ? `司機帳號 · ${(user as any)?.fleetName ?? "合作車隊"}`
+                  : "福興高合作車隊 · 富詠運輸蝦皮路線"
+                }
+              </p>
             </div>
           </div>
           <Button variant="ghost" size="sm" className="text-orange-200 hover:text-white hover:bg-white/10 h-8"
@@ -430,13 +544,17 @@ export default function FusingaoFleetPortal() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b bg-white rounded-t-lg px-3 pt-2 overflow-x-auto">
-          {([
-            { id:"dispatch",   label:`📋 派車單${dispatchOrders.filter(o=>o.status==="sent").length > 0 ? ` 🔴` : dispatchOrders.length > 0 ? ` (${dispatchOrders.length})` : ""}` },
-            { id:"available",  label:`🔥 可搶路線 (${available.length})` },
-            { id:"mine",       label:`📦 我的任務 (${mine.length})` },
-            { id:"billing",    label:"💰 月結帳單" },
-            { id:"drivers",    label:`👤 旗下司機 (${drivers.length})` },
-            { id:"settlement", label:"📊 結算分析" },
+          {(isSubAccount ? [
+            { id:"mine",     label:`📦 我的路線 (${mine.filter(r => !shopeeDriverId || r.driverId === shopeeDriverId).length})` },
+            { id:"billing",  label:"💰 月結帳單" },
+          ] : [
+            { id:"dispatch",      label:`📋 派車單${dispatchOrders.filter(o=>o.status==="sent").length > 0 ? ` 🔴` : dispatchOrders.length > 0 ? ` (${dispatchOrders.length})` : ""}` },
+            { id:"available",     label:`🔥 可搶路線 (${available.length})` },
+            { id:"mine",          label:`📦 我的任務 (${mine.length})` },
+            { id:"billing",       label:"💰 月結帳單" },
+            { id:"drivers",       label:`👤 旗下司機 (${drivers.length})` },
+            { id:"settlement",    label:"📊 結算分析" },
+            { id:"sub-accounts",  label:`🔑 司機子帳號${subAccounts.length > 0 ? ` (${subAccounts.length})` : ""}` },
           ] as { id: PortalTab; label: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -478,13 +596,13 @@ export default function FusingaoFleetPortal() {
         {/* ─── My routes ─── */}
         {tab === "mine" && (
           <div className="space-y-2">
-            {mine.length === 0 ? (
+            {visibleMine.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Package className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                尚未搶單，請到「可搶路線」選擇
+                {isSubAccount ? "目前沒有指派給您的路線" : "尚未搶單，請到「可搶路線」選擇"}
               </div>
             ) : (
-              mine.map(r => <RouteCard key={r.id} r={r} />)
+              visibleMine.map(r => <RouteCard key={r.id} r={r} />)
             )}
           </div>
         )}
@@ -924,6 +1042,196 @@ export default function FusingaoFleetPortal() {
               <div className="text-center py-12 text-gray-400">
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                 尚無結算資料
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Sub-accounts tab ─── */}
+        {tab === "sub-accounts" && (
+          <div className="space-y-3">
+            {/* Create / Edit form */}
+            {showSubForm && (
+              <Card className="border-orange-200">
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-orange-500" />
+                    {editingSub ? "編輯子帳號" : "新增司機子帳號"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">顯示名稱 <span className="text-red-500">*</span></p>
+                      <input className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={subForm.display_name}
+                        onChange={e => setSubForm(p => ({ ...p, display_name: e.target.value }))}
+                        placeholder="例：王大明" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">登入帳號 <span className="text-red-500">*</span></p>
+                      <input className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={subForm.username}
+                        onChange={e => setSubForm(p => ({ ...p, username: e.target.value }))}
+                        placeholder="英數字，登入用"
+                        disabled={!!editingSub} />
+                    </div>
+                    {!editingSub && (
+                      <div className="relative">
+                        <p className="text-xs text-gray-500 mb-1">初始密碼 <span className="text-red-500">*</span></p>
+                        <input
+                          type={showPw ? "text" : "password"}
+                          className="w-full border rounded px-2 py-1.5 text-sm pr-8"
+                          value={subForm.password}
+                          onChange={e => setSubForm(p => ({ ...p, password: e.target.value }))}
+                          placeholder="至少 4 個字元" />
+                        <button className="absolute right-2 top-6 text-gray-400" onClick={() => setShowPw(p => !p)}>
+                          {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">蝦皮司機 ID</p>
+                      <input className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={subForm.shopee_driver_id}
+                        onChange={e => setSubForm(p => ({ ...p, shopee_driver_id: e.target.value }))}
+                        placeholder="例：14681（過濾路線用）" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">角色</p>
+                      <select className="w-full border rounded px-2 py-1.5 text-sm bg-white"
+                        value={subForm.role}
+                        onChange={e => setSubForm(p => ({ ...p, role: e.target.value }))}>
+                        <option value="driver">司機</option>
+                        <option value="manager">主管（可看全部）</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">對應旗下司機</p>
+                      <select className="w-full border rounded px-2 py-1.5 text-sm bg-white"
+                        value={subForm.fleet_driver_id}
+                        onChange={e => setSubForm(p => ({ ...p, fleet_driver_id: e.target.value }))}>
+                        <option value="">— 不連結 —</option>
+                        {drivers.map(d => (
+                          <option key={d.id} value={String(d.id)}>{d.name}{d.vehicle_plate ? ` (${d.vehicle_plate})` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" className="h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white" onClick={saveSub} disabled={subLoading}>
+                      <Save className="h-3.5 w-3.5 mr-1" />{editingSub ? "更新" : "建立帳號"}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowSubForm(false); setEditingSub(null); setSubForm(DEFAULT_SUB_FORM); }}>
+                      <X className="h-3.5 w-3.5 mr-1" />取消
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!showSubForm && (
+              <div className="flex gap-2">
+                <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                  onClick={() => { setEditingSub(null); setSubForm(DEFAULT_SUB_FORM); setShowSubForm(true); loadDrivers(); }}>
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機子帳號
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadSubAccounts} disabled={subLoading}>
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1 ${subLoading ? "animate-spin" : ""}`} />重新整理
+                </Button>
+              </div>
+            )}
+
+            {/* Info banner */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex gap-2">
+              <Shield className="h-4 w-4 shrink-0 mt-0.5 text-blue-500" />
+              <div>
+                <strong>關於子帳號：</strong>子帳號使用同一個「車隊入口」網址登入。司機登入後只能看到自己的路線與收益，不會看到車隊管理功能。
+              </div>
+            </div>
+
+            {/* Sub-accounts list */}
+            {subAccounts.length === 0 && !subLoading ? (
+              <div className="text-center py-12 text-gray-400">
+                <Key className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                <p>尚未建立司機子帳號</p>
+                <p className="text-xs mt-1">建立後司機可用自己的帳號密碼登入查看路線</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {subAccounts.map(sub => (
+                  <Card key={sub.id} className={`overflow-hidden ${!sub.is_active ? "opacity-60" : ""}`}>
+                    <div className="p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="shrink-0 w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center">
+                            <UserCheck className="h-4 w-4 text-orange-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm">{sub.display_name}</p>
+                            <p className="text-xs text-gray-500 font-mono">@{sub.username}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Badge variant="outline" className={`text-xs ${sub.role === "manager" ? "border-purple-300 text-purple-600" : "border-gray-300 text-gray-600"}`}>
+                            {sub.role === "manager" ? "主管" : "司機"}
+                          </Badge>
+                          <Badge variant="outline" className={`text-xs ${sub.is_active ? "border-green-300 text-green-600" : "border-red-300 text-red-500"}`}>
+                            {sub.is_active ? "啟用" : "停用"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Details row */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500 pl-11">
+                        {sub.shopee_driver_id && (
+                          <span>蝦皮ID：<span className="font-mono text-orange-600">{sub.shopee_driver_id}</span></span>
+                        )}
+                        {sub.driver_name && (
+                          <span>連結司機：{sub.driver_name}{sub.vehicle_plate ? ` (${sub.vehicle_plate})` : ""}</span>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-1 pl-11 flex-wrap">
+                        <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+                          onClick={() => { setEditingSub(sub); setSubForm({ display_name: sub.display_name, username: sub.username, password: "", shopee_driver_id: sub.shopee_driver_id ?? "", role: sub.role, fleet_driver_id: sub.fleet_driver_id ? String(sub.fleet_driver_id) : "" }); setShowSubForm(true); loadDrivers(); }}>
+                          <Edit2 className="h-3 w-3 mr-1" />編輯
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+                          onClick={() => { setResetPwId(sub.id); setResetPwVal(""); }}>
+                          <Key className="h-3 w-3 mr-1" />重設密碼
+                        </Button>
+                        <Button size="sm" variant="outline" className={`h-6 text-xs px-2 ${sub.is_active ? "text-red-500 hover:text-red-600" : "text-green-600 hover:text-green-700"}`}
+                          onClick={() => toggleSubActive(sub)}>
+                          {sub.is_active ? "停用" : "啟用"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-red-400 hover:text-red-600"
+                          onClick={() => deleteSub(sub)}>
+                          <Trash2 className="h-3 w-3 mr-1" />刪除
+                        </Button>
+                      </div>
+
+                      {/* Reset password inline form */}
+                      {resetPwId === sub.id && (
+                        <div className="pl-11 flex gap-2 items-center">
+                          <input
+                            type="password"
+                            className="border rounded px-2 py-1 text-sm flex-1 max-w-[180px]"
+                            placeholder="輸入新密碼（至少 4 字元）"
+                            value={resetPwVal}
+                            onChange={e => setResetPwVal(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && doResetPw(sub.id)}
+                          />
+                          <Button size="sm" className="h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                            onClick={() => doResetPw(sub.id)}>確認</Button>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs"
+                            onClick={() => { setResetPwId(null); setResetPwVal(""); }}>取消</Button>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
               </div>
             )}
           </div>

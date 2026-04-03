@@ -161,7 +161,7 @@ function AdminPortal() {
 
 function FleetPortal() {
   const { user } = useAuth();
-  if (!user || user.role !== "fusingao_fleet") {
+  if (!user || (user.role !== "fusingao_fleet" && user.role !== "fleet_sub")) {
     return <Redirect to="/login/fleet" />;
   }
   return <FusingaoFleetPortal />;
