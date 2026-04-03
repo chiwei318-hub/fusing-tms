@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, adminRoles, adminUsers, customFields, auditLogs, driversTable, customersTable } from '@workspace/db';
-import { enterpriseAccountsTable } from '@workspace/db/schema';
+import { enterpriseAccountsTable, enterpriseSubAccountsTable } from '@workspace/db/schema';
 import { eq, desc, and, gte, lte, like, or, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 
@@ -188,10 +188,78 @@ async function ensureTestAccounts() {
   }
 }
 
+async function ensureFusingaoAccounts() {
+  try {
+    const pw = 'fusingao2024';
+    const pwHash = hashEnterprisePw(pw);
+
+    await db.insert(enterpriseAccountsTable).values({
+      accountCode: 'FUSINGAO',
+      companyName: '福興高企業',
+      shortName: '福興高',
+      contactPerson: '陳先生',
+      phone: '02-12345678',
+      email: 'contact@fusingao.com.tw',
+      taxId: '12345678',
+      invoiceTitle: '福興高企業股份有限公司',
+      address: '台北市松山區南京東路五段',
+      postalCode: '105',
+      industry: '電商零售 / 蝦皮店到店',
+      billingType: 'monthly',
+      paymentType: '銀行匯款',
+      creditLimit: 500000,
+      creditDays: 30,
+      monthlyStatementDay: 5,
+      discountPercent: 0,
+      priceLevel: 'VIP',
+      unitPriceFixed: 180,
+      minMonthlySpend: 50000,
+      contractType: '年約',
+      contractStart: '2024-01-01',
+      contractEnd: '2025-12-31',
+      isVip: true,
+      priorityDispatch: true,
+      exclusiveNote: '蝦皮 Shopee 路線優先排程，含假日加急保障',
+      notes: '四台專屬車輛，北中南三路線固定配送',
+      status: 'active',
+      passwordHash: pwHash,
+    } as any).onConflictDoNothing();
+
+    const [main] = await db.select({ id: enterpriseAccountsTable.id })
+      .from(enterpriseAccountsTable)
+      .where(eq(enterpriseAccountsTable.accountCode, 'FUSINGAO'));
+
+    if (!main) return;
+    const eid = main.id;
+
+    const subs = [
+      { subCode: 'FUSINGAO-TP', name: '台北採購', role: 'purchaser', phone: '0911-111-001' },
+      { subCode: 'FUSINGAO-TY', name: '桃園採購', role: 'purchaser', phone: '0911-111-002' },
+      { subCode: 'FUSINGAO-FIN', name: '財務部', role: 'finance', phone: '0911-111-003' },
+      { subCode: 'FUSINGAO-CS', name: '客服', role: 'viewer', phone: '0911-111-004' },
+    ];
+    for (const s of subs) {
+      await db.insert(enterpriseSubAccountsTable).values({
+        enterpriseId: eid,
+        name: s.name,
+        subCode: s.subCode,
+        passwordHash: pwHash,
+        role: s.role,
+        phone: s.phone,
+        isActive: true,
+      } as any).onConflictDoNothing();
+    }
+    console.log(`[EnterpriseAccounts] FUSINGAO accounts ensured (id=${eid})`);
+  } catch (e) {
+    console.error('[EnterpriseAccounts] error:', e);
+  }
+}
+
 seedDefaultData().catch(console.error);
 if (process.env.NODE_ENV !== 'production') {
   ensureTestAccounts().catch(console.error);
 }
+ensureFusingaoAccounts().catch(console.error);
 
 // ===== ROLES =====
 router.get('/admin/roles', async (_req, res) => {
