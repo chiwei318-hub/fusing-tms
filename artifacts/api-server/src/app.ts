@@ -50,7 +50,7 @@ if (process.env.NODE_ENV === "production") {
   const staticDir = path.resolve(process.cwd(), "artifacts/logistics/dist/public");
   if (existsSync(staticDir)) {
     app.use(express.static(staticDir, { index: "index.html" }));
-    app.get("*", (_req: Request, res: Response) => {
+    app.get("/{*splat}", (_req: Request, res: Response) => {
       res.sendFile(path.join(staticDir, "index.html"));
     });
     console.log(`[SPA] serving frontend from ${staticDir}`);
