@@ -10,6 +10,7 @@ import EnterpriseNotifications from "./EnterpriseNotifications";
 import EnterpriseSubAccounts from "./EnterpriseSubAccounts";
 import EnterpriseAccount from "./EnterpriseAccount";
 import EnterpriseImport from "./EnterpriseImport";
+import EnterpriseShopeeImport from "./EnterpriseShopeeImport";
 
 function loadSession(): EnterpriseSession | null {
   const fromLs = getEnterpriseSession();
@@ -80,6 +81,9 @@ export default function EnterprisePortal() {
             </Route>
             <Route path="/enterprise/sub-accounts">
               {isAdmin ? <EnterpriseSubAccounts session={session} /> : <Redirect to="/enterprise" />}
+            </Route>
+            <Route path="/enterprise/shopee-billing">
+              {isAdmin ? <EnterpriseShopeeImport session={session} /> : <Redirect to="/enterprise" />}
             </Route>
             <Route path="/enterprise/account">
               <EnterpriseAccount session={session} />

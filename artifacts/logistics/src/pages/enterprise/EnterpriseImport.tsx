@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
+import { Link } from "wouter";
 import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
-  AlertCircle, RotateCcw, ArrowRight, FileText, Info,
+  AlertCircle, RotateCcw, ArrowRight, FileText, Info, BarChart2,
 } from "lucide-react";
 import { type EnterpriseSession } from "@/components/EnterpriseLayout";
 
@@ -117,6 +118,18 @@ export default function EnterpriseImport({ session }: { session: EnterpriseSessi
           {toast.msg}
         </div>
       )}
+
+      {/* Shopee billing hint */}
+      <Link href="/enterprise/shopee-billing">
+        <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-orange-100 transition-colors">
+          <BarChart2 className="w-5 h-5 text-orange-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-orange-800">要匯入蝦皮月結對帳 Excel？</p>
+            <p className="text-xs text-orange-600 mt-0.5">請改用「蝦皮對帳」功能，支援店配車 / NDD / WHNDD / 罰款明細自動解析</p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-orange-400 shrink-0" />
+        </div>
+      </Link>
 
       {/* Step 1: Guide */}
       {!file && !loading && (
