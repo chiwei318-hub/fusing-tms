@@ -130,9 +130,9 @@ router.get("/orders", async (req, res) => {
 
     if (q.source) {
       if (q.source === "platform") {
-        conditions.push(sql`${ordersTable.source} IN ('admin','api')`);
+        conditions.push(sql`"orders"."source" IN ('admin','api')`);
       } else {
-        conditions.push(eq(ordersTable.source, q.source));
+        conditions.push(sql`"orders"."source" = ${q.source}`);
       }
     }
 
@@ -641,9 +641,9 @@ router.get("/orders/report/excel", async (req, res) => {
     if (q.customerName) conditions.push(sql`lower(${ordersTable.customerName}) like ${"%" + q.customerName.toLowerCase() + "%"}`);
     if (q.source) {
       if (q.source === "platform") {
-        conditions.push(sql`${ordersTable.source} IN ('admin','api')`);
+        conditions.push(sql`"orders"."source" IN ('admin','api')`);
       } else {
-        conditions.push(eq(ordersTable.source, q.source));
+        conditions.push(sql`"orders"."source" = ${q.source}`);
       }
     }
     if (q.dateFrom || q.dateTo) {
