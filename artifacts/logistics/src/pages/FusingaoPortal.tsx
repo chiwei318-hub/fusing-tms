@@ -17,6 +17,7 @@ import SheetSyncTab from "./admin/SheetSyncTab";
 import PnLTab from "./admin/PnLTab";
 import DriverEarningsTab from "./admin/DriverEarningsTab";
 import ShopeeDriversTab from "./fusingao/ShopeeDriversTab";
+import SettlementChainTab from "./fusingao/SettlementChainTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,18 +90,6 @@ export default function FusingaoPortal() {
   const [filterMonth, setFilterMonth]   = useState("");
   const [expandedRoute, setExpandedRoute] = useState<number | null>(null);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
-
-  // ── Admin settlement state ─────────────────────────────────────────────────
-  const [adminSettlement, setAdminSettlement] = useState<any[]>([]);
-  const [adminSetMonth, setAdminSetMonth] = useState("");
-
-  const loadAdminSettlement = useCallback(async () => {
-    const params = adminSetMonth ? `?month=${adminSetMonth}` : "";
-    const d = await fetch(apiUrl(`/fusingao/settlement${params}`)).then(x => x.json());
-    if (d.ok) setAdminSettlement(d.fleets ?? []);
-  }, [adminSetMonth]); // eslint-disable-line
-
-  useEffect(() => { if (tab === "settlement") loadAdminSettlement(); }, [tab, adminSetMonth]); // eslint-disable-line
 
   // ── Fleet management state ─────────────────────────────────────────────────
   const [fleets, setFleets]             = useState<FleetRow[]>([]);
@@ -675,87 +664,7 @@ export default function FusingaoPortal() {
         )}
 
         {/* ═══════════════ 結算總覽 ═══════════════════════════════════════════ */}
-        {tab === "settlement" && (
-          <div className="space-y-4">
-            <div className="flex gap-3 items-center">
-              <Select value={adminSetMonth || "all"} onValueChange={v => setAdminSetMonth(v === "all" ? "" : v)}>
-                <SelectTrigger className="h-8 w-36 text-sm"><SelectValue placeholder="全部期間" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部期間</SelectItem>
-                  {months.map(m => <SelectItem key={m.month} value={m.month}>{m.month_label ?? m.month}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadAdminSettlement}>
-                <RefreshCw className="h-3.5 w-3.5 mr-1" />重新整理
-              </Button>
-            </div>
-
-            {/* Global totals */}
-            {adminSettlement.length > 0 && (() => {
-              const totShopee = adminSettlement.reduce((a, f) => a + Number(f.shopee_income || 0), 0);
-              const totFleet  = adminSettlement.reduce((a, f) => a + Number(f.fleet_payout || 0), 0);
-              const totComm   = totShopee - totFleet;
-              return (
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label:"Shopee 總收入", val:totShopee, cls:"text-blue-700 bg-blue-50 border-blue-200" },
-                    { label:"平台佣金",      val:totComm,   cls:"text-orange-700 bg-orange-50 border-orange-200" },
-                    { label:"付出車隊",      val:totFleet,  cls:"text-green-700 bg-green-50 border-green-200" },
-                  ].map(k => (
-                    <Card key={k.label} className={`border ${k.cls}`}>
-                      <CardContent className="p-3 text-center">
-                        <p className="text-xs text-gray-500 mb-1">{k.label}</p>
-                        <p className={`font-bold text-lg ${k.cls.split(" ")[0]}`}>NT$ {Math.round(k.val).toLocaleString()}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* Per-fleet breakdown */}
-            {adminSettlement.length > 0 ? (
-              <Card>
-                <CardHeader className="pb-1 pt-3 px-4">
-                  <CardTitle className="text-sm text-gray-700">各車隊結算明細</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b bg-gray-50 text-gray-500">
-                          <th className="text-left p-3">車隊</th>
-                          <th className="text-right p-3">路線</th>
-                          <th className="text-right p-3">抽佣%</th>
-                          <th className="text-right p-3">Shopee 收入</th>
-                          <th className="text-right p-3">平台佣金</th>
-                          <th className="text-right p-3">車隊應付</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminSettlement.map((f: any) => (
-                          <tr key={f.id} className="border-b hover:bg-gray-50">
-                            <td className="p-3 font-medium">{f.fleet_name}</td>
-                            <td className="p-3 text-right">{f.route_count}</td>
-                            <td className="p-3 text-right">{Number(f.commission_rate ?? 15).toFixed(0)}%</td>
-                            <td className="p-3 text-right text-blue-600 font-mono">NT$ {Math.round(Number(f.shopee_income || 0)).toLocaleString()}</td>
-                            <td className="p-3 text-right text-orange-600 font-mono">NT$ {Math.round(Number(f.commission_earned || 0)).toLocaleString()}</td>
-                            <td className="p-3 text-right text-green-700 font-bold font-mono">NT$ {Math.round(Number(f.fleet_payout || 0)).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="text-center py-12 text-gray-400">
-                <DollarSign className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                尚無結算資料
-              </div>
-            )}
-          </div>
-        )}
+        {tab === "settlement" && <SettlementChainTab months={months} />}
         {/* ═══════════════ Shopee費率 ════════════════════════════════════════ */}
         {tab === "rates" && <ShopeeRatesTab />}
 
