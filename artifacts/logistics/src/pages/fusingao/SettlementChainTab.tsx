@@ -177,7 +177,7 @@ function FleetCard({
             </div>
             <div className="flex flex-col items-center text-center px-3 py-2 rounded-lg border bg-orange-50 border-orange-200 min-w-[110px]">
               <Building2 className="h-4 w-4 text-orange-500 mb-1" />
-              <p className="text-[10px] text-orange-500 font-medium">富詠平台</p>
+              <p className="text-[10px] text-orange-500 font-medium">閃電兔</p>
               <p className="text-sm font-bold text-orange-600 font-mono">{NT(commissionEarned)}</p>
               <p className="text-[10px] text-orange-400">佣金 {commRate}%</p>
             </div>
@@ -347,7 +347,7 @@ export default function SettlementChainTab({
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             <ChainNode
               icon={Building2}
-              label="蝦皮客戶"
+              label="福興高"
               sublabel="Shopee 平台"
               amount={NT(platformIncome)}
               amountSub={`${totalRoutes} 趟 × 費率`}
@@ -356,7 +356,7 @@ export default function SettlementChainTab({
             <Arrow label="請款收款" />
             <ChainNode
               icon={Building2}
-              label="富詠平台"
+              label="閃電兔"
               sublabel="居中管理"
               amount={`+${NT(commissionTotal)}`}
               amountSub={`佣金 ${fleets.length > 0 ? Number(fleets[0]?.commission_rate ?? 15).toFixed(0) : "—"}% avg`}
