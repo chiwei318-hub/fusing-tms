@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, Plus, Trash2, X, Eye, EyeOff, ShieldCheck, ShoppingBag, UserCircle, ToggleRight, ToggleLeft } from "lucide-react";
+import { Users, Plus, Trash2, X, Eye, EyeOff, ShieldCheck, ShoppingBag, UserCircle, ToggleRight, ToggleLeft, BookOpen, Search } from "lucide-react";
 import { type EnterpriseSession } from "@/components/EnterpriseLayout";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -124,8 +124,10 @@ export default function EnterpriseSubAccounts({ session }: { session: Enterprise
               <label className="text-xs font-semibold text-gray-600 mb-1.5 block">角色權限</label>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { value: "purchaser", icon: ShoppingBag, label: "採購人員", desc: "可下單、查看訂單" },
-                  { value: "admin", icon: ShieldCheck, label: "主管", desc: "全部功能存取" },
+                  { value: "purchaser", icon: ShoppingBag,  label: "採購人員", desc: "可下單、查看訂單" },
+                  { value: "admin",     icon: ShieldCheck,  label: "主管",     desc: "全部功能存取" },
+                  { value: "finance",   icon: BookOpen,     label: "財務人員", desc: "查看帳單、報表" },
+                  { value: "viewer",    icon: Search,       label: "唯讀人員", desc: "僅限查看訂單" },
                 ].map(r => (
                   <label key={r.value} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all
                     ${form.role === r.value ? "border-[#0d2d6e] bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
@@ -176,15 +178,24 @@ export default function EnterpriseSubAccounts({ session }: { session: Enterprise
           {subs.map(sub => (
             <div key={sub.id} className={`bg-white rounded-2xl border shadow-sm p-4 transition-all ${sub.isActive ? "border-gray-100" : "border-gray-200 opacity-60"}`}>
               <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${sub.role === "admin" ? "bg-purple-50" : "bg-blue-50"}`}>
-                  {sub.role === "admin" ? <ShieldCheck className="w-5 h-5 text-purple-500" /> : <ShoppingBag className="w-5 h-5 text-blue-500" />}
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  sub.role === "admin" ? "bg-purple-50" : sub.role === "finance" ? "bg-emerald-50" : sub.role === "viewer" ? "bg-gray-50" : "bg-blue-50"
+                }`}>
+                  {sub.role === "admin" ? <ShieldCheck className="w-5 h-5 text-purple-500" />
+                    : sub.role === "finance" ? <BookOpen className="w-5 h-5 text-emerald-500" />
+                    : sub.role === "viewer" ? <Search className="w-5 h-5 text-gray-500" />
+                    : <ShoppingBag className="w-5 h-5 text-blue-500" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-bold text-gray-900 text-sm">{sub.name}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold
-                      ${sub.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
-                      {sub.role === "admin" ? "主管" : "採購"}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                      sub.role === "admin" ? "bg-purple-100 text-purple-700"
+                        : sub.role === "finance" ? "bg-emerald-100 text-emerald-700"
+                        : sub.role === "viewer" ? "bg-gray-100 text-gray-600"
+                        : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {{ admin: "主管", purchaser: "採購", finance: "財務", viewer: "唯讀" }[sub.role] ?? sub.role}
                     </span>
                     {!sub.isActive && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-semibold">已停用</span>}
                   </div>

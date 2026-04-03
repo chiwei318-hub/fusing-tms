@@ -47,7 +47,9 @@ export function EnterpriseLayout({ children, session, onLogout }: { children: Re
   const [location] = useLocation();
   const [unread, setUnread] = useState(0);
 
-  const isAdmin = !session.subAccount || session.subAccount.role === "admin";
+  const role = session.subAccount?.role ?? "admin";
+  const isAdmin = role === "admin";
+  const canOrder = role === "admin" || role === "purchaser";
 
   useEffect(() => {
     const load = () => {
@@ -63,7 +65,7 @@ export function EnterpriseLayout({ children, session, onLogout }: { children: Re
 
   const navItems = [
     { href: "/enterprise", icon: LayoutDashboard, label: "總覽", exact: true, badge: 0 },
-    { href: "/enterprise/place-order", icon: ShoppingCart, label: "快速下單", exact: false, badge: 0 },
+    ...(canOrder ? [{ href: "/enterprise/place-order", icon: ShoppingCart, label: "快速下單", exact: false, badge: 0 }] : []),
     { href: "/enterprise/orders", icon: FileText, label: "訂單記錄", exact: false, badge: 0 },
     ...(isAdmin ? [{ href: "/enterprise/sub-accounts", icon: Users, label: "子帳號", exact: false, badge: 0 }] : []),
     { href: "/enterprise/notifications", icon: Bell, label: "通知", exact: false, badge: unread },
@@ -94,7 +96,7 @@ export function EnterpriseLayout({ children, session, onLogout }: { children: Re
           {session.subAccount && (
             <div className="mt-2.5 flex items-center gap-1.5 bg-white/10 text-white/80 text-xs font-medium px-2.5 py-1 rounded-full w-fit">
               <UserCircle className="w-3 h-3" />
-              {session.subAccount.name}（{session.subAccount.role === "admin" ? "主管" : "採購"}）
+              {session.subAccount.name}（{{ admin: "主管", purchaser: "採購", finance: "財務", viewer: "唯讀" }[session.subAccount.role] ?? session.subAccount.role}）
             </div>
           )}
           {session.priorityDispatch && (

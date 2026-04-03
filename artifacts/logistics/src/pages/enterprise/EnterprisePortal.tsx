@@ -38,7 +38,9 @@ export default function EnterprisePortal() {
     setSession(null);
   }, []);
 
-  const isAdmin = !session?.subAccount || session?.subAccount?.role === "admin";
+  const subRole = session?.subAccount?.role ?? "admin";
+  const isAdmin = subRole === "admin";
+  const canOrder = subRole === "admin" || subRole === "purchaser";
 
   if (!session) {
     return (
@@ -61,7 +63,7 @@ export default function EnterprisePortal() {
               <EnterpriseDashboard session={session} />
             </Route>
             <Route path="/enterprise/place-order">
-              <EnterprisePlaceOrder session={session} />
+              {canOrder ? <EnterprisePlaceOrder session={session} /> : <Redirect to="/enterprise" />}
             </Route>
             <Route path="/enterprise/quick-order">
               <Redirect to="/enterprise/place-order" />
