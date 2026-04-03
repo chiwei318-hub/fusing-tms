@@ -85,21 +85,94 @@ driverEarningsRouter.get("/prefix-rates", async (_req, res) => {
   }
 });
 
-// PUT /driver-earnings/prefix-rates/:prefix — update a rate
+// POST /driver-earnings/prefix-rates — create new rate
+driverEarningsRouter.post("/prefix-rates", async (req, res) => {
+  try {
+    const { prefix, description, service_type, route_od, vehicle_type, rate_per_trip, driver_pay_rate, notes, pay_notes } = req.body;
+    if (!prefix) return res.status(400).json({ ok: false, error: "prefix 必填" });
+    await db.execute(sql`
+      INSERT INTO route_prefix_rates (prefix, description, service_type, route_od, vehicle_type, rate_per_trip, driver_pay_rate, notes, pay_notes, updated_at)
+      VALUES (
+        ${prefix}, ${description ?? null}, ${service_type ?? null}, ${route_od ?? null},
+        ${vehicle_type ?? null}, ${rate_per_trip ?? 0}, ${driver_pay_rate ?? null},
+        ${notes ?? null}, ${pay_notes ?? null}, NOW()
+      )
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /driver-earnings/prefix-rates/:prefix — update a rate (all fields)
 driverEarningsRouter.put("/prefix-rates/:prefix", async (req, res) => {
   try {
     const { prefix } = req.params;
-    const { rate_per_trip, service_type, route_od, description } = req.body;
+    const { rate_per_trip, service_type, route_od, description, vehicle_type, driver_pay_rate, notes, pay_notes } = req.body;
     await db.execute(sql`
       UPDATE route_prefix_rates
-      SET rate_per_trip = ${rate_per_trip},
-          service_type  = ${service_type},
-          route_od      = ${route_od},
-          description   = ${description},
-          updated_at    = NOW()
+      SET rate_per_trip   = ${rate_per_trip ?? 0},
+          service_type    = ${service_type ?? null},
+          route_od        = ${route_od ?? null},
+          description     = ${description ?? null},
+          vehicle_type    = ${vehicle_type ?? null},
+          driver_pay_rate = ${driver_pay_rate ?? null},
+          notes           = ${notes ?? null},
+          pay_notes       = ${pay_notes ?? null},
+          updated_at      = NOW()
       WHERE prefix = ${prefix}
     `);
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// DELETE /driver-earnings/prefix-rates/:prefix — delete a rate
+driverEarningsRouter.delete("/prefix-rates/:prefix", async (req, res) => {
+  try {
+    const { prefix } = req.params;
+    await db.execute(sql`DELETE FROM route_prefix_rates WHERE prefix = ${prefix}`);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /driver-earnings/prefix-rates/import — bulk upsert from Excel data
+driverEarningsRouter.post("/prefix-rates/import", async (req, res) => {
+  try {
+    const { rows } = req.body as { rows: Array<{
+      prefix: string; description?: string; service_type?: string; route_od?: string;
+      vehicle_type?: string; rate_per_trip?: number; driver_pay_rate?: number;
+      notes?: string; pay_notes?: string;
+    }> };
+    if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ ok: false, error: "rows 必填" });
+
+    let inserted = 0;
+    for (const r of rows) {
+      if (!r.prefix) continue;
+      await db.execute(sql`
+        INSERT INTO route_prefix_rates (prefix, description, service_type, route_od, vehicle_type, rate_per_trip, driver_pay_rate, notes, pay_notes, updated_at)
+        VALUES (
+          ${r.prefix}, ${r.description ?? null}, ${r.service_type ?? null}, ${r.route_od ?? null},
+          ${r.vehicle_type ?? null}, ${r.rate_per_trip ?? 0}, ${r.driver_pay_rate ?? null},
+          ${r.notes ?? null}, ${r.pay_notes ?? null}, NOW()
+        )
+        ON CONFLICT (prefix) DO UPDATE SET
+          description     = EXCLUDED.description,
+          service_type    = EXCLUDED.service_type,
+          route_od        = EXCLUDED.route_od,
+          vehicle_type    = EXCLUDED.vehicle_type,
+          rate_per_trip   = EXCLUDED.rate_per_trip,
+          driver_pay_rate = EXCLUDED.driver_pay_rate,
+          notes           = EXCLUDED.notes,
+          pay_notes       = EXCLUDED.pay_notes,
+          updated_at      = NOW()
+      `);
+      inserted++;
+    }
+    res.json({ ok: true, inserted });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

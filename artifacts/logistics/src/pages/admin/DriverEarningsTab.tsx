@@ -1,12 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Users, Truck, DollarSign, RefreshCw, Edit2, Save, X,
   ChevronDown, ChevronRight, Calculator, BadgeCheck, Clock,
+  Plus, Trash2, Upload, RotateCcw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
 
@@ -36,11 +40,22 @@ interface DriverRow {
 interface PrefixRate {
   id: number;
   prefix: string;
-  description: string;
-  service_type: string;
-  route_od: string;
+  description: string | null;
+  service_type: string | null;
+  route_od: string | null;
+  vehicle_type: string | null;
   rate_per_trip: number;
+  driver_pay_rate: number | null;
+  notes: string | null;
+  pay_notes: string | null;
+  updated_at: string | null;
 }
+
+const EMPTY_PREFIX_RATE: Omit<PrefixRate, "id" | "updated_at"> = {
+  prefix: "", description: "", service_type: "", route_od: "",
+  vehicle_type: "", rate_per_trip: 0, driver_pay_rate: null,
+  notes: "", pay_notes: "",
+};
 
 interface ShopeeDriver {
   shopee_id: string;
@@ -71,6 +86,12 @@ export default function DriverEarningsTab() {
   const [editPrefixData, setEditPrefixData] = useState<Partial<PrefixRate>>({});
   const [editingDriver, setEditingDriver] = useState<string | null>(null);
   const [editDriverData, setEditDriverData] = useState<Partial<ShopeeDriver>>({});
+
+  // PrefixRate dialog (new / edit)
+  const [prefixDialog, setPrefixDialog] = useState<{ mode: "new" | "edit"; data: Omit<PrefixRate, "id" | "updated_at"> } | null>(null);
+  const [savingRate, setSavingRate] = useState(false);
+  const [deletingPrefix, setDeletingPrefix] = useState<string | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   const loadEarnings = useCallback(async () => {
     setLoading(true);
@@ -117,6 +138,119 @@ export default function DriverEarningsTab() {
     await loadPrefixRates();
     await loadEarnings();
     toast({ title: `${prefix} 費率已更新` });
+  };
+
+  const savePrefixDialog = async () => {
+    if (!prefixDialog) return;
+    setSavingRate(true);
+    try {
+      const { mode, data } = prefixDialog;
+      if (!data.prefix) return toast({ title: "前綴為必填", variant: "destructive" });
+      if (mode === "new") {
+        const r = await fetch(apiUrl("/driver-earnings/prefix-rates"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }).then(x => x.json());
+        if (!r.ok) return toast({ title: r.error ?? "新增失敗", variant: "destructive" });
+        toast({ title: `${data.prefix} 已新增` });
+      } else {
+        await fetch(apiUrl(`/driver-earnings/prefix-rates/${encodeURIComponent(data.prefix)}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        toast({ title: `${data.prefix} 已更新` });
+      }
+      setPrefixDialog(null);
+      await loadPrefixRates();
+      await loadEarnings();
+    } finally { setSavingRate(false); }
+  };
+
+  const deletePrefixRate = async (prefix: string) => {
+    if (!confirm(`確定要刪除前綴「${prefix}」嗎？`)) return;
+    setDeletingPrefix(prefix);
+    try {
+      await fetch(apiUrl(`/driver-earnings/prefix-rates/${encodeURIComponent(prefix)}`), { method: "DELETE" });
+      toast({ title: `${prefix} 已刪除` });
+      await loadPrefixRates();
+    } finally { setDeletingPrefix(null); }
+  };
+
+  const importPrefixRatesExcel = async (file: File) => {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      if (!ws) return toast({ title: "找不到工作表", variant: "destructive" });
+
+      // Auto-detect header row
+      const colMap: Record<string, number> = {};
+      const headerAliases: Record<string, string> = {
+        "前綴": "prefix", "prefix": "prefix",
+        "說明": "description", "description": "description",
+        "服務模式": "service_type", "service_type": "service_type",
+        "起訖": "route_od", "起乾": "route_od", "route_od": "route_od",
+        "車型": "vehicle_type", "vehicle_type": "vehicle_type",
+        "費率": "rate_per_trip", "費率/趟": "rate_per_trip", "rate_per_trip": "rate_per_trip",
+        "司機費率": "driver_pay_rate", "driver_pay_rate": "driver_pay_rate",
+        "備註": "notes", "notes": "notes",
+        "付款備註": "pay_notes", "pay_notes": "pay_notes",
+      };
+
+      let headerRow = -1;
+      ws.eachRow((row, idx) => {
+        if (headerRow >= 0) return;
+        const vals = row.values as any[];
+        vals.forEach((v, ci) => {
+          const key = String(v ?? "").trim();
+          if (headerAliases[key]) { colMap[headerAliases[key]] = ci; headerRow = idx; }
+        });
+      });
+
+      if (headerRow < 0 || !colMap.prefix) {
+        return toast({ title: "找不到「前綴」欄位，請確認表頭", variant: "destructive" });
+      }
+
+      const rows: any[] = [];
+      ws.eachRow((row, idx) => {
+        if (idx <= headerRow) return;
+        const vals = row.values as any[];
+        const prefix = String(vals[colMap.prefix] ?? "").trim();
+        if (!prefix) return;
+        rows.push({
+          prefix,
+          description:     colMap.description    ? String(vals[colMap.description] ?? "").trim()    : undefined,
+          service_type:    colMap.service_type   ? String(vals[colMap.service_type] ?? "").trim()   : undefined,
+          route_od:        colMap.route_od       ? String(vals[colMap.route_od] ?? "").trim()       : undefined,
+          vehicle_type:    colMap.vehicle_type   ? String(vals[colMap.vehicle_type] ?? "").trim()   : undefined,
+          rate_per_trip:   colMap.rate_per_trip  ? Number(vals[colMap.rate_per_trip] ?? 0)          : 0,
+          driver_pay_rate: colMap.driver_pay_rate ? Number(vals[colMap.driver_pay_rate] ?? 0) || null : undefined,
+          notes:           colMap.notes          ? String(vals[colMap.notes] ?? "").trim()          : undefined,
+          pay_notes:       colMap.pay_notes      ? String(vals[colMap.pay_notes] ?? "").trim()      : undefined,
+        });
+      });
+
+      if (rows.length === 0) return toast({ title: "沒有讀到任何資料", variant: "destructive" });
+
+      const r = await fetch(apiUrl("/driver-earnings/prefix-rates/import"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      }).then(x => x.json());
+
+      if (r.ok) {
+        toast({ title: `匯入成功：${r.inserted} 筆` });
+        await loadPrefixRates();
+        await loadEarnings();
+      } else {
+        toast({ title: r.error ?? "匯入失敗", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: `匯入錯誤：${err.message}`, variant: "destructive" });
+    }
   };
 
   const saveShopeeDriver = async (shopee_id: string) => {
@@ -336,99 +470,191 @@ export default function DriverEarningsTab() {
 
       {/* ── Tab: 路線費率設定 ─────────────────────────────────────────── */}
       {tab === "prefixRates" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-600">
-              路線前綴對應服務類型與費率（影響運費試算結果）
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-xs text-gray-500 bg-gray-50">
-                  <th className="text-left p-2">前綴</th>
-                  <th className="text-left p-2">說明</th>
-                  <th className="text-left p-2">服務模式</th>
-                  <th className="text-left p-2">起訖</th>
-                  <th className="text-right p-2">費率/趟</th>
-                  <th className="p-2 w-20"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {prefixRates.map((pr) => (
-                  <tr key={pr.prefix} className="border-b hover:bg-gray-50">
-                    {editingPrefix === pr.prefix ? (
-                      <>
-                        <td className="p-2 font-mono font-bold">{pr.prefix}</td>
-                        <td className="p-2">
-                          <Input
-                            className="h-7 text-xs"
-                            value={editPrefixData.description ?? pr.description}
-                            onChange={(e) => setEditPrefixData((p) => ({ ...p, description: e.target.value }))}
-                          />
+        <div className="space-y-3">
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+              onClick={() => setPrefixDialog({ mode: "new", data: { ...EMPTY_PREFIX_RATE } })}>
+              <Plus className="h-3.5 w-3.5 mr-1" />新增費率
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 text-xs"
+              onClick={() => importRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5 mr-1" />匯入 Excel
+            </Button>
+            <input
+              ref={importRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) importPrefixRatesExcel(f); e.target.value = ""; }}
+            />
+            <Button size="sm" variant="outline" className="h-8 text-xs"
+              onClick={() => { loadPrefixRates(); toast({ title: "已同步最新費率" }); }}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1" />同步
+            </Button>
+            <span className="ml-auto text-xs text-gray-400">{prefixRates.length} 筆費率設定</span>
+          </div>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-gray-500 bg-gray-50">
+                      <th className="text-left px-3 py-2">前綴</th>
+                      <th className="text-left px-3 py-2">說明</th>
+                      <th className="text-left px-3 py-2">服務模式</th>
+                      <th className="text-left px-3 py-2">起訖</th>
+                      <th className="text-left px-3 py-2">車型</th>
+                      <th className="text-right px-3 py-2">費率/趟</th>
+                      <th className="text-right px-3 py-2">司機費率</th>
+                      <th className="text-left px-3 py-2">備註</th>
+                      <th className="px-3 py-2 w-20 text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prefixRates.map((pr) => (
+                      <tr key={pr.prefix} className="border-b hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono font-bold text-blue-700">{pr.prefix}</td>
+                        <td className="px-3 py-2 text-gray-600">{pr.description || "—"}</td>
+                        <td className="px-3 py-2">
+                          {pr.service_type
+                            ? <Badge variant="outline" className="text-[10px] px-1.5">{pr.service_type}</Badge>
+                            : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="p-2">
-                          <Input
-                            className="h-7 text-xs"
-                            value={editPrefixData.service_type ?? pr.service_type}
-                            onChange={(e) => setEditPrefixData((p) => ({ ...p, service_type: e.target.value }))}
-                          />
+                        <td className="px-3 py-2 text-gray-600">{pr.route_od || "—"}</td>
+                        <td className="px-3 py-2">
+                          {pr.vehicle_type
+                            ? <Badge className="bg-orange-100 text-orange-700 text-[10px] px-1.5 border-0">{pr.vehicle_type}</Badge>
+                            : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="p-2">
-                          <Input
-                            className="h-7 text-xs"
-                            value={editPrefixData.route_od ?? pr.route_od}
-                            onChange={(e) => setEditPrefixData((p) => ({ ...p, route_od: e.target.value }))}
-                          />
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">
+                          NT$ {Number(pr.rate_per_trip).toLocaleString()}
                         </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            className="h-7 text-xs text-right"
-                            value={editPrefixData.rate_per_trip ?? pr.rate_per_trip}
-                            onChange={(e) => setEditPrefixData((p) => ({ ...p, rate_per_trip: Number(e.target.value) }))}
-                          />
+                        <td className="px-3 py-2 text-right font-mono text-green-700">
+                          {pr.driver_pay_rate != null ? `NT$ ${Number(pr.driver_pay_rate).toLocaleString()}` : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="p-2 flex gap-1">
-                          <Button size="sm" className="h-6 px-2" onClick={() => savePrefixRate(pr.prefix)}>
-                            <Save className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="sm" className="h-6 px-2" onClick={() => setEditingPrefix(null)}>
-                            <X className="h-3 w-3" />
-                          </Button>
+                        <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate" title={pr.notes ?? undefined}>
+                          {pr.notes || "—"}
                         </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="p-2 font-mono font-bold text-blue-700">{pr.prefix}</td>
-                        <td className="p-2 text-gray-600 text-xs">{pr.description}</td>
-                        <td className="p-2">
-                          <Badge variant="outline" className="text-xs">{pr.service_type}</Badge>
+                        <td className="px-3 py-2 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                              onClick={() => setPrefixDialog({ mode: "edit", data: {
+                                prefix: pr.prefix, description: pr.description ?? "",
+                                service_type: pr.service_type ?? "", route_od: pr.route_od ?? "",
+                                vehicle_type: pr.vehicle_type ?? "", rate_per_trip: pr.rate_per_trip,
+                                driver_pay_rate: pr.driver_pay_rate, notes: pr.notes ?? "", pay_notes: pr.pay_notes ?? "",
+                              }})}>
+                              <Edit2 className="h-3 w-3 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                              disabled={deletingPrefix === pr.prefix}
+                              onClick={() => deletePrefixRate(pr.prefix)}>
+                              <Trash2 className="h-3 w-3 text-red-400" />
+                            </Button>
+                          </div>
                         </td>
-                        <td className="p-2 text-xs text-gray-600">{pr.route_od}</td>
-                        <td className="p-2 text-right font-mono font-semibold text-blue-700">
-                          NT$ {pr.rate_per_trip.toLocaleString()}
+                      </tr>
+                    ))}
+                    {prefixRates.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="px-3 py-8 text-center text-gray-400">
+                          尚無費率設定，請點「新增費率」或「匯入 Excel」
                         </td>
-                        <td className="p-2">
-                          <Button
-                            variant="ghost" size="sm" className="h-6 px-2"
-                            onClick={() => {
-                              setEditingPrefix(pr.prefix);
-                              setEditPrefixData(pr);
-                            }}
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                        </td>
-                      </>
+                      </tr>
                     )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Excel format hint */}
+          <p className="text-xs text-gray-400">
+            💡 Excel 匯入欄位：前綴、說明、服務模式、起訖、車型、費率/趟、司機費率、備註、付款備註（支援中英文表頭，可覆蓋更新）
+          </p>
+        </div>
       )}
+
+      {/* ── PrefixRate New/Edit Dialog ─── */}
+      <Dialog open={!!prefixDialog} onOpenChange={(o) => { if (!o) setPrefixDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {prefixDialog?.mode === "new" ? "新增路線費率" : `編輯費率：${prefixDialog?.data.prefix}`}
+            </DialogTitle>
+          </DialogHeader>
+
+          {prefixDialog && (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {prefixDialog.mode === "new" && (
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 mb-1 block">前綴 <span className="text-red-500">*</span></label>
+                  <Input className="h-8 text-xs font-mono" placeholder="e.g. KH001"
+                    value={prefixDialog.data.prefix}
+                    onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, prefix: e.target.value.toUpperCase() } } : p)} />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">說明</label>
+                <Input className="h-8 text-xs" placeholder="路線說明"
+                  value={prefixDialog.data.description ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, description: e.target.value } } : p)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">服務模式</label>
+                <Input className="h-8 text-xs" placeholder="e.g. 宅配/集貨"
+                  value={prefixDialog.data.service_type ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, service_type: e.target.value } } : p)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">起訖</label>
+                <Input className="h-8 text-xs" placeholder="e.g. 高雄→台南"
+                  value={prefixDialog.data.route_od ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, route_od: e.target.value } } : p)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">車型</label>
+                <Input className="h-8 text-xs" placeholder="e.g. 1.5T / 6.2T"
+                  value={prefixDialog.data.vehicle_type ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, vehicle_type: e.target.value } } : p)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">費率/趟（NT$）</label>
+                <Input className="h-8 text-xs text-right font-mono" type="number" placeholder="0"
+                  value={prefixDialog.data.rate_per_trip}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, rate_per_trip: Number(e.target.value) } } : p)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">司機費率（NT$）</label>
+                <Input className="h-8 text-xs text-right font-mono" type="number" placeholder="選填"
+                  value={prefixDialog.data.driver_pay_rate ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, driver_pay_rate: e.target.value ? Number(e.target.value) : null } } : p)} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-500 mb-1 block">備註</label>
+                <Input className="h-8 text-xs" placeholder="其他備註說明"
+                  value={prefixDialog.data.notes ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, notes: e.target.value } } : p)} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-500 mb-1 block">付款備註</label>
+                <Input className="h-8 text-xs" placeholder="付款相關備註"
+                  value={prefixDialog.data.pay_notes ?? ""}
+                  onChange={e => setPrefixDialog(p => p ? { ...p, data: { ...p.data, pay_notes: e.target.value } } : p)} />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPrefixDialog(null)}>取消</Button>
+            <Button size="sm" onClick={savePrefixDialog} disabled={savingRate}>
+              <Save className="h-3.5 w-3.5 mr-1" />
+              {prefixDialog?.mode === "new" ? "新增" : "儲存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Tab: 司機工號設定 ─────────────────────────────────────────── */}
       {tab === "driverSetup" && (
