@@ -561,14 +561,40 @@ router.post("/enterprise", async (req, res) => {
 router.patch("/enterprise/:id/settings", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { creditLimit, discountPercent, billingType, priorityDispatch, status, exclusiveNote, password } = req.body;
+    const {
+      creditLimit, discountPercent, billingType, priorityDispatch, status, exclusiveNote, password,
+      companyName, shortName, contactPerson, phone, email, taxId, invoiceTitle, address, postalCode, industry,
+      paymentType, creditDays, monthlyStatementDay, priceLevel, unitPriceFixed, minMonthlySpend,
+      contractType, contractStart, contractEnd, isVip, notes,
+    } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (companyName !== undefined) updates.companyName = companyName;
+    if (shortName !== undefined) updates.shortName = shortName;
+    if (contactPerson !== undefined) updates.contactPerson = contactPerson;
+    if (phone !== undefined) updates.phone = phone;
+    if (email !== undefined) updates.email = email;
+    if (taxId !== undefined) updates.taxId = taxId;
+    if (invoiceTitle !== undefined) updates.invoiceTitle = invoiceTitle;
+    if (address !== undefined) updates.address = address;
+    if (postalCode !== undefined) updates.postalCode = postalCode;
+    if (industry !== undefined) updates.industry = industry;
     if (creditLimit !== undefined) updates.creditLimit = creditLimit;
     if (discountPercent !== undefined) updates.discountPercent = discountPercent;
     if (billingType !== undefined) updates.billingType = billingType;
+    if (paymentType !== undefined) updates.paymentType = paymentType;
+    if (creditDays !== undefined) updates.creditDays = creditDays;
+    if (monthlyStatementDay !== undefined) updates.monthlyStatementDay = monthlyStatementDay;
+    if (priceLevel !== undefined) updates.priceLevel = priceLevel;
+    if (unitPriceFixed !== undefined) updates.unitPriceFixed = unitPriceFixed;
+    if (minMonthlySpend !== undefined) updates.minMonthlySpend = minMonthlySpend;
+    if (contractType !== undefined) updates.contractType = contractType;
+    if (contractStart !== undefined) updates.contractStart = contractStart;
+    if (contractEnd !== undefined) updates.contractEnd = contractEnd;
+    if (isVip !== undefined) updates.isVip = isVip;
     if (priorityDispatch !== undefined) updates.priorityDispatch = priorityDispatch;
-    if (status !== undefined) updates.status = status;
     if (exclusiveNote !== undefined) updates.exclusiveNote = exclusiveNote;
+    if (notes !== undefined) updates.notes = notes;
+    if (status !== undefined) updates.status = status;
     if (password) updates.passwordHash = hashPassword(password);
     const [acc] = await db.update(enterpriseAccountsTable)
       .set(updates as any)

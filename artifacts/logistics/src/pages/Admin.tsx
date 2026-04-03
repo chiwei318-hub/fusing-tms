@@ -686,6 +686,17 @@ export default function Admin() {
   const [enterpriseCreateOpen, setEnterpriseCreateOpen] = useState(false);
   const [enterpriseCreateSaving, setEnterpriseCreateSaving] = useState(false);
   const [enterpriseCreateForm, setEnterpriseCreateForm] = useState({ accountCode: "", companyName: "", contactPerson: "", phone: "", password: "", billingType: "monthly", discountPercent: "0" });
+  const [enterpriseEditDialog, setEnterpriseEditDialog] = useState<any | null>(null);
+  const [enterpriseEditSaving, setEnterpriseEditSaving] = useState(false);
+  const enterpriseEditEmptyForm = () => ({
+    companyName: "", shortName: "", contactPerson: "", phone: "", email: "", taxId: "", invoiceTitle: "",
+    address: "", postalCode: "", industry: "",
+    billingType: "monthly", paymentType: "", creditLimit: "", creditDays: "", monthlyStatementDay: "", discountPercent: "0",
+    priceLevel: "", unitPriceFixed: "", minMonthlySpend: "",
+    contractType: "", contractStart: "", contractEnd: "",
+    priorityDispatch: false, isVip: false, status: "active", exclusiveNote: "", notes: "",
+  });
+  const [enterpriseEditForm, setEnterpriseEditForm] = useState<Record<string, any>>(enterpriseEditEmptyForm());
 
   const fetchEnterpriseAccounts = useCallback(async () => {
     try {
@@ -749,6 +760,65 @@ export default function Admin() {
       }
     } finally {
       setEnterpriseCreateSaving(false);
+    }
+  };
+
+  const openEnterpriseEdit = (acc: any) => {
+    setEnterpriseEditForm({
+      companyName: acc.companyName ?? "",
+      shortName: acc.shortName ?? "",
+      contactPerson: acc.contactPerson ?? "",
+      phone: acc.phone ?? "",
+      email: acc.email ?? "",
+      taxId: acc.taxId ?? "",
+      invoiceTitle: acc.invoiceTitle ?? "",
+      address: acc.address ?? "",
+      postalCode: acc.postalCode ?? "",
+      industry: acc.industry ?? "",
+      billingType: acc.billingType ?? "monthly",
+      paymentType: acc.paymentType ?? "",
+      creditLimit: acc.creditLimit ?? "",
+      creditDays: acc.creditDays ?? "",
+      monthlyStatementDay: acc.monthlyStatementDay ?? "",
+      discountPercent: acc.discountPercent ?? "0",
+      priceLevel: acc.priceLevel ?? "",
+      unitPriceFixed: acc.unitPriceFixed ?? "",
+      minMonthlySpend: acc.minMonthlySpend ?? "",
+      contractType: acc.contractType ?? "",
+      contractStart: acc.contractStart ?? "",
+      contractEnd: acc.contractEnd ?? "",
+      priorityDispatch: acc.priorityDispatch ?? false,
+      isVip: acc.isVip ?? false,
+      status: acc.status ?? "active",
+      exclusiveNote: acc.exclusiveNote ?? "",
+      notes: acc.notes ?? "",
+    });
+    setEnterpriseEditDialog(acc);
+  };
+
+  const saveEnterpriseEdit = async () => {
+    if (!enterpriseEditDialog) return;
+    setEnterpriseEditSaving(true);
+    try {
+      const body: Record<string, any> = { ...enterpriseEditForm };
+      if (body.creditLimit !== "") body.creditLimit = Number(body.creditLimit); else delete body.creditLimit;
+      if (body.creditDays !== "") body.creditDays = Number(body.creditDays); else delete body.creditDays;
+      if (body.monthlyStatementDay !== "") body.monthlyStatementDay = Number(body.monthlyStatementDay); else delete body.monthlyStatementDay;
+      if (body.discountPercent !== "") body.discountPercent = Number(body.discountPercent); else delete body.discountPercent;
+      if (body.unitPriceFixed !== "") body.unitPriceFixed = Number(body.unitPriceFixed); else delete body.unitPriceFixed;
+      if (body.minMonthlySpend !== "") body.minMonthlySpend = Number(body.minMonthlySpend); else delete body.minMonthlySpend;
+      const res = await fetch(apiUrl(`/enterprise/${enterpriseEditDialog.id}/settings`), {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast({ title: "企業帳號已更新", description: `${enterpriseEditForm.companyName} 的資料已儲存` });
+        setEnterpriseEditDialog(null);
+        fetchEnterpriseAccounts();
+      } else {
+        toast({ title: "儲存失敗", variant: "destructive" });
+      }
+    } finally {
+      setEnterpriseEditSaving(false);
     }
   };
 
@@ -3141,10 +3211,16 @@ export default function Admin() {
                         {acc.status === "active" ? "啟用" : "停用"}
                       </span>
                     </div>
-                    <Button size="sm" variant="outline" className="h-7 px-3 text-xs gap-1 shrink-0"
-                      onClick={() => { setEnterprisePwDialog({ id: acc.id, companyName: acc.companyName, accountCode: acc.accountCode }); setEnterprisePwInput(""); }}>
-                      <KeyRound className="w-3 h-3" /> 重設密碼
-                    </Button>
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button size="sm" variant="outline" className="h-7 px-3 text-xs gap-1"
+                        onClick={() => openEnterpriseEdit(acc)}>
+                        <Pencil className="w-3 h-3" /> 編輯
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 px-3 text-xs gap-1"
+                        onClick={() => { setEnterprisePwDialog({ id: acc.id, companyName: acc.companyName, accountCode: acc.accountCode }); setEnterprisePwInput(""); }}>
+                        <KeyRound className="w-3 h-3" /> 密碼
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3238,6 +3314,171 @@ export default function Admin() {
                 <Button variant="outline" onClick={() => setEnterprisePwDialog(null)}>取消</Button>
                 <Button onClick={saveEnterprisePassword} disabled={!enterprisePwInput.trim() || enterprisePwSaving}>
                   {enterprisePwSaving ? "儲存中..." : "確認更新"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* ── 企業帳號完整編輯 Dialog ── */}
+          <Dialog open={!!enterpriseEditDialog} onOpenChange={open => { if (!open) setEnterpriseEditDialog(null); }}>
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>編輯企業帳號資料</DialogTitle>
+                <DialogDescription>{enterpriseEditDialog?.companyName}（{enterpriseEditDialog?.accountCode}）</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-5 py-2">
+                {/* 基本資料 */}
+                <div>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">基本聯絡資料</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">公司名稱 *</label>
+                      <Input value={enterpriseEditForm.companyName} onChange={e => setEnterpriseEditForm(f => ({ ...f, companyName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">公司簡稱</label>
+                      <Input placeholder="例：福興高" value={enterpriseEditForm.shortName} onChange={e => setEnterpriseEditForm(f => ({ ...f, shortName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">聯絡人</label>
+                      <Input value={enterpriseEditForm.contactPerson} onChange={e => setEnterpriseEditForm(f => ({ ...f, contactPerson: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">聯絡電話</label>
+                      <Input value={enterpriseEditForm.phone} onChange={e => setEnterpriseEditForm(f => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">電子信箱</label>
+                      <Input type="email" value={enterpriseEditForm.email} onChange={e => setEnterpriseEditForm(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">行業別</label>
+                      <Input placeholder="例：電商物流、製造業" value={enterpriseEditForm.industry} onChange={e => setEnterpriseEditForm(f => ({ ...f, industry: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+                {/* 法務資料 */}
+                <div>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">公司法務資料</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">統一編號</label>
+                      <Input value={enterpriseEditForm.taxId} onChange={e => setEnterpriseEditForm(f => ({ ...f, taxId: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">發票抬頭</label>
+                      <Input value={enterpriseEditForm.invoiceTitle} onChange={e => setEnterpriseEditForm(f => ({ ...f, invoiceTitle: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">通訊地址</label>
+                      <Input value={enterpriseEditForm.address} onChange={e => setEnterpriseEditForm(f => ({ ...f, address: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">郵遞區號</label>
+                      <Input value={enterpriseEditForm.postalCode} onChange={e => setEnterpriseEditForm(f => ({ ...f, postalCode: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+                {/* 帳款條件 */}
+                <div>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">帳款條件</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">結帳方式</label>
+                      <select className="w-full h-9 px-3 text-sm border rounded-md bg-white" value={enterpriseEditForm.billingType} onChange={e => setEnterpriseEditForm(f => ({ ...f, billingType: e.target.value }))}>
+                        <option value="monthly">月結</option>
+                        <option value="prepaid">預付</option>
+                        <option value="cash">現金</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">付款方式</label>
+                      <Input placeholder="例：匯款、支票" value={enterpriseEditForm.paymentType} onChange={e => setEnterpriseEditForm(f => ({ ...f, paymentType: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">月結額度 (NT$)</label>
+                      <Input type="number" min="0" placeholder="0" value={enterpriseEditForm.creditLimit} onChange={e => setEnterpriseEditForm(f => ({ ...f, creditLimit: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">帳期天數</label>
+                      <Input type="number" min="0" placeholder="30" value={enterpriseEditForm.creditDays} onChange={e => setEnterpriseEditForm(f => ({ ...f, creditDays: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">月結日（每月幾號）</label>
+                      <Input type="number" min="1" max="31" placeholder="5" value={enterpriseEditForm.monthlyStatementDay} onChange={e => setEnterpriseEditForm(f => ({ ...f, monthlyStatementDay: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">折扣 (%)</label>
+                      <Input type="number" min="0" max="100" step="0.1" placeholder="0" value={enterpriseEditForm.discountPercent} onChange={e => setEnterpriseEditForm(f => ({ ...f, discountPercent: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">價格等級</label>
+                      <Input placeholder="例：A級、VIP、標準" value={enterpriseEditForm.priceLevel} onChange={e => setEnterpriseEditForm(f => ({ ...f, priceLevel: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">固定單價 (NT$)</label>
+                      <Input type="number" min="0" placeholder="0" value={enterpriseEditForm.unitPriceFixed} onChange={e => setEnterpriseEditForm(f => ({ ...f, unitPriceFixed: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">最低月消費 (NT$)</label>
+                      <Input type="number" min="0" placeholder="0" value={enterpriseEditForm.minMonthlySpend} onChange={e => setEnterpriseEditForm(f => ({ ...f, minMonthlySpend: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+                {/* 合約資訊 */}
+                <div>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">合約資訊</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">合約類型</label>
+                      <Input placeholder="例：年約、月約" value={enterpriseEditForm.contractType} onChange={e => setEnterpriseEditForm(f => ({ ...f, contractType: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">合約開始日</label>
+                      <Input type="date" value={enterpriseEditForm.contractStart} onChange={e => setEnterpriseEditForm(f => ({ ...f, contractStart: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">合約到期日</label>
+                      <Input type="date" value={enterpriseEditForm.contractEnd} onChange={e => setEnterpriseEditForm(f => ({ ...f, contractEnd: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+                {/* 特殊設定 */}
+                <div>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">特殊設定與備註</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" className="w-4 h-4 rounded accent-blue-600" checked={!!enterpriseEditForm.priorityDispatch} onChange={e => setEnterpriseEditForm(f => ({ ...f, priorityDispatch: e.target.checked }))} />
+                      <span className="text-sm font-medium text-gray-700">優先派車</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" className="w-4 h-4 rounded accent-yellow-500" checked={!!enterpriseEditForm.isVip} onChange={e => setEnterpriseEditForm(f => ({ ...f, isVip: e.target.checked }))} />
+                      <span className="text-sm font-medium text-gray-700">VIP 客戶</span>
+                    </label>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">帳號狀態</label>
+                      <select className="w-full h-9 px-3 text-sm border rounded-md bg-white" value={enterpriseEditForm.status} onChange={e => setEnterpriseEditForm(f => ({ ...f, status: e.target.value }))}>
+                        <option value="active">啟用</option>
+                        <option value="suspended">停用</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">專屬服務說明</label>
+                      <Textarea rows={2} value={enterpriseEditForm.exclusiveNote} onChange={e => setEnterpriseEditForm(f => ({ ...f, exclusiveNote: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">備註</label>
+                      <Textarea rows={2} value={enterpriseEditForm.notes} onChange={e => setEnterpriseEditForm(f => ({ ...f, notes: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEnterpriseEditDialog(null)}>取消</Button>
+                <Button onClick={saveEnterpriseEdit} disabled={!enterpriseEditForm.companyName.trim() || enterpriseEditSaving}>
+                  {enterpriseEditSaving ? "儲存中..." : "儲存變更"}
                 </Button>
               </DialogFooter>
             </DialogContent>
