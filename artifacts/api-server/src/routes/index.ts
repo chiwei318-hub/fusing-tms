@@ -64,6 +64,7 @@ import { pnlRouter } from "./pnl";
 import { fusingaoRouter } from "./fusingao";
 import { penaltySyncRouter } from "./penaltySync";
 import { rateSyncRouter } from "./rateSync";
+import { shopeeDriversRouter } from "./shopeeDrivers";
 
 const router: IRouter = Router();
 
@@ -133,5 +134,6 @@ router.use("/pnl", pnlRouter);
 router.use("/fusingao", fusingaoRouter);
 router.use(penaltySyncRouter);
 router.use(rateSyncRouter);
+router.use(shopeeDriversRouter);
 
 export default router;

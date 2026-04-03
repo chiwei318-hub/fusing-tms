@@ -16,6 +16,7 @@ import RouteImportTab from "./admin/RouteImportTab";
 import SheetSyncTab from "./admin/SheetSyncTab";
 import PnLTab from "./admin/PnLTab";
 import DriverEarningsTab from "./admin/DriverEarningsTab";
+import ShopeeDriversTab from "./fusingao/ShopeeDriversTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +47,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -280,6 +281,7 @@ export default function FusingaoPortal() {
             { id:"pnl",         label:"📈 盈虧分析",    desc:"P&L" },
             { id:"routeimport", label:"📤 路線匯入",    desc:"批次匯入" },
             { id:"sheetsync",   label:"🔄 試算表同步",  desc:"Google Sheet" },
+            { id:"drivers",     label:"👨‍✈️ 司機管理",    desc:"工號CRUD" },
           ] as { id: PortalTab; label: string; desc: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -756,6 +758,7 @@ export default function FusingaoPortal() {
 
         {/* ═══════════════ 試算表同步 ═══════════════════════════════════════ */}
         {tab === "sheetsync" && <SheetSyncTab />}
+        {tab === "drivers" && <ShopeeDriversTab />}
       </div>
     </div>
   );

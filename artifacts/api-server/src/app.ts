@@ -8,6 +8,7 @@ import { startSheetSyncScheduler } from "./lib/sheetSyncScheduler";
 import { ensureSheetSyncTable } from "./routes/sheetSync";
 import { ensurePenaltySyncTables, startPenaltySyncScheduler } from "./routes/penaltySync";
 import { startRateSyncScheduler } from "./lib/rateSyncScheduler";
+import { ensureShopeeDriversTable } from "./routes/shopeeDrivers";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 
 const app: Express = express();
@@ -49,5 +50,6 @@ ensurePenaltySyncTables()
   .then(() => startPenaltySyncScheduler())
   .catch((e) => console.error("[PenaltySync] table setup failed:", e));
 startRateSyncScheduler();
+ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
 
 export default app;

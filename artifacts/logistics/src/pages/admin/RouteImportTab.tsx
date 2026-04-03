@@ -88,13 +88,25 @@ export default function RouteImportTab() {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  const [pickupAddress, setPickupAddress] = useState("（依路線倉庫）");
-  const [customerName, setCustomerName] = useState("蝦皮電商配送");
-  const [customerPhone, setCustomerPhone] = useState("0800000000");
-  const [cargoDescription, setCargoDescription] = useState("電商門市配送");
-  const [pickupDate, setPickupDate] = useState("");
+  function lsGet(k: string, def: string) {
+    return sessionStorage.getItem(`routeImport_${k}`) ?? def;
+  }
+  const [pickupAddress, setPickupAddress] = useState(() => lsGet("pickupAddress", "（依路線倉庫）"));
+  const [customerName, setCustomerName] = useState(() => lsGet("customerName", "蝦皮電商配送"));
+  const [customerPhone, setCustomerPhone] = useState(() => lsGet("customerPhone", "0800000000"));
+  const [cargoDescription, setCargoDescription] = useState(() => lsGet("cargoDescription", "電商門市配送"));
+  const [pickupDate, setPickupDate] = useState(() => lsGet("pickupDate", ""));
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Driver ID → name map (resolved from shopee_drivers)
+  const [driverMap, setDriverMap] = useState<Record<string, { name: string | null; vehicle_plate: string | null }>>({});
+
+  // Auto-save helpers
+  function setField<T>(setter: (v: T) => void, key: string, val: T) {
+    setter(val);
+    sessionStorage.setItem(`routeImport_${key}`, String(val));
+  }
 
   const hasPreview = sheetResults.length > 0;
 
@@ -158,6 +170,22 @@ export default function RouteImportTab() {
     setAllWarnings(warnings);
     setSelectedRoutes(new Set(merged.map(r => r.routeId)));
     setIsPreviewing(false);
+
+    // Resolve driver IDs → names from shopee_drivers
+    const driverIds = [...new Set(merged.map(r => r.driverId).filter(Boolean))];
+    if (driverIds.length > 0) {
+      try {
+        const resp = await fetch(apiUrl(`/shopee-drivers/lookup?ids=${driverIds.join(",")}`));
+        const data = await resp.json();
+        if (data.ok) {
+          const m: Record<string, { name: string | null; vehicle_plate: string | null }> = {};
+          for (const [id, info] of Object.entries(data.map as Record<string, { name: string; vehicle_plate: string }>)) {
+            m[id] = { name: info.name || null, vehicle_plate: info.vehicle_plate || null };
+          }
+          setDriverMap(m);
+        }
+      } catch { /* ignore */ }
+    }
   };
 
   const runImport = async () => {
@@ -398,23 +426,23 @@ export default function RouteImportTab() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">客戶名稱</Label>
-                  <Input value={customerName} onChange={e => setCustomerName(e.target.value)} className="text-sm" />
+                  <Input value={customerName} onChange={e => setField(setCustomerName, "customerName", e.target.value)} className="text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">客戶電話</Label>
-                  <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="text-sm" placeholder="0800000000" />
+                  <Input value={customerPhone} onChange={e => setField(setCustomerPhone, "customerPhone", e.target.value)} className="text-sm" placeholder="0800000000" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">貨物說明</Label>
-                  <Input value={cargoDescription} onChange={e => setCargoDescription(e.target.value)} className="text-sm" />
+                  <Input value={cargoDescription} onChange={e => setField(setCargoDescription, "cargoDescription", e.target.value)} className="text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">取貨地址（出發倉）</Label>
-                  <Input value={pickupAddress} onChange={e => setPickupAddress(e.target.value)} className="text-sm" />
+                  <Input value={pickupAddress} onChange={e => setField(setPickupAddress, "pickupAddress", e.target.value)} className="text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">配送日期</Label>
-                  <Input type="date" value={pickupDate} onChange={e => setPickupDate(e.target.value)} className="text-sm" />
+                  <Input type="date" value={pickupDate} onChange={e => setField(setPickupDate, "pickupDate", e.target.value)} className="text-sm" />
                 </div>
               </div>
             </CardContent>
@@ -451,6 +479,7 @@ export default function RouteImportTab() {
                           route={route}
                           selected={selectedRoutes.has(route.routeId)}
                           onToggle={() => toggleRoute(route.routeId)}
+                          driverMap={driverMap}
                         />
                       ))}
                     </div>
@@ -461,6 +490,7 @@ export default function RouteImportTab() {
                       route={route}
                       selected={selectedRoutes.has(route.routeId)}
                       onToggle={() => toggleRoute(route.routeId)}
+                      driverMap={driverMap}
                     />
                   ))
               }
@@ -553,11 +583,13 @@ export default function RouteImportTab() {
   );
 }
 
-function RouteCard({ route, selected, onToggle }: {
+function RouteCard({ route, selected, onToggle, driverMap }: {
   route: ParsedRoute;
   selected: boolean;
   onToggle: () => void;
+  driverMap?: Record<string, { name: string | null; vehicle_plate: string | null }>;
 }) {
+  const driverInfo = route.driverId && driverMap ? driverMap[route.driverId] : null;
   return (
     <div
       onClick={onToggle}
@@ -578,7 +610,18 @@ function RouteCard({ route, selected, onToggle }: {
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {route.timeSlot && !route.timeSlot.startsWith("1899") && <span>{route.timeSlot}</span>}
-          {route.driverId && <span>司機 #{route.driverId}</span>}
+          {route.driverId && (
+            <span className="flex items-center gap-1">
+              <span className="text-gray-400">司機</span>
+              <span className="font-mono text-blue-700">#{route.driverId}</span>
+              {driverInfo?.name && (
+                <span className="text-green-700 font-medium">{driverInfo.name}</span>
+              )}
+              {driverInfo?.vehicle_plate && (
+                <span className="font-mono text-xs bg-gray-100 px-1 rounded">{driverInfo.vehicle_plate}</span>
+              )}
+            </span>
+          )}
           <Badge className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-100">{route.stops.length} 站</Badge>
         </div>
       </div>
