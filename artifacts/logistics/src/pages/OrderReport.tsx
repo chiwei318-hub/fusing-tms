@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { zhTW } from "date-fns/locale";
 import {
   Search, Printer, FileDown, Calendar, User, Truck,
-  Filter, RotateCcw, InboxIcon, ChevronDown
+  Filter, RotateCcw, InboxIcon, ChevronDown, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,21 @@ const FEE_LABEL: Record<string, string> = {
 const FEE_COLOR: Record<string, string> = {
   unpaid: "text-orange-600", paid: "text-green-600", invoiced: "text-blue-600",
 };
+const SOURCE_LABEL: Record<string, string> = {
+  route_import: "整筆Excel匯入",
+  platform:     "平台公司匯入",
+  driver:       "司機完成匯入",
+};
+const SOURCE_COLOR: Record<string, string> = {
+  route_import: "bg-amber-100 text-amber-700",
+  platform:     "bg-blue-100 text-blue-700",
+  driver:       "bg-emerald-100 text-emerald-700",
+};
+function sourceKey(raw: string | null | undefined): string {
+  if (!raw) return "";
+  if (raw === "admin" || raw === "api") return "platform";
+  return raw;
+}
 
 interface FilterState {
   customerName: string;
@@ -47,22 +62,24 @@ interface FilterState {
   dateTo: string;
   dateField: "pickup" | "created";
   status: string;
+  source: string;
 }
 
 const ALL = "__all__";
 const EMPTY_FILTER: FilterState = {
   customerName: "", driverId: ALL, dateFrom: "", dateTo: "",
-  dateField: "pickup", status: ALL,
+  dateField: "pickup", status: ALL, source: ALL,
 };
 
 function buildParams(f: FilterState) {
   const p = new URLSearchParams();
-  if (f.customerName)              p.set("customerName", f.customerName);
+  if (f.customerName)                    p.set("customerName", f.customerName);
   if (f.driverId && f.driverId !== ALL)  p.set("driverId", f.driverId);
-  if (f.dateFrom)                  p.set("dateFrom", f.dateFrom);
-  if (f.dateTo)                    p.set("dateTo", f.dateTo);
-  if (f.dateField)                 p.set("dateField", f.dateField === "created" ? "created" : "pickup");
-  if (f.status && f.status !== ALL) p.set("status", f.status);
+  if (f.dateFrom)                        p.set("dateFrom", f.dateFrom);
+  if (f.dateTo)                          p.set("dateTo", f.dateTo);
+  if (f.dateField)                       p.set("dateField", f.dateField === "created" ? "created" : "pickup");
+  if (f.status && f.status !== ALL)      p.set("status", f.status);
+  if (f.source && f.source !== ALL)      p.set("source", f.source);
   return p.toString();
 }
 
@@ -142,6 +159,7 @@ export default function OrderReport() {
         applied.customerName && `客戶：${applied.customerName}`,
         applied.driverId && applied.driverId !== ALL && `司機：${(drivers as any[]).find((d: any) => String(d.id) === applied.driverId)?.name ?? applied.driverId}`,
         applied.status && applied.status !== ALL && `狀態：${STATUS_LABEL[applied.status] ?? applied.status}`,
+        applied.source && applied.source !== ALL && `來源：${SOURCE_LABEL[applied.source] ?? applied.source}`,
         (applied.dateFrom || applied.dateTo) && `${applied.dateField === "created" ? "建單" : "提貨"}日期：${applied.dateFrom || "∞"} ～ ${applied.dateTo || "∞"}`,
       ].filter(Boolean)
     : [];
@@ -242,6 +260,24 @@ export default function OrderReport() {
                   <SelectItem value="in_transit">運送中</SelectItem>
                   <SelectItem value="delivered">已送達</SelectItem>
                   <SelectItem value="cancelled">已取消</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 資料來源 */}
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
+                <Upload className="w-3 h-3" /> 資料來源
+              </Label>
+              <Select value={filter.source} onValueChange={set("source")}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="全部來源" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>全部來源</SelectItem>
+                  <SelectItem value="driver">司機完成匯入</SelectItem>
+                  <SelectItem value="route_import">整筆Excel匯入</SelectItem>
+                  <SelectItem value="platform">平台公司匯入</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -351,6 +387,7 @@ export default function OrderReport() {
                     <tr>
                       <th className="px-3 py-3 font-semibold">單號</th>
                       <th className="px-3 py-3 font-semibold">狀態</th>
+                      <th className="px-3 py-3 font-semibold">資料來源</th>
                       <th className="px-3 py-3 font-semibold">客戶名稱</th>
                       <th className="px-3 py-3 font-semibold">客戶電話</th>
                       <th className="px-3 py-3 font-semibold">司機</th>
@@ -371,6 +408,16 @@ export default function OrderReport() {
                           <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status] ?? ""}`}>
                             {STATUS_LABEL[o.status] ?? o.status}
                           </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {(() => {
+                            const sk = sourceKey(o.source);
+                            return sk ? (
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${SOURCE_COLOR[sk] ?? "bg-gray-100 text-gray-600"}`}>
+                                {SOURCE_LABEL[sk] ?? o.source}
+                              </span>
+                            ) : <span className="text-muted-foreground text-xs">—</span>;
+                          })()}
                         </td>
                         <td className="px-3 py-2.5 font-medium">{o.customerName}</td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground">{o.customerPhone}</td>
@@ -411,7 +458,7 @@ export default function OrderReport() {
                   {totalFee > 0 && (
                     <tfoot>
                       <tr className="bg-muted/50 border-t-2">
-                        <td colSpan={9} className="px-3 py-2.5 text-right text-sm font-semibold text-muted-foreground">
+                        <td colSpan={10} className="px-3 py-2.5 text-right text-sm font-semibold text-muted-foreground">
                           合計 {orders.length} 筆
                         </td>
                         <td className="px-3 py-2.5 text-right font-bold text-primary">

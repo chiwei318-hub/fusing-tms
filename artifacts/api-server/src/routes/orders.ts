@@ -128,6 +128,14 @@ router.get("/orders", async (req, res) => {
       conditions.push(sql`lower(${ordersTable.customerName}) like ${"%" + q.customerName.toLowerCase() + "%"}`);
     }
 
+    if (q.source) {
+      if (q.source === "platform") {
+        conditions.push(sql`${ordersTable.source} IN ('admin','api')`);
+      } else {
+        conditions.push(eq(ordersTable.source, q.source));
+      }
+    }
+
     if (q.dateFrom || q.dateTo) {
       const field = q.dateField === "created" ? ordersTable.createdAt : ordersTable.pickupDate;
       if (q.dateFrom) conditions.push(sql`${field} >= ${q.dateFrom}`);
@@ -631,6 +639,13 @@ router.get("/orders/report/excel", async (req, res) => {
     if (q.status)       conditions.push(eq(ordersTable.status, q.status as any));
     if (q.driverId)     { const d = parseInt(q.driverId, 10); if (!isNaN(d)) conditions.push(eq(ordersTable.driverId, d)); }
     if (q.customerName) conditions.push(sql`lower(${ordersTable.customerName}) like ${"%" + q.customerName.toLowerCase() + "%"}`);
+    if (q.source) {
+      if (q.source === "platform") {
+        conditions.push(sql`${ordersTable.source} IN ('admin','api')`);
+      } else {
+        conditions.push(eq(ordersTable.source, q.source));
+      }
+    }
     if (q.dateFrom || q.dateTo) {
       const field = q.dateField === "created" ? ordersTable.createdAt : ordersTable.pickupDate;
       if (q.dateFrom) conditions.push(sql`${field} >= ${q.dateFrom}`);
@@ -652,9 +667,15 @@ router.get("/orders/report/excel", async (req, res) => {
       unpaid: "未收款", paid: "已收款", invoiced: "已開票",
     };
 
+    const SOURCE_MAP: Record<string, string> = {
+      route_import: "整筆Excel匯入", admin: "平台公司匯入",
+      api: "平台公司匯入", driver: "司機完成匯入",
+    };
+
     ws.columns = [
       { header: "單號",     key: "id",          width: 8  },
       { header: "狀態",     key: "status",       width: 10 },
+      { header: "資料來源", key: "source",       width: 14 },
       { header: "客戶名稱", key: "customerName", width: 18 },
       { header: "客戶電話", key: "customerPhone",width: 14 },
       { header: "司機",     key: "driver",       width: 12 },
@@ -681,6 +702,7 @@ router.get("/orders/report/excel", async (req, res) => {
       ws.addRow({
         id:              o.id,
         status:          STATUS_MAP[o.status] ?? o.status,
+        source:          SOURCE_MAP[o.source ?? ""] ?? (o.source ?? ""),
         customerName:    o.customerName,
         customerPhone:   o.customerPhone,
         driver:          d?.name ?? "",
