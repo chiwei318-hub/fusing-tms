@@ -3,7 +3,7 @@ import {
   Truck, LogOut, RefreshCw, CheckCircle2, Clock, Package,
   DollarSign, ChevronDown, ChevronRight, Zap, Download,
   CheckSquare, Square, AlertCircle, UserPlus, User, Edit2, Save, X,
-  TrendingUp, ArrowRight,
+  TrendingUp, ArrowRight, ClipboardList, Send, Bell,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,34 @@ interface DriverSettlement {
   route_count: string; completed_count: string; earnings: string;
 }
 
-type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement";
+interface DispatchOrder {
+  id: number;
+  fleet_id: number;
+  fleet_name: string;
+  title: string;
+  week_start: string;
+  week_end: string;
+  status: "sent" | "acknowledged" | "assigned";
+  notes: string | null;
+  route_count: number;
+  assigned_count: number;
+  sent_at: string;
+  acknowledged_at: string | null;
+}
+
+interface DispatchOrderRoute {
+  id: number;
+  dispatch_order_id: number;
+  order_id: number | null;
+  route_label: string | null;
+  route_date: string | null;
+  prefix: string | null;
+  assigned_driver_id: number | null;
+  assigned_driver_name: string | null;
+  assigned_at: string | null;
+}
+
+type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement" | "dispatch";
 
 const fmt = (n: number | string) => `NT$ ${Math.round(Number(n)).toLocaleString()}`;
 
@@ -83,6 +110,13 @@ export default function FusingaoFleetPortal() {
   const [settlement, setSettlement]         = useState<SettlementSummary | null>(null);
   const [driverSettlements, setDriverSettlements] = useState<DriverSettlement[]>([]);
   const [settlementMonth, setSettlementMonth] = useState("");
+
+  // ── Dispatch orders state ──────────────────────────────────────────────────
+  const [dispatchOrders, setDispatchOrders]   = useState<DispatchOrder[]>([]);
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+  const [expandedOrder, setExpandedOrder]     = useState<number | null>(null);
+  const [orderRoutes, setOrderRoutes]         = useState<Record<number, DispatchOrderRoute[]>>({});
+  const [assigningRouteItem, setAssigningRouteItem] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!fleetId) return;
@@ -161,6 +195,56 @@ export default function FusingaoFleetPortal() {
   }, [fleetId, settlementMonth]); // eslint-disable-line
 
   useEffect(() => { if (tab === "settlement") loadSettlement(); }, [tab, settlementMonth]); // eslint-disable-line
+
+  // ── Dispatch orders handlers ───────────────────────────────────────────────
+  const loadDispatchOrders = useCallback(async () => {
+    if (!fleetId) return;
+    setDispatchLoading(true);
+    try {
+      const d = await fetch(fapi(`/dispatch-orders/fleet/${fleetId}`)).then(x => x.json());
+      if (d.ok) setDispatchOrders(d.orders ?? []);
+    } finally { setDispatchLoading(false); }
+  }, [fleetId]); // eslint-disable-line
+
+  useEffect(() => { if (tab === "dispatch") loadDispatchOrders(); }, [tab]); // eslint-disable-line
+
+  const toggleOrderExpand = async (orderId: number) => {
+    if (expandedOrder === orderId) { setExpandedOrder(null); return; }
+    setExpandedOrder(orderId);
+    if (!orderRoutes[orderId]) {
+      const d = await fetch(fapi(`/dispatch-orders/${orderId}`)).then(x => x.json());
+      if (d.ok) setOrderRoutes(prev => ({ ...prev, [orderId]: d.routes ?? [] }));
+    }
+    // Auto-acknowledge on open
+    const order = dispatchOrders.find(o => o.id === orderId);
+    if (order?.status === "sent") {
+      await fetch(fapi(`/dispatch-orders/${orderId}/acknowledge`), { method: "PUT" });
+      setDispatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "acknowledged" } : o));
+    }
+  };
+
+  const assignDriverToRoute = async (orderId: number, routeItemId: number, driver: FleetDriver | null) => {
+    setAssigningRouteItem(routeItemId);
+    try {
+      await fetch(fapi(`/dispatch-orders/${orderId}/routes/${routeItemId}/assign`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driver_id: driver?.id ?? null, driver_name: driver?.name ?? null }),
+      });
+      // Refresh routes
+      const d = await fetch(fapi(`/dispatch-orders/${orderId}`)).then(x => x.json());
+      if (d.ok) {
+        setOrderRoutes(prev => ({ ...prev, [orderId]: d.routes ?? [] }));
+        setDispatchOrders(prev => prev.map(o => {
+          if (o.id !== orderId) return o;
+          const assignedCount = (d.routes ?? []).filter((r: DispatchOrderRoute) => r.assigned_driver_id).length;
+          const total = (d.routes ?? []).length;
+          return { ...o, assigned_count: assignedCount, status: total > 0 && assignedCount === total ? "assigned" : "acknowledged" };
+        }));
+      }
+      toast({ title: driver ? `已指派 ${driver.name}` : "已清除指派" });
+    } finally { setAssigningRouteItem(null); }
+  };
 
   const saveDriver = async () => {
     if (!driverForm.name) return toast({ title: "司機姓名為必填", variant: "destructive" });
@@ -347,6 +431,7 @@ export default function FusingaoFleetPortal() {
         {/* Tabs */}
         <div className="flex gap-1 border-b bg-white rounded-t-lg px-3 pt-2 overflow-x-auto">
           {([
+            { id:"dispatch",   label:`📋 派車單${dispatchOrders.filter(o=>o.status==="sent").length > 0 ? ` 🔴` : dispatchOrders.length > 0 ? ` (${dispatchOrders.length})` : ""}` },
             { id:"available",  label:`🔥 可搶路線 (${available.length})` },
             { id:"mine",       label:`📦 我的任務 (${mine.length})` },
             { id:"billing",    label:"💰 月結帳單" },
@@ -593,6 +678,158 @@ export default function FusingaoFleetPortal() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ─── Dispatch Orders tab ─── */}
+        {tab === "dispatch" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-blue-600" />
+                平台派車單
+              </p>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadDispatchOrders} disabled={dispatchLoading}>
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${dispatchLoading ? "animate-spin" : ""}`} />
+                重新整理
+              </Button>
+            </div>
+
+            {dispatchOrders.length === 0 && !dispatchLoading && (
+              <div className="text-center py-16 text-gray-400">
+                <ClipboardList className="h-10 w-10 mx-auto mb-3 text-gray-200" />
+                <p className="text-sm">尚無派車單</p>
+                <p className="text-xs mt-1 text-gray-300">平台發送派車單後，會在這裡顯示</p>
+              </div>
+            )}
+
+            {dispatchOrders.map(order => {
+              const isExpanded = expandedOrder === order.id;
+              const routes = orderRoutes[order.id] ?? [];
+              const unread = order.status === "sent";
+              const statusConfig = {
+                sent:         { label: "待確認", cls: "bg-red-100 text-red-700",    icon: Bell },
+                acknowledged: { label: "已確認", cls: "bg-amber-100 text-amber-700", icon: Clock },
+                assigned:     { label: "已排班", cls: "bg-green-100 text-green-700", icon: CheckCircle2 },
+              }[order.status] ?? { label: order.status, cls: "bg-gray-100 text-gray-600", icon: Clock };
+              const StatusIcon = statusConfig.icon;
+
+              return (
+                <Card key={order.id} className={`overflow-hidden transition-all ${unread ? "ring-2 ring-red-400 ring-offset-1" : ""}`}>
+                  {/* Order header */}
+                  <button
+                    className="w-full flex items-start gap-3 px-4 py-3 bg-white hover:bg-gray-50 transition-colors text-left"
+                    onClick={() => toggleOrderExpand(order.id)}
+                  >
+                    <div className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${statusConfig.cls}`}>
+                      <StatusIcon className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-gray-800">{order.title}</p>
+                        {unread && <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0">NEW</Badge>}
+                        <Badge className={`text-[10px] px-2 py-0 ${statusConfig.cls}`}>{statusConfig.label}</Badge>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {order.week_start} ～ {order.week_end}
+                        &nbsp;·&nbsp;{order.route_count} 條路線
+                        {order.assigned_count > 0 && <span className="text-purple-600 ml-1">({order.assigned_count} 已排班)</span>}
+                      </p>
+                      {order.notes && (
+                        <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-0.5 mt-1 inline-block">📌 {order.notes}</p>
+                      )}
+                    </div>
+                    <div className="text-gray-400 mt-0.5 shrink-0">
+                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded: route assignments */}
+                  {isExpanded && (
+                    <CardContent className="p-0 border-t">
+                      {routes.length === 0 ? (
+                        <div className="flex justify-center py-6">
+                          <RefreshCw className="h-4 w-4 animate-spin text-gray-300" />
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-gray-50 border-b text-gray-500">
+                                <th className="text-left px-3 py-2 font-medium">日期</th>
+                                <th className="text-left px-3 py-2 font-medium">路線</th>
+                                <th className="text-left px-3 py-2 font-medium">指派司機</th>
+                                <th className="px-3 py-2"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {routes.map(r => (
+                                <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
+                                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.route_date ?? "—"}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="font-medium text-gray-800">{r.route_label ?? "—"}</span>
+                                    {r.prefix && (
+                                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">{r.prefix}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {r.assigned_driver_name ? (
+                                      <span className="flex items-center gap-1 text-purple-700 font-medium">
+                                        <User className="h-3 w-3" />
+                                        {r.assigned_driver_name}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-300">未指派</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Select
+                                      value={r.assigned_driver_id ? String(r.assigned_driver_id) : "none"}
+                                      onValueChange={v => {
+                                        const d = v === "none" ? null : drivers.find(dr => String(dr.id) === v) ?? null;
+                                        assignDriverToRoute(order.id, r.id, d);
+                                      }}
+                                      disabled={assigningRouteItem === r.id}
+                                    >
+                                      <SelectTrigger className="h-7 w-28 text-[11px]">
+                                        <SelectValue placeholder="選擇司機" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">（清除）</SelectItem>
+                                        {drivers.filter(d => d.is_active).map(d => (
+                                          <SelectItem key={d.id} value={String(d.id)}>
+                                            {d.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Progress bar */}
+                      {routes.length > 0 && (
+                        <div className="px-4 py-2.5 bg-gray-50 border-t flex items-center gap-3">
+                          <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                            <div
+                              className="bg-purple-500 h-1.5 rounded-full transition-all"
+                              style={{ width: `${routes.length > 0 ? (order.assigned_count / routes.length) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-gray-500 shrink-0">
+                            {order.assigned_count}/{routes.length} 已排班
+                          </span>
+                        </div>
+                      )}
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
 

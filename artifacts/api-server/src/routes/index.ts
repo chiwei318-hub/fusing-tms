@@ -65,6 +65,7 @@ import { fusingaoRouter } from "./fusingao";
 import { penaltySyncRouter } from "./penaltySync";
 import { rateSyncRouter } from "./rateSync";
 import { shopeeDriversRouter } from "./shopeeDrivers";
+import { dispatchOrdersRouter } from "./dispatchOrders";
 
 const router: IRouter = Router();
 
@@ -135,5 +136,6 @@ router.use("/fusingao", fusingaoRouter);
 router.use(penaltySyncRouter);
 router.use(rateSyncRouter);
 router.use(shopeeDriversRouter);
+router.use("/dispatch-orders", dispatchOrdersRouter);
 
 export default router;
