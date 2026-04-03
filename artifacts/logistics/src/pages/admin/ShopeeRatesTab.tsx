@@ -55,7 +55,14 @@ const SERVICE_TYPES = [
 
 const VEHICLE_ORDER = ["6.2T", "8.5T", "11T", "17T", "26T", "35T", "46T"];
 
-const VEHICLE_TYPE_RE = /^\d+(\.\d+)?T$/i;
+// Matches "6.2T", "8.5t", "11T", "6.2噸", "8.5噸", "1.5T" etc.
+const VEHICLE_TYPE_RE = /^(\d+(\.\d+)?)\s*(T|噸|t)$/i;
+
+// Normalise vehicle type to canonical form e.g. "6.2噸" → "6.2T"
+const normaliseVehicle = (raw: string): string => {
+  const m = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(T|噸|t)$/i);
+  return m ? `${m[1]}T` : raw.trim();
+};
 
 const fmt = (p: number | null) =>
   p ? `NT$${p.toLocaleString()}` : "—";
@@ -96,8 +103,9 @@ async function parseRateExcel(file: File): Promise<{ rows: ParsedRow[]; warnings
     // Try flat format first: look for a header row with "route"/"路線" and "vehicle"/"車型"
     const flatHdrIdx = rawRows.findIndex((r) => {
       const lower = r.map((c) => c.toLowerCase());
-      return (lower.includes("路線") || lower.includes("route")) &&
-             (lower.includes("車型") || lower.includes("vehicle_type") || lower.includes("vehicletype"));
+      const hasRoute   = lower.some(c => c.includes("路線") || c.includes("起訖") || c === "route");
+      const hasVehicle = lower.some(c => c.includes("車型") || c.includes("vehicle"));
+      return hasRoute && hasVehicle;
     });
 
     if (flatHdrIdx >= 0) {
@@ -128,24 +136,26 @@ async function parseRateExcel(file: File): Promise<{ rows: ParsedRow[]; warnings
     }
 
     // ── Wide / pivot format ───────────────────────────────────────────────
-    // Find the header row that contains vehicle type columns
+    // Find the header row that contains vehicle type columns (search up to 15 rows)
     let hdrRowIdx = -1;
     let vehicleCols: { col: number; type: string }[] = [];
 
-    for (let i = 0; i < Math.min(rawRows.length, 6); i++) {
+    for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
       const r = rawRows[i];
       const vCols = r
         .map((c, idx) => ({ c, idx }))
-        .filter(({ c }) => VEHICLE_TYPE_RE.test(c));
-      if (vCols.length >= 2) {
+        .filter(({ c }) => VEHICLE_TYPE_RE.test(c.trim()));
+      if (vCols.length >= 1) {
         hdrRowIdx = i;
-        vehicleCols = vCols.map(({ c, idx }) => ({ col: idx, type: c }));
+        vehicleCols = vCols.map(({ c, idx }) => ({ col: idx, type: normaliseVehicle(c) }));
         break;
       }
     }
 
     if (hdrRowIdx < 0) {
-      warnings.push(`工作表「${sheetName}」：找不到車型欄位（6.2T / 8.5T / 11T ...），已略過`);
+      // Log up to 3 header rows to help debug
+      const sample = rawRows.slice(0, 5).map((r, i) => `  行${i+1}: ${r.slice(0,6).join(" | ")}`).join("\n");
+      warnings.push(`工作表「${sheetName}」：找不到車型欄位（6.2T / 8.5T / 11T / 6.2噸 ...），已略過。\n前5行預覽：\n${sample}`);
       return;
     }
 
@@ -740,15 +750,19 @@ export default function ShopeeRatesTab() {
     try {
       const { rows, warnings } = await parseRateExcel(file);
       if (rows.length === 0) {
+        const detail = warnings.length > 0
+          ? warnings.map(w => w.split("\n")[0]).join("；")
+          : "未能在檔案中識別費率資料，請確認格式（支援 Wide 樞紐格式：標題行含 6.2T/8.5T/11T 等車型，或 Flat 格式：含「路線」「車型」欄位）。";
         toast({
           title: "解析失敗",
-          description: "未能在檔案中識別費率資料，請確認格式。",
+          description: detail,
           variant: "destructive",
         });
+        if (warnings.length > 0) setParseWarnings(warnings);
       } else {
         setParsedRows(rows);
         setParseWarnings(warnings);
-        toast({ title: `解析完成`, description: `共識別 ${rows.length} 筆費率資料` });
+        toast({ title: `解析完成`, description: `共識別 ${rows.length} 筆費率資料${warnings.length > 0 ? `（${warnings.length} 張工作表略過）` : ""}` });
       }
     } catch (err: any) {
       toast({ title: "解析失敗", description: err.message, variant: "destructive" });
@@ -857,11 +871,11 @@ export default function ShopeeRatesTab() {
 
             {/* Warnings */}
             {parseWarnings.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
                 {parseWarnings.map((w, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs text-amber-700">
                     <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                    {w}
+                    <pre className="whitespace-pre-wrap font-sans">{w}</pre>
                   </div>
                 ))}
               </div>
