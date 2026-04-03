@@ -195,20 +195,85 @@ driverEarningsRouter.get("/shopee-drivers", async (_req, res) => {
   }
 });
 
-// PUT /driver-earnings/shopee-drivers/:shopee_id — update driver info
+// POST /driver-earnings/shopee-drivers — create new driver
+driverEarningsRouter.post("/shopee-drivers", async (req, res) => {
+  try {
+    const { shopee_id, name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes } = req.body;
+    if (!shopee_id) return res.status(400).json({ ok: false, error: "shopee_id 必填" });
+    await db.execute(sql`
+      INSERT INTO shopee_drivers (shopee_id, name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes)
+      VALUES (${shopee_id}, ${name ?? null}, ${vehicle_plate ?? null}, ${vehicle_type ?? null},
+              ${fleet_name ?? null}, ${is_own_driver ?? false}, ${notes ?? null})
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /driver-earnings/shopee-drivers/import — bulk upsert from Excel
+// NOTE: must be before /:shopee_id to avoid routing conflict
+driverEarningsRouter.post("/shopee-drivers/import", async (req, res) => {
+  try {
+    const { rows } = req.body as { rows: Array<{
+      shopee_id: string; name?: string; vehicle_plate?: string; vehicle_type?: string;
+      fleet_name?: string; is_own_driver?: boolean; notes?: string;
+    }> };
+    if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ ok: false, error: "rows 必填" });
+
+    let inserted = 0;
+    for (const r of rows) {
+      if (!r.shopee_id) continue;
+      await db.execute(sql`
+        INSERT INTO shopee_drivers (shopee_id, name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes)
+        VALUES (${r.shopee_id}, ${r.name ?? null}, ${r.vehicle_plate ?? null}, ${r.vehicle_type ?? null},
+                ${r.fleet_name ?? null}, ${r.is_own_driver ?? false}, ${r.notes ?? null})
+        ON CONFLICT (shopee_id) DO UPDATE
+          SET name          = EXCLUDED.name,
+              vehicle_plate = EXCLUDED.vehicle_plate,
+              vehicle_type  = EXCLUDED.vehicle_type,
+              fleet_name    = EXCLUDED.fleet_name,
+              is_own_driver = EXCLUDED.is_own_driver,
+              notes         = EXCLUDED.notes,
+              updated_at    = NOW()
+      `);
+      inserted++;
+    }
+    res.json({ ok: true, inserted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /driver-earnings/shopee-drivers/:shopee_id — update driver info (all fields)
 driverEarningsRouter.put("/shopee-drivers/:shopee_id", async (req, res) => {
   try {
     const { shopee_id } = req.params;
-    const { name, vehicle_plate, vehicle_type, notes } = req.body;
+    const { name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes } = req.body;
     await db.execute(sql`
-      INSERT INTO shopee_drivers (shopee_id, name, vehicle_plate, vehicle_type, notes)
-      VALUES (${shopee_id}, ${name}, ${vehicle_plate}, ${vehicle_type}, ${notes})
+      INSERT INTO shopee_drivers (shopee_id, name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes)
+      VALUES (${shopee_id}, ${name ?? null}, ${vehicle_plate ?? null}, ${vehicle_type ?? null},
+              ${fleet_name ?? null}, ${is_own_driver ?? false}, ${notes ?? null})
       ON CONFLICT (shopee_id) DO UPDATE
-        SET name = EXCLUDED.name,
+        SET name          = EXCLUDED.name,
             vehicle_plate = EXCLUDED.vehicle_plate,
-            vehicle_type = EXCLUDED.vehicle_type,
-            notes = EXCLUDED.notes
+            vehicle_type  = EXCLUDED.vehicle_type,
+            fleet_name    = EXCLUDED.fleet_name,
+            is_own_driver = EXCLUDED.is_own_driver,
+            notes         = EXCLUDED.notes,
+            updated_at    = NOW()
     `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// DELETE /driver-earnings/shopee-drivers/:shopee_id — delete driver
+driverEarningsRouter.delete("/shopee-drivers/:shopee_id", async (req, res) => {
+  try {
+    const { shopee_id } = req.params;
+    await db.execute(sql`DELETE FROM shopee_drivers WHERE shopee_id = ${shopee_id}`);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
