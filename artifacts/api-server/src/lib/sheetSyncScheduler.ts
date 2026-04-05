@@ -32,6 +32,10 @@ interface BillingRow {
   driver_id: string;
   trip_date: string;
   amount: number;
+  stops: number | null;
+  trips: number | null;
+  license_plate: string;
+  notes: string;
 }
 
 function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[] } {
@@ -39,18 +43,28 @@ function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[]
   const rows: BillingRow[] = [];
   const warnings: string[] = [];
 
+  // Broad alias map — covers many real-world monthly billing sheet formats
   const BILLING_ALIASES: Record<string, string[]> = {
-    billing_month: ["月份"],
-    billing_type:  ["類型"],
-    fleet_name:    ["車隊名稱", "車隊"],
-    warehouse:     ["倉別"],
-    area:          ["區域"],
-    route_no:      ["路線號碼", "路線編號"],
-    vehicle_size:  ["車型"],
-    driver_id:     ["司機工號", "司機ID", "司機id"],
-    trip_date:     ["出車日期"],
-    amount:        ["金額"],
+    billing_month: ["月份", "帳款月份", "帳務月份", "結帳月份", "期別"],
+    billing_type:  ["類型", "服務類型", "配送類型", "業務類型"],
+    fleet_name:    ["車隊名稱", "車隊", "配送商", "承攬商"],
+    warehouse:     ["倉別", "倉庫", "發貨倉"],
+    area:          ["區域", "配送區域", "服務區域"],
+    route_no:      ["路線號碼", "路線編號", "路線", "線號"],
+    vehicle_size:  ["車型", "車輛類型", "車種"],
+    driver_id:     ["司機工號", "司機ID", "司機id", "工號", "司機編號", "員工編號"],
+    trip_date:     ["出車日期", "日期", "配送日期", "出勤日期", "趟次日期"],
+    amount:        ["金額", "費用", "費率金額", "趟次金額", "應付金額", "實付金額"],
+    stops:         ["站數", "門市數", "站點數", "配送站數", "趟次站數"],
+    trips:         ["趟次", "趟數", "出車趟次", "配送趟次"],
+    license_plate: ["車牌", "車牌號碼", "車號"],
+    notes:         ["備註", "說明", "附註", "特殊備註"],
   };
+
+  // Keywords that must appear in a header row (at least one from each group)
+  const AMOUNT_KEYWORDS = ["金額", "費用", "應付", "實付"];
+  const DATE_KEYWORDS   = ["日期", "月份", "趟次日期", "出車", "配送日", "結帳"];
+  const ROUTE_KEYWORDS  = ["路線", "線號", "路線編號", "路線號碼"];
 
   function findColIdx(headers: string[], aliases: string[]): number {
     for (const alias of aliases) {
@@ -60,6 +74,15 @@ function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[]
     return -1;
   }
 
+  function isHeaderRow(cols: string[]): boolean {
+    const joined = cols.join(",");
+    const hasAmount = AMOUNT_KEYWORDS.some(k => joined.includes(k));
+    const hasDate   = DATE_KEYWORDS.some(k => joined.includes(k));
+    const hasRoute  = ROUTE_KEYWORDS.some(k => joined.includes(k));
+    // Need amount + (date or route) to count as a billing header
+    return hasAmount && (hasDate || hasRoute);
+  }
+
   let colMap: Record<string, number> = {};
   let headerFound = false;
 
@@ -67,8 +90,7 @@ function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[]
     const cols = lines[i].split(",").map(c => c.trim().replace(/^"|"$/g, ""));
 
     if (!headerFound) {
-      const joined = cols.join(",");
-      if (joined.includes("月份") && joined.includes("金額")) {
+      if (isHeaderRow(cols)) {
         for (const [field, aliases] of Object.entries(BILLING_ALIASES)) {
           colMap[field] = findColIdx(cols, aliases);
         }
@@ -77,7 +99,10 @@ function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[]
       continue;
     }
 
-    if (cols.length < 5) continue;
+    if (cols.length < 3) continue;
+    // Skip summary/total rows
+    const firstCell = cols[0].trim();
+    if (firstCell === "合計" || firstCell === "小計" || firstCell === "總計") continue;
 
     const get = (field: string): string => {
       const idx = colMap[field];
@@ -85,35 +110,51 @@ function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[]
       return cols[idx]?.trim() ?? "";
     };
 
-    const billing_month = get("billing_month");
-    const route_no = get("route_no");
     const trip_date = get("trip_date");
+    const route_no  = get("route_no");
     const rawAmount = get("amount").replace(/,/g, "");
-    const amount = parseFloat(rawAmount);
+    const amount    = parseFloat(rawAmount);
 
-    if (!billing_month || !route_no || !trip_date) continue;
+    // At minimum we need a date (or route) and an amount
+    if (!trip_date && !route_no) continue;
+    if (!rawAmount || isNaN(amount)) continue;
 
-    if (isNaN(amount)) {
-      warnings.push(`第 ${i + 1} 行金額格式錯誤：「${get("amount")}」`);
-      continue;
+    // Derive billing_month from trip_date if no explicit month column
+    let billing_month = get("billing_month");
+    if (!billing_month && trip_date) {
+      // Try to extract YYYY-MM from various date formats
+      const m =
+        trip_date.match(/^(\d{4})[\/\-](\d{1,2})/) ||
+        trip_date.match(/^(\d{3,4})年(\d{1,2})月/);
+      if (m) billing_month = `${m[1]}-${m[2].padStart(2, "0")}`;
+      else billing_month = trip_date.slice(0, 7);
     }
+
+    const stopsRaw = get("stops").replace(/,/g, "");
+    const tripsRaw = get("trips").replace(/,/g, "");
 
     rows.push({
       billing_month,
-      billing_type: get("billing_type"),
-      fleet_name:   get("fleet_name"),
-      warehouse:    get("warehouse"),
-      area:         get("area"),
+      billing_type:  get("billing_type"),
+      fleet_name:    get("fleet_name"),
+      warehouse:     get("warehouse"),
+      area:          get("area"),
       route_no,
-      vehicle_size: get("vehicle_size"),
-      driver_id:    get("driver_id"),
+      vehicle_size:  get("vehicle_size"),
+      driver_id:     get("driver_id"),
       trip_date,
       amount,
+      stops:         stopsRaw ? parseInt(stopsRaw, 10) || null : null,
+      trips:         tripsRaw ? parseInt(tripsRaw, 10) || null : null,
+      license_plate: get("license_plate"),
+      notes:         get("notes"),
     });
   }
 
   if (!headerFound) {
-    warnings.push("找不到帳務表頭列，請確認試算表包含「月份」和「金額」欄位");
+    warnings.push(
+      "找不到帳務表頭列，請確認試算表至少包含「金額（或費用）」以及「日期（或路線）」欄位"
+    );
   }
 
   return { rows, warnings };
@@ -215,22 +256,34 @@ async function syncBilling(
 ): Promise<{ inserted: number; duplicates: number; errors: number; warnings: number; detail: object }> {
   const { rows, warnings } = parseBillingCsv(text);
 
+  // Ensure table exists with base columns
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fusingao_billing_trips (
       id             SERIAL PRIMARY KEY,
-      billing_month  TEXT NOT NULL,
-      billing_type   TEXT NOT NULL,
+      billing_month  TEXT,
+      billing_type   TEXT,
       fleet_name     TEXT,
       warehouse      TEXT,
       area           TEXT,
-      route_no       TEXT NOT NULL,
+      route_no       TEXT,
       vehicle_size   TEXT,
       driver_id      TEXT,
-      trip_date      DATE NOT NULL,
+      trip_date      TEXT,
       amount         NUMERIC,
       created_at     TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // Safely add new columns if they don't exist yet
+  const newCols = [
+    "ALTER TABLE fusingao_billing_trips ADD COLUMN IF NOT EXISTS stops         INTEGER",
+    "ALTER TABLE fusingao_billing_trips ADD COLUMN IF NOT EXISTS trips         INTEGER",
+    "ALTER TABLE fusingao_billing_trips ADD COLUMN IF NOT EXISTS license_plate TEXT",
+    "ALTER TABLE fusingao_billing_trips ADD COLUMN IF NOT EXISTS notes         TEXT",
+  ];
+  for (const sql of newCols) {
+    await pool.query(sql);
+  }
 
   const insertedList: string[] = [];
   const duplicateList: string[] = [];
@@ -241,7 +294,10 @@ async function syncBilling(
       // Duplicate check: same month + route_no + trip_date + driver_id
       const dup = await pool.query(
         `SELECT id FROM fusingao_billing_trips
-         WHERE billing_month = $1 AND route_no = $2 AND trip_date = $3 AND driver_id = $4
+         WHERE billing_month = $1
+           AND COALESCE(route_no,'') = $2
+           AND COALESCE(trip_date::text,'') = $3
+           AND COALESCE(driver_id,'') = $4
          LIMIT 1`,
         [row.billing_month, row.route_no, row.trip_date, row.driver_id]
       );
@@ -252,10 +308,15 @@ async function syncBilling(
 
       await pool.query(
         `INSERT INTO fusingao_billing_trips
-           (billing_month, billing_type, fleet_name, warehouse, area, route_no, vehicle_size, driver_id, trip_date, amount)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [row.billing_month, row.billing_type, row.fleet_name, row.warehouse, row.area,
-         row.route_no, row.vehicle_size, row.driver_id, row.trip_date, row.amount]
+           (billing_month, billing_type, fleet_name, warehouse, area,
+            route_no, vehicle_size, driver_id, trip_date, amount,
+            stops, trips, license_plate, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          row.billing_month, row.billing_type, row.fleet_name, row.warehouse, row.area,
+          row.route_no, row.vehicle_size, row.driver_id, row.trip_date, row.amount,
+          row.stops, row.trips, row.license_plate, row.notes || null,
+        ]
       );
       insertedList.push(`${row.billing_month}/${row.route_no}/${row.trip_date}`);
     } catch (e: unknown) {
