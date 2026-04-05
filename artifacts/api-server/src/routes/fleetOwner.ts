@@ -729,6 +729,131 @@ fleetOwnerRouter.delete("/trips/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── PARSE GOOGLE SHEET 班表 ───────────────────────────────────────────
+fleetOwnerRouter.post("/trips/parse-sheet", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { url } = req.body as { url: string };
+  if (!url) return res.status(400).json({ error: "請提供 Google 試算表連結" });
+
+  // Convert share URL to CSV export URL
+  let csvUrl = url;
+  const match = url.match(/\/spreadsheets\/d\/([^/]+)/);
+  const gidMatch = url.match(/[?&#]gid=(\d+)/);
+  if (match) {
+    const sheetId = match[1];
+    const gid = gidMatch?.[1] ?? "0";
+    csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  }
+
+  let text: string;
+  try {
+    const resp = await fetch(csvUrl, { signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    text = await resp.text();
+  } catch (e: any) {
+    return res.status(502).json({ error: `無法取得試算表：${e.message}` });
+  }
+
+  // Strip BOM + split lines
+  text = text.replace(/^\uFEFF/, "");
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+
+  // Parse CSV line (handles quoted fields)
+  function parseLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { result.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  // Skip header row (contains 路線編號（預排）)
+  const dataLines = lines.filter(l => !l.includes("路線編號（預排）"));
+
+  // Fetch drivers for name/id matching
+  const { rows: driverRows } = await pool.query(
+    `SELECT id, name FROM drivers WHERE franchisee_id=$1`, [fid]
+  );
+  const driverById: Record<string, number> = {};
+  const driverByName: Record<string, number> = {};
+  for (const d of driverRows) {
+    driverById[String(d.id)] = d.id;
+    driverByName[d.name.trim()] = d.id;
+  }
+
+  // Group rows into routes
+  const routes: Array<{
+    trip_date: string; route_no: string; vehicle_type: string;
+    driver_raw: string; time_slot: string; dock_no: string;
+    stops: Array<{ seq: string; name: string; address: string }>;
+  }> = [];
+
+  let current: typeof routes[0] | null = null;
+
+  for (const line of dataLines) {
+    const cols = parseLine(line);
+    const dateRaw = cols[0] ?? "";
+    const routeNo = cols[2] ?? "";
+    const stopSeq = cols[7] ?? "";
+    const storeName = cols[8] ?? "";
+    const storeAddr = cols[9] ?? "";
+
+    if (routeNo && routeNo !== "路線編號（預排）") {
+      // New route
+      const dateStr = dateRaw.split(" ")[0]?.replace(/\//g, "-") ?? "";
+      current = {
+        trip_date: dateStr,
+        route_no: routeNo,
+        vehicle_type: cols[3] ?? "",
+        driver_raw: cols[4] ?? "",
+        time_slot: cols[5] ?? "",
+        dock_no: cols[6] ?? "",
+        stops: storeName ? [{ seq: stopSeq, name: storeName, address: storeAddr }] : [],
+      };
+      routes.push(current);
+    } else if (current && (storeName || storeAddr)) {
+      // Continuation stop for current route
+      current.stops.push({ seq: stopSeq, name: storeName, address: storeAddr });
+    }
+  }
+
+  // Convert routes to trip objects
+  const trips = routes.map(r => {
+    const stopCount = r.stops.length;
+    const stopNames = r.stops.map(s => s.name).join("、").slice(0, 300);
+
+    let driverId: number | null = null;
+    if (r.driver_raw) {
+      driverId = driverById[r.driver_raw] ?? driverByName[r.driver_raw] ?? null;
+    }
+
+    return {
+      trip_date: r.trip_date || new Date().toISOString().split("T")[0],
+      driver_id: driverId,
+      driver_raw: r.driver_raw,
+      customer_name: "蝦皮",
+      pickup_address: r.dock_no ? `碼頭 ${r.dock_no}（${r.time_slot}）` : r.time_slot,
+      delivery_address: stopCount > 0 ? `${stopCount} 站：${stopNames}` : "",
+      amount: 0,
+      driver_payout: null,
+      status: "pending",
+      notes: `${r.route_no} ｜ ${r.vehicle_type} ｜ ${stopCount} 站`,
+      _route_no: r.route_no,
+      _stop_count: stopCount,
+      _vehicle_type: r.vehicle_type,
+      _time_slot: r.time_slot,
+      _dock_no: r.dock_no,
+    };
+  });
+
+  res.json({ ok: true, trips, total: trips.length });
+});
+
 // ─── CSV EXPORT ────────────────────────────────────────────────────────
 fleetOwnerRouter.get("/trips/export", async (req, res) => {
   const fid = req.fleet!.franchisee_id;

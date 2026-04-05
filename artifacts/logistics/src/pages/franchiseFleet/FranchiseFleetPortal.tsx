@@ -93,10 +93,16 @@ function DashboardTab() {
   const [savingTrip, setSavingTrip] = useState(false);
 
   const [showImport, setShowImport] = useState(false);
+  const [importMode, setImportMode] = useState<"csv" | "sheet">("sheet");
   const [importing, setImporting] = useState(false);
   const [importRows, setImportRows] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Google Sheet import state
+  const [sheetUrl, setSheetUrl] = useState("https://docs.google.com/spreadsheets/d/1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI/edit?gid=1480754828#gid=1480754828");
+  const [sheetParsing, setSheetParsing] = useState(false);
+  const [sheetTrips, setSheetTrips] = useState<any[]>([]);
 
   // Load dashboard
   const load = useCallback(async () => {
@@ -163,11 +169,26 @@ function DashboardTab() {
       const d = await api("POST", "/trips/import", { rows: importRows });
       toast({ title: `已匯入 ${d.inserted} 筆車趟`, description: d.errors?.length ? `${d.errors.length} 筆錯誤` : undefined });
       if (d.errors?.length) setImportErrors(d.errors);
-      else { setShowImport(false); setImportRows([]); }
+      else { setShowImport(false); setImportRows([]); setSheetTrips([]); }
       loadTrips();
     } catch (e: any) {
       toast({ title: "匯入失敗", description: e.message, variant: "destructive" });
     } finally { setImporting(false); }
+  };
+
+  // Parse Google Sheet schedule
+  const handleParseSheet = async () => {
+    if (!sheetUrl.trim()) { toast({ title: "請貼上試算表連結", variant: "destructive" }); return; }
+    setSheetParsing(true);
+    setSheetTrips([]);
+    try {
+      const d = await api("POST", "/trips/parse-sheet", { url: sheetUrl.trim() });
+      setSheetTrips(d.trips ?? []);
+      setImportRows(d.trips ?? []);
+      toast({ title: `解析完成：${d.total} 條路線`, description: "請確認後點「確認匯入」" });
+    } catch (e: any) {
+      toast({ title: "解析失敗", description: e.message, variant: "destructive" });
+    } finally { setSheetParsing(false); }
   };
 
   // Save trip
@@ -501,46 +522,134 @@ function DashboardTab() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── CSV 匯入 Dialog ──────────────────────────────────────── */}
-      <Dialog open={showImport} onOpenChange={setShowImport}>
-        <DialogContent className="max-w-lg">
+      {/* ─── 匯入 Dialog ──────────────────────────────────────────── */}
+      <Dialog open={showImport} onOpenChange={v => { setShowImport(v); if (!v) { setImportRows([]); setSheetTrips([]); setImportErrors([]); } }}>
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Upload className="w-4 h-4 text-green-600" />CSV 匯入車趟
+              <Upload className="w-4 h-4 text-green-600" />匯入車趟記錄
             </DialogTitle>
           </DialogHeader>
+
+          {/* Mode tabs */}
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+            {([
+              { key: "sheet", label: "📋 從班表匯入（Google 試算表）" },
+              { key: "csv", label: "📄 從 CSV 檔案匯入" },
+            ] as const).map(m => (
+              <button
+                key={m.key}
+                onClick={() => { setImportMode(m.key); setImportRows([]); setSheetTrips([]); setImportErrors([]); }}
+                className={`flex-1 py-1.5 px-2 text-xs rounded-lg transition-all font-medium ${importMode === m.key ? "bg-white shadow text-green-700" : "text-slate-500 hover:text-slate-700"}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-3 py-1">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
-              <p className="font-semibold text-slate-700">CSV 欄位格式（需有標題列）：</p>
-              <p className="font-mono text-slate-500">日期, 司機姓名, 客戶名稱, 起點, 終點, 金額, 司機薪資, 狀態, 備註</p>
-              <p className="text-slate-400 text-xs mt-1">· 司機姓名需與系統相符才能自動連結<br />· 狀態可填：completed（完成）/ pending / cancelled<br />· 金額請填純數字</p>
-            </div>
-            <div>
-              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-              <Button variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
-                <Upload className="w-4 h-4" />選擇 CSV 檔案
-                {importRows.length > 0 && <span className="ml-1 text-green-600">（已載入 {importRows.length} 筆）</span>}
-              </Button>
-            </div>
-            {importRows.length > 0 && (
-              <div className="max-h-40 overflow-y-auto border rounded-lg text-xs">
-                <table className="w-full">
-                  <tbody>
-                    {importRows.slice(0, 5).map((r, i) => (
-                      <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
-                        <td className="px-2 py-1.5 text-slate-500">{r["日期"] ?? r.date}</td>
-                        <td className="px-2 py-1.5 text-blue-600">{r["司機姓名"] ?? r.driver_name}</td>
-                        <td className="px-2 py-1.5 truncate max-w-[120px]">{r["起點"] ?? r.pickup_address} → {r["終點"] ?? r.delivery_address}</td>
-                        <td className="px-2 py-1.5 text-green-600 text-right">NT$ {r["金額"] ?? r.amount}</td>
-                      </tr>
-                    ))}
-                    {importRows.length > 5 && (
-                      <tr><td colSpan={4} className="px-2 py-1.5 text-slate-400 text-center">…還有 {importRows.length - 5} 筆</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+            {/* ── Google Sheet mode ── */}
+            {importMode === "sheet" && (
+              <>
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+                  <p className="font-semibold text-blue-700">從蝦皮配送班表匯入</p>
+                  <p className="text-slate-500">貼上 Google 試算表連結，系統會自動讀取路線、碼頭、出車時段，每條路線產生一筆車趟記錄。</p>
+                  <p className="text-slate-400">· 需確認試算表為「知道連結的人可以查看」<br />· 每條路線的站點清單會記錄在備註欄</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs">Google 試算表連結</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={sheetUrl}
+                      onChange={e => { setSheetUrl(e.target.value); setSheetTrips([]); setImportRows([]); }}
+                      placeholder="https://docs.google.com/spreadsheets/d/..."
+                      className="h-8 text-xs flex-1"
+                    />
+                    <Button
+                      size="sm" className="h-8 shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1"
+                      onClick={handleParseSheet} disabled={sheetParsing}
+                    >
+                      {sheetParsing ? <><RefreshCw className="w-3 h-3 animate-spin" />解析中…</> : "預覽資料"}
+                    </Button>
+                  </div>
+                </div>
+
+                {sheetTrips.length > 0 && (
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1.5">
+                      共解析到 <span className="font-bold text-green-600">{sheetTrips.length}</span> 條路線，預覽如下（前 6 筆）：
+                    </p>
+                    <div className="max-h-52 overflow-y-auto border rounded-xl text-xs">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            {["日期", "路線", "碼頭／時段", "站數"].map(h => (
+                              <th key={h} className="px-2 py-1.5 text-left text-slate-500 font-medium">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {sheetTrips.slice(0, 6).map((t, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-2 py-1.5 font-mono text-slate-600 whitespace-nowrap">{t.trip_date}</td>
+                              <td className="px-2 py-1.5 font-semibold text-blue-700 whitespace-nowrap">{t._route_no}</td>
+                              <td className="px-2 py-1.5 text-slate-500 whitespace-nowrap">{t._dock_no ? `碼頭 ${t._dock_no}` : ""} {t._time_slot}</td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">{t._stop_count} 站</span>
+                              </td>
+                            </tr>
+                          ))}
+                          {sheetTrips.length > 6 && (
+                            <tr>
+                              <td colSpan={4} className="px-2 py-1.5 text-slate-400 text-center">…還有 {sheetTrips.length - 6} 條路線</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
+
+            {/* ── CSV file mode ── */}
+            {importMode === "csv" && (
+              <>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+                  <p className="font-semibold text-slate-700">CSV 欄位格式（需有標題列）：</p>
+                  <p className="font-mono text-slate-500">日期, 司機姓名, 客戶名稱, 起點, 終點, 金額, 司機薪資, 狀態, 備註</p>
+                  <p className="text-slate-400 mt-1">· 司機姓名需與系統相符才能自動連結<br />· 狀態：completed / pending / cancelled</p>
+                </div>
+                <div>
+                  <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+                  <Button variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
+                    <Upload className="w-4 h-4" />選擇 CSV 檔案
+                    {importRows.length > 0 && <span className="ml-1 text-green-600">（已載入 {importRows.length} 筆）</span>}
+                  </Button>
+                </div>
+                {importRows.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto border rounded-lg text-xs">
+                    <table className="w-full">
+                      <tbody>
+                        {importRows.slice(0, 5).map((r, i) => (
+                          <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
+                            <td className="px-2 py-1.5 text-slate-500">{r["日期"] ?? r.date}</td>
+                            <td className="px-2 py-1.5 text-blue-600">{r["司機姓名"] ?? r.driver_name}</td>
+                            <td className="px-2 py-1.5 truncate max-w-[120px]">{r["起點"] ?? r.pickup_address} → {r["終點"] ?? r.delivery_address}</td>
+                            <td className="px-2 py-1.5 text-green-600 text-right">NT$ {r["金額"] ?? r.amount}</td>
+                          </tr>
+                        ))}
+                        {importRows.length > 5 && (
+                          <tr><td colSpan={4} className="px-2 py-1.5 text-slate-400 text-center">…還有 {importRows.length - 5} 筆</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
             {importErrors.length > 0 && (
               <div className="space-y-1">
                 {importErrors.slice(0, 5).map((e, i) => (
@@ -549,11 +658,16 @@ function DashboardTab() {
               </div>
             )}
           </div>
+
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowImport(false)}>取消</Button>
-            <Button className="bg-green-600 hover:bg-green-700 text-white gap-1.5" onClick={handleImport} disabled={importing || importRows.length === 0}>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white gap-1.5"
+              onClick={handleImport}
+              disabled={importing || importRows.length === 0}
+            >
               <Upload className="w-3.5 h-3.5" />
-              {importing ? "匯入中…" : `確認匯入 ${importRows.length} 筆`}
+              {importing ? "匯入中…" : importRows.length > 0 ? `確認匯入 ${importRows.length} 筆` : "請先預覽資料"}
             </Button>
           </DialogFooter>
         </DialogContent>
