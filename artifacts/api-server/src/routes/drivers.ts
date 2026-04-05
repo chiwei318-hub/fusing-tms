@@ -39,6 +39,13 @@ async function ensureDriverColumns() {
     "can_heavy_cargo BOOLEAN DEFAULT FALSE",
     "available_time_start TEXT",
     "available_time_end TEXT",
+    // 加盟進件資料
+    "id_no TEXT",
+    "insurance_expiry DATE",
+    "inspection_date DATE",
+    "bank_code VARCHAR(10)",
+    "bank_account VARCHAR(30)",
+    "referrer TEXT",
   ];
   for (const col of cols) {
     try {

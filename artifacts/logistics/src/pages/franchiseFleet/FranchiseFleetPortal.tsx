@@ -1246,6 +1246,38 @@ function DashboardTab() {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 2: 司機管理
 // ══════════════════════════════════════════════════════════════════════════════
+const EMPTY_DRIVER_FORM = {
+  name: "", phone: "", id_no: "",
+  username: "", password: "",
+  vehicle_type: "小貨車", license_plate: "",
+  insurance_expiry: "", inspection_date: "",
+  commission_rate: 70,
+  bank_code: "", bank_account: "", referrer: "",
+};
+
+function daysUntil(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
+}
+
+function ExpiryBadge({ label, dateStr }: { label: string; dateStr?: string | null }) {
+  const days = daysUntil(dateStr);
+  if (days === null) return null;
+  const color = days < 0 ? "bg-red-100 text-red-700 border-red-200"
+    : days <= 30 ? "bg-orange-100 text-orange-700 border-orange-200"
+    : "bg-green-100 text-green-700 border-green-200";
+  const text = days < 0 ? `${label}已逾期 ${Math.abs(days)} 天`
+    : days === 0 ? `${label}今日到期`
+    : `${label}剩 ${days} 天`;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold border px-1.5 py-0.5 rounded-full ${color}`}>
+      <AlertCircle className="w-2.5 h-2.5" />{text}
+    </span>
+  );
+}
+
 function DriversTab() {
   const api = useFleetApi();
   const { toast } = useToast();
@@ -1253,9 +1285,8 @@ function DriversTab() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [editDriver, setEditDriver] = useState<any>(null);
-  const [form, setForm] = useState<any>({
-    name: "", phone: "", username: "", password: "", vehicle_type: "小貨車", license_plate: "", commission_rate: 70
-  });
+  const [formTab, setFormTab] = useState<"basic" | "vehicle" | "finance">("basic");
+  const [form, setForm] = useState<any>(EMPTY_DRIVER_FORM);
 
   const load = useCallback(async () => {
     try {
@@ -1268,27 +1299,54 @@ function DriversTab() {
   useEffect(() => { load(); }, [load]);
 
   const openAdd = () => {
-    setForm({ name: "", phone: "", username: "", password: "", vehicle_type: "小貨車", license_plate: "", commission_rate: 70 });
+    setForm(EMPTY_DRIVER_FORM);
     setEditDriver(null);
+    setFormTab("basic");
     setShowAdd(true);
   };
 
   const openEdit = (d: any) => {
-    setForm({ name: d.name, phone: d.phone ?? "", vehicle_type: d.vehicle_type ?? "小貨車", license_plate: d.license_plate ?? "", commission_rate: d.commission_rate ?? 70, username: d.username ?? "", password: "" });
+    setForm({
+      name: d.name ?? "", phone: d.phone ?? "", id_no: d.id_no ?? "",
+      username: d.username ?? "", password: "",
+      vehicle_type: d.vehicle_type ?? "小貨車", license_plate: d.license_plate ?? "",
+      insurance_expiry: d.insurance_expiry ? d.insurance_expiry.split("T")[0] : "",
+      inspection_date: d.inspection_date ? d.inspection_date.split("T")[0] : "",
+      commission_rate: d.commission_rate ?? 70,
+      bank_code: d.bank_code ?? "", bank_account: d.bank_account ?? "", referrer: d.referrer ?? "",
+    });
     setEditDriver(d);
+    setFormTab("basic");
     setShowAdd(true);
   };
 
   const handleSave = async () => {
     try {
       if (editDriver) {
-        const payload: any = { name: form.name, phone: form.phone, vehicle_type: form.vehicle_type, license_plate: form.license_plate, commission_rate: Number(form.commission_rate) };
+        const payload: any = {
+          name: form.name, phone: form.phone, id_no: form.id_no || null,
+          vehicle_type: form.vehicle_type, license_plate: form.license_plate,
+          insurance_expiry: form.insurance_expiry || null,
+          inspection_date: form.inspection_date || null,
+          commission_rate: Number(form.commission_rate),
+          bank_code: form.bank_code || null, bank_account: form.bank_account || null,
+          referrer: form.referrer || null,
+        };
         if (form.password) payload.password = form.password;
         await api("PATCH", `/drivers/${editDriver.id}`, payload);
         toast({ title: "司機資料已更新" });
       } else {
         if (!form.username || !form.password) { toast({ title: "請填寫帳號與密碼", variant: "destructive" }); return; }
-        await api("POST", "/drivers", { ...form, commission_rate: Number(form.commission_rate) });
+        await api("POST", "/drivers", {
+          ...form,
+          commission_rate: Number(form.commission_rate),
+          id_no: form.id_no || null,
+          insurance_expiry: form.insurance_expiry || null,
+          inspection_date: form.inspection_date || null,
+          bank_code: form.bank_code || null,
+          bank_account: form.bank_account || null,
+          referrer: form.referrer || null,
+        });
         toast({ title: "司機已新增" });
       }
       setShowAdd(false);
@@ -1309,6 +1367,8 @@ function DriversTab() {
     }
   };
 
+  const sf = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f: any) => ({ ...f, [k]: e.target.value }));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1327,99 +1387,204 @@ function DriversTab() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {drivers.map((d: any) => (
-            <Card key={d.id} className="border-0 shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg shrink-0">
-                    {d.name?.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-slate-800">{d.name}</span>
-                      <StatusBadge status={d.status} />
+          {drivers.map((d: any) => {
+            const insuranceDays = daysUntil(d.insurance_expiry);
+            const inspectionDays = daysUntil(d.inspection_date);
+            const hasWarning = (insuranceDays !== null && insuranceDays <= 30) || (inspectionDays !== null && inspectionDays <= 30);
+            return (
+              <Card key={d.id} className={`border-0 shadow-sm ${hasWarning ? "ring-1 ring-orange-200" : ""}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg shrink-0">
+                      {d.name?.charAt(0)}
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
-                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{d.phone}</span>
-                      <span className="flex items-center gap-1"><Car className="w-3 h-3" />{d.vehicle_type}</span>
-                      {d.license_plate && <span className="flex items-center gap-1"><Badge className="w-3 h-3" />{d.license_plate}</span>}
-                      <span className="flex items-center gap-1"><Banknote className="w-3 h-3" />抽成 {d.commission_rate}%</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-slate-800">{d.name}</span>
+                        <StatusBadge status={d.status} />
+                        {d.id_no && <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{d.id_no.slice(0, 3)}***{d.id_no.slice(-2)}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{d.phone}</span>
+                        <span className="flex items-center gap-1"><Car className="w-3 h-3" />{d.vehicle_type}</span>
+                        {d.license_plate && <span className="flex items-center gap-1"><Badge className="w-3 h-3" />{d.license_plate}</span>}
+                        <span className="flex items-center gap-1"><Banknote className="w-3 h-3" />抽成 {d.commission_rate}%</span>
+                        {d.bank_code && d.bank_account && (
+                          <span className="flex items-center gap-1 text-slate-400">{d.bank_code} ****{String(d.bank_account).slice(-4)}</span>
+                        )}
+                      </div>
+                      {(d.insurance_expiry || d.inspection_date) && (
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <ExpiryBadge label="強制險" dateStr={d.insurance_expiry} />
+                          <ExpiryBadge label="驗車" dateStr={d.inspection_date} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button variant="outline" size="sm" onClick={() => openEdit(d)} className="h-8 w-8 p-0">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDeactivate(d.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:border-red-200">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => openEdit(d)} className="h-8 w-8 p-0">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDeactivate(d.id)} className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:border-red-200">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="sm:max-w-md">
+      {/* 新增/編輯 Dialog */}
+      <Dialog open={showAdd} onOpenChange={v => { setShowAdd(v); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editDriver ? "編輯司機資料" : "新增旗下司機"}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-green-600" />
+              {editDriver ? `編輯司機 — ${editDriver.name}` : "新增旗下司機"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">姓名 *</Label>
-                <Input value={form.name} onChange={e => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="司機姓名" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">電話</Label>
-                <Input value={form.phone} onChange={e => setForm((f: any) => ({ ...f, phone: e.target.value }))} placeholder="0912345678" />
-              </div>
-            </div>
-            {!editDriver && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">帳號 *</Label>
-                  <Input value={form.username} onChange={e => setForm((f: any) => ({ ...f, username: e.target.value }))} placeholder="登入帳號" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">密碼 *</Label>
-                  <Input type="password" value={form.password} onChange={e => setForm((f: any) => ({ ...f, password: e.target.value }))} placeholder="初始密碼" />
-                </div>
-              </div>
-            )}
-            {editDriver && (
-              <div className="space-y-1">
-                <Label className="text-xs">重設密碼（留空則不更改）</Label>
-                <Input type="password" value={form.password} onChange={e => setForm((f: any) => ({ ...f, password: e.target.value }))} placeholder="輸入新密碼" />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">車型</Label>
-                <Select value={form.vehicle_type} onValueChange={v => setForm((f: any) => ({ ...f, vehicle_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["小貨車", "中貨車", "大貨車", "廂型車", "機車"].map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">車牌</Label>
-                <Input value={form.license_plate} onChange={e => setForm((f: any) => ({ ...f, license_plate: e.target.value }))} placeholder="ABC-1234" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">司機抽成比例（%）</Label>
-              <Input type="number" min={0} max={100} value={form.commission_rate} onChange={e => setForm((f: any) => ({ ...f, commission_rate: e.target.value }))} />
-            </div>
+
+          {/* Section tabs */}
+          <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+            {[
+              { key: "basic", label: "基本資訊" },
+              { key: "vehicle", label: "車輛資料" },
+              { key: "finance", label: "財務資料" },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setFormTab(t.key as any)}
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${formTab === t.key ? "bg-white shadow-sm text-slate-800" : "text-slate-500 hover:text-slate-700"}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAdd(false)}>取消</Button>
-            <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700 text-white">{editDriver ? "儲存變更" : "新增司機"}</Button>
+
+          <div className="space-y-3 py-1 min-h-[260px]">
+            {/* 基本資訊 */}
+            {formTab === "basic" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">姓名 <span className="text-red-500">*</span></Label>
+                    <Input value={form.name} onChange={sf("name")} placeholder="司機本名" className="h-9" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">聯絡電話</Label>
+                    <Input value={form.phone} onChange={sf("phone")} placeholder="09XX-XXX-XXX" className="h-9" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">身分證字號</Label>
+                  <Input value={form.id_no} onChange={sf("id_no")} placeholder="用於勞靠 / 稅務" className="h-9 font-mono" />
+                </div>
+                {!editDriver && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">帳號 <span className="text-red-500">*</span></Label>
+                      <Input value={form.username} onChange={sf("username")} placeholder="登入帳號" className="h-9" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">密碼 <span className="text-red-500">*</span></Label>
+                      <Input type="password" value={form.password} onChange={sf("password")} placeholder="初始密碼" className="h-9" />
+                    </div>
+                  </div>
+                )}
+                {editDriver && (
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">重設密碼（留空則不更改）</Label>
+                    <Input type="password" value={form.password} onChange={sf("password")} placeholder="輸入新密碼" className="h-9" />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* 車輛資料 */}
+            {formTab === "vehicle" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">車型 / 噸位</Label>
+                    <Select value={form.vehicle_type} onValueChange={v => setForm((f: any) => ({ ...f, vehicle_type: v }))}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["小貨車 (3.5T)", "中貨車 (5T)", "大貨車 (17T)", "廂型車", "冷凍車", "冷藏車", "機車"].map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">車牌號碼</Label>
+                    <Input value={form.license_plate} onChange={sf("license_plate")} placeholder="ABC-1234" className="h-9 font-mono" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold flex items-center gap-1">
+                      強制險到期日
+                      {form.insurance_expiry && <ExpiryBadge label="" dateStr={form.insurance_expiry} />}
+                    </Label>
+                    <Input type="date" value={form.insurance_expiry} onChange={sf("insurance_expiry")} className="h-9" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold flex items-center gap-1">
+                      下次驗車日
+                      {form.inspection_date && <ExpiryBadge label="" dateStr={form.inspection_date} />}
+                    </Label>
+                    <Input type="date" value={form.inspection_date} onChange={sf("inspection_date")} className="h-9" />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 財務資料 */}
+            {formTab === "finance" && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">司機抽成比例（%）</Label>
+                  <Input type="number" min={0} max={100} value={form.commission_rate} onChange={sf("commission_rate")} className="h-9" />
+                  <p className="text-[11px] text-slate-400">系統每趟費用的司機分潤比例</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">銀行代碼</Label>
+                    <Input value={form.bank_code} onChange={sf("bank_code")} placeholder="3位" className="h-9 font-mono" maxLength={10} />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs font-semibold">銀行帳號</Label>
+                    <Input value={form.bank_account} onChange={sf("bank_account")} placeholder="撥款帳號" className="h-9 font-mono" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">推薦人（選填）</Label>
+                  <Input value={form.referrer} onChange={sf("referrer")} placeholder="推薦司機姓名或編號" className="h-9" />
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="flex items-center gap-2">
+            {formTab !== "basic" && (
+              <Button variant="ghost" size="sm" onClick={() => setFormTab(formTab === "finance" ? "vehicle" : "basic")} className="mr-auto">
+                ← 上一步
+              </Button>
+            )}
+            {formTab !== "finance" ? (
+              <Button size="sm" onClick={() => setFormTab(formTab === "basic" ? "vehicle" : "finance")} className="bg-blue-600 hover:bg-blue-700 text-white">
+                下一步 →
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>取消</Button>
+                <Button size="sm" onClick={handleSave} className="bg-green-600 hover:bg-green-700 text-white">
+                  {editDriver ? "儲存變更" : "新增司機"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

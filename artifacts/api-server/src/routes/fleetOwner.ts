@@ -104,6 +104,8 @@ fleetOwnerRouter.get("/drivers", async (req, res) => {
             d.status, d.commission_rate, d.engine_cc, d.tonnage,
             d.latitude, d.longitude, d.last_location_at,
             d.username, d.created_at,
+            d.id_no, d.insurance_expiry, d.inspection_date,
+            d.bank_code, d.bank_account, d.referrer,
             COUNT(DISTINCT dl.id) FILTER (WHERE dl.status='pending') AS pending_leaves
      FROM drivers d
      LEFT JOIN driver_leaves dl ON dl.driver_id = d.id
@@ -122,6 +124,8 @@ fleetOwnerRouter.post("/drivers", async (req, res) => {
     username, password,
     engine_cc = null, tonnage = null,
     commission_rate,
+    id_no = null, insurance_expiry = null, inspection_date = null,
+    bank_code = null, bank_account = null, referrer = null,
   } = req.body ?? {};
 
   if (!name || !phone || !username || !password) {
@@ -140,11 +144,14 @@ fleetOwnerRouter.post("/drivers", async (req, res) => {
   const { rows } = await pool.query(
     `INSERT INTO drivers
        (name, phone, vehicle_type, license_plate, username, password,
-        engine_cc, tonnage, commission_rate, franchisee_id, status, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'available',NOW())
-     RETURNING id, name, phone, vehicle_type, license_plate, username, status, commission_rate`,
+        engine_cc, tonnage, commission_rate, franchisee_id, status, created_at,
+        id_no, insurance_expiry, inspection_date, bank_code, bank_account, referrer)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'available',NOW(),$11,$12,$13,$14,$15,$16)
+     RETURNING id, name, phone, vehicle_type, license_plate, username, status, commission_rate,
+               id_no, insurance_expiry, inspection_date, bank_code, bank_account, referrer`,
     [name, phone, vehicle_type ?? "小貨車", license_plate, username, passwordHash,
-     engine_cc, tonnage, driverRate, fid]
+     engine_cc, tonnage, driverRate, fid,
+     id_no, insurance_expiry || null, inspection_date || null, bank_code, bank_account, referrer]
   );
   res.status(201).json({ ok: true, driver: rows[0] });
 });
@@ -156,6 +163,8 @@ fleetOwnerRouter.patch("/drivers/:id", async (req, res) => {
   const allowed = [
     "name", "phone", "vehicle_type", "license_plate",
     "engine_cc", "tonnage", "commission_rate", "status",
+    "id_no", "insurance_expiry", "inspection_date",
+    "bank_code", "bank_account", "referrer",
   ];
   const updates: string[] = [];
   const vals: unknown[] = [];
