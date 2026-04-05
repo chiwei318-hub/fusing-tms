@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Building2, Plus, RefreshCw, Edit2, Trash2, TrendingUp, Users,
   DollarSign, CheckCircle2, Clock, XCircle, ChevronDown, ChevronUp,
-  FileText, Send, MapPin, Phone, Mail, Calendar,
+  FileText, Send, MapPin, Phone, Mail, Calendar, KeyRound, Eye, EyeOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,9 @@ interface Franchisee {
   notes: string | null;
   joined_at: string | null;
   contract_end_at: string | null;
+  username: string | null;
+  has_password: boolean;
+  last_login_at: string | null;
   settlement_count: string;
   total_gross_revenue: string;
   total_net_payout: string;
@@ -80,11 +83,16 @@ const SETTLE_STATUS: Record<string, { label: string; color: string; icon: React.
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-// ─── Empty form ───────────────────────────────────────────────────────────────
-const EMPTY: Partial<Franchisee> = {
+// ─── Extended form with credentials ──────────────────────────────────────────
+interface FranchiseeForm extends Partial<Franchisee> {
+  password?: string;
+}
+
+const EMPTY: FranchiseeForm = {
   name: "", owner_name: "", phone: "", email: "", address: "", zone_name: "",
   contract_type: "revenue_share", commission_rate: "70", monthly_fee: "0",
   status: "active", notes: "", joined_at: "", contract_end_at: "",
+  username: "", password: "",
 };
 
 function authHeaders() {
@@ -100,9 +108,10 @@ export default function FranchiseeTab() {
   const [stats, setStats]                 = useState<any>(null);
 
   const [showForm, setShowForm]           = useState(false);
-  const [formData, setFormData]           = useState<Partial<Franchisee>>(EMPTY);
+  const [formData, setFormData]           = useState<FranchiseeForm>(EMPTY);
   const [editId, setEditId]               = useState<number | null>(null);
   const [saving, setSaving]               = useState(false);
+  const [showPw, setShowPw]               = useState(false);
 
   const [expandedId, setExpandedId]       = useState<number | null>(null);
   const [settlements, setSettlements]     = useState<Record<number, Settlement[]>>({});
@@ -151,7 +160,7 @@ export default function FranchiseeTab() {
   };
 
   // ─── Form handlers ────────────────────────────────────────────────────
-  const openCreate = () => { setFormData(EMPTY); setEditId(null); setShowForm(true); };
+  const openCreate = () => { setFormData(EMPTY); setEditId(null); setShowPw(false); setShowForm(true); };
   const openEdit   = (f: Franchisee) => {
     setFormData({
       ...f,
@@ -159,8 +168,10 @@ export default function FranchiseeTab() {
       monthly_fee: String(f.monthly_fee),
       joined_at: f.joined_at ? f.joined_at.split("T")[0] : "",
       contract_end_at: f.contract_end_at ? f.contract_end_at.split("T")[0] : "",
+      password: "",
     });
     setEditId(f.id);
+    setShowPw(false);
     setShowForm(true);
   };
 
@@ -340,6 +351,22 @@ export default function FranchiseeTab() {
                           {f.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{f.phone}</span>}
                           {f.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{f.email}</span>}
                           {f.joined_at && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />加盟：{f.joined_at.split("T")[0]}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs">
+                          {f.username
+                            ? <span className="flex items-center gap-1 text-blue-600 font-mono font-medium">
+                                <KeyRound className="w-3 h-3" />帳號：{f.username}
+                                {f.has_password
+                                  ? <span className="ml-1 text-green-600">・密碼已設定</span>
+                                  : <span className="ml-1 text-amber-500">・尚未設定密碼</span>}
+                              </span>
+                            : <span className="flex items-center gap-1 text-muted-foreground/60 italic">
+                                <KeyRound className="w-3 h-3" />尚未設定登入帳號
+                              </span>
+                          }
+                          {f.last_login_at && (
+                            <span className="text-muted-foreground">最後登入：{new Date(f.last_login_at).toLocaleString("zh-TW")}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -551,6 +578,42 @@ export default function FranchiseeTab() {
             <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs">備註</Label>
               <Input placeholder="合約特殊條款或附加說明..." value={formData.notes ?? ""} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} className="h-8 text-sm" />
+            </div>
+
+            {/* 登入帳號 */}
+            <div className="sm:col-span-2 pt-2">
+              <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5" />登入帳號設定
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">登入帳號</Label>
+              <Input
+                placeholder="英數字，如 fleet_taipei"
+                value={formData.username ?? ""}
+                onChange={e => setFormData(p => ({ ...p, username: e.target.value }))}
+                className="h-8 text-sm font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{editId ? "重設密碼（留空則不更改）" : "登入密碼 *"}</Label>
+              <div className="relative">
+                <Input
+                  type={showPw ? "text" : "password"}
+                  placeholder={editId ? "輸入新密碼..." : "設定初始密碼"}
+                  value={formData.password ?? ""}
+                  onChange={e => setFormData(p => ({ ...p, password: e.target.value }))}
+                  className="h-8 text-sm pr-9"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPw(v => !v)}
+                  tabIndex={-1}
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           </div>
 

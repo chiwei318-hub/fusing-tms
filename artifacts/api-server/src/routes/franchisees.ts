@@ -5,6 +5,13 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { createHash, randomBytes } from "crypto";
+
+function hashPassword(password: string, salt?: string): string {
+  const s = salt ?? randomBytes(16).toString("hex");
+  const hash = createHash("sha256").update(s + password).digest("hex");
+  return `${s}:${hash}`;
+}
 
 export const franchiseesRouter = Router();
 
@@ -22,7 +29,11 @@ async function generateFranchiseeCode(): Promise<string> {
 franchiseesRouter.get("/franchisees", async (_req, res) => {
   const rows = await db.execute(sql`
     SELECT
-      f.*,
+      f.id, f.code, f.name, f.owner_name, f.phone, f.email,
+      f.address, f.zone_name, f.contract_type, f.commission_rate,
+      f.monthly_fee, f.status, f.notes, f.joined_at, f.contract_end_at,
+      f.username, f.last_login_at, f.created_at, f.updated_at,
+      CASE WHEN f.password_hash IS NOT NULL THEN true ELSE false END AS has_password,
       COUNT(DISTINCT s.id)                               AS settlement_count,
       COALESCE(SUM(s.gross_revenue), 0)                  AS total_gross_revenue,
       COALESCE(SUM(s.net_payout), 0)                     AS total_net_payout,
@@ -74,24 +85,31 @@ franchiseesRouter.post("/franchisees", async (req, res) => {
     name, owner_name, phone, email, address, zone_name,
     contract_type = "revenue_share", commission_rate = 70, monthly_fee = 0,
     status = "active", notes, joined_at, contract_end_at,
+    username, password,
   } = req.body;
 
   if (!name) return res.status(400).json({ error: "缺少加盟商名稱" });
 
   const code = await generateFranchiseeCode();
+  const pwHash = password ? hashPassword(password) : null;
+
   const result = await db.execute(sql`
     INSERT INTO franchisees (
       code, name, owner_name, phone, email, address, zone_name,
       contract_type, commission_rate, monthly_fee,
-      status, notes, joined_at, contract_end_at
+      status, notes, joined_at, contract_end_at,
+      username, password_hash
     ) VALUES (
       ${code}, ${name}, ${owner_name ?? null}, ${phone ?? null}, ${email ?? null},
       ${address ?? null}, ${zone_name ?? null},
       ${contract_type}, ${Number(commission_rate)}, ${Number(monthly_fee)},
       ${status}, ${notes ?? null},
       ${joined_at ? new Date(joined_at) : new Date()},
-      ${contract_end_at ? new Date(contract_end_at) : null}
-    ) RETURNING *
+      ${contract_end_at ? new Date(contract_end_at) : null},
+      ${username ?? null}, ${pwHash}
+    ) RETURNING id, code, name, owner_name, phone, email, address, zone_name,
+                contract_type, commission_rate, monthly_fee, status, notes,
+                joined_at, contract_end_at, username, last_login_at, created_at, updated_at
   `);
   return res.status(201).json(result.rows[0]);
 });
@@ -103,7 +121,10 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
     name, owner_name, phone, email, address, zone_name,
     contract_type, commission_rate, monthly_fee,
     status, notes, joined_at, contract_end_at,
+    username, password,
   } = req.body;
+
+  const pwHash = password ? hashPassword(password) : undefined;
 
   await db.execute(sql`
     UPDATE franchisees SET
@@ -120,10 +141,17 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
       notes            = COALESCE(${notes ?? null}, notes),
       joined_at        = COALESCE(${joined_at ? new Date(joined_at) : null}, joined_at),
       contract_end_at  = COALESCE(${contract_end_at ? new Date(contract_end_at) : null}, contract_end_at),
+      username         = COALESCE(${username ?? null}, username),
+      password_hash    = COALESCE(${pwHash ?? null}, password_hash),
       updated_at       = NOW()
     WHERE id = ${id}
   `);
-  const rows = await db.execute(sql`SELECT * FROM franchisees WHERE id = ${id} LIMIT 1`);
+  const rows = await db.execute(sql`
+    SELECT id, code, name, owner_name, phone, email, address, zone_name,
+           contract_type, commission_rate, monthly_fee, status, notes,
+           joined_at, contract_end_at, username, last_login_at, created_at, updated_at
+    FROM franchisees WHERE id = ${id} LIMIT 1
+  `);
   return res.json(rows.rows[0]);
 });
 
