@@ -1172,12 +1172,17 @@ fusingaoRouter.delete("/fleets/:id/sub-accounts/:subId", async (req, res) => {
 fusingaoRouter.get("/sub-account-routes", async (req, res) => {
   try {
     const { fleetId, shopeeDriverId, month } = req.query as Record<string, string>;
-    let extra = "";
-    if (month) extra += ` AND to_char(o.created_at,'YYYY-MM') = '${month}'`;
-    if (shopeeDriverId) {
-      extra += ` AND o.notes ILIKE '%司機ID：${shopeeDriverId}%'`;
-    }
-    const rows = await db.execute(sql.raw(`
+
+    const conditions = [
+      sql`o.fusingao_fleet_id = ${Number(fleetId)}`,
+      sql`o.notes LIKE '路線：%'`,
+    ];
+    if (month) conditions.push(sql`to_char(o.created_at,'YYYY-MM') = ${month}`);
+    if (shopeeDriverId) conditions.push(sql`o.notes ILIKE ${'%司機ID：' + shopeeDriverId + '%'}`);
+
+    const whereClause = sql.join(conditions, sql` AND `);
+
+    const rows = await db.execute(sql`
       SELECT
         o.id, o.status, o.notes, o.completed_at, o.fleet_completed_at,
         o.driver_payment_status, o.created_at,
@@ -1192,12 +1197,10 @@ fusingaoRouter.get("/sub-account-routes", async (req, res) => {
       LEFT JOIN route_prefix_rates pr
         ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
       LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
-      WHERE o.fusingao_fleet_id = ${Number(fleetId)}
-        AND o.notes LIKE '路線：%'
-        ${extra}
+      WHERE ${whereClause}
       ORDER BY o.created_at DESC
       LIMIT 200
-    `));
+    `);
     res.json({ ok: true, routes: rows.rows });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
