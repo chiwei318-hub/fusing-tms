@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useUpdateOrderMutation } from "@/hooks/use-orders";
 import { useToast } from "@/hooks/use-toast";
 import { OrderStatusBadge } from "@/components/StatusBadge";
-import { Loader2, Save, X, MapPin, Calendar, Clock, FileText, Truck } from "lucide-react";
+import { Loader2, Save, X, MapPin, Calendar, Clock, FileText, Truck, Receipt } from "lucide-react";
 
 const STATUS_OPTIONS = [
   { value: "pending",    label: "待處理" },
@@ -30,6 +30,13 @@ const VEHICLE_OPTIONS = [
   { value: "十噸", label: "十噸" },
 ];
 
+const INVOICE_STATUS_OPTIONS = [
+  { value: "none",    label: "無需開票" },
+  { value: "pending", label: "待開票" },
+  { value: "issued",  label: "已開票" },
+  { value: "paid",    label: "已付款" },
+];
+
 interface OrderRow {
   id: number;
   status?: string;
@@ -44,8 +51,10 @@ interface OrderRow {
   deliveryContactName?: string | null;
   notes?: string | null;
   requiredVehicleType?: string | null;
+  vehicleType?: string | null;
   totalFee?: number | null;
   feeStatus?: string | null;
+  invoiceStatus?: string | null;
 }
 
 interface Props {
@@ -79,8 +88,10 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
     deliveryContactName: "",
     notes: "",
     requiredVehicleType: "",
+    vehicleType: "",
     totalFee: "",
     feeStatus: "",
+    invoiceStatus: "",
   });
 
   useEffect(() => {
@@ -97,8 +108,10 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
         deliveryContactName: order.deliveryContactName ?? "",
         notes: order.notes ?? "",
         requiredVehicleType: order.requiredVehicleType ?? "",
+        vehicleType: order.vehicleType ?? "",
         totalFee: order.totalFee != null ? String(order.totalFee) : "",
         feeStatus: order.feeStatus ?? "unpaid",
+        invoiceStatus: order.invoiceStatus ?? "none",
       });
     }
   }, [order]);
@@ -123,8 +136,10 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           deliveryContactName: form.deliveryContactName || null,
           notes: form.notes || null,
           requiredVehicleType: form.requiredVehicleType || null,
+          vehicleType: form.vehicleType || null,
           totalFee: form.totalFee ? Number(form.totalFee) : null,
           feeStatus: form.feeStatus as any || undefined,
+          invoiceStatus: form.invoiceStatus as any || undefined,
         },
       });
       toast({ title: `訂單 #${order.id} 已更新`, description: "修改已儲存成功" });
@@ -151,7 +166,7 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           <SectionLabel icon={FileText} label="訂單狀態" />
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">狀態</Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">訂單狀態</Label>
               <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue />
@@ -178,10 +193,33 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
             </div>
           </div>
 
-          {/* 車輛 & 運費 */}
+          {/* 發票狀態 */}
+          <SectionLabel icon={Receipt} label="發票" />
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">車型需求</Label>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">發票狀態</Label>
+              <Select value={form.invoiceStatus} onValueChange={v => setForm(f => ({ ...f, invoiceStatus: v }))}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INVOICE_STATUS_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">運費（元）</Label>
+              <Input type="number" className="h-9 text-sm" placeholder="未設定" value={form.totalFee} onChange={set("totalFee")} />
+            </div>
+          </div>
+
+          {/* 車輛 */}
+          <SectionLabel icon={Truck} label="車輛" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">需求車型</Label>
               <Select value={form.requiredVehicleType} onValueChange={v => setForm(f => ({ ...f, requiredVehicleType: v }))}>
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue placeholder="不指定" />
@@ -194,8 +232,17 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground mb-1.5 block">運費（元）</Label>
-              <Input type="number" className="h-9 text-sm" placeholder="未設定" value={form.totalFee} onChange={set("totalFee")} />
+              <Label className="text-xs text-muted-foreground mb-1.5 block">實際派車車型</Label>
+              <Select value={form.vehicleType} onValueChange={v => setForm(f => ({ ...f, vehicleType: v }))}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="未指定" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VEHICLE_OPTIONS.map(o => (
+                    <SelectItem key={o.value || "_none2"} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

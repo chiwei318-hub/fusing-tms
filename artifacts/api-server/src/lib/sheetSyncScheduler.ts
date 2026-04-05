@@ -209,8 +209,8 @@ async function syncRoutes(
       if (route.stops.length === 0) continue;
 
       const dup = await pool.query(
-        `SELECT id FROM orders WHERE source = 'route_import' AND notes LIKE $1 LIMIT 1`,
-        [`路線：${route.routeId}｜%`]
+        `SELECT id FROM orders WHERE route_id = $1 LIMIT 1`,
+        [route.routeId]
       );
       if (dup.rows.length > 0) {
         duplicateList.push({ routeId: route.routeId, existingOrderId: dup.rows[0].id });
@@ -238,6 +238,9 @@ async function syncRoutes(
 
       const pickupTime = route.timeSlot?.match(/^(\d{2}:\d{2})/)?.[1] ?? null;
 
+      const routePrefix = route.routeId ? (route.routeId.match(/^([A-Z0-9]+)-/))?.[1] ?? null : null;
+      const noteText = `路線：${route.routeId}｜碼頭：${route.dockNo || "—"}｜司機ID：${route.driverId || "—"}｜共 ${route.stops.length} 站（${route.stops.map(s => s.storeName).join("→")}）`;
+
       const { rows: result } = await pool.query(
         `INSERT INTO orders (
           customer_name, customer_phone,
@@ -245,13 +248,18 @@ async function syncRoutes(
           extra_delivery_addresses,
           cargo_description,
           required_vehicle_type,
+          vehicle_type,
           pickup_time,
           notes,
+          route_id,
+          route_prefix,
+          station_count,
+          dispatch_dock,
           status, source,
           zone_id, team_id,
           created_at, updated_at
         ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,'pending','route_import',$10,$11,NOW(),NOW()
+          $1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$13,'pending','route_import',$14,$15,NOW(),NOW()
         ) RETURNING id`,
         [
           cfg.customer_name,
@@ -262,7 +270,11 @@ async function syncRoutes(
           cfg.cargo_description,
           route.vehicleType || null,
           pickupTime,
-          `路線：${route.routeId}｜碼頭：${route.dockNo || "—"}｜司機ID：${route.driverId || "—"}｜共 ${route.stops.length} 站（${route.stops.map(s => s.storeName).join("→")}）`,
+          noteText,
+          route.routeId,
+          routePrefix,
+          route.stops.length,
+          route.dockNo || null,
           routing.zone_id ?? null,
           routing.team_id ?? null,
         ]

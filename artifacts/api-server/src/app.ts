@@ -16,6 +16,7 @@ import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport"
 import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "./routes/fusingaoSheetSync";
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
+import { pool as _migPool } from "@workspace/db";
 
 const app: Express = express();
 
@@ -48,6 +49,76 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 startAlertScheduler();
+
+// ── 訂單資料結構正規化遷移（冪等，只補空值）────────────────────────────
+async function runOrdersColumnMigration() {
+  // 1. 補 vehicle_type 欄位（若不存在）
+  await _migPool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS vehicle_type TEXT`);
+
+  // 2. 從 required_vehicle_type 回填 vehicle_type（NULL 才補）
+  await _migPool.query(`
+    UPDATE orders
+    SET vehicle_type = required_vehicle_type
+    WHERE vehicle_type IS NULL AND required_vehicle_type IS NOT NULL
+  `);
+
+  // 3. 從 notes 解析出 route_id / route_prefix / station_count / dispatch_dock
+  //    僅對 notes 像「路線：xxx」且對應欄位為 NULL 的舊資料作業
+  //    用 regexp_match（PostgreSQL）— 每欄獨立 UPDATE 避免一欄失敗整批中斷
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET route_id = (regexp_match(notes, '路線：([^｜\\s]+)'))[1]
+      WHERE route_id IS NULL
+        AND notes IS NOT NULL
+        AND notes ~ '路線：'
+    `);
+  } catch (e) { console.warn("[OrderMigration] route_id backfill:", String(e).slice(0, 120)); }
+
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET route_prefix = (regexp_match(notes, '路線：([A-Z0-9]+)-'))[1]
+      WHERE route_prefix IS NULL
+        AND notes IS NOT NULL
+        AND notes ~ '路線：[A-Z0-9]+-'
+    `);
+  } catch (e) { console.warn("[OrderMigration] route_prefix backfill:", String(e).slice(0, 120)); }
+
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET station_count = ((regexp_match(notes, '共 (\\d+) 站'))[1])::integer
+      WHERE station_count IS NULL
+        AND notes IS NOT NULL
+        AND notes ~ '共 \\d+ 站'
+    `);
+  } catch (e) { console.warn("[OrderMigration] station_count backfill:", String(e).slice(0, 120)); }
+
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET dispatch_dock = (regexp_match(notes, '碼頭：([^｜\\s]+)'))[1]
+      WHERE dispatch_dock IS NULL
+        AND notes IS NOT NULL
+        AND notes ~ '碼頭：'
+    `);
+  } catch (e) { console.warn("[OrderMigration] dispatch_dock backfill:", String(e).slice(0, 120)); }
+
+  // 4. 確保 source_channel 從 source 欄位回填（相容舊格式）
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET source_channel = source
+      WHERE source_channel IS NULL AND source IS NOT NULL
+    `);
+  } catch (e) { console.warn("[OrderMigration] source_channel backfill:", String(e).slice(0, 120)); }
+
+  console.log("[OrderMigration] orders column migration complete");
+}
+
+runOrdersColumnMigration().catch(e => console.error("[OrderMigration] failed:", e));
+
 ensureDbIndexes().catch((e) => console.error("[dbIndexes] Failed:", e));
 ensureSheetSyncTable()
   .then(() => startSheetSyncScheduler())

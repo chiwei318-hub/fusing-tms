@@ -54,6 +54,7 @@ export const ordersTable = pgTable("orders", {
   region: text("region"),
   // 車輛需求
   requiredVehicleType: text("required_vehicle_type"),
+  vehicleType: text("vehicle_type"),         // 實際派車車型（可與需求不同）
   needTailgate: text("need_tailgate"),
   needHydraulicPallet: text("need_hydraulic_pallet"),
   specialRequirements: text("special_requirements"),

@@ -11,8 +11,10 @@ function hashPw(password: string): string {
 
 export const fusingaoRouter = Router();
 
-// ── helper: parse a Shopee route note ─────────────────────────────────────
-function parseNote(notes: string) {
+// ── helper: parse a Shopee route note (LEGACY FALLBACK — only for old rows
+//    that predate the proper column migration; new rows set columns directly) ─
+function parseNote(notes: string | null | undefined) {
+  if (!notes) return { routeId: null, dock: null, driverId: null, stations: 0, prefix: null, stopList: [] };
   const routeId  = (notes.match(/路線：([^｜\s]+)/))?.[1] ?? null;
   const dock     = (notes.match(/碼頭：([^｜\s]+)/))?.[1] ?? null;
   const driverId = (notes.match(/司機ID：([0-9]+|—)/))?.[1] ?? null;
@@ -21,6 +23,29 @@ function parseNote(notes: string) {
   const stopList = (notes.match(/（(.+)）/s))?.[1]
     ?.split("→").map(s => s.trim()) ?? [];
   return { routeId, dock, driverId, stations: stations ? Number(stations) : stopList.length, prefix, stopList };
+}
+
+// ── helper: map DB columns to the same shape parseNote returns ────────────
+function fromColumns(r: {
+  route_id?: string | null;
+  route_prefix?: string | null;
+  station_count?: number | null;
+  dispatch_dock?: string | null;
+  shopee_driver_id?: string | null;
+  notes?: string | null;
+}) {
+  // If proper columns are present, use them directly; otherwise fall back to notes parsing
+  if (r.route_id != null) {
+    return {
+      routeId:  r.route_id,
+      prefix:   r.route_prefix ?? null,
+      stations: r.station_count ?? 0,
+      dock:     r.dispatch_dock ?? null,
+      driverId: r.shopee_driver_id ?? null,
+      stopList: [],   // stop list only lives in notes (legacy display); not needed for billing/reports
+    };
+  }
+  return parseNote(r.notes);
 }
 
 // GET /fusingao/summary
@@ -78,9 +103,15 @@ fusingaoRouter.get("/routes", async (req, res) => {
         o.notes,
         o.completed_at,
         o.required_vehicle_type,
+        o.vehicle_type,
         o.driver_payment_status,
         o.created_at,
         o.arrival_notified_at,
+        o.route_id,
+        o.route_prefix,
+        o.station_count,
+        o.dispatch_dock,
+        o.shopee_driver_id,
         sd.name     AS driver_name,
         sd.vehicle_plate,
         pr.rate_per_trip  AS shopee_rate,
@@ -98,7 +129,7 @@ fusingaoRouter.get("/routes", async (req, res) => {
 
     const routes = (rows.rows as any[]).map(r => ({
       ...r,
-      ...parseNote(r.notes),
+      ...fromColumns(r),
     }));
     res.json({ ok: true, routes });
   } catch (err: any) {
@@ -148,7 +179,8 @@ fusingaoRouter.get("/monthly", async (req, res) => {
       const detail = await db.execute(sql`
         SELECT
           o.id, o.status, o.notes, o.completed_at, o.driver_payment_status,
-          o.created_at, o.required_vehicle_type,
+          o.created_at, o.required_vehicle_type, o.vehicle_type,
+          o.route_id, o.route_prefix, o.station_count, o.dispatch_dock, o.shopee_driver_id,
           sd.name AS driver_name, sd.vehicle_plate,
           pr.rate_per_trip AS shopee_rate,
           pr.service_type
@@ -164,7 +196,7 @@ fusingaoRouter.get("/monthly", async (req, res) => {
       return {
         ...m,
         net_amount: Number(m.shopee_income) - Number(m.penalty_deduction),
-        routes: (detail.rows as any[]).map(r => ({ ...r, ...parseNote(r.notes) })),
+        routes: (detail.rows as any[]).map(r => ({ ...r, ...fromColumns(r) })),
       };
     }));
 
@@ -310,6 +342,7 @@ fusingaoRouter.get("/fleets/:id/routes", async (req, res) => {
       SELECT
         o.id, o.status, o.notes, o.completed_at, o.driver_payment_status,
         o.created_at, o.fleet_grabbed_at, o.fleet_completed_at,
+        o.route_id, o.route_prefix, o.station_count, o.dispatch_dock, o.shopee_driver_id,
         sd.name AS driver_name, sd.vehicle_plate,
         pr.rate_per_trip AS shopee_rate,
         COALESCE(f.rate_override, pr.rate_per_trip) AS fleet_rate,
@@ -324,7 +357,7 @@ fusingaoRouter.get("/fleets/:id/routes", async (req, res) => {
       ${sql.raw(extra)}
       ORDER BY o.created_at DESC
     `);
-    res.json({ ok: true, routes: (rows.rows as any[]).map(r => ({ ...r, ...parseNote(r.notes) })) });
+    res.json({ ok: true, routes: (rows.rows as any[]).map(r => ({ ...r, ...fromColumns(r) })) });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -369,6 +402,7 @@ fusingaoRouter.get("/available", async (req, res) => {
     const rows = await db.execute(sql`
       SELECT
         o.id, o.status, o.notes, o.created_at,
+        o.route_id, o.route_prefix, o.station_count, o.dispatch_dock, o.shopee_driver_id,
         pr.rate_per_trip AS shopee_rate, pr.service_type, pr.route_od,
         sd.name AS driver_name, sd.vehicle_plate
       FROM orders o
@@ -380,7 +414,7 @@ fusingaoRouter.get("/available", async (req, res) => {
       ${sql.raw(extra)}
       ORDER BY o.created_at DESC
     `);
-    res.json({ ok: true, routes: (rows.rows as any[]).map(r => ({ ...r, ...parseNote(r.notes) })) });
+    res.json({ ok: true, routes: (rows.rows as any[]).map(r => ({ ...r, ...fromColumns(r) })) });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

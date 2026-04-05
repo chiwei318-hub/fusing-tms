@@ -201,6 +201,16 @@ export const UpdateOrderBody = zod.object({
   // 付款給司機 / 付款給加盟主
   driverPaymentStatus: zod.enum(["unpaid", "paid"]).optional(),
   franchiseePaymentStatus: zod.enum(["unpaid", "paid"]).optional(),
+  // 訂單資料結構正規化
+  vehicleType: zod.string().nullish(),
+  invoiceStatus: zod.enum(["none", "pending", "issued", "paid"]).optional(),
+  cargoName: zod.string().nullish(),
+  qty: zod.number().nullish(),
+  grossWeight: zod.number().nullish(),
+  quoteAmount: zod.number().nullish(),
+  costAmount: zod.number().nullish(),
+  profitAmount: zod.number().nullish(),
+  sourceChannel: zod.string().nullish(),
 });
 
 export const UpdateOrderStopsBody = zod.object({

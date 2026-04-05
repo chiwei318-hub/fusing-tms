@@ -325,6 +325,16 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.feeStatus !== undefined) updates.feeStatus = body.feeStatus;
     if (body.driverPaymentStatus !== undefined) updates.driverPaymentStatus = body.driverPaymentStatus;
     if (body.franchiseePaymentStatus !== undefined) updates.franchiseePaymentStatus = body.franchiseePaymentStatus;
+    // 訂單資料結構正規化欄位
+    if (body.vehicleType !== undefined) updates.vehicleType = body.vehicleType ?? null;
+    if (body.invoiceStatus !== undefined) updates.invoiceStatus = body.invoiceStatus;
+    if (body.cargoName !== undefined) updates.cargoName = body.cargoName ?? null;
+    if (body.qty !== undefined) updates.qty = body.qty ?? null;
+    if (body.grossWeight !== undefined) updates.grossWeight = body.grossWeight ?? null;
+    if (body.quoteAmount !== undefined) updates.quoteAmount = body.quoteAmount ?? null;
+    if (body.costAmount !== undefined) updates.costAmount = body.costAmount ?? null;
+    if (body.profitAmount !== undefined) updates.profitAmount = body.profitAmount ?? null;
+    if (body.sourceChannel !== undefined) updates.sourceChannel = body.sourceChannel ?? null;
     // Editable content fields
     if (body.pickupDate !== undefined) updates.pickupDate = body.pickupDate ?? null;
     if (body.pickupTime !== undefined) updates.pickupTime = body.pickupTime ?? null;

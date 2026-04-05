@@ -92,6 +92,22 @@ const INDEXES: { sql: string; name: string; priority: number }[] = [
     sql: `CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(created_at) WHERE status='pending'` },
   { priority: 1, name: "idx_drivers_available",
     sql: `CREATE INDEX IF NOT EXISTS idx_drivers_available ON drivers(id) WHERE status='available'` },
+
+  // ── Orders — 訂單資料結構正規化補充索引 ──────────────────────────────────
+  { priority: 2, name: "idx_orders_order_status",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_order_status ON orders(order_status) WHERE order_status IS NOT NULL` },
+  { priority: 2, name: "idx_orders_payment_status",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status) WHERE payment_status IS NOT NULL` },
+  { priority: 2, name: "idx_orders_invoice_status",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_invoice_status ON orders(invoice_status) WHERE invoice_status IS NOT NULL` },
+  { priority: 2, name: "idx_orders_station_count",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_station_count ON orders(station_count) WHERE station_count IS NOT NULL` },
+  { priority: 2, name: "idx_orders_route_id",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_route_id ON orders(route_id) WHERE route_id IS NOT NULL` },
+  { priority: 2, name: "idx_orders_vehicle_type",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_vehicle_type ON orders(vehicle_type) WHERE vehicle_type IS NOT NULL` },
+  { priority: 3, name: "idx_orders_source_channel",
+    sql: `CREATE INDEX IF NOT EXISTS idx_orders_source_channel ON orders(source_channel) WHERE source_channel IS NOT NULL` },
 ];
 
 export async function ensureDbIndexes() {
