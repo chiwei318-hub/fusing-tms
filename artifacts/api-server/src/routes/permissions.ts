@@ -266,7 +266,7 @@ async function ensureFranchiseeAccounts() {
     await db.execute(sql`
       INSERT INTO franchisees (code, name, owner_name, username, password_hash, status, commission_rate, platform_commission_rate)
       VALUES ('FM005', '測試車行', '測試老闆', 'testfleet', ${hash}, 'active', 20, 5)
-      ON CONFLICT (username) DO NOTHING
+      ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
     `);
     console.log('[FranchiseeAccounts] testfleet account ensured');
   } catch (e) {
