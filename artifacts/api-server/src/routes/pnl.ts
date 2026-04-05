@@ -17,14 +17,14 @@ pnlRouter.get("/overview", async (req, res) => {
       WITH parsed AS (
         SELECT
           o.id,
-          (regexp_match(o.notes, '司機ID：([0-9]+)'))[1]   AS shopee_id,
-          (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1] AS prefix,
-          (regexp_match(o.notes, '路線：([^｜]+)'))[1]     AS route_id,
+          o.shopee_driver_id   AS shopee_id,
+          o.route_prefix AS prefix,
+          o.route_id     AS route_id,
           o.required_vehicle_type,
           o.driver_payment_status,
           o.created_at
         FROM orders o
-        WHERE o.notes LIKE '路線：%'
+        WHERE o.route_id IS NOT NULL
         ${sql.raw(dateFilter)}
       )
       SELECT
@@ -100,14 +100,14 @@ pnlRouter.get("/by-vehicle", async (req, res) => {
       WITH parsed AS (
         SELECT
           o.id,
-          (regexp_match(o.notes, '司機ID：([0-9]+)'))[1]   AS shopee_id,
-          (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1] AS prefix,
-          (regexp_match(o.notes, '路線：([^｜]+)'))[1]     AS route_id,
+          o.shopee_driver_id   AS shopee_id,
+          o.route_prefix AS prefix,
+          o.route_id     AS route_id,
           o.required_vehicle_type,
           o.driver_payment_status,
           o.created_at
         FROM orders o
-        WHERE o.notes LIKE '路線：%'
+        WHERE o.route_id IS NOT NULL
         ${sql.raw(dateFilter)}
       )
       SELECT
@@ -171,12 +171,12 @@ pnlRouter.get("/by-fleet", async (req, res) => {
       WITH parsed AS (
         SELECT
           o.id,
-          (regexp_match(o.notes, '司機ID：([0-9]+)'))[1]   AS shopee_id,
-          (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1] AS prefix,
+          o.shopee_driver_id   AS shopee_id,
+          o.route_prefix AS prefix,
           o.driver_payment_status,
           o.created_at
         FROM orders o
-        WHERE o.notes LIKE '路線：%'
+        WHERE o.route_id IS NOT NULL
         ${sql.raw(dateFilter)}
       )
       SELECT

@@ -41,19 +41,19 @@ fusingaoRouter.get("/summary", async (req, res) => {
         COALESCE((
           SELECT SUM(pr.rate_per_trip)
           FROM orders o2
-          JOIN route_prefix_rates pr ON pr.prefix=(regexp_match(o2.notes,'路線：([A-Z0-9]+)-'))[1]
-          WHERE o2.notes LIKE '路線：%'
+          JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix
+          WHERE o2.route_id IS NOT NULL
         ),0) AS total_shopee_income,
         -- this month income
         COALESCE((
           SELECT SUM(pr.rate_per_trip)
           FROM orders o2
-          JOIN route_prefix_rates pr ON pr.prefix=(regexp_match(o2.notes,'路線：([A-Z0-9]+)-'))[1]
-          WHERE o2.notes LIKE '路線：%'
+          JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix
+          WHERE o2.route_id IS NOT NULL
             AND date_trunc('month',o2.created_at)=date_trunc('month',NOW())
         ),0) AS this_month_income
       FROM orders
-      WHERE notes LIKE '路線：%'
+      WHERE route_id IS NOT NULL
     `);
     res.json({ ok: true, summary: rows.rows[0] });
   } catch (err: any) {
@@ -88,10 +88,10 @@ fusingaoRouter.get("/routes", async (req, res) => {
         pr.route_od
       FROM orders o
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       LEFT JOIN shopee_drivers sd
-        ON sd.shopee_id = (regexp_match(o.notes,'司機ID：([0-9]+)'))[1]
-      WHERE o.notes LIKE '路線：%'
+        ON sd.shopee_id = o.shopee_driver_id
+      WHERE o.route_id IS NOT NULL
       ${sql.raw(extra)}
       ORDER BY o.created_at DESC
     `);
@@ -122,8 +122,8 @@ fusingaoRouter.get("/monthly", async (req, res) => {
           COALESCE(SUM(CASE WHEN o.driver_payment_status<>'paid' OR o.driver_payment_status IS NULL THEN pr.rate_per_trip ELSE 0 END),0) AS unbilled_amount
         FROM orders o
         LEFT JOIN route_prefix_rates pr
-          ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-        WHERE o.notes LIKE '路線：%'
+          ON pr.prefix = o.route_prefix
+        WHERE o.route_id IS NOT NULL
         GROUP BY to_char(o.created_at,'YYYY-MM'), to_char(o.created_at,'YYYY年MM月')
       ),
       penalty_months AS (
@@ -154,10 +154,10 @@ fusingaoRouter.get("/monthly", async (req, res) => {
           pr.service_type
         FROM orders o
         LEFT JOIN route_prefix_rates pr
-          ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+          ON pr.prefix = o.route_prefix
         LEFT JOIN shopee_drivers sd
-          ON sd.shopee_id = (regexp_match(o.notes,'司機ID：([0-9]+)'))[1]
-        WHERE o.notes LIKE '路線：%'
+          ON sd.shopee_id = o.shopee_driver_id
+        WHERE o.route_id IS NOT NULL
           AND to_char(o.created_at,'YYYY-MM') = ${m.month}
         ORDER BY o.created_at ASC
       `);
@@ -182,12 +182,12 @@ fusingaoRouter.put("/routes/:id/complete", async (req, res) => {
     if (completed) {
       await db.execute(sql`
         UPDATE orders SET status='completed', completed_at=NOW(), updated_at=NOW()
-        WHERE id=${Number(id)} AND notes LIKE '路線：%'
+        WHERE id=${Number(id)} AND route_id IS NOT NULL
       `);
     } else {
       await db.execute(sql`
         UPDATE orders SET status='pending', completed_at=NULL, updated_at=NOW()
-        WHERE id=${Number(id)} AND notes LIKE '路線：%'
+        WHERE id=${Number(id)} AND route_id IS NOT NULL
       `);
     }
     res.json({ ok: true });
@@ -203,7 +203,7 @@ fusingaoRouter.put("/routes/:id/billing", async (req, res) => {
     const { status } = req.body as { status: string };
     await db.execute(sql`
       UPDATE orders SET driver_payment_status=${status}, updated_at=NOW()
-      WHERE id=${Number(id)} AND notes LIKE '路線：%'
+      WHERE id=${Number(id)} AND route_id IS NOT NULL
     `);
     res.json({ ok: true });
   } catch (err: any) {
@@ -217,7 +217,7 @@ fusingaoRouter.put("/monthly/:month/bill-all", async (req, res) => {
     const { month } = req.params;
     await db.execute(sql`
       UPDATE orders SET driver_payment_status='paid', updated_at=NOW()
-      WHERE notes LIKE '路線：%'
+      WHERE route_id IS NOT NULL
         AND to_char(created_at,'YYYY-MM') = ${month}
     `);
     res.json({ ok: true });
@@ -243,9 +243,9 @@ fusingaoRouter.get("/fleets", async (_req, res) => {
         COALESCE(SUM(pr.rate_per_trip),0)                            AS total_income,
         COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip)),0) AS fleet_payout
       FROM fusingao_fleets f
-      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.notes LIKE '路線：%'
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.route_id IS NOT NULL
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       GROUP BY f.id
       ORDER BY f.fleet_name
     `);
@@ -317,10 +317,10 @@ fusingaoRouter.get("/fleets/:id/routes", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = ${Number(id)}
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       LEFT JOIN shopee_drivers sd
-        ON sd.shopee_id = (regexp_match(o.notes,'司機ID：([0-9]+)'))[1]
-      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)}
+        ON sd.shopee_id = o.shopee_driver_id
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${Number(id)}
       ${sql.raw(extra)}
       ORDER BY o.created_at DESC
     `);
@@ -346,8 +346,8 @@ fusingaoRouter.get("/fleets/:id/monthly", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = ${Number(id)}
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)}
+        ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${Number(id)}
       GROUP BY 1, 2 ORDER BY 1 DESC
     `);
     res.json({ ok: true, months: rows.rows });
@@ -373,10 +373,10 @@ fusingaoRouter.get("/available", async (req, res) => {
         sd.name AS driver_name, sd.vehicle_plate
       FROM orders o
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       LEFT JOIN shopee_drivers sd
-        ON sd.shopee_id = (regexp_match(o.notes,'司機ID：([0-9]+)'))[1]
-      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id IS NULL
+        ON sd.shopee_id = o.shopee_driver_id
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id IS NULL
       ${sql.raw(extra)}
       ORDER BY o.created_at DESC
     `);
@@ -399,7 +399,7 @@ fusingaoRouter.post("/routes/:id/grab", async (req, res) => {
         fleet_grabbed_at  = NOW(),
         updated_at        = NOW()
       WHERE id = ${Number(id)}
-        AND notes LIKE '路線：%'
+        AND route_id IS NOT NULL
         AND fusingao_fleet_id IS NULL
       RETURNING id
     `);
@@ -457,7 +457,7 @@ fusingaoRouter.put("/fleets/:id/monthly/:month/bill-all", async (req, res) => {
     const { id, month } = req.params;
     await db.execute(sql`
       UPDATE orders SET driver_payment_status='paid', updated_at=NOW()
-      WHERE notes LIKE '路線：%'
+      WHERE route_id IS NOT NULL
         AND fusingao_fleet_id = ${Number(id)}
         AND to_char(created_at,'YYYY-MM') = ${month}
     `);
@@ -485,7 +485,7 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
       LEFT JOIN fusingao_fleets f ON f.id = ${Number(id)}
       LEFT JOIN orders o ON o.fleet_driver_id = fd.id
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       WHERE fd.fleet_id = ${Number(id)}
       GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
                fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at
@@ -572,9 +572,9 @@ fusingaoRouter.get("/dispatch", async (req, res) => {
     const rows = await db.execute(sql`
       SELECT
         o.id,
-        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]  AS route_id,
-        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]        AS prefix,
-        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int      AS stations,
+        o.route_id  AS route_id,
+        o.route_prefix        AS prefix,
+        o.station_count      AS stations,
         o.dispatch_driver_code,
         o.fusingao_fleet_id,
         f.fleet_name,
@@ -583,7 +583,7 @@ fusingaoRouter.get("/dispatch", async (req, res) => {
         (o.created_at AT TIME ZONE 'Asia/Taipei')::date        AS dispatch_date
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
-      WHERE o.notes LIKE '路線：%'
+      WHERE o.route_id IS NOT NULL
         AND (o.created_at AT TIME ZONE 'Asia/Taipei')::date BETWEEN ${start}::date AND ${end}::date
       ORDER BY (o.created_at AT TIME ZONE 'Asia/Taipei')::date, route_id
     `).then(r => r.rows as any[]);
@@ -622,7 +622,7 @@ fusingaoRouter.put("/routes/:id/dispatch-code", async (req, res) => {
     const { dispatch_driver_code } = req.body as { dispatch_driver_code: string };
     await db.execute(sql`
       UPDATE orders SET dispatch_driver_code = ${dispatch_driver_code ?? null}
-      WHERE id = ${Number(id)} AND notes LIKE '路線：%'
+      WHERE id = ${Number(id)} AND route_id IS NOT NULL
     `);
     res.json({ ok: true });
   } catch (err: any) {
@@ -645,7 +645,7 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
           AND created_at < NOW() - INTERVAL '36 hours'
         )                                                                              AS overdue
       FROM orders
-      WHERE notes LIKE '路線：%'
+      WHERE route_id IS NOT NULL
         AND created_at >= NOW() - INTERVAL '30 days'
     `).then(r => r.rows[0] as any);
 
@@ -653,9 +653,9 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
     const exceptions = await db.execute(sql`
       SELECT
         o.id,
-        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]              AS route_id,
-        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int                AS stations,
-        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]                  AS prefix,
+        o.route_id              AS route_id,
+        o.station_count                AS stations,
+        o.route_prefix                  AS prefix,
         o.fusingao_fleet_id,
         f.fleet_name,
         o.created_at,
@@ -670,7 +670,7 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
         END AS status
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
-      WHERE o.notes LIKE '路線：%'
+      WHERE o.route_id IS NOT NULL
         AND o.created_at >= NOW() - INTERVAL '7 days'
         AND (
           o.fusingao_fleet_id IS NULL
@@ -705,7 +705,7 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
         )                                                                              AS completion_rate,
         MAX(o.fleet_completed_at)                                                      AS last_activity
       FROM fusingao_fleets f
-      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.notes LIKE '路線：%'
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.route_id IS NOT NULL
         AND o.created_at >= NOW() - INTERVAL '30 days'
       WHERE f.is_active = true
       GROUP BY f.id, f.fleet_name, f.commission_rate, f.is_active
@@ -716,14 +716,14 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
     const unassigned = await db.execute(sql`
       SELECT
         o.id,
-        (regexp_match(o.notes,'路線：([^|｜[:space:]]+)'))[1]  AS route_id,
-        (regexp_match(o.notes,'共 ([0-9]+) 站'))[1]::int   AS stations,
-        (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]     AS prefix,
+        o.route_id  AS route_id,
+        o.station_count   AS stations,
+        o.route_prefix     AS prefix,
         o.created_at,
         pr.rate_per_trip                                    AS shopee_rate
       FROM orders o
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%'
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL
         AND o.fusingao_fleet_id IS NULL
         AND o.fleet_completed_at IS NULL
         AND o.completed_at IS NULL
@@ -763,8 +763,8 @@ fusingaoRouter.get("/settlement", async (req, res) => {
         COALESCE(SUM(pr.rate_per_trip) - SUM(COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0))),0) AS platform_commission
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%' ${monthFilter}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL ${monthFilter}
     `).then(r => r.rows as any[]);
 
     // Per-fleet breakdown
@@ -778,8 +778,8 @@ fusingaoRouter.get("/settlement", async (req, res) => {
         COUNT(o.id) FILTER (WHERE o.driver_payment_status='paid') AS billed_count,
         COUNT(o.fleet_completed_at)              AS completed_count
       FROM fusingao_fleets f
-      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.notes LIKE '路線：%' ${monthFilter}
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id AND o.route_id IS NOT NULL ${monthFilter}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
       GROUP BY f.id, f.fleet_name, f.commission_rate
       ORDER BY shopee_income DESC
     `);
@@ -805,8 +805,8 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
         COALESCE(MAX(fl.commission_rate), 15)    AS commission_rate
       FROM orders o
       LEFT JOIN fusingao_fleets fl ON fl.id = ${Number(id)}
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
     `).then(r => r.rows as any[]);
 
     // Per-driver breakdown
@@ -820,8 +820,8 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets fl2 ON fl2.id = ${Number(id)}
       LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%' AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
       GROUP BY fd.name, fd.vehicle_plate
       ORDER BY earnings DESC
     `);
@@ -845,9 +845,9 @@ fusingaoRouter.get("/invoice", async (req, res) => {
     const rows = await db.execute(sql`
       WITH base AS (
         SELECT
-          (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1] AS prefix
+          o.route_prefix AS prefix
         FROM orders o
-        WHERE o.notes LIKE '路線：%'
+        WHERE o.route_id IS NOT NULL
           AND TO_CHAR(o.created_at AT TIME ZONE 'Asia/Taipei', 'YYYY-MM') = ${m}
       )
       SELECT
@@ -1175,7 +1175,7 @@ fusingaoRouter.get("/sub-account-routes", async (req, res) => {
 
     const conditions = [
       sql`o.fusingao_fleet_id = ${Number(fleetId)}`,
-      sql`o.notes LIKE '路線：%'`,
+      sql`o.route_id IS NOT NULL`,
     ];
     if (month) conditions.push(sql`to_char(o.created_at,'YYYY-MM') = ${month}`);
     if (shopeeDriverId) conditions.push(sql`o.notes ILIKE ${'%司機ID：' + shopeeDriverId + '%'}`);
@@ -1195,7 +1195,7 @@ fusingaoRouter.get("/sub-account-routes", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
       LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = (regexp_match(o.notes,'路線：([A-Z0-9]+)-'))[1]
+        ON pr.prefix = o.route_prefix
       LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
       WHERE ${whereClause}
       ORDER BY o.created_at DESC

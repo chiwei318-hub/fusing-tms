@@ -17,14 +17,14 @@ driverEarningsRouter.get("/", async (req, res) => {
       WITH parsed AS (
         SELECT
           id,
-          (regexp_match(notes, '司機ID：([0-9]+)'))[1]   AS shopee_id,
-          (regexp_match(notes, '路線：([A-Z0-9]+)-'))[1] AS prefix,
-          (regexp_match(notes, '路線：([^｜]+)'))[1]     AS route_id,
+          shopee_driver_id   AS shopee_id,
+          route_prefix AS prefix,
+          route_id     AS route_id,
           required_vehicle_type,
           driver_payment_status,
           created_at
         FROM orders
-        WHERE notes LIKE '路線：%'
+        WHERE route_id IS NOT NULL
         ${sql.raw(dateFilter)}
       )
       SELECT
@@ -58,8 +58,8 @@ driverEarningsRouter.get("/", async (req, res) => {
         COUNT(*) AS total_routes,
         SUM(COALESCE(pr.rate_per_trip, 0)) AS grand_total
       FROM orders o
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = (regexp_match(o.notes, '路線：([A-Z0-9]+)-'))[1]
-      WHERE o.notes LIKE '路線：%'
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL
       ${sql.raw(dateFilter)}
     `);
 
@@ -184,8 +184,8 @@ driverEarningsRouter.get("/shopee-drivers", async (_req, res) => {
     const rows = await db.execute(sql`
       SELECT sd.*,
         (SELECT COUNT(*) FROM orders o 
-         WHERE (regexp_match(o.notes, '司機ID：([0-9]+)'))[1] = sd.shopee_id
-           AND o.notes LIKE '路線：%') AS route_count
+         WHERE o.shopee_driver_id = sd.shopee_id
+           AND o.route_id IS NOT NULL) AS route_count
       FROM shopee_drivers sd
       ORDER BY shopee_id
     `);

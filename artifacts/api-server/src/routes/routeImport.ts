@@ -228,11 +228,10 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
         // Duplicate check: same route ID + same pickup date already imported?
         const dupCheck = await pool.query(
           `SELECT id FROM orders
-           WHERE source = 'route_import'
-             AND notes LIKE $1
+           WHERE route_id = $1
              AND ($2::text IS NULL OR pickup_date = $2::text)
            LIMIT 1`,
-          [`路線：${route.routeId}｜%`, pickupDate || null]
+          [route.routeId, pickupDate || null]
         );
         if (dupCheck.rows.length > 0) {
           duplicates.push({ routeId: route.routeId, existingOrderId: dupCheck.rows[0].id });
@@ -264,6 +263,10 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
         // Determine time window from timeSlot (e.g. "13:40-14:20" → pickup 13:40)
         const pickupTime = route.timeSlot?.match(/^(\d{2}:\d{2})/)?.[1] ?? null;
 
+        // Extract route prefix (e.g. "FN" from "FN-01-395-1")
+        const prefixMatch = route.routeId.match(/^([A-Z0-9]+)-/i);
+        const routePrefix = prefixMatch?.[1]?.toUpperCase() ?? null;
+
         const { rows: result } = await pool.query(
           `INSERT INTO orders (
             customer_name, customer_phone,
@@ -273,11 +276,19 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
             required_vehicle_type,
             pickup_date, pickup_time,
             notes,
+            route_id, route_prefix, station_count,
+            shopee_driver_id, dispatch_dock,
+            source_channel,
             status, source,
             zone_id, team_id,
             created_at, updated_at
           ) VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','route_import',$11,$12,NOW(),NOW()
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+            $11,$12,$13,$14,$15,
+            'route_import',
+            'pending','route_import',
+            $16,$17,
+            NOW(),NOW()
           ) RETURNING id`,
           [
             customerName,
@@ -290,6 +301,11 @@ routeImportRouter.post("/orders/route-import", async (req, res) => {
             pickupDate || null,
             pickupTime,
             `路線：${route.routeId}｜碼頭：${route.dockNo || "—"}｜司機ID：${route.driverId || "—"}｜共 ${route.stops.length} 站（${route.stops.map(s => s.storeName).join("→")}）`,
+            route.routeId,
+            routePrefix,
+            route.stops.length,
+            route.driverId || null,
+            route.dockNo || null,
             routing.zone_id ?? null,
             routing.team_id ?? null,
           ]
