@@ -257,11 +257,29 @@ async function ensureFusingaoAccounts() {
   }
 }
 
+async function ensureFranchiseeAccounts() {
+  try {
+    // Fixed salt for deterministic hash so re-runs don't change the password
+    const FIXED_SALT = 'ab8fc26c8407ef03f56e84a8692617ff';
+    const hash = hashPassword('Test1234', FIXED_SALT);
+
+    await db.execute(sql`
+      INSERT INTO franchisees (code, name, owner_name, username, password_hash, status, commission_rate, platform_commission_rate)
+      VALUES ('FM005', '測試車行', '測試老闆', 'testfleet', ${hash}, 'active', 20, 5)
+      ON CONFLICT (username) DO NOTHING
+    `);
+    console.log('[FranchiseeAccounts] testfleet account ensured');
+  } catch (e) {
+    console.error('[FranchiseeAccounts] error:', e);
+  }
+}
+
 seedDefaultData().catch(console.error);
 if (process.env.NODE_ENV !== 'production') {
   ensureTestAccounts().catch(console.error);
 }
 ensureFusingaoAccounts().catch(console.error);
+ensureFranchiseeAccounts().catch(console.error);
 ensureShopeeSettlementTables().catch(console.error);
 ensureFleetSubAccountsTable().catch(console.error);
 
