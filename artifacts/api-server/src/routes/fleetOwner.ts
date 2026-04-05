@@ -42,6 +42,7 @@ import { pool } from "@workspace/db";
 import { createHash, randomBytes } from "crypto";
 import { requireFleetOwner } from "../middleware/fleetAuth";
 import ExcelJS from "exceljs";
+import { runFleetSheetSync } from "../lib/fleetSheetSync";
 
 export const fleetOwnerRouter = Router();
 
@@ -1073,4 +1074,85 @@ fleetOwnerRouter.get("/standby", async (req, res) => {
     params
   );
   res.json({ ok: true, slots: rows });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 班表自動同步設定 (fleet_sheet_sync_configs)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// LIST
+fleetOwnerRouter.get("/sheet-sync", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { rows } = await pool.query(
+    `SELECT * FROM fleet_sheet_sync_configs WHERE franchisee_id=$1 ORDER BY id`,
+    [fid]
+  );
+  res.json({ ok: true, configs: rows });
+});
+
+// CREATE
+fleetOwnerRouter.post("/sheet-sync", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { sync_name = "蝦皮班表", sheet_url, interval_minutes = 60 } = req.body ?? {};
+  if (!sheet_url) return res.status(400).json({ error: "sheet_url 為必填" });
+
+  const { rows } = await pool.query(
+    `INSERT INTO fleet_sheet_sync_configs
+       (franchisee_id, sync_name, sheet_url, interval_minutes)
+     VALUES ($1,$2,$3,$4) RETURNING *`,
+    [fid, sync_name, sheet_url, Number(interval_minutes)]
+  );
+  res.status(201).json({ ok: true, config: rows[0] });
+});
+
+// UPDATE
+fleetOwnerRouter.patch("/sheet-sync/:id", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const id = Number(req.params.id);
+  const allowed = ["sync_name", "sheet_url", "interval_minutes", "is_active"];
+  const updates: string[] = [];
+  const vals: unknown[] = [];
+  for (const [k, v] of Object.entries(req.body ?? {})) {
+    if (!allowed.includes(k)) continue;
+    vals.push(v);
+    updates.push(`${k}=$${vals.length}`);
+  }
+  if (!updates.length) return res.status(400).json({ error: "無可更新欄位" });
+  vals.push(id, fid);
+  const { rows } = await pool.query(
+    `UPDATE fleet_sheet_sync_configs SET ${updates.join(",")}, updated_at=NOW()
+     WHERE id=$${vals.length - 1} AND franchisee_id=$${vals.length} RETURNING *`,
+    vals
+  );
+  if (!rows[0]) return res.status(404).json({ error: "找不到設定" });
+  res.json({ ok: true, config: rows[0] });
+});
+
+// DELETE
+fleetOwnerRouter.delete("/sheet-sync/:id", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  await pool.query(
+    `DELETE FROM fleet_sheet_sync_configs WHERE id=$1 AND franchisee_id=$2`,
+    [Number(req.params.id), fid]
+  );
+  res.json({ ok: true });
+});
+
+// MANUAL RUN
+fleetOwnerRouter.post("/sheet-sync/:id/run", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const id = Number(req.params.id);
+
+  // Verify ownership
+  const { rows: check } = await pool.query(
+    `SELECT id FROM fleet_sheet_sync_configs WHERE id=$1 AND franchisee_id=$2`, [id, fid]
+  );
+  if (!check.length) return res.status(404).json({ error: "找不到設定" });
+
+  try {
+    const result = await runFleetSheetSync(id);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
 });

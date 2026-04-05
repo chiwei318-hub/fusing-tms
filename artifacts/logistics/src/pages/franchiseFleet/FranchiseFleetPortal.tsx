@@ -6,6 +6,7 @@ import {
   Check, X, ChevronRight, MapPin, Clock, AlertCircle,
   Phone, Car, Badge, Banknote, TrendingUp, FileText,
   Upload, Download, ListFilter, ChevronDown,
+  Link2, Zap, ToggleLeft, ToggleRight, Settings2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -110,6 +111,15 @@ function DashboardTab() {
   const [sheetParsing, setSheetParsing] = useState(false);
   const [sheetTrips, setSheetTrips] = useState<any[]>([]);
 
+  // Auto-sync configs state
+  const [syncConfigs, setSyncConfigs] = useState<any[]>([]);
+  const [syncConfigsLoading, setSyncConfigsLoading] = useState(false);
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [editSyncConfig, setEditSyncConfig] = useState<any>(null);
+  const [syncForm, setSyncForm] = useState({ sync_name: "蝦皮班表", sheet_url: "", interval_minutes: "60" });
+  const [savingSyncConfig, setSavingSyncConfig] = useState(false);
+  const [runningSyncId, setRunningSyncId] = useState<number | null>(null);
+
   // Load dashboard
   const load = useCallback(async () => {
     try { setLoading(true); const d = await api("GET", "/dashboard"); setData(d); }
@@ -149,6 +159,88 @@ function DashboardTab() {
   }, [api, dateFrom, dateTo, filterDriver]);
 
   useEffect(() => { loadTrips(); }, [loadTrips]);
+
+  // ── Auto-sync callbacks ──────────────────────────────────────────────────
+  const loadSyncConfigs = useCallback(async () => {
+    try {
+      setSyncConfigsLoading(true);
+      const d = await api("GET", "/sheet-sync");
+      setSyncConfigs(d.configs ?? []);
+    } catch { /* silent */ }
+    finally { setSyncConfigsLoading(false); }
+  }, [api]);
+
+  useEffect(() => { loadSyncConfigs(); }, [loadSyncConfigs]);
+
+  const openNewSyncDialog = () => {
+    setEditSyncConfig(null);
+    setSyncForm({ sync_name: "蝦皮班表", sheet_url: "", interval_minutes: "60" });
+    setShowSyncDialog(true);
+  };
+
+  const openEditSyncDialog = (cfg: any) => {
+    setEditSyncConfig(cfg);
+    setSyncForm({ sync_name: cfg.sync_name, sheet_url: cfg.sheet_url, interval_minutes: String(cfg.interval_minutes) });
+    setShowSyncDialog(true);
+  };
+
+  const handleSyncSave = async () => {
+    if (!syncForm.sheet_url.trim()) {
+      toast({ title: "請貼上 Google 試算表連結", variant: "destructive" }); return;
+    }
+    setSavingSyncConfig(true);
+    try {
+      if (editSyncConfig) {
+        await api("PATCH", `/sheet-sync/${editSyncConfig.id}`, {
+          sync_name: syncForm.sync_name, sheet_url: syncForm.sheet_url.trim(),
+          interval_minutes: Number(syncForm.interval_minutes),
+        });
+        toast({ title: "同步設定已更新" });
+      } else {
+        await api("POST", "/sheet-sync", {
+          sync_name: syncForm.sync_name, sheet_url: syncForm.sheet_url.trim(),
+          interval_minutes: Number(syncForm.interval_minutes),
+        });
+        toast({ title: "已新增同步設定" });
+      }
+      setShowSyncDialog(false);
+      loadSyncConfigs();
+    } catch (e: any) {
+      toast({ title: "儲存失敗", description: e.message, variant: "destructive" });
+    } finally { setSavingSyncConfig(false); }
+  };
+
+  const handleSyncToggle = async (cfg: any) => {
+    try {
+      await api("PATCH", `/sheet-sync/${cfg.id}`, { is_active: !cfg.is_active });
+      loadSyncConfigs();
+    } catch (e: any) {
+      toast({ title: "切換失敗", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleSyncDelete = async (cfg: any) => {
+    if (!confirm(`確定刪除「${cfg.sync_name}」同步設定？`)) return;
+    try {
+      await api("DELETE", `/sheet-sync/${cfg.id}`);
+      toast({ title: "已刪除同步設定" });
+      loadSyncConfigs();
+    } catch (e: any) {
+      toast({ title: "刪除失敗", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleManualSync = async (cfg: any) => {
+    setRunningSyncId(cfg.id);
+    try {
+      const result = await api("POST", `/sheet-sync/${cfg.id}/run`);
+      toast({ title: "同步完成", description: result.message ?? `寫入 ${result.upserted} 筆` });
+      loadSyncConfigs();
+      loadTrips();
+    } catch (e: any) {
+      toast({ title: "同步失敗", description: e.message, variant: "destructive" });
+    } finally { setRunningSyncId(null); }
+  };
 
   // Export with format selection
   const handleExport = useCallback(async (fmt: "csv" | "xlsx") => {
@@ -443,6 +535,99 @@ function DashboardTab() {
           )}
         </>
       )}
+
+      {/* ─── 班表自動同步 ─────────────────────────────────────────── */}
+      <div className="pt-2 border-t">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-indigo-500" />
+            <span className="font-semibold text-slate-700 text-sm">班表自動同步</span>
+            {syncConfigsLoading && <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />}
+          </div>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openNewSyncDialog}>
+            <Plus className="w-3.5 h-3.5" />新增同步設定
+          </Button>
+        </div>
+
+        {syncConfigs.length === 0 && !syncConfigsLoading ? (
+          <div className="text-center py-6 bg-indigo-50 rounded-xl border border-dashed border-indigo-200">
+            <Link2 className="w-8 h-8 mx-auto mb-2 text-indigo-300" />
+            <p className="text-sm text-slate-500">尚未設定自動同步</p>
+            <p className="text-xs text-slate-400 mt-0.5">連結 Google 試算表，系統將自動定時匯入班表</p>
+            <Button size="sm" className="mt-3 gap-1 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={openNewSyncDialog}>
+              <Plus className="w-3.5 h-3.5" />立即設定
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {syncConfigs.map(cfg => {
+              const isRunning = runningSyncId === cfg.id;
+              const lastSyncDate = cfg.last_sync_at
+                ? new Date(cfg.last_sync_at).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+                : null;
+              const hasError = cfg.last_sync_status === "error";
+              return (
+                <div key={cfg.id} className={`rounded-xl border p-3 transition-colors ${cfg.is_active ? "bg-white border-indigo-100" : "bg-slate-50 border-slate-200 opacity-60"}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.is_active ? "bg-indigo-100" : "bg-slate-100"}`}>
+                      <Link2 className={`w-4 h-4 ${cfg.is_active ? "text-indigo-600" : "text-slate-400"}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-800">{cfg.sync_name}</span>
+                        {cfg.is_active
+                          ? <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">自動同步中</span>
+                          : <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">已停用</span>}
+                        {hasError && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">上次失敗</span>}
+                      </div>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{cfg.sheet_url}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                        <span>每 {cfg.interval_minutes} 分鐘同步</span>
+                        {lastSyncDate && <span>最後同步：{lastSyncDate}</span>}
+                        {cfg.last_sync_count != null && <span>寫入 {cfg.last_sync_count} 筆</span>}
+                      </div>
+                      {hasError && cfg.last_sync_error && (
+                        <p className="text-xs text-red-500 mt-1 truncate">錯誤：{cfg.last_sync_error}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleManualSync(cfg)}
+                        disabled={isRunning}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="立即同步"
+                      >
+                        {isRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => openEditSyncDialog(cfg)}
+                        className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="編輯設定"
+                      >
+                        <Settings2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleSyncToggle(cfg)}
+                        className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+                        title={cfg.is_active ? "停用" : "啟用"}
+                      >
+                        {cfg.is_active ? <ToggleRight className="w-4 h-4 text-green-600" /> : <ToggleLeft className="w-4 h-4 text-slate-400" />}
+                      </button>
+                      <button
+                        onClick={() => handleSyncDelete(cfg)}
+                        className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                        title="刪除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* ─── 車趟記錄 ───────────────────────────────────────────────── */}
       <div className="pt-2 border-t">
@@ -782,6 +967,64 @@ function DashboardTab() {
             >
               <Upload className="w-3.5 h-3.5" />
               {importing ? "匯入中…" : importRows.length > 0 ? `確認匯入 ${importRows.length} 筆` : "請先預覽資料"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── 自動同步設定 Dialog ─────────────────────────────────────── */}
+      <Dialog open={showSyncDialog} onOpenChange={v => { if (!v) setShowSyncDialog(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-indigo-500" />
+              {editSyncConfig ? "編輯同步設定" : "新增班表自動同步"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-700">同步名稱</Label>
+              <Input
+                value={syncForm.sync_name}
+                onChange={e => setSyncForm(f => ({ ...f, sync_name: e.target.value }))}
+                placeholder="例：蝦皮北倉班表"
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-700">Google 試算表連結</Label>
+              <Input
+                value={syncForm.sheet_url}
+                onChange={e => setSyncForm(f => ({ ...f, sheet_url: e.target.value }))}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                className="h-9 text-sm"
+              />
+              <p className="text-xs text-slate-400">請確認試算表已設為「知道連結的人可查看」</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-700">同步間隔（分鐘）</Label>
+              <Select value={syncForm.interval_minutes} onValueChange={v => setSyncForm(f => ({ ...f, interval_minutes: v }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">每 15 分鐘</SelectItem>
+                  <SelectItem value="30">每 30 分鐘</SelectItem>
+                  <SelectItem value="60">每 1 小時</SelectItem>
+                  <SelectItem value="120">每 2 小時</SelectItem>
+                  <SelectItem value="240">每 4 小時</SelectItem>
+                  <SelectItem value="480">每 8 小時</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowSyncDialog(false)}>取消</Button>
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
+              onClick={handleSyncSave}
+              disabled={savingSyncConfig}
+            >
+              {savingSyncConfig ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              {editSyncConfig ? "儲存變更" : "新增並啟用"}
             </Button>
           </DialogFooter>
         </DialogContent>
