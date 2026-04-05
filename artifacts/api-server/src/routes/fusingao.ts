@@ -11,6 +11,21 @@ function hashPw(password: string): string {
 
 export const fusingaoRouter = Router();
 
+// ── DB Migration: add new columns to fusingao_fleets if absent ───────────────
+async function ensureFusingaoFleetColumns() {
+  const cols = [
+    "commission_rate NUMERIC(5,2) DEFAULT 15",
+    "bank_name TEXT",
+    "bank_account TEXT",
+  ];
+  for (const col of cols) {
+    try {
+      await db.execute(sql.raw(`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS ${col}`));
+    } catch { /* ignore */ }
+  }
+}
+ensureFusingaoFleetColumns().catch(console.error);
+
 // ── helper: parse a Shopee route note (LEGACY FALLBACK — only for old rows
 //    that predate the proper column migration; new rows set columns directly) ─
 function parseNote(notes: string | null | undefined) {
@@ -290,13 +305,13 @@ fusingaoRouter.get("/fleets", async (_req, res) => {
 // POST /fusingao/fleets — create fleet account
 fusingaoRouter.post("/fleets", async (req, res) => {
   try {
-    const { fleet_name, contact_name, contact_phone, username, password, vehicle_types, notes, rate_override } = req.body;
+    const { fleet_name, contact_name, contact_phone, username, password, vehicle_types, notes, rate_override, commission_rate, bank_name, bank_account } = req.body;
     if (!fleet_name || !username || !password)
       return res.status(400).json({ ok: false, error: "車隊名稱、帳號、密碼為必填" });
     const hashed = hashPw(password);
     const [result] = await db.execute(sql`
-      INSERT INTO fusingao_fleets (fleet_name, contact_name, contact_phone, username, password, vehicle_types, notes, rate_override)
-      VALUES (${fleet_name}, ${contact_name ?? null}, ${contact_phone ?? null}, ${username}, ${hashed}, ${vehicle_types ?? null}, ${notes ?? null}, ${rate_override ?? null})
+      INSERT INTO fusingao_fleets (fleet_name, contact_name, contact_phone, username, password, vehicle_types, notes, rate_override, commission_rate, bank_name, bank_account)
+      VALUES (${fleet_name}, ${contact_name ?? null}, ${contact_phone ?? null}, ${username}, ${hashed}, ${vehicle_types ?? null}, ${notes ?? null}, ${rate_override ?? null}, ${commission_rate ?? 15}, ${bank_name ?? null}, ${bank_account ?? null})
       RETURNING id, fleet_name, username, contact_name, contact_phone
     `).then(r => r.rows as any[]);
     res.json({ ok: true, fleet: result });
@@ -310,18 +325,21 @@ fusingaoRouter.post("/fleets", async (req, res) => {
 fusingaoRouter.put("/fleets/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { fleet_name, contact_name, contact_phone, vehicle_types, notes, is_active, rate_override, password } = req.body;
+    const { fleet_name, contact_name, contact_phone, vehicle_types, notes, is_active, rate_override, password, commission_rate, bank_name, bank_account } = req.body;
     const pwUpdate = password ? sql`, password=${hashPw(password)}` : sql``;
     await db.execute(sql`
       UPDATE fusingao_fleets SET
-        fleet_name    = ${fleet_name},
-        contact_name  = ${contact_name ?? null},
-        contact_phone = ${contact_phone ?? null},
-        vehicle_types = ${vehicle_types ?? null},
-        notes         = ${notes ?? null},
-        is_active     = ${is_active ?? true},
-        rate_override = ${rate_override ?? null},
-        updated_at    = NOW()
+        fleet_name      = ${fleet_name},
+        contact_name    = ${contact_name ?? null},
+        contact_phone   = ${contact_phone ?? null},
+        vehicle_types   = ${vehicle_types ?? null},
+        notes           = ${notes ?? null},
+        is_active       = ${is_active ?? true},
+        rate_override   = ${rate_override ?? null},
+        commission_rate = ${commission_rate ?? 15},
+        bank_name       = ${bank_name ?? null},
+        bank_account    = ${bank_account ?? null},
+        updated_at      = NOW()
         ${pwUpdate}
       WHERE id = ${Number(id)}
     `);
