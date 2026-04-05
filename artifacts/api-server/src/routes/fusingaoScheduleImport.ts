@@ -241,20 +241,26 @@ fusingaoScheduleRouter.post("/schedule/import", upload.single("file"), async (re
 fusingaoScheduleRouter.get("/schedule/routes", async (req, res) => {
   try {
     const { month, search, route_type } = req.query as Record<string, string>;
-    let where = "WHERE 1=1";
-    if (month) where += ` AND s.import_month = '${month}'`;
-    if (route_type) where += ` AND s.route_type = '${route_type}'`;
-    if (search) where += ` AND (s.route_id ILIKE '%${search}%' OR s.dock_number ILIKE '%${search}%' OR s.driver_id ILIKE '%${search}%')`;
+    const conditions: ReturnType<typeof sql>[] = [];
+    if (month) conditions.push(sql`s.import_month = ${month}`);
+    if (route_type) conditions.push(sql`s.route_type = ${route_type}`);
+    if (search) {
+      const like = `%${search}%`;
+      conditions.push(sql`(s.route_id ILIKE ${like} OR s.dock_number ILIKE ${like} OR s.driver_id ILIKE ${like})`);
+    }
+    const whereClause = conditions.length > 0
+      ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+      : sql``;
 
-    const rows = await db.execute(sql.raw(`
+    const rows = await db.execute(sql`
       SELECT s.*, COUNT(st.id)::int AS stop_count
       FROM shopee_route_schedules s
       LEFT JOIN shopee_route_stops st ON st.schedule_id = s.id
-      ${where}
+      ${whereClause}
       GROUP BY s.id
       ORDER BY s.route_type, s.route_id
       LIMIT 500
-    `));
+    `);
     const months = await db.execute(sql`SELECT DISTINCT import_month FROM shopee_route_schedules ORDER BY import_month DESC`);
     res.json({ ok: true, routes: rows.rows, months: months.rows.map((r: any) => r.import_month) });
   } catch (err: any) {
@@ -279,14 +285,25 @@ fusingaoScheduleRouter.get("/schedule/routes/:id/stops", async (req, res) => {
 fusingaoScheduleRouter.get("/schedule/addresses", async (req, res) => {
   try {
     const { search } = req.query as Record<string, string>;
-    let where = "WHERE store_address IS NOT NULL AND store_address != ''";
-    if (search) where += ` AND (store_name ILIKE '%${search}%' OR store_address ILIKE '%${search}%')`;
-    const rows = await db.execute(sql.raw(`
-      SELECT DISTINCT store_name, store_address, daily_delivery_type
-      FROM shopee_route_stops ${where}
-      ORDER BY store_name
-      LIMIT 300
-    `));
+    const pattern = search ? `%${search}%` : null;
+    const rows = await db.execute(
+      pattern
+        ? sql`
+            SELECT DISTINCT store_name, store_address, daily_delivery_type
+            FROM shopee_route_stops
+            WHERE store_address IS NOT NULL AND store_address != ''
+              AND (store_name ILIKE ${pattern} OR store_address ILIKE ${pattern})
+            ORDER BY store_name
+            LIMIT 300
+          `
+        : sql`
+            SELECT DISTINCT store_name, store_address, daily_delivery_type
+            FROM shopee_route_stops
+            WHERE store_address IS NOT NULL AND store_address != ''
+            ORDER BY store_name
+            LIMIT 300
+          `
+    );
     res.json({ ok: true, addresses: rows.rows });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
