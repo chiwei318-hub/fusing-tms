@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Store, Truck, LayoutDashboard, Users, DollarSign, Calendar,
   ClipboardList, LogOut, RefreshCw, Plus, Pencil, Trash2,
   Check, X, ChevronRight, MapPin, Clock, AlertCircle,
-  Phone, Car, Badge, Banknote, TrendingUp, FileText
+  Phone, Car, Badge, Banknote, TrendingUp, FileText,
+  Upload, Download, ListFilter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,127 +57,507 @@ function StatusBadge({ status }: { status: string }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 1: 即時調度牆
 // ══════════════════════════════════════════════════════════════════════════════
+const TRIP_STATUS_MAP: Record<string, { label: string; color: string }> = {
+  completed: { label: "完成", color: "bg-green-100 text-green-700" },
+  pending:   { label: "待確認", color: "bg-amber-100 text-amber-700" },
+  cancelled: { label: "取消", color: "bg-slate-100 text-slate-500" },
+};
+
+const EMPTY_TRIP = {
+  driver_id: "", trip_date: new Date().toISOString().split("T")[0],
+  customer_name: "", pickup_address: "", delivery_address: "",
+  amount: "", driver_payout: "", status: "completed", notes: "",
+};
+
 function DashboardTab() {
   const api = useFleetApi();
+  const { token } = useAuth();
+  const { toast } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Trips state
+  const [trips, setTrips] = useState<any[]>([]);
+  const [tripsLoading, setTripsLoading] = useState(false);
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(1);
+    return d.toISOString().split("T")[0];
+  });
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split("T")[0]);
+  const [filterDriver, setFilterDriver] = useState("");
+
+  // Dialogs
+  const [showTripForm, setShowTripForm] = useState(false);
+  const [editTrip, setEditTrip] = useState<any>(null);
+  const [tripForm, setTripForm] = useState<any>(EMPTY_TRIP);
+  const [savingTrip, setSavingTrip] = useState(false);
+
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Load dashboard
   const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const d = await api("GET", "/dashboard");
-      setData(d);
-    } catch { } finally {
-      setLoading(false);
-    }
+    try { setLoading(true); const d = await api("GET", "/dashboard"); setData(d); }
+    catch { } finally { setLoading(false); }
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-48 text-slate-400">
-      <RefreshCw className="w-5 h-5 animate-spin mr-2" /> 載入中…
-    </div>
-  );
+  // Load trips
+  const loadTrips = useCallback(async () => {
+    try {
+      setTripsLoading(true);
+      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: "200" });
+      if (filterDriver) params.set("driver_id", filterDriver);
+      const d = await api("GET", `/trips?${params}`);
+      setTrips(d.trips ?? []);
+    } catch { toast({ title: "車趟載入失敗", variant: "destructive" }); }
+    finally { setTripsLoading(false); }
+  }, [api, dateFrom, dateTo, filterDriver]);
+
+  useEffect(() => { loadTrips(); }, [loadTrips]);
+
+  // Export CSV
+  const handleExport = useCallback(async () => {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+    const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+    const url = `${BASE_URL}/api/fleet/trips/export?${params}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `車趟記錄_${dateFrom}_${dateTo}.csv`;
+    a.click();
+  }, [token, dateFrom, dateTo]);
+
+  // Parse CSV file for import
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = (ev.target?.result as string ?? "").replace(/^\uFEFF/, "");
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { toast({ title: "CSV 格式錯誤，需有標題列", variant: "destructive" }); return; }
+      const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+      const parsed = lines.slice(1).map(line => {
+        const values = line.split(",").map(v => v.replace(/^"|"$/g, "").trim());
+        const row: any = {};
+        headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+        return row;
+      }).filter(r => Object.values(r).some(v => String(v).trim()));
+      setImportRows(parsed);
+      setImportErrors([]);
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  };
+
+  const handleImport = async () => {
+    if (!importRows.length) return;
+    setImporting(true);
+    try {
+      const d = await api("POST", "/trips/import", { rows: importRows });
+      toast({ title: `已匯入 ${d.inserted} 筆車趟`, description: d.errors?.length ? `${d.errors.length} 筆錯誤` : undefined });
+      if (d.errors?.length) setImportErrors(d.errors);
+      else { setShowImport(false); setImportRows([]); }
+      loadTrips();
+    } catch (e: any) {
+      toast({ title: "匯入失敗", description: e.message, variant: "destructive" });
+    } finally { setImporting(false); }
+  };
+
+  // Save trip
+  const openAddTrip = () => { setTripForm(EMPTY_TRIP); setEditTrip(null); setShowTripForm(true); };
+  const openEditTrip = (t: any) => {
+    setTripForm({
+      driver_id: t.driver_id ?? "",
+      trip_date: t.trip_date ? String(t.trip_date).split("T")[0] : EMPTY_TRIP.trip_date,
+      customer_name: t.customer_name ?? "",
+      pickup_address: t.pickup_address ?? "",
+      delivery_address: t.delivery_address ?? "",
+      amount: t.amount ?? "",
+      driver_payout: t.driver_payout ?? "",
+      status: t.status ?? "completed",
+      notes: t.notes ?? "",
+    });
+    setEditTrip(t);
+    setShowTripForm(true);
+  };
+  const handleSaveTrip = async () => {
+    if (!tripForm.pickup_address && !tripForm.delivery_address) {
+      toast({ title: "請填寫起點或終點", variant: "destructive" }); return;
+    }
+    setSavingTrip(true);
+    try {
+      const payload = {
+        ...tripForm,
+        driver_id: tripForm.driver_id ? Number(tripForm.driver_id) : null,
+        amount: Number(tripForm.amount || 0),
+        driver_payout: tripForm.driver_payout !== "" ? Number(tripForm.driver_payout) : null,
+      };
+      if (editTrip) await api("PATCH", `/trips/${editTrip.id}`, payload);
+      else await api("POST", "/trips", payload);
+      toast({ title: editTrip ? "已更新車趟" : "車趟已新增" });
+      setShowTripForm(false);
+      loadTrips();
+    } catch (e: any) {
+      toast({ title: "儲存失敗", description: e.message, variant: "destructive" });
+    } finally { setSavingTrip(false); }
+  };
+
+  const handleDeleteTrip = async (id: number) => {
+    if (!confirm("確定刪除此車趟記錄？")) return;
+    await api("DELETE", `/trips/${id}`);
+    toast({ title: "已刪除" });
+    loadTrips();
+  };
 
   const drivers = data?.drivers ?? [];
   const orders = data?.active_orders ?? [];
   const leaves = data?.pending_leaves ?? [];
-
   const onlineCount = drivers.filter((d: any) => d.status !== "offline").length;
   const busyCount = drivers.filter((d: any) => d.status === "busy").length;
+
+  const tripTotal = trips.reduce((s, t) => s + Number(t.amount ?? 0), 0);
+  const tripPayout = trips.reduce((s, t) => s + Number(t.driver_payout ?? 0), 0);
+
+  const NT = (v: number) => `NT$ ${v.toLocaleString()}`;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-800">即時調度牆</h2>
-        <Button variant="outline" size="sm" onClick={load} className="gap-1.5">
+        <Button variant="outline" size="sm" onClick={() => { load(); loadTrips(); }} className="gap-1.5">
           <RefreshCw className="w-3.5 h-3.5" /> 重新整理
         </Button>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "在線司機", value: onlineCount, icon: Truck, color: "text-green-600", bg: "bg-green-50" },
-          { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
-          { label: "待審假單", value: leaves.length, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
-        ].map(c => (
-          <Card key={c.label} className="border-0 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${c.bg}`}>
-                <c.icon className={`w-5 h-5 ${c.color}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-black text-slate-800">{c.value}</p>
-                <p className="text-xs text-slate-500">{c.label}</p>
-              </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-24 text-slate-400">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2" /> 載入中…
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "在線司機", value: onlineCount, icon: Truck, color: "text-green-600", bg: "bg-green-50" },
+              { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
+              { label: "待審假單", value: leaves.length, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
+            ].map(c => (
+              <Card key={c.label} className="border-0 shadow-sm">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${c.bg}`}>
+                    <c.icon className={`w-5 h-5 ${c.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-slate-800">{c.value}</p>
+                    <p className="text-xs text-slate-500">{c.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Driver status grid */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-slate-600">司機即時狀態</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {drivers.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-6">尚無旗下司機</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {drivers.map((d: any) => (
+                    <div key={d.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                      <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                        {d.name?.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{d.name}</p>
+                        <p className="text-xs text-slate-500">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
+                      </div>
+                      <StatusBadge status={d.status} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      {/* Driver status grid */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-slate-600">司機即時狀態</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {drivers.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">尚無旗下司機</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {drivers.map((d: any) => (
-                <div key={d.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
-                    {d.name?.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800 text-sm truncate">{d.name}</p>
-                    <p className="text-xs text-slate-500">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
-                  </div>
-                  <StatusBadge status={d.status} />
+          {orders.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-slate-600">進行中訂單</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {orders.map((o: any) => (
+                    <div key={o.id} className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl">
+                      <ClipboardList className="w-4 h-4 text-orange-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">訂單 #{o.id}</p>
+                        <p className="text-xs text-slate-500 truncate">{o.delivery_address}</p>
+                      </div>
+                      <StatusBadge status={o.status} />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {leaves.length > 0 && (
+            <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+              <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-yellow-800 text-sm">有 {leaves.length} 筆待審請假申請</p>
+                <p className="text-xs text-yellow-600 mt-0.5">請至「請假管理」標籤處理</p>
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Active orders */}
-      {orders.length > 0 && (
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-slate-600">進行中訂單</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {orders.map((o: any) => (
-                <div key={o.id} className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl">
-                  <ClipboardList className="w-4 h-4 text-orange-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">訂單 #{o.id}</p>
-                    <p className="text-xs text-slate-500 truncate">{o.delivery_address}</p>
-                  </div>
-                  <StatusBadge status={o.status} />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        </>
       )}
 
-      {/* Pending leaves alert */}
-      {leaves.length > 0 && (
-        <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-          <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-yellow-800 text-sm">有 {leaves.length} 筆待審請假申請</p>
-            <p className="text-xs text-yellow-600 mt-0.5">請至「請假管理」標籤處理</p>
+      {/* ─── 車趟記錄 ───────────────────────────────────────────────── */}
+      <div className="pt-2 border-t">
+        {/* Section header */}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-slate-500" />
+            <span className="font-semibold text-slate-700 text-sm">車趟記錄</span>
+            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{trips.length} 筆</span>
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setImportRows([]); setImportErrors([]); setShowImport(true); }}>
+              <Upload className="w-3.5 h-3.5" />匯入
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleExport}>
+              <Download className="w-3.5 h-3.5" />匯出
+            </Button>
+            <Button size="sm" className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={openAddTrip}>
+              <Plus className="w-3.5 h-3.5" />手動新增
+            </Button>
           </div>
         </div>
-      )}
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-center mb-3">
+          <div className="flex items-center gap-1 text-xs text-slate-500">
+            <ListFilter className="w-3.5 h-3.5" />日期：
+          </div>
+          <Input type="date" className="h-7 text-xs w-36" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <span className="text-xs text-slate-400">～</span>
+          <Input type="date" className="h-7 text-xs w-36" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <Select value={filterDriver || "_all"} onValueChange={v => setFilterDriver(v === "_all" ? "" : v)}>
+            <SelectTrigger className="h-7 text-xs w-32"><SelectValue placeholder="全部司機" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">全部司機</SelectItem>
+              {drivers.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Stats summary */}
+        {trips.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {[
+              { label: "總車趟", value: trips.length + " 趟", color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "總營收", value: NT(tripTotal), color: "text-green-600", bg: "bg-green-50" },
+              { label: "司機薪資", value: NT(tripPayout), color: "text-orange-600", bg: "bg-orange-50" },
+            ].map(s => (
+              <div key={s.label} className={`rounded-xl p-2.5 ${s.bg}`}>
+                <p className="text-xs text-slate-500">{s.label}</p>
+                <p className={`font-bold text-sm ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Trips list */}
+        {tripsLoading ? (
+          <div className="flex justify-center py-8 text-slate-400">
+            <RefreshCw className="w-4 h-4 animate-spin mr-2" />載入中…
+          </div>
+        ) : trips.length === 0 ? (
+          <div className="text-center py-10 text-slate-400">
+            <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">此期間無車趟記錄</p>
+            <Button size="sm" variant="outline" className="mt-3 gap-1" onClick={openAddTrip}>
+              <Plus className="w-3.5 h-3.5" />手動新增第一筆
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {trips.map((t: any) => {
+              const st = TRIP_STATUS_MAP[t.status] ?? { label: t.status, color: "bg-slate-100 text-slate-500" };
+              return (
+                <div key={t.id} className="flex items-start gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-all">
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                    <Truck className="w-4 h-4 text-slate-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-slate-500 font-mono">{String(t.trip_date).split("T")[0]}</span>
+                      {t.driver_name && <span className="text-xs font-semibold text-blue-600">{t.driver_name}</span>}
+                      {t.customer_name && <span className="text-xs text-slate-500">{t.customer_name}</span>}
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-600 truncate">
+                      <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
+                      <span className="truncate">{t.pickup_address || "—"} → {t.delivery_address || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs">
+                      <span className="text-green-600 font-semibold">NT$ {Number(t.amount).toLocaleString()}</span>
+                      {t.driver_payout != null && <span className="text-slate-500">司機：NT$ {Number(t.driver_payout).toLocaleString()}</span>}
+                      {t.notes && <span className="text-slate-400 truncate">{t.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button className="text-slate-400 hover:text-blue-600 p-1" onClick={() => openEditTrip(t)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button className="text-slate-400 hover:text-red-500 p-1" onClick={() => handleDeleteTrip(t.id)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─── 手動新增 / 編輯 Dialog ────────────────────────────────── */}
+      <Dialog open={showTripForm} onOpenChange={setShowTripForm}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Truck className="w-4 h-4 text-green-600" />
+              {editTrip ? "編輯車趟" : "手動新增車趟"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-1">
+            <div className="space-y-1">
+              <Label className="text-xs">日期</Label>
+              <Input type="date" value={tripForm.trip_date} onChange={e => setTripForm((p: any) => ({ ...p, trip_date: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">司機</Label>
+              <Select value={tripForm.driver_id ? String(tripForm.driver_id) : "_none"} onValueChange={v => setTripForm((p: any) => ({ ...p, driver_id: v === "_none" ? "" : v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="選擇司機（可空）" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">不指定司機</SelectItem>
+                  {drivers.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">客戶名稱</Label>
+              <Input value={tripForm.customer_name} onChange={e => setTripForm((p: any) => ({ ...p, customer_name: e.target.value }))} placeholder="客戶名稱（可空）" className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">狀態</Label>
+              <Select value={tripForm.status} onValueChange={v => setTripForm((p: any) => ({ ...p, status: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TRIP_STATUS_MAP).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">起點 *</Label>
+              <Input value={tripForm.pickup_address} onChange={e => setTripForm((p: any) => ({ ...p, pickup_address: e.target.value }))} placeholder="出發地址" className="h-8 text-sm" />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">終點 *</Label>
+              <Input value={tripForm.delivery_address} onChange={e => setTripForm((p: any) => ({ ...p, delivery_address: e.target.value }))} placeholder="送達地址" className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">收費金額 (NT$)</Label>
+              <Input type="number" min="0" value={tripForm.amount} onChange={e => setTripForm((p: any) => ({ ...p, amount: e.target.value }))} placeholder="0" className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">司機薪資 (NT$)</Label>
+              <Input type="number" min="0" value={tripForm.driver_payout} onChange={e => setTripForm((p: any) => ({ ...p, driver_payout: e.target.value }))} placeholder="（自動計算或手填）" className="h-8 text-sm" />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">備註</Label>
+              <Input value={tripForm.notes} onChange={e => setTripForm((p: any) => ({ ...p, notes: e.target.value }))} placeholder="備註說明（可空）" className="h-8 text-sm" />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowTripForm(false)}>取消</Button>
+            <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleSaveTrip} disabled={savingTrip}>
+              {savingTrip ? "儲存中…" : editTrip ? "更新" : "新增"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── CSV 匯入 Dialog ──────────────────────────────────────── */}
+      <Dialog open={showImport} onOpenChange={setShowImport}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Upload className="w-4 h-4 text-green-600" />CSV 匯入車趟
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+              <p className="font-semibold text-slate-700">CSV 欄位格式（需有標題列）：</p>
+              <p className="font-mono text-slate-500">日期, 司機姓名, 客戶名稱, 起點, 終點, 金額, 司機薪資, 狀態, 備註</p>
+              <p className="text-slate-400 text-xs mt-1">· 司機姓名需與系統相符才能自動連結<br />· 狀態可填：completed（完成）/ pending / cancelled<br />· 金額請填純數字</p>
+            </div>
+            <div>
+              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+              <Button variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
+                <Upload className="w-4 h-4" />選擇 CSV 檔案
+                {importRows.length > 0 && <span className="ml-1 text-green-600">（已載入 {importRows.length} 筆）</span>}
+              </Button>
+            </div>
+            {importRows.length > 0 && (
+              <div className="max-h-40 overflow-y-auto border rounded-lg text-xs">
+                <table className="w-full">
+                  <tbody>
+                    {importRows.slice(0, 5).map((r, i) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="px-2 py-1.5 text-slate-500">{r["日期"] ?? r.date}</td>
+                        <td className="px-2 py-1.5 text-blue-600">{r["司機姓名"] ?? r.driver_name}</td>
+                        <td className="px-2 py-1.5 truncate max-w-[120px]">{r["起點"] ?? r.pickup_address} → {r["終點"] ?? r.delivery_address}</td>
+                        <td className="px-2 py-1.5 text-green-600 text-right">NT$ {r["金額"] ?? r.amount}</td>
+                      </tr>
+                    ))}
+                    {importRows.length > 5 && (
+                      <tr><td colSpan={4} className="px-2 py-1.5 text-slate-400 text-center">…還有 {importRows.length - 5} 筆</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {importErrors.length > 0 && (
+              <div className="space-y-1">
+                {importErrors.slice(0, 5).map((e, i) => (
+                  <p key={i} className="text-xs text-red-500">{e}</p>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowImport(false)}>取消</Button>
+            <Button className="bg-green-600 hover:bg-green-700 text-white gap-1.5" onClick={handleImport} disabled={importing || importRows.length === 0}>
+              <Upload className="w-3.5 h-3.5" />
+              {importing ? "匯入中…" : `確認匯入 ${importRows.length} 筆`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

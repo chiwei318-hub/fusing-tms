@@ -594,6 +594,232 @@ fleetOwnerRouter.get("/salary/report", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// 車趟記錄 (fleet_trips)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Ensure fleet_trips table exists on first use
+async function ensureFleetTripsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fleet_trips (
+      id            SERIAL PRIMARY KEY,
+      franchisee_id INTEGER NOT NULL,
+      driver_id     INTEGER,
+      trip_date     DATE NOT NULL DEFAULT CURRENT_DATE,
+      customer_name TEXT,
+      pickup_address TEXT NOT NULL DEFAULT '',
+      delivery_address TEXT NOT NULL DEFAULT '',
+      amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      driver_payout NUMERIC(12,2),
+      status        TEXT NOT NULL DEFAULT 'completed',
+      notes         TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS fleet_trips_fid_idx ON fleet_trips(franchisee_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS fleet_trips_date_idx ON fleet_trips(trip_date)`);
+}
+ensureFleetTripsTable().catch(console.error);
+
+// ─── LIST ──────────────────────────────────────────────────────────────
+fleetOwnerRouter.get("/trips", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { date_from, date_to, driver_id, limit = "100", offset = "0" } = req.query as any;
+
+  const filters: string[] = ["t.franchisee_id = $1"];
+  const params: unknown[] = [fid];
+
+  if (date_from) { params.push(date_from); filters.push(`t.trip_date >= $${params.length}`); }
+  if (date_to)   { params.push(date_to);   filters.push(`t.trip_date <= $${params.length}`); }
+  if (driver_id) { params.push(Number(driver_id)); filters.push(`t.driver_id = $${params.length}`); }
+
+  params.push(Number(limit)); const limitIdx = params.length;
+  params.push(Number(offset)); const offsetIdx = params.length;
+
+  const { rows } = await pool.query(`
+    SELECT t.*, d.name AS driver_name, d.vehicle_type, d.license_plate
+    FROM fleet_trips t
+    LEFT JOIN drivers d ON d.id = t.driver_id
+    WHERE ${filters.join(" AND ")}
+    ORDER BY t.trip_date DESC, t.id DESC
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
+  `, params);
+
+  const total = await pool.query(
+    `SELECT COUNT(*)::int FROM fleet_trips t WHERE ${filters.slice(0, -2).join(" AND ") || "t.franchisee_id=$1"}`,
+    [fid]
+  );
+
+  res.json({ ok: true, trips: rows, total: total.rows[0]?.count ?? rows.length });
+});
+
+// ─── CREATE ────────────────────────────────────────────────────────────
+fleetOwnerRouter.post("/trips", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const {
+    driver_id, trip_date, customer_name, pickup_address, delivery_address,
+    amount, driver_payout, status = "completed", notes,
+  } = req.body;
+
+  if (!pickup_address && !delivery_address) {
+    return res.status(400).json({ error: "請填寫起點或終點" });
+  }
+
+  const { rows } = await pool.query(`
+    INSERT INTO fleet_trips
+      (franchisee_id, driver_id, trip_date, customer_name, pickup_address,
+       delivery_address, amount, driver_payout, status, notes)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    RETURNING *
+  `, [
+    fid,
+    driver_id ?? null,
+    trip_date ? new Date(trip_date) : new Date(),
+    customer_name ?? null,
+    pickup_address ?? "",
+    delivery_address ?? "",
+    Number(amount ?? 0),
+    driver_payout != null ? Number(driver_payout) : null,
+    status,
+    notes ?? null,
+  ]);
+  res.status(201).json({ ok: true, trip: rows[0] });
+});
+
+// ─── UPDATE ────────────────────────────────────────────────────────────
+fleetOwnerRouter.patch("/trips/:id", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const id = Number(req.params.id);
+  const allowed = ["driver_id","trip_date","customer_name","pickup_address","delivery_address","amount","driver_payout","status","notes"];
+  const updates: string[] = [];
+  const vals: unknown[] = [];
+
+  for (const f of allowed) {
+    if (req.body[f] !== undefined) {
+      if (f === "trip_date" && req.body[f]) {
+        vals.push(new Date(req.body[f]));
+      } else if (f === "amount" || f === "driver_payout") {
+        vals.push(req.body[f] != null ? Number(req.body[f]) : null);
+      } else {
+        vals.push(req.body[f]);
+      }
+      updates.push(`${f} = $${vals.length}`);
+    }
+  }
+  if (!updates.length) return res.status(400).json({ error: "無可更新欄位" });
+
+  vals.push(new Date()); updates.push(`updated_at = $${vals.length}`);
+  vals.push(id, fid);
+
+  const { rows } = await pool.query(
+    `UPDATE fleet_trips SET ${updates.join(", ")}
+     WHERE id = $${vals.length - 1} AND franchisee_id = $${vals.length}
+     RETURNING *`,
+    vals
+  );
+  if (!rows[0]) return res.status(404).json({ error: "找不到車趟" });
+  res.json({ ok: true, trip: rows[0] });
+});
+
+// ─── DELETE ────────────────────────────────────────────────────────────
+fleetOwnerRouter.delete("/trips/:id", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const id = Number(req.params.id);
+  await pool.query(`DELETE FROM fleet_trips WHERE id=$1 AND franchisee_id=$2`, [id, fid]);
+  res.json({ ok: true });
+});
+
+// ─── CSV EXPORT ────────────────────────────────────────────────────────
+fleetOwnerRouter.get("/trips/export", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { date_from, date_to } = req.query as any;
+
+  const filters: string[] = ["t.franchisee_id = $1"];
+  const params: unknown[] = [fid];
+  if (date_from) { params.push(date_from); filters.push(`t.trip_date >= $${params.length}`); }
+  if (date_to)   { params.push(date_to);   filters.push(`t.trip_date <= $${params.length}`); }
+
+  const { rows } = await pool.query(`
+    SELECT t.*, d.name AS driver_name
+    FROM fleet_trips t LEFT JOIN drivers d ON d.id = t.driver_id
+    WHERE ${filters.join(" AND ")}
+    ORDER BY t.trip_date DESC, t.id DESC
+  `, params);
+
+  const header = "日期,司機姓名,客戶名稱,起點,終點,金額,司機薪資,狀態,備註";
+  const csvRows = rows.map(r => [
+    r.trip_date ? String(r.trip_date).split("T")[0] : "",
+    r.driver_name ?? "",
+    r.customer_name ?? "",
+    r.pickup_address ?? "",
+    r.delivery_address ?? "",
+    r.amount ?? 0,
+    r.driver_payout ?? "",
+    r.status ?? "",
+    (r.notes ?? "").replace(/,/g, "，"),
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="fleet_trips_${Date.now()}.csv"`);
+  res.send("\uFEFF" + header + "\n" + csvRows);
+});
+
+// ─── CSV IMPORT ────────────────────────────────────────────────────────
+fleetOwnerRouter.post("/trips/import", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { rows: inputRows } = req.body as { rows: any[] };
+
+  if (!Array.isArray(inputRows) || inputRows.length === 0) {
+    return res.status(400).json({ error: "無匯入資料" });
+  }
+
+  // Fetch driver name → id map for this franchisee
+  const { rows: driverRows } = await pool.query(
+    `SELECT id, name FROM drivers WHERE franchisee_id=$1`, [fid]
+  );
+  const driverMap: Record<string, number> = {};
+  for (const d of driverRows) { driverMap[d.name.trim()] = d.id; }
+
+  let inserted = 0;
+  const errors: string[] = [];
+
+  for (const [i, row] of inputRows.entries()) {
+    try {
+      const driverName = (row.driver_name ?? row["司機姓名"] ?? "").trim();
+      const driverId = driverName ? (driverMap[driverName] ?? null) : null;
+
+      const tripDate = row.date ?? row["日期"] ?? row.trip_date;
+      const pickup = row.pickup_address ?? row["起點"] ?? "";
+      const delivery = row.delivery_address ?? row["終點"] ?? "";
+      const amount = Number(row.amount ?? row["金額"] ?? 0);
+      const driverPayout = row.driver_payout ?? row["司機薪資"];
+      const customerName = row.customer_name ?? row["客戶名稱"] ?? null;
+      const notes = row.notes ?? row["備註"] ?? null;
+      const status = row.status ?? row["狀態"] ?? "completed";
+
+      await pool.query(`
+        INSERT INTO fleet_trips
+          (franchisee_id, driver_id, trip_date, customer_name,
+           pickup_address, delivery_address, amount, driver_payout, status, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `, [
+        fid, driverId,
+        tripDate ? new Date(tripDate) : new Date(),
+        customerName, pickup, delivery,
+        amount,
+        driverPayout != null && driverPayout !== "" ? Number(driverPayout) : null,
+        status, notes,
+      ]);
+      inserted++;
+    } catch (e: any) {
+      errors.push(`第 ${i + 2} 列：${e.message}`);
+    }
+  }
+
+  res.json({ ok: true, inserted, errors });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // 待命時段
 // ══════════════════════════════════════════════════════════════════════════════
 fleetOwnerRouter.get("/standby", async (req, res) => {
