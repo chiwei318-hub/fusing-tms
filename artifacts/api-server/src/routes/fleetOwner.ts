@@ -231,11 +231,33 @@ fleetOwnerRouter.get("/dashboard", async (req, res) => {
     [fid]
   );
 
+  // 今日蝦皮未派車趟：route_id 不為空（蝦皮路線）、driver_id 為空（尚未指派司機）
+  // 包含今日建立 或 pickup_date = 今日
+  const todayRoutes = await pool.query(
+    `SELECT
+       o.id, o.route_id, o.route_prefix, o.station_count, o.dispatch_dock,
+       o.required_vehicle_type, o.vehicle_type,
+       o.pickup_address, o.pickup_time,
+       o.created_at, o.notes,
+       pr.rate_per_trip AS shopee_rate,
+       pr.service_type, pr.route_od
+     FROM orders o
+     LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+     WHERE o.route_id IS NOT NULL
+       AND o.driver_id IS NULL
+       AND (
+         o.pickup_date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+         OR (o.pickup_date IS NULL AND DATE(o.created_at) = CURRENT_DATE)
+       )
+     ORDER BY o.route_id`
+  );
+
   res.json({
     ok: true,
     drivers: drivers.rows,
     active_orders: orders.rows,
     pending_leaves: leaves.rows,
+    today_unassigned_routes: todayRoutes.rows,
   });
 });
 

@@ -7,6 +7,7 @@ import {
   Phone, Car, Badge, Banknote, TrendingUp, FileText,
   Upload, Download, ListFilter, ChevronDown,
   Link2, Zap, ToggleLeft, ToggleRight, Settings2,
+  Package2, CheckCircle2, XCircle, MinusCircle, Umbrella,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -391,8 +392,10 @@ function DashboardTab() {
   const drivers = data?.drivers ?? [];
   const orders = data?.active_orders ?? [];
   const leaves = data?.pending_leaves ?? [];
+  const todayRoutes: any[] = data?.today_unassigned_routes ?? [];
   const onlineCount = drivers.filter((d: any) => d.status !== "offline").length;
   const busyCount = drivers.filter((d: any) => d.status === "busy").length;
+  const availableCount = drivers.filter((d: any) => d.status === "available" && !d.on_leave_today).length;
 
   const tripTotal = trips.reduce((s, t) => s + Number(t.amount ?? 0), 0);
   const tripPayout = trips.reduce((s, t) => s + Number(t.driver_payout ?? 0), 0);
@@ -418,9 +421,9 @@ function DashboardTab() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-              { label: "在線司機", value: onlineCount, icon: Truck, color: "text-green-600", bg: "bg-green-50" },
+              { label: "可出車", value: availableCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50" },
               { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
-              { label: "待審假單", value: leaves.length, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
+              { label: "今日未派班表", value: todayRoutes.length, icon: Package2, color: todayRoutes.length > 0 ? "text-red-600" : "text-slate-400", bg: todayRoutes.length > 0 ? "bg-red-50" : "bg-slate-50" },
             ].map(c => (
               <Card key={c.label} className="border-0 shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -446,55 +449,147 @@ function DashboardTab() {
                 <p className="text-sm text-slate-400 text-center py-6">尚無旗下司機</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {drivers.map((d: any) => (
-                    <div key={d.id} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
-                      <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">
-                        {d.name?.charAt(0)}
+                  {drivers.map((d: any) => {
+                    const canGo = d.status === "available" && !d.on_leave_today;
+                    const onLeave = !!d.on_leave_today;
+                    return (
+                      <div key={d.id} className={`flex items-center gap-2 p-3 rounded-xl border ${canGo ? "bg-green-50 border-green-200" : onLeave ? "bg-purple-50 border-purple-200" : d.status === "busy" ? "bg-orange-50 border-orange-200" : "bg-slate-50 border-transparent"}`}>
+                        {/* Avatar + 可出車燈 */}
+                        <div className="relative shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                            {d.name?.charAt(0)}
+                          </div>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${canGo ? "bg-green-500" : onLeave ? "bg-purple-500" : d.status === "busy" ? "bg-orange-500" : "bg-slate-400"}`} />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-slate-800 text-sm truncate">{d.name}</p>
+                            {/* 可出車標籤 */}
+                            {canGo && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                <CheckCircle2 className="w-2.5 h-2.5" />可出車
+                              </span>
+                            )}
+                            {onLeave && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                <Umbrella className="w-2.5 h-2.5" />今日請假
+                              </span>
+                            )}
+                            {!canGo && !onLeave && d.status === "busy" && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                <Truck className="w-2.5 h-2.5" />出車中
+                              </span>
+                            )}
+                            {!canGo && !onLeave && d.status === "offline" && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                <MinusCircle className="w-2.5 h-2.5" />未上線
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
+                        </div>
+
+                        {/* Status dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="flex items-center gap-1 focus:outline-none"
+                              disabled={!!driverStatusLoading[d.id]}
+                              title="點擊切換狀態"
+                            >
+                              {driverStatusLoading[d.id]
+                                ? <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+                                : <StatusBadge status={d.status} />}
+                              <ChevronDown className="w-3 h-3 text-slate-400" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32">
+                            {[
+                              { value: "available", label: "待命", color: "text-green-600" },
+                              { value: "busy",      label: "忙碌", color: "text-orange-600" },
+                              { value: "offline",   label: "離線", color: "text-slate-500" },
+                            ].map(opt => (
+                              <DropdownMenuItem
+                                key={opt.value}
+                                className={`text-xs cursor-pointer ${opt.color} ${d.status === opt.value ? "font-bold bg-slate-50" : ""}`}
+                                onClick={() => handleDriverStatusChange(d.id, opt.value)}
+                              >
+                                {d.status === opt.value && <Check className="w-3 h-3 mr-1.5 inline" />}{opt.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Quick add trip */}
+                        <button
+                          onClick={() => openAddTripForDriver(d)}
+                          title={`新增 ${d.name} 的車趟`}
+                          className="text-xs text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />車趟
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 今日蝦皮未派車趟 */}
+          <Card className={`border-0 shadow-sm ${todayRoutes.length > 0 ? "ring-1 ring-red-200" : ""}`}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package2 className={`w-4 h-4 ${todayRoutes.length > 0 ? "text-red-500" : "text-slate-400"}`} />
+                  <CardTitle className="text-sm font-semibold text-slate-600">
+                    今日蝦皮未派車趟
+                  </CardTitle>
+                  {todayRoutes.length > 0 && (
+                    <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{todayRoutes.length}</span>
+                  )}
+                </div>
+                <span className="text-[11px] text-slate-400">{new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric" })} 尚未指派司機</span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {todayRoutes.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 py-5 text-slate-400">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  <span className="text-sm">今日所有班表路線均已派車</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {todayRoutes.map((r: any) => (
+                    <div key={r.id} className="flex items-center gap-3 p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                      <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
+                        <Package2 className="w-4 h-4 text-red-500" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-slate-800 text-sm truncate">{d.name}</p>
-                        <p className="text-xs text-slate-500">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-slate-700">{r.route_id}</span>
+                          {r.dispatch_dock && r.dispatch_dock !== "—" && (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">碼頭 {r.dispatch_dock}</span>
+                          )}
+                          {(r.station_count ?? 0) > 0 && (
+                            <span className="text-[10px] text-slate-500">{r.station_count} 站</span>
+                          )}
+                          {r.required_vehicle_type && (
+                            <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{r.required_vehicle_type}</span>
+                          )}
+                          {r.shopee_rate && (
+                            <span className="text-[10px] text-green-700 font-semibold">NT${Number(r.shopee_rate).toLocaleString()}</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{r.pickup_address}</p>
                       </div>
-
-                      {/* Status dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            className="flex items-center gap-1 focus:outline-none"
-                            disabled={!!driverStatusLoading[d.id]}
-                            title="點擊切換狀態"
-                          >
-                            {driverStatusLoading[d.id]
-                              ? <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
-                              : <StatusBadge status={d.status} />}
-                            <ChevronDown className="w-3 h-3 text-slate-400" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          {[
-                            { value: "available", label: "待命", color: "text-green-600" },
-                            { value: "busy",      label: "忙碌", color: "text-orange-600" },
-                            { value: "offline",   label: "離線", color: "text-slate-500" },
-                          ].map(opt => (
-                            <DropdownMenuItem
-                              key={opt.value}
-                              className={`text-xs cursor-pointer ${opt.color} ${d.status === opt.value ? "font-bold bg-slate-50" : ""}`}
-                              onClick={() => handleDriverStatusChange(d.id, opt.value)}
-                            >
-                              {d.status === opt.value && <Check className="w-3 h-3 mr-1.5 inline" />}{opt.label}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      {/* Quick add trip */}
-                      <button
-                        onClick={() => openAddTripForDriver(d)}
-                        title={`新增 ${d.name} 的車趟`}
-                        className="text-xs text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" />車趟
-                      </button>
+                      {r.pickup_time && (
+                        <div className="flex items-center gap-1 text-xs text-slate-500 shrink-0">
+                          <Clock className="w-3 h-3" />
+                          {r.pickup_time}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
