@@ -570,6 +570,60 @@ fleetOwnerRouter.post("/salary/settle", async (req, res) => {
   res.json({ ok: true, settled: rows });
 });
 
+// 從車趟記錄計算薪資（使用 fleet_trips.driver_payout）
+fleetOwnerRouter.post("/salary/calculate-from-trips", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const year  = Number(req.body?.year  ?? new Date().getFullYear());
+  const month = Number(req.body?.month ?? new Date().getMonth() + 1);
+
+  const { rows: tripStats } = await pool.query(
+    `SELECT
+       t.driver_id,
+       COUNT(*)::int                           AS total_trips,
+       COALESCE(SUM(t.amount), 0)::numeric     AS gross_amount,
+       COALESCE(SUM(t.driver_payout), 0)::numeric AS driver_payout_sum
+     FROM fleet_trips t
+     WHERE t.franchisee_id = $1
+       AND EXTRACT(YEAR  FROM t.trip_date) = $2
+       AND EXTRACT(MONTH FROM t.trip_date) = $3
+       AND t.driver_id IS NOT NULL
+       AND t.status = 'completed'
+     GROUP BY t.driver_id`,
+    [fid, year, month]
+  );
+
+  if (tripStats.length === 0) {
+    return res.json({ ok: true, count: 0, records: [], message: "此期間無已完成車趟記錄" });
+  }
+
+  const created: unknown[] = [];
+  for (const stat of tripStats) {
+    const gross        = Number(stat.gross_amount);
+    const driverPayout = Number(stat.driver_payout_sum);
+    const fleetIncome  = parseFloat((gross - driverPayout).toFixed(2));
+    const commRate     = gross > 0 ? parseFloat(((driverPayout / gross) * 100).toFixed(1)) : 0;
+
+    const { rows } = await pool.query(
+      `INSERT INTO driver_salary_records
+         (driver_id, franchisee_id, period_type, period_year, period_month,
+          total_orders, total_stops, gross_amount, commission_rate,
+          driver_payout, fleet_income, platform_fee, status, created_at, updated_at)
+       VALUES ($1,$2,'monthly',$3,$4,$5,$5,$6,$7,$8,$9,0,'draft',NOW(),NOW())
+       ON CONFLICT (driver_id, period_type, period_year, period_month)
+       DO UPDATE SET
+         total_orders=$5, total_stops=$5, gross_amount=$6,
+         commission_rate=$7, driver_payout=$8, fleet_income=$9,
+         platform_fee=0, updated_at=NOW()
+       RETURNING *`,
+      [stat.driver_id, fid, year, month,
+       stat.total_trips, gross, commRate, driverPayout, fleetIncome]
+    );
+    created.push(rows[0]);
+  }
+
+  res.json({ ok: true, count: created.length, records: created });
+});
+
 // 利潤報表
 fleetOwnerRouter.get("/salary/report", async (req, res) => {
   const fid = req.fleet!.franchisee_id;

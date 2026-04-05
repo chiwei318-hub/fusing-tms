@@ -5,8 +5,11 @@ import {
   ClipboardList, LogOut, RefreshCw, Plus, Pencil, Trash2,
   Check, X, ChevronRight, MapPin, Clock, AlertCircle,
   Phone, Car, Badge, Banknote, TrendingUp, FileText,
-  Upload, Download, ListFilter,
+  Upload, Download, ListFilter, ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +79,9 @@ function DashboardTab() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Driver status update
+  const [driverStatusLoading, setDriverStatusLoading] = useState<Record<number, boolean>>({});
+
   // Trips state
   const [trips, setTrips] = useState<any[]>([]);
   const [tripsLoading, setTripsLoading] = useState(false);
@@ -109,6 +115,24 @@ function DashboardTab() {
     try { setLoading(true); const d = await api("GET", "/dashboard"); setData(d); }
     catch { } finally { setLoading(false); }
   }, [api]);
+
+  const handleDriverStatusChange = useCallback(async (driverId: number, newStatus: string) => {
+    setDriverStatusLoading(p => ({ ...p, [driverId]: true }));
+    try {
+      await api("PATCH", `/drivers/${driverId}`, { status: newStatus });
+      await load();
+    } catch (e: any) {
+      toast({ title: "狀態更新失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setDriverStatusLoading(p => ({ ...p, [driverId]: false }));
+    }
+  }, [api, load, toast]);
+
+  const openAddTripForDriver = useCallback((driver: any) => {
+    setTripForm({ ...EMPTY_TRIP, driver_id: String(driver.id) });
+    setEditTrip(null);
+    setShowTripForm(true);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -296,15 +320,54 @@ function DashboardTab() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {drivers.map((d: any) => (
-                    <div key={d.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                      <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                    <div key={d.id} className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
+                      <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">
                         {d.name?.charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-800 text-sm truncate">{d.name}</p>
                         <p className="text-xs text-slate-500">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
                       </div>
-                      <StatusBadge status={d.status} />
+
+                      {/* Status dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="flex items-center gap-1 focus:outline-none"
+                            disabled={!!driverStatusLoading[d.id]}
+                            title="點擊切換狀態"
+                          >
+                            {driverStatusLoading[d.id]
+                              ? <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+                              : <StatusBadge status={d.status} />}
+                            <ChevronDown className="w-3 h-3 text-slate-400" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-32">
+                          {[
+                            { value: "available", label: "待命", color: "text-green-600" },
+                            { value: "busy",      label: "忙碌", color: "text-orange-600" },
+                            { value: "offline",   label: "離線", color: "text-slate-500" },
+                          ].map(opt => (
+                            <DropdownMenuItem
+                              key={opt.value}
+                              className={`text-xs cursor-pointer ${opt.color} ${d.status === opt.value ? "font-bold bg-slate-50" : ""}`}
+                              onClick={() => handleDriverStatusChange(d.id, opt.value)}
+                            >
+                              {d.status === opt.value && <Check className="w-3 h-3 mr-1.5 inline" />}{opt.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      {/* Quick add trip */}
+                      <button
+                        onClick={() => openAddTripForDriver(d)}
+                        title={`新增 ${d.name} 的車趟`}
+                        className="text-xs text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />車趟
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1040,7 +1103,8 @@ function SalaryTab() {
   const { toast } = useToast();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [calcForm, setCalcForm] = useState({ period_type: "monthly", period_label: new Date().toISOString().slice(0, 7), driver_id: "" });
+  const [calcForm, setCalcForm] = useState({ period_label: new Date().toISOString().slice(0, 7), driver_id: "" });
+  const [calcSource, setCalcSource] = useState<"trips" | "orders">("trips");
   const [drivers, setDrivers] = useState<any[]>([]);
   const [calcLoading, setCalcLoading] = useState(false);
 
@@ -1057,10 +1121,16 @@ function SalaryTab() {
   const calcSalary = async () => {
     try {
       setCalcLoading(true);
-      const payload: any = { period_type: calcForm.period_type, period_label: calcForm.period_label };
-      if (calcForm.driver_id) payload.driver_id = Number(calcForm.driver_id);
-      const d = await api("POST", "/salary/calculate", payload);
-      toast({ title: `已計算薪資，共 ${d.count ?? 0} 筆` });
+      const [y, m] = calcForm.period_label.split("-").map(Number);
+      const payload: any = { year: y, month: m };
+      if (calcSource === "orders" && calcForm.driver_id) payload.driver_id = Number(calcForm.driver_id);
+      const endpoint = calcSource === "trips" ? "/salary/calculate-from-trips" : "/salary/calculate";
+      const d = await api("POST", endpoint, payload);
+      if (d.count === 0) {
+        toast({ title: "無資料", description: d.message ?? "此期間找不到符合記錄", variant: "destructive" });
+      } else {
+        toast({ title: `已計算薪資，共 ${d.count} 筆`, description: calcSource === "trips" ? "資料來源：車趟記錄" : "資料來源：系統訂單" });
+      }
       load();
     } catch (err: any) { toast({ title: "計算失敗", description: err.message, variant: "destructive" }); }
     finally { setCalcLoading(false); }
@@ -1068,7 +1138,7 @@ function SalaryTab() {
 
   const settle = async (id: number) => {
     try {
-      await api("POST", "/salary/settle", { record_id: id });
+      await api("POST", "/salary/settle", { record_ids: [id] });
       toast({ title: "已標記為已結算" });
       load();
     } catch (err: any) { toast({ title: "操作失敗", description: err.message, variant: "destructive" }); }
@@ -1080,27 +1150,53 @@ function SalaryTab() {
 
       {/* Calc panel */}
       <Card className="border-0 shadow-sm bg-green-50">
-        <CardContent className="p-4">
-          <p className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4" />計算薪資</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-            <Select value={calcForm.period_type} onValueChange={v => setCalcForm(f => ({ ...f, period_type: v }))}>
-              <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="monthly">月結</SelectItem><SelectItem value="weekly">週結</SelectItem></SelectContent>
-            </Select>
-            <Input value={calcForm.period_label} onChange={e => setCalcForm(f => ({ ...f, period_label: e.target.value }))} placeholder="2026-04" className="bg-white" />
-            <Select value={calcForm.driver_id} onValueChange={v => setCalcForm(f => ({ ...f, driver_id: v }))}>
-              <SelectTrigger className="bg-white"><SelectValue placeholder="全部司機" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">全部司機</SelectItem>
-                {drivers.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={calcSalary} disabled={calcLoading} className="bg-green-600 hover:bg-green-700 text-white gap-1">
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm font-semibold text-green-800 flex items-center gap-2"><TrendingUp className="w-4 h-4" />計算薪資</p>
+
+          {/* Source toggle */}
+          <div className="flex gap-1 p-1 bg-green-100 rounded-xl">
+            {([
+              { key: "trips",  label: "📋 從車趟記錄計算", desc: "以調度牆匯入的班表車趟為基準" },
+              { key: "orders", label: "📦 從系統訂單計算", desc: "以平台配送訂單金額為基準" },
+            ] as const).map(s => (
+              <button
+                key={s.key}
+                onClick={() => setCalcSource(s.key)}
+                className={`flex-1 py-1.5 px-2 text-xs rounded-lg transition-all font-medium ${calcSource === s.key ? "bg-white shadow text-green-700" : "text-green-700/60 hover:text-green-800"}`}
+                title={s.desc}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              value={calcForm.period_label}
+              onChange={e => setCalcForm(f => ({ ...f, period_label: e.target.value }))}
+              placeholder="2026-04"
+              className="bg-white w-36 h-9 text-sm"
+              type="month"
+            />
+            {calcSource === "orders" && (
+              <Select value={calcForm.driver_id} onValueChange={v => setCalcForm(f => ({ ...f, driver_id: v }))}>
+                <SelectTrigger className="bg-white h-9 w-36"><SelectValue placeholder="全部司機" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">全部司機</SelectItem>
+                  {drivers.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button onClick={calcSalary} disabled={calcLoading} className="bg-green-600 hover:bg-green-700 text-white gap-1 h-9">
               {calcLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
               {calcLoading ? "計算中…" : "開始計算"}
             </Button>
           </div>
-          <p className="text-xs text-green-700">計算後的薪資紀錄會顯示在下方，確認無誤後再點「標記結算」</p>
+          <p className="text-xs text-green-700">
+            {calcSource === "trips"
+              ? "⚡ 依調度牆車趟記錄的「司機薪資」欄位加總，每位司機產生一筆薪資草稿"
+              : "依系統平台訂單金額 × 分潤比例計算，確認後點「標記結算」完成發薪"}
+          </p>
         </CardContent>
       </Card>
 
