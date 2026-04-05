@@ -138,14 +138,14 @@ export default function CustomerLogin() {
                 <label className="text-xs text-gray-500 mb-1.5 block font-medium">帳號或手機號碼</label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input type="text" value={phone} onChange={e => setPhone(e.target.value)} placeholder="帳號 或 0912345678" className="h-12 pl-9 text-base" />
+                  <Input type="text" name="username" autoComplete="username" value={phone} onChange={e => setPhone(e.target.value)} placeholder="帳號 或 0912345678" className="h-12 pl-9 text-base" />
                 </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1.5 block font-medium">密碼</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="請輸入密碼" className="h-12 pl-9 text-base" onKeyDown={e => e.key === "Enter" && loginWithPassword()} />
+                  <Input type="password" name="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="請輸入密碼" className="h-12 pl-9 text-base" onKeyDown={e => e.key === "Enter" && loginWithPassword()} />
                 </div>
               </div>
               {error && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

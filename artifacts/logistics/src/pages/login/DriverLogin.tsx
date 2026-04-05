@@ -68,6 +68,7 @@ export default function DriverLogin() {
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   type="text"
+                  name="username"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   placeholder="請輸入帳號"
@@ -83,6 +84,7 @@ export default function DriverLogin() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   type="password"
+                  name="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="請輸入密碼"

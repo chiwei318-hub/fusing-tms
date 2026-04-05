@@ -106,13 +106,14 @@ export default function EnterpriseLogin({ onLogin }: Props) {
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               {tab === "main" ? (
-                <input required type="text" placeholder="請輸入公司帳號" value={accountCode}
+                <input required type="text" name="username" placeholder="請輸入公司帳號" value={accountCode}
                   onChange={e => setAccountCode(e.target.value.toUpperCase().trim())}
-                  autoCapitalize="characters" autoCorrect="off" autoComplete="off"
+                  autoCapitalize="characters" autoCorrect="off" autoComplete="username"
                   className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d2d6e]/25 focus:border-[#0d2d6e] font-mono" />
               ) : (
-                <input required type="text" placeholder="例：FY001-WANG" value={subCode}
+                <input required type="text" name="username" placeholder="例：FY001-WANG" value={subCode}
                   onChange={e => setSubCode(e.target.value.toUpperCase())}
+                  autoComplete="username"
                   className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/25 focus:border-purple-500 font-mono" />
               )}
             </div>
@@ -122,8 +123,9 @@ export default function EnterpriseLogin({ onLogin }: Props) {
             <label className="text-xs font-semibold text-gray-600 mb-1.5 block">密碼</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input required type={showPw ? "text" : "password"} placeholder="請輸入密碼" value={password}
+              <input required type={showPw ? "text" : "password"} name="password" placeholder="請輸入密碼" value={password}
                 onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
                 className="w-full pl-9 pr-10 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0d2d6e]/25 focus:border-[#0d2d6e]" />
               <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

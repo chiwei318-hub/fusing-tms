@@ -60,6 +60,7 @@ export default function FleetLogin() {
                 <Label htmlFor="username" className="text-sm">帳號</Label>
                 <Input
                   id="username"
+                  name="username"
                   placeholder="車隊帳號"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
@@ -72,6 +73,7 @@ export default function FleetLogin() {
                 <div className="relative">
                   <Input
                     id="password"
+                    name="password"
                     type={showPw ? "text" : "password"}
                     placeholder="請輸入密碼"
                     value={password}

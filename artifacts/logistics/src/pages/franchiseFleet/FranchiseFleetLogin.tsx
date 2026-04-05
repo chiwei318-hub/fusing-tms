@@ -72,6 +72,7 @@ export default function FranchiseFleetLogin() {
               <Label htmlFor="username" className="text-sm text-slate-600">帳號</Label>
               <Input
                 id="username"
+                name="username"
                 placeholder="請輸入車行帳號"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
@@ -85,6 +86,7 @@ export default function FranchiseFleetLogin() {
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPw ? "text" : "password"}
                   placeholder="請輸入密碼"
                   value={password}
