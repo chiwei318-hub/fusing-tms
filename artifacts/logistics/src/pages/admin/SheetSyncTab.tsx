@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { apiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,10 @@ interface SyncLog {
   duplicates: number;
   errors: number;
   warnings: number;
+  detail?: {
+    warnings?: string[];
+    errorList?: { routeId: string; error: string }[];
+  };
 }
 
 const EMPTY_FORM = {
@@ -66,7 +70,11 @@ export default function SheetSyncTab() {
   const [saving, setSaving] = useState(false);
 
   const [runningId, setRunningId] = useState<number | null>(null);
-  const [runResult, setRunResult] = useState<{ id: number; result: SyncConfig["last_sync_result"] } | null>(null);
+  const [runResult, setRunResult] = useState<{
+    id: number;
+    result: SyncConfig["last_sync_result"] & { detail?: { warnings?: string[]; errorList?: { routeId: string; error: string }[] } };
+  } | null>(null);
+  const [expandedLog, setExpandedLog] = useState<number | null>(null);
 
   const [logsId, setLogsId] = useState<number | null>(null);
   const [logs, setLogs] = useState<SyncLog[]>([]);
@@ -298,6 +306,12 @@ export default function SheetSyncTab() {
                           錯誤 {lastResult.errors}
                         </span>
                       )}
+                      {(lastResult.warnings ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-amber-500" title="點擊「同步記錄」可查看警告詳情">
+                          <AlertTriangle className="w-3 h-3" />
+                          警告 {lastResult.warnings}（點擊同步記錄查看原因）
+                        </span>
+                      )}
                     </>
                   )}
                   {lastResult?.error && (
@@ -310,13 +324,25 @@ export default function SheetSyncTab() {
 
                 {/* Inline run result */}
                 {runResult?.id === cfg.id && runResult.result && !runResult.result.error && (
-                  <Alert className="py-2 text-xs border-green-200 bg-green-50">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                    <AlertDescription className="text-green-700">
-                      同步完成：新增 {runResult.result.inserted} 條路線，
-                      略過重複 {runResult.result.duplicates}，
-                      錯誤 {runResult.result.errors}，
-                      警告 {runResult.result.warnings}
+                  <Alert className={`py-2 text-xs ${(runResult.result.warnings ?? 0) > 0 ? "border-amber-200 bg-amber-50" : "border-green-200 bg-green-50"}`}>
+                    {(runResult.result.warnings ?? 0) > 0
+                      ? <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                      : <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                    }
+                    <AlertDescription className={(runResult.result.warnings ?? 0) > 0 ? "text-amber-800" : "text-green-700"}>
+                      <div>
+                        同步完成：新增 {runResult.result.inserted} 條路線，
+                        略過重複 {runResult.result.duplicates}，
+                        錯誤 {runResult.result.errors}，
+                        警告 {runResult.result.warnings}
+                      </div>
+                      {(runResult.result.detail?.warnings?.length ?? 0) > 0 && (
+                        <ul className="mt-1.5 space-y-0.5 list-disc list-inside text-amber-700">
+                          {runResult.result.detail!.warnings!.map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -349,15 +375,53 @@ export default function SheetSyncTab() {
                           </tr>
                         </thead>
                         <tbody>
-                          {logs.map(log => (
-                            <tr key={log.id} className="border-t">
-                              <td className="px-3 py-1.5 text-muted-foreground">{fmtTime(log.synced_at)}</td>
-                              <td className="text-center px-2 py-1.5 text-green-600 font-medium">{log.inserted}</td>
-                              <td className="text-center px-2 py-1.5 text-muted-foreground">{log.duplicates}</td>
-                              <td className={`text-center px-2 py-1.5 ${log.errors > 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>{log.errors}</td>
-                              <td className={`text-center px-2 py-1.5 ${log.warnings > 0 ? "text-amber-500" : "text-muted-foreground"}`}>{log.warnings}</td>
-                            </tr>
-                          ))}
+                          {logs.map(log => {
+                            const warnMsgs = log.detail?.warnings ?? [];
+                            const errList  = log.detail?.errorList ?? [];
+                            const hasDetail = warnMsgs.length > 0 || errList.length > 0;
+                            const isExpanded = expandedLog === log.id;
+                            return (
+                              <Fragment key={log.id}>
+                                <tr
+                                  className={`border-t ${hasDetail ? "cursor-pointer hover:bg-muted/40" : ""}`}
+                                  onClick={() => hasDetail && setExpandedLog(isExpanded ? null : log.id)}
+                                >
+                                  <td className="px-3 py-1.5 text-muted-foreground">
+                                    {fmtTime(log.synced_at)}
+                                    {hasDetail && (
+                                      <span className="ml-1 text-amber-500">{isExpanded ? "▲" : "▼"}</span>
+                                    )}
+                                  </td>
+                                  <td className="text-center px-2 py-1.5 text-green-600 font-medium">{log.inserted}</td>
+                                  <td className="text-center px-2 py-1.5 text-muted-foreground">{log.duplicates}</td>
+                                  <td className={`text-center px-2 py-1.5 ${log.errors > 0 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>{log.errors}</td>
+                                  <td className={`text-center px-2 py-1.5 ${log.warnings > 0 ? "text-amber-500 font-medium" : "text-muted-foreground"}`}>{log.warnings}</td>
+                                </tr>
+                                {isExpanded && hasDetail && (
+                                  <tr key={`${log.id}-detail`} className="bg-amber-50 border-t border-amber-100">
+                                    <td colSpan={5} className="px-4 py-2">
+                                      {warnMsgs.length > 0 && (
+                                        <div className="mb-1">
+                                          <p className="text-amber-700 font-medium mb-0.5">⚠ 警告訊息：</p>
+                                          <ul className="list-disc list-inside space-y-0.5 text-amber-600">
+                                            {warnMsgs.map((w, i) => <li key={i}>{w}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {errList.length > 0 && (
+                                        <div>
+                                          <p className="text-red-600 font-medium mb-0.5">✗ 錯誤明細：</p>
+                                          <ul className="list-disc list-inside space-y-0.5 text-red-500">
+                                            {errList.map((e, i) => <li key={i}>{e.routeId}：{e.error}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     )}
