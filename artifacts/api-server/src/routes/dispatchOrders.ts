@@ -73,21 +73,23 @@ dispatchOrdersRouter.get("/", async (req, res) => {
   try {
     const { fleet_id, status } = req.query as Record<string, string>;
 
-    let conds: string[] = [];
-    if (fleet_id) conds.push(`d.fleet_id = ${Number(fleet_id)}`);
-    if (status)   conds.push(`d.status = '${status.replace(/'/g, "''")}'`);
-    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const conds: ReturnType<typeof sql>[] = [];
+    if (fleet_id) conds.push(sql`d.fleet_id = ${Number(fleet_id)}`);
+    if (status)   conds.push(sql`d.status = ${status}`);
+    const whereClause = conds.length
+      ? sql`WHERE ${sql.join(conds, sql` AND `)}`
+      : sql``;
 
-    const orders = await db.execute(sql.raw(`
+    const orders = await db.execute(sql`
       SELECT d.*,
         COUNT(r.id)::int AS route_count,
         COUNT(r.assigned_driver_id)::int AS assigned_count
       FROM dispatch_orders d
       LEFT JOIN dispatch_order_routes r ON r.dispatch_order_id = d.id
-      ${where}
+      ${whereClause}
       GROUP BY d.id
       ORDER BY d.sent_at DESC
-    `));
+    `);
 
     res.json({ ok: true, orders: orders.rows });
   } catch (err: any) {
