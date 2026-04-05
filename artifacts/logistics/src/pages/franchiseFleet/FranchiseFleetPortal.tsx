@@ -150,39 +150,74 @@ function DashboardTab() {
 
   useEffect(() => { loadTrips(); }, [loadTrips]);
 
-  // Export CSV
-  const handleExport = useCallback(async () => {
-    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+  // Export with format selection
+  const handleExport = useCallback(async (fmt: "csv" | "xlsx") => {
+    const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, format: fmt });
     const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
     const url = `${BASE_URL}/api/fleet/trips/export?${params}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const blob = await res.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `車趟記錄_${dateFrom}_${dateTo}.csv`;
+    a.download = `車趟記錄_${dateFrom}_${dateTo}.${fmt}`;
     a.click();
   }, [token, dateFrom, dateTo]);
 
-  // Parse CSV file for import
+  // Parse CSV or XLSX file for import
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = (ev.target?.result as string ?? "").replace(/^\uFEFF/, "");
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) { toast({ title: "CSV 格式錯誤，需有標題列", variant: "destructive" }); return; }
-      const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
-      const parsed = lines.slice(1).map(line => {
-        const values = line.split(",").map(v => v.replace(/^"|"$/g, "").trim());
-        const row: any = {};
-        headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
-        return row;
-      }).filter(r => Object.values(r).some(v => String(v).trim()));
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    const parseRows = (headers: string[], dataRows: string[][]) => {
+      const parsed = dataRows
+        .map(values => {
+          const row: any = {};
+          headers.forEach((h, i) => { row[h] = String(values[i] ?? "").trim(); });
+          return row;
+        })
+        .filter(r => Object.values(r).some(v => String(v).trim()));
       setImportRows(parsed);
       setImportErrors([]);
     };
-    reader.readAsText(file, "utf-8");
+
+    if (ext === "xlsx" || ext === "xls") {
+      // XLSX parsing via SheetJS
+      import("xlsx").then(XLSX => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const data = ev.target?.result;
+          const wb = XLSX.read(data, { type: "array", cellDates: true });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+          if (json.length < 2) { toast({ title: "Excel 格式錯誤，需有標題列", variant: "destructive" }); return; }
+          const headers = json[0].map((h: any) => String(h).trim());
+          const rows = json.slice(1).map(row =>
+            headers.map((_, i) => {
+              const v = row[i];
+              if (v instanceof Date) return v.toISOString().split("T")[0];
+              return String(v ?? "").trim();
+            })
+          );
+          parseRows(headers, rows);
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    } else {
+      // CSV parsing
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = (ev.target?.result as string ?? "").replace(/^\uFEFF/, "");
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { toast({ title: "CSV 格式錯誤，需有標題列", variant: "destructive" }); return; }
+        const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+        const rows = lines.slice(1).map(line =>
+          line.split(",").map(v => v.replace(/^"|"$/g, "").trim())
+        );
+        parseRows(headers, rows);
+      };
+      reader.readAsText(file, "utf-8");
+    }
     e.target.value = "";
   };
 
@@ -422,9 +457,21 @@ function DashboardTab() {
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setImportRows([]); setImportErrors([]); setShowImport(true); }}>
               <Upload className="w-3.5 h-3.5" />匯入
             </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleExport}>
-              <Download className="w-3.5 h-3.5" />匯出
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+                  <Download className="w-3.5 h-3.5" />匯出<ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem className="text-xs cursor-pointer gap-2" onClick={() => handleExport("xlsx")}>
+                  <span className="text-green-600 font-bold">XLS</span> Excel 工作表 (.xlsx)
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-xs cursor-pointer gap-2" onClick={() => handleExport("csv")}>
+                  <span className="text-blue-600 font-bold">CSV</span> 逗號分隔檔 (.csv)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={openAddTrip}>
               <Plus className="w-3.5 h-3.5" />手動新增
             </Button>
@@ -598,7 +645,7 @@ function DashboardTab() {
           <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
             {([
               { key: "sheet", label: "📋 從班表匯入（Google 試算表）" },
-              { key: "csv", label: "📄 從 CSV 檔案匯入" },
+              { key: "csv", label: "📄 從 CSV / Excel 匯入" },
             ] as const).map(m => (
               <button
                 key={m.key}
@@ -680,14 +727,18 @@ function DashboardTab() {
             {importMode === "csv" && (
               <>
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
-                  <p className="font-semibold text-slate-700">CSV 欄位格式（需有標題列）：</p>
+                  <p className="font-semibold text-slate-700">欄位格式（CSV 或 Excel 第一列為標題）：</p>
                   <p className="font-mono text-slate-500">日期, 司機姓名, 客戶名稱, 起點, 終點, 金額, 司機薪資, 狀態, 備註</p>
-                  <p className="text-slate-400 mt-1">· 司機姓名需與系統相符才能自動連結<br />· 狀態：completed / pending / cancelled</p>
+                  <p className="text-slate-400 mt-1">
+                    · 支援 <b className="text-slate-600">.xlsx</b>、<b className="text-slate-600">.xls</b>、<b className="text-slate-600">.csv</b> 格式<br />
+                    · 司機姓名需與系統相符才能自動連結<br />
+                    · 狀態：completed / pending / cancelled
+                  </p>
                 </div>
                 <div>
-                  <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+                  <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
                   <Button variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
-                    <Upload className="w-4 h-4" />選擇 CSV 檔案
+                    <Upload className="w-4 h-4" />選擇檔案（CSV / Excel）
                     {importRows.length > 0 && <span className="ml-1 text-green-600">（已載入 {importRows.length} 筆）</span>}
                   </Button>
                 </div>

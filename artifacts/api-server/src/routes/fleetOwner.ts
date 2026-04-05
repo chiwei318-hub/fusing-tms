@@ -41,6 +41,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { createHash, randomBytes } from "crypto";
 import { requireFleetOwner } from "../middleware/fleetAuth";
+import ExcelJS from "exceljs";
 
 export const fleetOwnerRouter = Router();
 
@@ -911,7 +912,7 @@ fleetOwnerRouter.post("/trips/parse-sheet", async (req, res) => {
 // ─── CSV EXPORT ────────────────────────────────────────────────────────
 fleetOwnerRouter.get("/trips/export", async (req, res) => {
   const fid = req.fleet!.franchisee_id;
-  const { date_from, date_to } = req.query as any;
+  const { date_from, date_to, format = "csv" } = req.query as any;
 
   const filters: string[] = ["t.franchisee_id = $1"];
   const params: unknown[] = [fid];
@@ -925,18 +926,70 @@ fleetOwnerRouter.get("/trips/export", async (req, res) => {
     ORDER BY t.trip_date DESC, t.id DESC
   `, params);
 
-  const header = "日期,司機姓名,客戶名稱,起點,終點,金額,司機薪資,狀態,備註";
-  const csvRows = rows.map(r => [
-    r.trip_date ? String(r.trip_date).split("T")[0] : "",
-    r.driver_name ?? "",
-    r.customer_name ?? "",
-    r.pickup_address ?? "",
-    r.delivery_address ?? "",
-    r.amount ?? 0,
-    r.driver_payout ?? "",
-    r.status ?? "",
-    (r.notes ?? "").replace(/,/g, "，"),
-  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const COLS = [
+    { key: "trip_date",         header: "日期",     width: 14 },
+    { key: "driver_name",       header: "司機姓名", width: 12 },
+    { key: "customer_name",     header: "客戶名稱", width: 16 },
+    { key: "pickup_address",    header: "起點",     width: 30 },
+    { key: "delivery_address",  header: "終點",     width: 30 },
+    { key: "amount",            header: "金額",     width: 10 },
+    { key: "driver_payout",     header: "司機薪資", width: 10 },
+    { key: "status",            header: "狀態",     width: 10 },
+    { key: "notes",             header: "備註",     width: 40 },
+  ];
+
+  const rowData = rows.map(r => ({
+    trip_date:        r.trip_date ? String(r.trip_date).split("T")[0] : "",
+    driver_name:      r.driver_name ?? "",
+    customer_name:    r.customer_name ?? "",
+    pickup_address:   r.pickup_address ?? "",
+    delivery_address: r.delivery_address ?? "",
+    amount:           r.amount != null ? Number(r.amount) : 0,
+    driver_payout:    r.driver_payout != null ? Number(r.driver_payout) : "",
+    status:           r.status ?? "",
+    notes:            r.notes ?? "",
+  }));
+
+  // ─── XLSX ─────────────────────────────────────────────────────────────
+  if (format === "xlsx") {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "富詠運輸";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("車趟記錄");
+
+    ws.columns = COLS.map(c => ({ header: c.header, key: c.key, width: c.width }));
+
+    // Style header row
+    ws.getRow(1).eachCell(cell => {
+      cell.font      = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF16A34A" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border    = { bottom: { style: "thin", color: { argb: "FFD1FAE5" } } };
+    });
+
+    rowData.forEach((r, i) => {
+      const row = ws.addRow(r);
+      row.eachCell(cell => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: i % 2 === 0 ? "FFF0FDF4" : "FFFFFFFF" } };
+        cell.border = { bottom: { style: "hair", color: { argb: "FFE5E7EB" } } };
+      });
+    });
+
+    // Freeze header
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+    ws.autoFilter = { from: "A1", to: `I1` };
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="fleet_trips_${Date.now()}.xlsx"`);
+    await wb.xlsx.write(res);
+    return res.end();
+  }
+
+  // ─── CSV ──────────────────────────────────────────────────────────────
+  const header = COLS.map(c => c.header).join(",");
+  const csvRows = rowData.map(r =>
+    COLS.map(c => `"${String((r as any)[c.key] ?? "").replace(/"/g, '""')}"`).join(",")
+  ).join("\n");
 
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="fleet_trips_${Date.now()}.csv"`);
