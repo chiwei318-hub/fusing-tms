@@ -112,6 +112,11 @@ function DashboardTab() {
   const [sheetParsing, setSheetParsing] = useState(false);
   const [sheetTrips, setSheetTrips] = useState<any[]>([]);
 
+  // Route assignment dialog
+  const [assigningRoute, setAssigningRoute] = useState<any>(null);
+  const [assignDriverId, setAssignDriverId] = useState<number | "">("");
+  const [assigning, setAssigning] = useState(false);
+
   // Auto-sync configs state
   const [syncConfigs, setSyncConfigs] = useState<any[]>([]);
   const [syncConfigsLoading, setSyncConfigsLoading] = useState(false);
@@ -144,6 +149,23 @@ function DashboardTab() {
     setEditTrip(null);
     setShowTripForm(true);
   }, []);
+
+  const handleAssignRoute = useCallback(async () => {
+    if (!assigningRoute || !assignDriverId) return;
+    setAssigning(true);
+    try {
+      await api("POST", `/orders/${assigningRoute.id}/assign`, { driver_id: Number(assignDriverId) });
+      const driverName = (data?.drivers ?? []).find((d: any) => d.id === Number(assignDriverId))?.name ?? "";
+      toast({ title: "指派成功", description: `${assigningRoute.route_id} 已指派給 ${driverName}` });
+      setAssigningRoute(null);
+      setAssignDriverId("");
+      await load();
+    } catch (e: any) {
+      toast({ title: "指派失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setAssigning(false);
+    }
+  }, [api, assigningRoute, assignDriverId, data, load, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -590,6 +612,12 @@ function DashboardTab() {
                           {r.pickup_time}
                         </div>
                       )}
+                      <button
+                        onClick={() => { setAssigningRoute(r); setAssignDriverId(""); }}
+                        className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+                      >
+                        <Users className="w-3 h-3" />指派
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -844,6 +872,93 @@ function DashboardTab() {
           </div>
         )}
       </div>
+
+      {/* ─── 指派路線給司機 Dialog ───────────────────────────────────── */}
+      <Dialog open={!!assigningRoute} onOpenChange={v => { if (!v) { setAssigningRoute(null); setAssignDriverId(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Package2 className="w-4 h-4 text-blue-600" />
+              指派司機
+            </DialogTitle>
+          </DialogHeader>
+          {assigningRoute && (
+            <div className="space-y-4 py-1">
+              {/* Route info */}
+              <div className="bg-slate-50 rounded-xl p-3 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-sm font-bold text-slate-800">{assigningRoute.route_id}</span>
+                  {assigningRoute.dispatch_dock && assigningRoute.dispatch_dock !== "—" && (
+                    <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">碼頭 {assigningRoute.dispatch_dock}</span>
+                  )}
+                  {(assigningRoute.station_count ?? 0) > 0 && (
+                    <span className="text-[10px] text-slate-500">{assigningRoute.station_count} 站</span>
+                  )}
+                  {assigningRoute.required_vehicle_type && (
+                    <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded font-medium">{assigningRoute.required_vehicle_type}</span>
+                  )}
+                  {assigningRoute.shopee_rate && (
+                    <span className="text-[10px] text-green-700 font-semibold">NT${Number(assigningRoute.shopee_rate).toLocaleString()}</span>
+                  )}
+                </div>
+                {assigningRoute.pickup_time && (
+                  <div className="flex items-center gap-1 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" /> 出發時間：{assigningRoute.pickup_time}
+                  </div>
+                )}
+              </div>
+
+              {/* Driver selector */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-600">選擇司機</Label>
+                {(() => {
+                  const available = (data?.drivers ?? []).filter((d: any) => d.status === "available" && !d.on_leave_today);
+                  return available.length === 0 ? (
+                    <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">目前沒有可出車的司機</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {available.map((d: any) => (
+                        <label
+                          key={d.id}
+                          className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${Number(assignDriverId) === d.id ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-blue-200 hover:bg-slate-50"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="assign_driver"
+                            value={d.id}
+                            checked={Number(assignDriverId) === d.id}
+                            onChange={() => setAssignDriverId(d.id)}
+                            className="sr-only"
+                          />
+                          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
+                            {d.name?.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-700">{d.name}</p>
+                            <p className="text-[11px] text-slate-400">{d.vehicle_type} · {d.license_plate || "未填車牌"}</p>
+                          </div>
+                          {Number(assignDriverId) === d.id && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setAssigningRoute(null); setAssignDriverId(""); }}>取消</Button>
+            <Button
+              size="sm"
+              onClick={handleAssignRoute}
+              disabled={!assignDriverId || assigning}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {assigning ? <><RefreshCw className="w-3 h-3 animate-spin mr-1.5" />指派中…</> : "確認指派"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── 手動新增 / 編輯 Dialog ────────────────────────────────── */}
       <Dialog open={showTripForm} onOpenChange={setShowTripForm}>

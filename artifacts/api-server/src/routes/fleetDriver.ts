@@ -24,6 +24,9 @@
  *
  * GET  /api/driver/salary             我的薪資紀錄
  * GET  /api/driver/salary/summary     月結摘要
+ *
+ * GET  /api/driver/available-routes   今日可搶班表路線（蝦皮未派車趟）
+ * POST /api/driver/routes/:id/claim   搶單（自願接單，原子性）
  */
 
 import { Router } from "express";
@@ -318,4 +321,81 @@ fleetDriverRouter.get("/salary/summary", async (req, res) => {
     order_summary: orders.rows[0],
     salary_record: salary.rows[0] ?? null,
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 今日可搶班表路線（司機自願接單）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/driver/available-routes
+ * 列出今日尚未指派司機的蝦皮班表路線，供同車行司機搶單用
+ */
+fleetDriverRouter.get("/available-routes", async (req, res) => {
+  const { franchisee_id } = req.fleet!;
+
+  const { rows } = await pool.query(
+    `SELECT
+       o.id, o.route_id, o.route_prefix, o.station_count, o.dispatch_dock,
+       o.required_vehicle_type, o.vehicle_type,
+       o.pickup_address, o.pickup_time,
+       o.created_at,
+       pr.rate_per_trip AS shopee_rate
+     FROM orders o
+     LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+     WHERE o.route_id IS NOT NULL
+       AND o.driver_id IS NULL
+       AND (
+         o.pickup_date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+         OR (o.pickup_date IS NULL AND DATE(o.created_at) = CURRENT_DATE)
+       )
+     ORDER BY o.pickup_time NULLS LAST, o.route_id`
+  );
+
+  res.json({ ok: true, routes: rows });
+});
+
+/**
+ * POST /api/driver/routes/:id/claim
+ * 司機搶單：將指定路線 order 指派給自己
+ */
+fleetDriverRouter.post("/routes/:id/claim", async (req, res) => {
+  const { driver_id, franchisee_id } = req.fleet!;
+  const orderId = Number(req.params.id);
+
+  // 確認司機目前 available
+  const driverRow = await pool.query(
+    `SELECT status FROM drivers WHERE id=$1 AND franchisee_id=$2`,
+    [driver_id, franchisee_id]
+  );
+  if (!driverRow.rows[0]) {
+    return res.status(403).json({ error: "司機帳號不存在" });
+  }
+  if (driverRow.rows[0].status !== "available") {
+    return res.status(400).json({ error: "您目前狀態非「待命」，無法搶單" });
+  }
+
+  // 原子性搶單：只有在 driver_id IS NULL 時才能搶到
+  const { rows } = await pool.query(
+    `UPDATE orders
+     SET driver_id=$1, status='assigned', updated_at=NOW()
+     WHERE id=$2
+       AND route_id IS NOT NULL
+       AND driver_id IS NULL
+       AND (
+         pickup_date = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+         OR (pickup_date IS NULL AND DATE(created_at) = CURRENT_DATE)
+       )
+     RETURNING id, route_id, status`,
+    [driver_id, orderId]
+  );
+
+  if (!rows[0]) {
+    return res.status(409).json({ error: "此車趟已被搶走或不存在，請重新整理" });
+  }
+
+  // 更新司機狀態為忙碌
+  await pool.query(`UPDATE drivers SET status='busy' WHERE id=$1`, [driver_id]);
+
+  res.json({ ok: true, order: rows[0] });
 });
