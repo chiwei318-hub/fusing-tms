@@ -456,26 +456,26 @@ fusingaoBillingDetailRouter.get("/billing-detail/:month", async (req, res) => {
     const { month } = req.params;
     const { type } = req.query as { type?: string };
 
-    let tripWhere = `WHERE billing_month = '${month}'`;
-    if (type) tripWhere += ` AND billing_type = '${type}'`;
+    const typeCondition = type ? sql` AND billing_type = ${type}` : sql``;
 
     const [trips, penalties, subsidies, summary] = await Promise.all([
-      db.execute(sql.raw(`
+      db.execute(sql`
         SELECT billing_type, fleet_name, warehouse, area, route_no, vehicle_size, driver_id,
-               trip_date, amount FROM fusingao_billing_trips ${tripWhere}
+               trip_date, amount FROM fusingao_billing_trips
+        WHERE billing_month = ${month}${typeCondition}
         ORDER BY billing_type, route_no, trip_date
-      `)),
+      `),
       db.execute(sql`SELECT * FROM fusingao_billing_penalties WHERE billing_month = ${month} ORDER BY incident_date`),
       db.execute(sql`SELECT * FROM fusingao_billing_subsidies WHERE billing_month = ${month} ORDER BY incident_date`),
       db.execute(sql`SELECT * FROM fusingao_billing_summary WHERE billing_month = ${month}`),
     ]);
 
     // Aggregate by type
-    const aggByType = await db.execute(sql.raw(`
+    const aggByType = await db.execute(sql`
       SELECT billing_type, route_no, driver_id, SUM(amount)::numeric AS total, COUNT(*)::int AS trip_count
-      FROM fusingao_billing_trips WHERE billing_month = '${month}'
+      FROM fusingao_billing_trips WHERE billing_month = ${month}
       GROUP BY billing_type, route_no, driver_id ORDER BY billing_type, route_no
-    `));
+    `);
 
     res.json({
       ok: true, month,
