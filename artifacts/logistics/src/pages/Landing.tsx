@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
-  Truck, Phone, ArrowRight, Building2, Zap, Clock, Users, Shield, Star, CheckCircle,
+  Truck, Phone, ArrowRight, Building2, Zap, Clock, Users, Shield, Star, CheckCircle, Store,
 } from "lucide-react";
 
 function useLiveStats() {
@@ -62,6 +62,13 @@ export default function Landing() {
               <span className="sm:hidden">企業</span>
             </button>
           </Link>
+          <Link href="/fleet">
+            <button className="flex items-center gap-1.5 text-orange-300/90 hover:text-orange-200 border border-orange-400/30 hover:border-orange-400/60 bg-orange-400/8 hover:bg-orange-400/18 text-xs font-semibold px-3 py-1.5 rounded-full transition-all">
+              <Store className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">加盟車行</span>
+              <span className="sm:hidden">車行</span>
+            </button>
+          </Link>
           <a href="tel:0800000000" className="hidden sm:flex items-center gap-1.5 text-slate-300/60 hover:text-white text-xs px-2 py-1.5 rounded-full transition-all">
             <Phone className="w-3.5 h-3.5" />
             免費客服
@@ -120,10 +127,10 @@ export default function Landing() {
               司機登入
             </button>
           </Link>
-          <Link href="/quote">
+          <Link href="/fleet">
             <button className="w-full flex items-center justify-center gap-1.5 border border-orange-400/40 bg-orange-400/10 hover:bg-orange-400/20 text-orange-300 text-xs sm:text-sm font-semibold px-3 py-3 rounded-xl transition-colors">
-              <span className="text-base leading-none">🧮</span>
-              立即報價試算
+              <Store className="w-3.5 h-3.5 shrink-0" />
+              加盟車行入口
             </button>
           </Link>
         </div>
