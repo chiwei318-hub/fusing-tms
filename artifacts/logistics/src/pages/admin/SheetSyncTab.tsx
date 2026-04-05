@@ -21,6 +21,7 @@ interface SyncConfig {
   name: string;
   sheet_url: string;
   interval_minutes: number;
+  sync_type: string;
   customer_name: string;
   pickup_address: string;
   cargo_description: string;
@@ -49,10 +50,16 @@ interface SyncLog {
   };
 }
 
+const SYNC_TYPE_LABELS: Record<string, string> = {
+  route:   "路線匯入",
+  billing: "帳務趟次",
+};
+
 const EMPTY_FORM = {
   name: "",
   sheet_url: "",
   interval_minutes: 60,
+  sync_type: "route",
   customer_name: "蝦皮電商配送",
   pickup_address: "（依路線倉庫）",
   cargo_description: "電商門市配送",
@@ -111,6 +118,7 @@ export default function SheetSyncTab() {
       name: cfg.name,
       sheet_url: cfg.sheet_url,
       interval_minutes: cfg.interval_minutes,
+      sync_type: cfg.sync_type ?? "route",
       customer_name: cfg.customer_name,
       pickup_address: cfg.pickup_address,
       cargo_description: cfg.cargo_description,
@@ -254,6 +262,9 @@ export default function SheetSyncTab() {
                       <CardTitle className="text-sm font-semibold">{cfg.name}</CardTitle>
                       <Badge variant={cfg.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
                         {cfg.is_active ? "啟用" : "暫停"}
+                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.sync_type === "billing" ? "border-orange-400 text-orange-600" : "border-blue-400 text-blue-600"}`}>
+                        {SYNC_TYPE_LABELS[cfg.sync_type] ?? cfg.sync_type}
                       </Badge>
                       <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                         <Clock className="w-3 h-3" />
@@ -473,29 +484,59 @@ export default function SheetSyncTab() {
                 建議設定 60（每小時）～ 1440（每天一次）
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>客戶名稱</Label>
-                <Input
-                  value={form.customer_name}
-                  onChange={e => setForm(f => ({ ...f, customer_name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>取貨地址</Label>
-                <Input
-                  value={form.pickup_address}
-                  onChange={e => setForm(f => ({ ...f, pickup_address: e.target.value }))}
-                />
-              </div>
-            </div>
             <div className="space-y-1.5">
-              <Label>貨物說明</Label>
-              <Input
-                value={form.cargo_description}
-                onChange={e => setForm(f => ({ ...f, cargo_description: e.target.value }))}
-              />
+              <Label>同步類型</Label>
+              <div className="flex gap-2">
+                {(["route", "billing"] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, sync_type: type }))}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      form.sync_type === type
+                        ? type === "billing"
+                          ? "border-orange-400 bg-orange-50 text-orange-700"
+                          : "border-blue-400 bg-blue-50 text-blue-700"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {SYNC_TYPE_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {form.sync_type === "billing"
+                  ? "帳務趟次格式：月份、類型、車隊名稱、倉別、區域、路線號碼、車型、司機工號、出車日期、金額"
+                  : "路線匯入格式：路線編號、門市名稱、門市地址"}
+              </p>
             </div>
+            {form.sync_type === "route" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>客戶名稱</Label>
+                    <Input
+                      value={form.customer_name}
+                      onChange={e => setForm(f => ({ ...f, customer_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>取貨地址</Label>
+                    <Input
+                      value={form.pickup_address}
+                      onChange={e => setForm(f => ({ ...f, pickup_address: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>貨物說明</Label>
+                  <Input
+                    value={form.cargo_description}
+                    onChange={e => setForm(f => ({ ...f, cargo_description: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
             <div className="flex items-center gap-2">
               <Switch
                 checked={form.is_active}

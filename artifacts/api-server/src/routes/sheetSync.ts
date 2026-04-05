@@ -23,6 +23,7 @@ export async function ensureSheetSyncTable() {
       name              TEXT NOT NULL,
       sheet_url         TEXT NOT NULL,
       interval_minutes  INTEGER NOT NULL DEFAULT 60,
+      sync_type         TEXT NOT NULL DEFAULT 'route',
       customer_name     TEXT NOT NULL DEFAULT '蝦皮電商配送',
       pickup_address    TEXT NOT NULL DEFAULT '（依路線倉庫）',
       cargo_description TEXT NOT NULL DEFAULT '電商門市配送',
@@ -33,6 +34,7 @@ export async function ensureSheetSyncTable() {
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE sheet_sync_configs ADD COLUMN IF NOT EXISTS sync_type TEXT NOT NULL DEFAULT 'route'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sheet_sync_logs (
       id          SERIAL PRIMARY KEY,
@@ -60,7 +62,7 @@ function toCsvUrl(raw: string): string {
 // ── GET /api/sheet-sync ────────────────────────────────────────────────────
 sheetSyncRouter.get("/sheet-sync", async (_req, res) => {
   const { rows } = await pool.query(
-    `SELECT id, name, sheet_url, interval_minutes, customer_name, pickup_address,
+    `SELECT id, name, sheet_url, interval_minutes, sync_type, customer_name, pickup_address,
             cargo_description, is_active, last_sync_at, last_sync_result, created_at
      FROM sheet_sync_configs ORDER BY id`
   );
@@ -73,6 +75,7 @@ sheetSyncRouter.post("/sheet-sync", async (req, res) => {
     name,
     sheet_url,
     interval_minutes = 60,
+    sync_type = "route",
     customer_name = "蝦皮電商配送",
     pickup_address = "（依路線倉庫）",
     cargo_description = "電商門市配送",
@@ -85,9 +88,9 @@ sheetSyncRouter.post("/sheet-sync", async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO sheet_sync_configs
-       (name, sheet_url, interval_minutes, customer_name, pickup_address, cargo_description, is_active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [name, sheet_url, interval_minutes, customer_name, pickup_address, cargo_description, is_active]
+       (name, sheet_url, interval_minutes, sync_type, customer_name, pickup_address, cargo_description, is_active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [name, sheet_url, interval_minutes, sync_type, customer_name, pickup_address, cargo_description, is_active]
   );
   res.status(201).json({ ok: true, config: rows[0] });
 });
@@ -95,7 +98,7 @@ sheetSyncRouter.post("/sheet-sync", async (req, res) => {
 // ── PATCH /api/sheet-sync/:id ──────────────────────────────────────────────
 sheetSyncRouter.patch("/sheet-sync/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const fields = ["name", "sheet_url", "interval_minutes", "customer_name",
+  const fields = ["name", "sheet_url", "interval_minutes", "sync_type", "customer_name",
                   "pickup_address", "cargo_description", "is_active"];
   const updates: string[] = ["updated_at = NOW()"];
   const vals: unknown[] = [];

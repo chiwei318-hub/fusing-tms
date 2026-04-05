@@ -1,6 +1,9 @@
 /**
  * sheetSyncScheduler.ts
- * 每分鐘檢查哪些 sheet_sync_configs 到了同步時間，自動拉取並匯入路線。
+ * 每分鐘檢查哪些 sheet_sync_configs 到了同步時間，自動拉取並匯入路線或帳務趟次。
+ *
+ * sync_type = 'route'   → 解析路線格式（路線編號|門市名稱|門市地址），匯入 orders
+ * sync_type = 'billing' → 解析帳務格式（月份|類型|車隊名稱|倉別|區域|路線號碼|車型|司機工號|出車日期|金額），匯入 fusingao_billing_trips
  */
 
 import { pool } from "@workspace/db";
@@ -17,51 +20,122 @@ function toCsvUrl(raw: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 }
 
-// ── Core sync logic (shared between scheduler and manual /run) ─────────────
-export async function runSheetSync(
-  cfg: {
-    id: number;
-    name: string;
-    customer_name: string;
-    pickup_address: string;
-    cargo_description: string;
-  },
-  csvUrl: string
-): Promise<{
-  inserted: number;
-  duplicates: number;
-  errors: number;
-  warnings: number;
-  detail: object;
-}> {
-  // 1. Fetch CSV
-  const fetchRes = await fetch(csvUrl);
-  if (!fetchRes.ok) {
-    throw new Error(`無法取得試算表 (HTTP ${fetchRes.status})`);
-  }
-  const text = await fetchRes.text();
-  if (text.trim().startsWith("<!DOCTYPE")) {
-    throw new Error("無法取得 CSV，請確認試算表已設為「知道連結的人可查看」");
+// ── Billing CSV parser ─────────────────────────────────────────────────────
+interface BillingRow {
+  billing_month: string;
+  billing_type: string;
+  fleet_name: string;
+  warehouse: string;
+  area: string;
+  route_no: string;
+  vehicle_size: string;
+  driver_id: string;
+  trip_date: string;
+  amount: number;
+}
+
+function parseBillingCsv(text: string): { rows: BillingRow[]; warnings: string[] } {
+  const lines = text.split("\n").filter(l => l.trim());
+  const rows: BillingRow[] = [];
+  const warnings: string[] = [];
+
+  const BILLING_ALIASES: Record<string, string[]> = {
+    billing_month: ["月份"],
+    billing_type:  ["類型"],
+    fleet_name:    ["車隊名稱", "車隊"],
+    warehouse:     ["倉別"],
+    area:          ["區域"],
+    route_no:      ["路線號碼", "路線編號"],
+    vehicle_size:  ["車型"],
+    driver_id:     ["司機工號", "司機ID", "司機id"],
+    trip_date:     ["出車日期"],
+    amount:        ["金額"],
+  };
+
+  function findColIdx(headers: string[], aliases: string[]): number {
+    for (const alias of aliases) {
+      const idx = headers.findIndex(h => h.includes(alias));
+      if (idx >= 0) return idx;
+    }
+    return -1;
   }
 
-  // 2. Parse routes
+  let colMap: Record<string, number> = {};
+  let headerFound = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const cols = lines[i].split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+
+    if (!headerFound) {
+      const joined = cols.join(",");
+      if (joined.includes("月份") && joined.includes("金額")) {
+        for (const [field, aliases] of Object.entries(BILLING_ALIASES)) {
+          colMap[field] = findColIdx(cols, aliases);
+        }
+        headerFound = true;
+      }
+      continue;
+    }
+
+    if (cols.length < 5) continue;
+
+    const get = (field: string): string => {
+      const idx = colMap[field];
+      if (idx === undefined || idx < 0 || idx >= cols.length) return "";
+      return cols[idx]?.trim() ?? "";
+    };
+
+    const billing_month = get("billing_month");
+    const route_no = get("route_no");
+    const trip_date = get("trip_date");
+    const rawAmount = get("amount").replace(/,/g, "");
+    const amount = parseFloat(rawAmount);
+
+    if (!billing_month || !route_no || !trip_date) continue;
+
+    if (isNaN(amount)) {
+      warnings.push(`第 ${i + 1} 行金額格式錯誤：「${get("amount")}」`);
+      continue;
+    }
+
+    rows.push({
+      billing_month,
+      billing_type: get("billing_type"),
+      fleet_name:   get("fleet_name"),
+      warehouse:    get("warehouse"),
+      area:         get("area"),
+      route_no,
+      vehicle_size: get("vehicle_size"),
+      driver_id:    get("driver_id"),
+      trip_date,
+      amount,
+    });
+  }
+
+  if (!headerFound) {
+    warnings.push("找不到帳務表頭列，請確認試算表包含「月份」和「金額」欄位");
+  }
+
+  return { rows, warnings };
+}
+
+// ── Route sync handler ─────────────────────────────────────────────────────
+async function syncRoutes(
+  cfg: { id: number; name: string; customer_name: string; pickup_address: string; cargo_description: string },
+  text: string
+): Promise<{ inserted: number; duplicates: number; errors: number; warnings: number; detail: object }> {
   const { routes, warnings } = parseRoutesCsv(text);
 
   const insertedList: { orderId: number; routeId: string }[] = [];
   const duplicateList: { routeId: string; existingOrderId: number }[] = [];
   const errorList: { routeId: string; error: string }[] = [];
 
-  // 3. Upsert each route
   for (const route of routes) {
     try {
       if (route.stops.length === 0) continue;
 
-      // Duplicate check (no date constraint — routes are identified by route ID globally)
       const dup = await pool.query(
-        `SELECT id FROM orders
-         WHERE source = 'route_import'
-           AND notes LIKE $1
-         LIMIT 1`,
+        `SELECT id FROM orders WHERE source = 'route_import' AND notes LIKE $1 LIMIT 1`,
         [`路線：${route.routeId}｜%`]
       );
       if (dup.rows.length > 0) {
@@ -125,22 +199,121 @@ export async function runSheetSync(
     }
   }
 
-  const summary = {
+  return {
     inserted: insertedList.length,
     duplicates: duplicateList.length,
     errors: errorList.length,
     warnings: warnings.length,
     detail: { insertedList, duplicateList, errorList, warnings },
   };
+}
 
-  // 4. Write log entry
+// ── Billing sync handler ───────────────────────────────────────────────────
+async function syncBilling(
+  _cfg: { id: number; name: string },
+  text: string
+): Promise<{ inserted: number; duplicates: number; errors: number; warnings: number; detail: object }> {
+  const { rows, warnings } = parseBillingCsv(text);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fusingao_billing_trips (
+      id             SERIAL PRIMARY KEY,
+      billing_month  TEXT NOT NULL,
+      billing_type   TEXT NOT NULL,
+      fleet_name     TEXT,
+      warehouse      TEXT,
+      area           TEXT,
+      route_no       TEXT NOT NULL,
+      vehicle_size   TEXT,
+      driver_id      TEXT,
+      trip_date      DATE NOT NULL,
+      amount         NUMERIC,
+      created_at     TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  const insertedList: string[] = [];
+  const duplicateList: string[] = [];
+  const errorList: { row: string; error: string }[] = [];
+
+  for (const row of rows) {
+    try {
+      // Duplicate check: same month + route_no + trip_date + driver_id
+      const dup = await pool.query(
+        `SELECT id FROM fusingao_billing_trips
+         WHERE billing_month = $1 AND route_no = $2 AND trip_date = $3 AND driver_id = $4
+         LIMIT 1`,
+        [row.billing_month, row.route_no, row.trip_date, row.driver_id]
+      );
+      if (dup.rows.length > 0) {
+        duplicateList.push(`${row.billing_month}/${row.route_no}/${row.trip_date}`);
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO fusingao_billing_trips
+           (billing_month, billing_type, fleet_name, warehouse, area, route_no, vehicle_size, driver_id, trip_date, amount)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [row.billing_month, row.billing_type, row.fleet_name, row.warehouse, row.area,
+         row.route_no, row.vehicle_size, row.driver_id, row.trip_date, row.amount]
+      );
+      insertedList.push(`${row.billing_month}/${row.route_no}/${row.trip_date}`);
+    } catch (e: unknown) {
+      errorList.push({ row: `${row.route_no}/${row.trip_date}`, error: String(e).slice(0, 200) });
+    }
+  }
+
+  return {
+    inserted: insertedList.length,
+    duplicates: duplicateList.length,
+    errors: errorList.length,
+    warnings: warnings.length,
+    detail: { insertedList, duplicateList, errorList, warnings },
+  };
+}
+
+// ── Core sync logic (shared between scheduler and manual /run) ─────────────
+export async function runSheetSync(
+  cfg: {
+    id: number;
+    name: string;
+    sync_type?: string;
+    customer_name: string;
+    pickup_address: string;
+    cargo_description: string;
+  },
+  csvUrl: string
+): Promise<{
+  inserted: number;
+  duplicates: number;
+  errors: number;
+  warnings: number;
+  detail: object;
+}> {
+  // 1. Fetch CSV
+  const fetchRes = await fetch(csvUrl);
+  if (!fetchRes.ok) {
+    throw new Error(`無法取得試算表 (HTTP ${fetchRes.status})`);
+  }
+  const text = await fetchRes.text();
+  if (text.trim().startsWith("<!DOCTYPE")) {
+    throw new Error("無法取得 CSV，請確認試算表已設為「知道連結的人可查看」");
+  }
+
+  // 2. Dispatch by sync_type
+  const syncType = cfg.sync_type ?? "route";
+  const summary = syncType === "billing"
+    ? await syncBilling(cfg, text)
+    : await syncRoutes(cfg, text);
+
+  // 3. Write log entry
   await pool.query(
     `INSERT INTO sheet_sync_logs (config_id, inserted, duplicates, errors, warnings, detail)
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [cfg.id, summary.inserted, summary.duplicates, summary.errors, summary.warnings, summary.detail]
   );
 
-  // 5. Update last_sync_at + result on config
+  // 4. Update last_sync_at + result on config
   await pool.query(
     `UPDATE sheet_sync_configs
      SET last_sync_at = NOW(),
@@ -151,7 +324,7 @@ export async function runSheetSync(
   );
 
   console.log(
-    `[SheetSync] "${cfg.name}" synced — inserted:${summary.inserted} dup:${summary.duplicates} err:${summary.errors}`
+    `[SheetSync] "${cfg.name}" (${syncType}) synced — inserted:${summary.inserted} dup:${summary.duplicates} err:${summary.errors} warn:${summary.warnings}`
   );
 
   return summary;
@@ -159,7 +332,7 @@ export async function runSheetSync(
 
 // ── Scheduler: runs every minute, checks which configs are due ─────────────
 export function startSheetSyncScheduler() {
-  const CHECK_INTERVAL_MS = 60 * 1000; // check every minute
+  const CHECK_INTERVAL_MS = 60 * 1000;
 
   async function tick() {
     try {
@@ -168,12 +341,13 @@ export function startSheetSyncScheduler() {
         name: string;
         sheet_url: string;
         interval_minutes: number;
+        sync_type: string;
         customer_name: string;
         pickup_address: string;
         cargo_description: string;
         last_sync_at: Date | null;
       }>(
-        `SELECT id, name, sheet_url, interval_minutes, customer_name, pickup_address,
+        `SELECT id, name, sheet_url, interval_minutes, sync_type, customer_name, pickup_address,
                 cargo_description, last_sync_at
          FROM sheet_sync_configs WHERE is_active = true`
       );
@@ -200,7 +374,6 @@ export function startSheetSyncScheduler() {
     }
   }
 
-  // First check after 30s to avoid startup congestion
   setTimeout(tick, 30_000);
   setInterval(tick, CHECK_INTERVAL_MS);
   console.log("[SheetSync] scheduler started, checking every 60s");
