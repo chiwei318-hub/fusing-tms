@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Truck, User, Building2, ChevronRight, Shield } from "lucide-react";
+import { Truck, User, Building2, ChevronRight, Shield, Store } from "lucide-react";
 
 export default function LoginPortal() {
   return (
@@ -70,6 +70,23 @@ export default function LoginPortal() {
                 <p className="text-slate-400 text-xs mt-0.5">管理員 / 調度員 / 會計</p>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-0.5 group-hover:text-slate-500 transition-all shrink-0" />
+            </div>
+          </div>
+        </Link>
+
+        {/* Franchise Fleet Owner */}
+        <Link href="/login/franchise-fleet">
+          <div className="group bg-white rounded-2xl shadow-xl shadow-black/20 p-5 cursor-pointer hover:shadow-2xl transition-all border border-slate-100 hover:border-green-200 hover:-translate-y-0.5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "rgba(22,163,74,0.10)" }}>
+                <Store className="w-6 h-6" style={{ color: "#16a34a" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-black text-slate-900 text-base leading-tight">加盟車行</h2>
+                <p className="text-slate-400 text-xs mt-0.5">車行老闆 / 帳號密碼登入</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-300 group-hover:translate-x-0.5 group-hover:text-green-500 transition-all shrink-0" />
             </div>
           </div>
         </Link>

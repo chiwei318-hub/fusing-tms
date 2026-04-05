@@ -44,6 +44,8 @@ import QuotePage from "@/pages/QuotePage";
 import FusingaoPortal from "@/pages/FusingaoPortal";
 import FleetLogin from "@/pages/fleet/FleetLogin";
 import FusingaoFleetPortal from "@/pages/fleet/FusingaoFleetPortal";
+import FranchiseFleetLogin from "@/pages/franchiseFleet/FranchiseFleetLogin";
+import FranchiseFleetPortal from "@/pages/franchiseFleet/FranchiseFleetPortal";
 
 // ─── Global ErrorBoundary ────────────────────────────────────────────────────
 
@@ -167,6 +169,14 @@ function FleetPortal() {
   return <FusingaoFleetPortal />;
 }
 
+function FranchiseFleetRoute() {
+  const { user } = useAuth();
+  if (!user || user.role !== "fleet_owner") {
+    return <Redirect to="/login/franchise-fleet" />;
+  }
+  return <FranchiseFleetPortal />;
+}
+
 function AppRouter() {
   const [location] = useLocation();
 
@@ -187,6 +197,9 @@ function AppRouter() {
   }
   if (location === "/login/fleet") {
     return <FleetLogin />;
+  }
+  if (location === "/login/franchise-fleet") {
+    return <FranchiseFleetLogin />;
   }
   if (location === "/login/callback") {
     return <LineCallback />;
@@ -229,6 +242,9 @@ function AppRouter() {
   }
   if (location.startsWith("/enterprise")) {
     return <EnterprisePortal />;
+  }
+  if (location.startsWith("/franchise-fleet")) {
+    return <FranchiseFleetRoute />;
   }
   if (location.startsWith("/fleet")) {
     return <FleetPortal />;
