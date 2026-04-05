@@ -1,6 +1,7 @@
 import { useRoute, useLocation } from "wouter";
 import { format } from "date-fns";
 import { ArrowLeft, MapPin, Package, User, Clock, Truck, DollarSign, CheckCircle2, AlertCircle, Leaf, FileText, Printer } from "lucide-react";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Link } from "wouter";
 import { useOrderDetail } from "@/hooks/use-orders";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -153,6 +154,7 @@ export default function OrderDetail() {
             建立於 {format(new Date(order.createdAt), "yyyy-MM-dd HH:mm")}
           </p>
         </div>
+        <PrintSaveBar title={`訂單 #${order.id}`} subtitle={`${order.customerName} · ${order.pickupAddress} → ${order.deliveryAddress}`} />
       </div>
 
       {/* Progress Timeline (not shown for cancelled) */}

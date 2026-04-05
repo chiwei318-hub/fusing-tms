@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -312,7 +313,8 @@ export default function ShopeeBillingTab() {
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">{summary.fleet_name || "富詠運輸有限公司"}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <PrintSaveBar title={`對帳預覽 ${period.year}年${period.month}月`} subtitle={summary.fleet_name || "富詠運輸有限公司"} />
           <Button variant="outline" onClick={() => { setStage("upload"); setPreview(null); }}>
             重新上傳
           </Button>

@@ -10,6 +10,7 @@ import {
   Calculator, Truck, Package, Thermometer, CheckCircle2,
   Phone, Mail, Building2, Copy, Clock, MapPin, ArrowRight,
 } from "lucide-react";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { getApiUrl } from "@/lib/api";
 
 const VEHICLE_TYPES = [
@@ -612,6 +613,11 @@ export default function QuotePage() {
                         <CheckCircle2 className="w-4 h-4 mr-2" />
                         儲存此報價
                       </Button>
+                      <PrintSaveBar
+                        title={`運費估價單 NT$${breakdown?.totalAmount?.toLocaleString() ?? ""}`}
+                        subtitle={`${breakdown?.vehicleType ?? ""} · ${breakdown?.distanceKm ?? ""}km`}
+                        className="justify-center [&>button]:border-white/20 [&>button]:text-white/70 [&>button]:hover:text-white [&>button]:bg-transparent"
+                      />
                       <div className="text-center text-white/40 text-xs">
                         儲存後我們將在1小時內與您聯絡
                       </div>

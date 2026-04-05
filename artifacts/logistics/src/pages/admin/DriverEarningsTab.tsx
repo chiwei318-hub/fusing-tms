@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, Calculator, BadgeCheck, Clock,
   Plus, Trash2, Upload, RotateCcw,
 } from "lucide-react";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -406,7 +407,8 @@ export default function DriverEarningsTab() {
   return (
     <div className="space-y-4">
       {/* Sub-tabs */}
-      <div className="flex gap-1 border-b pb-0">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1 border-b pb-0 flex-1">
         {(["earnings", "prefixRates", "driverSetup"] as TabKey[]).map((t) => {
           const labels: Record<TabKey, string> = {
             earnings: "運費試算",
@@ -427,6 +429,8 @@ export default function DriverEarningsTab() {
             </button>
           );
         })}
+        </div>
+        <PrintSaveBar title="司機運費試算" />
       </div>
 
       {/* ── Tab: 運費試算 ────────────────────────────────────────────── */}

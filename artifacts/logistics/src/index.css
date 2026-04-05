@@ -301,3 +301,53 @@ body,
     inset: -1px;
   }
 }
+
+/* ════════════════════════════════════════════════════════════
+   全域列印樣式
+   ════════════════════════════════════════════════════════════ */
+@media print {
+  /* 隱藏導覽列、側欄、操作按鈕 */
+  nav,
+  aside,
+  header,
+  .no-print,
+  [data-sidebar],
+  [role="navigation"],
+  [role="banner"] {
+    display: none !important;
+  }
+
+  /* 展開所有折疊內容 */
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* 主內容區塊佔滿整頁 */
+  main, [data-main-content], .print-area {
+    margin: 0 !important;
+    padding: 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 避免卡片切頁 */
+  .card, [class*="Card"] {
+    break-inside: avoid;
+  }
+
+  /* 表格邊框補強 */
+  table {
+    border-collapse: collapse;
+  }
+  th, td {
+    border: 1px solid #ddd !important;
+    padding: 4px 8px !important;
+  }
+
+  /* 顏色強制列印 */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

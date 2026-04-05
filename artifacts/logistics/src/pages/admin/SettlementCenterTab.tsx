@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -459,9 +460,12 @@ function AbnormalCostSettlement() {
 export default function SettlementCenterTab() {
   return (
     <div className="space-y-4 pb-8">
-      <div>
-        <h2 className="text-lg font-bold">結算中心</h2>
-        <p className="text-xs text-muted-foreground">客戶對帳單 · 司機趟次薪資 · 異常成本結算，一鍵生成</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold">結算中心</h2>
+          <p className="text-xs text-muted-foreground">客戶對帳單 · 司機趟次薪資 · 異常成本結算，一鍵生成</p>
+        </div>
+        <PrintSaveBar title="結算中心" subtitle="客戶對帳單 · 司機趟次薪資 · 異常成本結算" />
       </div>
 
       <Tabs defaultValue="customer">

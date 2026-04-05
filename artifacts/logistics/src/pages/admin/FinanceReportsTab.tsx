@@ -9,6 +9,7 @@ import {
   RefreshCw, BarChart2, TrendingUp, Users,
   DollarSign, Clock, Loader2, AlertTriangle,
 } from "lucide-react";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -440,9 +441,12 @@ function GrossMarginPanel() {
 export default function FinanceReportsTab() {
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold">財務報表</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">應收帳齡 · 司機抽成 · 毛利分析</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold">財務報表</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">應收帳齡 · 司機抽成 · 毛利分析</p>
+        </div>
+        <PrintSaveBar title="財務報表" subtitle="應收帳齡 · 司機抽成 · 毛利分析" />
       </div>
 
       <Tabs defaultValue="aging">

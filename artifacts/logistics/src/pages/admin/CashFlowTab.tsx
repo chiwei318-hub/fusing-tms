@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -216,6 +217,7 @@ export default function CashFlowTab() {
           <Button variant="outline" size="sm" className="h-8" onClick={fetchAll}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />重新整理
           </Button>
+          <PrintSaveBar title={`金流拆解中心 ${year}年${month}月`} />
         </div>
       </div>
 

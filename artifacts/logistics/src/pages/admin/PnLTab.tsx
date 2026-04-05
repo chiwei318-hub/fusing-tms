@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -130,6 +131,7 @@ export default function PnLTab() {
         <Button variant="outline" size="sm" className="h-8" onClick={loadAll} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />試算
         </Button>
+        <PrintSaveBar title="損益分析" subtitle={`${from} ～ ${to}`} />
       </div>
 
       {/* ═══════════════════════════════ OVERVIEW ═══════════════════════════ */}
