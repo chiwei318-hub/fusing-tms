@@ -67,7 +67,7 @@ export default function FranchiseFleetLogin() {
       <div className="relative z-10 w-full max-w-sm">
         <div className="bg-white rounded-2xl shadow-2xl shadow-black/30 p-7">
           <h2 className="text-slate-700 font-bold text-lg text-center mb-5">車行老闆登入</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} method="post" action="/api/auth/login/fleet-owner" className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="username" className="text-sm text-slate-600">帳號</Label>
               <Input

@@ -55,7 +55,7 @@ export default function FleetLogin() {
             <CardTitle className="text-lg text-center text-gray-700">車隊帳號登入</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} method="post" action="/api/auth/login/fleet" className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="username" className="text-sm">帳號</Label>
                 <Input
