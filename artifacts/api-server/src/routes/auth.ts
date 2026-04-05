@@ -267,6 +267,114 @@ router.post("/auth/login/admin", async (req, res) => {
   }
 });
 
+// ── POST /auth/login/fleet-owner ─────────────────────────────────────────────
+// 加盟車行老闆登入
+router.post("/auth/login/fleet-owner", async (req, res) => {
+  try {
+    const { username, password } = req.body as { username: string; password: string };
+    if (!username || !password) {
+      return res.status(400).json({ error: "請提供帳號與密碼" });
+    }
+
+    const { rows } = await db.execute(sql`
+      SELECT id, name, username, password_hash, status,
+             commission_rate, platform_commission_rate, code
+      FROM franchisees
+      WHERE lower(username) = ${username.toLowerCase().trim()}
+    `);
+    const fleet = rows[0] as any;
+
+    if (!fleet) return res.status(401).json({ error: "帳號或密碼錯誤" });
+    if (fleet.status === "suspended") return res.status(403).json({ error: "車行帳號已停用，請聯繫平台" });
+    if (!fleet.password_hash) return res.status(401).json({ error: "帳號尚未設定密碼，請聯繫平台管理員" });
+
+    const [salt] = (fleet.password_hash as string).split(":");
+    if (hashPassword(password, salt) !== fleet.password_hash) {
+      return res.status(401).json({ error: "帳號或密碼錯誤" });
+    }
+
+    await db.execute(sql`
+      UPDATE franchisees SET last_login_at = NOW() WHERE id = ${fleet.id}
+    `);
+
+    const token = signJwt({
+      role: "fleet_owner",
+      franchisee_id: fleet.id,
+      franchisee_name: fleet.name,
+    } as any);
+
+    return res.json({
+      token,
+      user: {
+        role: "fleet_owner",
+        franchisee_id: fleet.id,
+        franchisee_name: fleet.name,
+        code: fleet.code,
+        username: fleet.username,
+      },
+    });
+  } catch (err) {
+    req.log?.error?.({ err }, "fleet-owner login failed");
+    return res.status(500).json({ error: "登入失敗，請稍後再試" });
+  }
+});
+
+// ── POST /auth/login/fleet-driver ─────────────────────────────────────────────
+// 加盟車行司機登入（供 FlutterFlow 手機端使用）
+router.post("/auth/login/fleet-driver", async (req, res) => {
+  try {
+    const { username, password } = req.body as { username: string; password: string };
+    if (!username || !password) {
+      return res.status(400).json({ error: "請提供帳號與密碼" });
+    }
+
+    const { rows } = await db.execute(sql`
+      SELECT d.id, d.name, d.username, d.password, d.franchisee_id, d.status,
+             d.vehicle_type, d.license_plate,
+             f.name AS fleet_name, f.code AS fleet_code, f.status AS fleet_status
+      FROM drivers d
+      JOIN franchisees f ON f.id = d.franchisee_id
+      WHERE lower(d.username) = ${username.toLowerCase().trim()}
+        AND d.franchisee_id IS NOT NULL
+    `);
+    const driver = rows[0] as any;
+
+    if (!driver) return res.status(401).json({ error: "帳號或密碼錯誤" });
+    if (driver.fleet_status === "suspended") return res.status(403).json({ error: "所屬車行已停用" });
+    if (!driver.password) return res.status(401).json({ error: "帳號尚未設定密碼" });
+
+    const [salt] = (driver.password as string).split(":");
+    if (hashPassword(password, salt) !== driver.password) {
+      return res.status(401).json({ error: "帳號或密碼錯誤" });
+    }
+
+    const token = signJwt({
+      role: "fleet_driver",
+      franchisee_id: driver.franchisee_id,
+      franchisee_name: driver.fleet_name,
+      driver_id: driver.id,
+      driver_name: driver.name,
+    } as any);
+
+    return res.json({
+      token,
+      user: {
+        role: "fleet_driver",
+        driver_id: driver.id,
+        driver_name: driver.name,
+        franchisee_id: driver.franchisee_id,
+        fleet_name: driver.fleet_name,
+        fleet_code: driver.fleet_code,
+        vehicle_type: driver.vehicle_type,
+        license_plate: driver.license_plate,
+      },
+    });
+  } catch (err) {
+    req.log?.error?.({ err }, "fleet-driver login failed");
+    return res.status(500).json({ error: "登入失敗，請稍後再試" });
+  }
+});
+
 // ── GET /auth/me ─────────────────────────────────────────────────────────────
 router.get("/auth/me", (req, res) => {
   const token = extractBearerToken(req.headers.authorization);

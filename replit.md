@@ -44,7 +44,13 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Customization:** System Config Management via admin UI and dynamic Order Custom Fields.
 *   **Integrations:** LINE Integration for notifications and AI chatbot, Google Maps for location services.
 *   **Enterprise Features:** Enterprise Customer Portal, Multi-depot Zone/Team structure, and Master Data completeness.
-*   **Franchise Partner Module:** Manages franchisee data, contracts, and monthly settlement calculations with dedicated DB tables, APIs, and admin UI.
+*   **Franchise Fleet Management System (加盟車行管理):** Full multi-role franchise platform:
+    - Platform admin CRUD (`/api/platform/fleets`) for managing franchisees, setting commission rates, and platform-level controls
+    - Fleet owner backend (`/api/fleet/*`) with JWT auth (`fleet_owner` role): manage own drivers, real-time dispatch wall, pricing rules, leave approval, salary calculation and settlement, standby scheduling
+    - Driver mobile API (`/api/driver/*`) with JWT auth (`fleet_driver` role): GPS location updates, order acceptance/transit/completion, leave requests, standby slots, salary records — designed for FlutterFlow integration
+    - Dedicated login endpoints: `POST /api/auth/login/fleet-owner`, `POST /api/auth/login/fleet-driver`
+    - DB tables: `franchisees` (with auth columns), `fleet_pricing_rules`, `driver_leaves`, `driver_salary_records`, `driver_standby_slots`; `drivers` extended with `franchisee_id`, `engine_cc`, `tonnage`
+    - Strict data isolation: all queries filter by `franchisee_id` (and `driver_id`) from JWT claims
 *   **Open API Module:** Provides external API access with API key management (SHA-256 hashed keys), usage logging, webhook support for order events, and rate limiting.
 *   **Cash Flow Decomposition:** APIs and admin UI for monthly cash flow summaries, trends, and detailed breakdowns by order, driver, and franchisee.
 *   **Shopee Finance Module:** Integrates specific financial analysis for Shopee logistics, including managing route prefix rates, driver earnings calculations, penalties tracking, and profit & loss analysis by vehicle and fleet, with dedicated DB tables and APIs. Includes a Fusingao customer portal for route management and billing.
