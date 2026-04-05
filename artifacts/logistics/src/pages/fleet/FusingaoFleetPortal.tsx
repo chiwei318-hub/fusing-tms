@@ -164,7 +164,7 @@ export default function FusingaoFleetPortal() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleLogout = () => { logout(); setLocation("/login/fleet"); };
+  const handleLogout = () => { logout(); setLocation("/"); };
 
   const grab = async (routeId: number) => {
     if (grabbingId) return;

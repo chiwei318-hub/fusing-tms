@@ -2007,7 +2007,7 @@ export default function FranchiseFleetPortal() {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
 
-  const handleLogout = () => { logout(); setLocation("/login"); };
+  const handleLogout = () => { logout(); setLocation("/"); };
 
   return (
     <div className="min-h-screen bg-slate-50">

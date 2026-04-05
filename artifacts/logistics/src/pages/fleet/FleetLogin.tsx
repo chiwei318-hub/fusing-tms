@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
-import { Truck, LogIn, Eye, EyeOff } from "lucide-react";
+import { useLocation, Link } from "wouter";
+import { Truck, LogIn, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,6 +97,13 @@ export default function FleetLogin() {
             </p>
           </CardContent>
         </Card>
+        <div className="mt-5 text-center">
+          <Link href="/">
+            <span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer inline-flex items-center gap-1">
+              <ArrowLeft className="w-3 h-3" /> 返回首頁
+            </span>
+          </Link>
+        </div>
       </div>
     </div>
   );

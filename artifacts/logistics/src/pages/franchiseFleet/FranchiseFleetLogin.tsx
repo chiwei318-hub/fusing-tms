@@ -113,9 +113,9 @@ export default function FranchiseFleetLogin() {
         </div>
 
         <div className="mt-6 text-center">
-          <Link href="/login">
+          <Link href="/">
             <span className="text-slate-500 hover:text-slate-300 text-xs transition-colors cursor-pointer inline-flex items-center gap-1">
-              <ArrowLeft className="w-3 h-3" /> 返回登入選擇
+              <ArrowLeft className="w-3 h-3" /> 返回首頁
             </span>
           </Link>
         </div>
