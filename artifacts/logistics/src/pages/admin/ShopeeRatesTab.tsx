@@ -738,7 +738,7 @@ export default function ShopeeRatesTab() {
     (data?.items ?? []).filter((r) => r.service_type === serviceType);
 
   const getCountForService = (serviceType: string) =>
-    data?.summary.find((s) => s.service_type === serviceType)?.count ?? "0";
+    data?.summary?.find((s) => s.service_type === serviceType)?.count ?? "0";
 
   // ── Handle file selection ──────────────────────────────────────────────────
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {

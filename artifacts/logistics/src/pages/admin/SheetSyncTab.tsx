@@ -77,11 +77,13 @@ export default function SheetSyncTab() {
     setError("");
     try {
       const r = await fetch(apiUrl("/sheet-sync"));
-      const d = await r.json();
+      if (!r.ok) { setError(`伺服器錯誤 (${r.status})，請稍後再試`); return; }
+      const d = await r.json().catch(() => null);
+      if (!d) { setError("回應格式錯誤，請稍後再試"); return; }
       if (d.ok) setConfigs(d.configs);
       else setError(d.error ?? "載入失敗");
     } catch (e: unknown) {
-      setError(String(e));
+      setError("網路錯誤，請檢查連線後重試");
     } finally {
       setLoading(false);
     }
