@@ -15,6 +15,7 @@ import {
   pushArrivedFlexToDriver,
   pushDeliveryCompletedFlex,
   sendOrderBroadcast,
+  getLineUserProfile,
   type BroadcastOrderInfo,
 } from "../lib/line.js";
 
@@ -410,6 +411,59 @@ router.post("/line/webhook", async (req, res) => {
             "",
             "需要協助請聯絡客服。",
           ].join("\n"));
+          continue;
+        }
+
+        /* ── 自動建立司機帳號（Python handle_message 等效邏輯）──
+         *
+         * 對應 Python：
+         *   if f"driver:{user_id}" not in db:
+         *       db[f"driver:{user_id}"] = { "name": ..., "line_uid": ..., "is_active": True }
+         *
+         * 若此 LINE userId 既不在 drivers 也不在 customers，
+         * 視為新加入的司機：呼叫 LINE Profile API 取得顯示名稱，
+         * 自動建立司機資料（is_active=false，需管理員開通後才能接收派車通知）
+         */
+        try {
+          // 檢查是否已在系統中（driver 或 customer）
+          const [existingDriver] = await db.select({ id: driversTable.id })
+            .from(driversTable)
+            .where(eq(driversTable.lineUserId as any, userId))
+            .limit(1);
+
+          const [existingCustomer] = await db.select({ id: customersTable.id })
+            .from(customersTable)
+            .where(eq(customersTable.lineUserId, userId))
+            .limit(1);
+
+          if (!existingDriver && !existingCustomer) {
+            // 新使用者 → 呼叫 LINE API 取得顯示名稱（Python: user_name = "從API抓取的名稱"）
+            const profile = await getLineUserProfile(userId);
+            const displayName = profile?.displayName ?? "未命名司機";
+
+            // 建立司機資料（is_active=false，待管理員審核開通）
+            // phone / vehicle_type / license_plate 填寫佔位值，管理員後續補齊
+            // 不使用 ON CONFLICT（partial unique index 不支援），前面的存在性檢查已防重複
+            await db.execute(sql`
+              INSERT INTO drivers (name, phone, vehicle_type, license_plate, line_user_id, is_active, created_at)
+              VALUES (${displayName}, '待補填', '待補填', '待補填', ${userId}, false, NOW())
+            `);
+
+            console.log(`[LINE auto-register] ✅ New driver created: ${displayName} (${userId}), pending activation`);
+
+            await replyTextMessage(replyToken, [
+              `👋 您好，${displayName}！`,
+              ``,
+              `✅ 您的司機帳號已自動建立。`,
+              `⏳ 請等候管理員審核開通，開通後即可接收派車通知與搶單。`,
+              ``,
+              `開通後，您可以發送「說明」查看可用指令。`,
+            ].join("\n"));
+
+          }
+          // 已在系統中但訊息不匹配任何指令 → 靜默（不回覆，避免干擾）
+        } catch (autoRegErr) {
+          console.error("[LINE auto-register] error:", autoRegErr);
         }
       }
 

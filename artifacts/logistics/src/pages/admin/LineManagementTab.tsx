@@ -397,15 +397,34 @@ function DriverBindings() {
               <>
                 <tr key={d.id} className={`hover:bg-slate-50 ${d.isActive === false ? "opacity-60 bg-slate-50" : ""}`}>
                   <td className="p-3 font-medium">
-                    {d.name}
-                    {d.isActive === false && <span className="ml-1 text-xs text-slate-400">（離職）</span>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>{d.name}</span>
+                      {d.isActive === false && d.phone !== "待補填" && (
+                        <span className="text-xs text-slate-400">（離職）</span>
+                      )}
+                      {d.phone === "待補填" && (
+                        <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] px-1.5 py-0">
+                          LINE 自動加入・待審核
+                        </Badge>
+                      )}
+                    </div>
                   </td>
-                  <td className="p-3 text-slate-600">{d.phone}</td>
-                  <td className="p-3">
-                    <Badge variant="outline" className="font-mono text-xs">{d.licensePlate}</Badge>
+                  <td className="p-3 text-slate-600">
+                    {d.phone === "待補填"
+                      ? <span className="text-slate-400 text-xs italic">未填寫</span>
+                      : d.phone}
                   </td>
                   <td className="p-3">
-                    {d.isActive !== false ? (
+                    {d.licensePlate === "待補填"
+                      ? <span className="text-slate-400 text-xs italic">未填寫</span>
+                      : <Badge variant="outline" className="font-mono text-xs">{d.licensePlate}</Badge>}
+                  </td>
+                  <td className="p-3">
+                    {d.phone === "待補填" ? (
+                      <Badge className="bg-amber-100 text-amber-700 border-0 text-xs">
+                        ⏳ 待審核
+                      </Badge>
+                    ) : d.isActive !== false ? (
                       <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">
                         <CheckCircle className="w-3 h-3 mr-1" /> 在職
                       </Badge>

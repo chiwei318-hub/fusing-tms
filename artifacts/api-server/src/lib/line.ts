@@ -38,6 +38,25 @@ export function isLineConfigured(): boolean {
   return !!channelAccessToken && !!channelSecret;
 }
 
+/**
+ * 向 LINE API 查詢使用者顯示名稱
+ * 使用 Channel Access Token（bot token），不需要使用者授權
+ * 回傳 null 代表查詢失敗（例如 token 未設定、使用者封鎖 bot）
+ */
+export async function getLineUserProfile(userId: string): Promise<{ displayName: string; pictureUrl?: string } | null> {
+  if (!channelAccessToken) return null;
+  try {
+    const resp = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${channelAccessToken}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json() as { displayName: string; pictureUrl?: string };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 async function pushFlex(to: string, altText: string, bubble: line.messagingApi.FlexBubble) {
   if (!channelAccessToken) throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
   const msg: line.messagingApi.FlexMessage = { type: "flex", altText, contents: bubble };
