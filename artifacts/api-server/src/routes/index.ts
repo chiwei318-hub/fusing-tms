@@ -81,6 +81,7 @@ import { strategicKpiRouter } from "./strategicKpi";
 import { pricingEngineRoute } from "./pricingEngineRoute";
 import { mapsRouter } from "./mapsRoute";
 import { orderSettlementsRouter } from "./orderSettlements";
+import { jobsRouter } from "./jobs";
 
 const router: IRouter = Router();
 
@@ -168,5 +169,6 @@ router.use("/kpi/strategic", strategicKpiRouter);             // 戰略 KPI 追�
 router.use("/pe", pricingEngineRoute);                        // 透明公式報價引擎
 router.use(mapsRouter);                                        // Google Maps 距離 API
 router.use("/order-settlements", orderSettlementsRouter);      // 訂單結算 & 利潤拆分
+router.use(jobsRouter);                                        // 司機任務 API
 
 export default router;
