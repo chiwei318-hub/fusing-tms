@@ -169,7 +169,7 @@ export default function FusingaoPortal() {
 
   const openEditFleet = (f: FleetRow) => {
     setEditingFleet(f);
-    setFleetForm({ fleet_name:f.fleet_name, contact_name:f.contact_name??"", contact_phone:f.contact_phone??"", username:f.username, password:"", vehicle_types:f.vehicle_types??"", notes:f.notes??"", rate_override:"", commission_rate:String((f as any).commission_rate??15), bank_account:(f as any).bank_account??"", bank_name:(f as any).bank_name??"" });
+    setFleetForm({ fleet_name:f.fleet_name, contact_name:f.contact_name??"", contact_phone:f.contact_phone??"", username:f.username, password:"", vehicle_types:f.vehicle_types??"", notes:f.notes??"", rate_override:String((f as any).rate_override??""), commission_rate:String((f as any).commission_rate??15), bank_account:(f as any).bank_account??"", bank_name:(f as any).bank_name??"" });
     setShowFleetForm(true);
   };
 

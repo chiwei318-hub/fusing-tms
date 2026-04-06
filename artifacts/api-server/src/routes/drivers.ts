@@ -59,11 +59,10 @@ ensureDriverColumns().catch(console.error);
 
 router.get("/drivers", async (req, res) => {
   try {
-    const drivers = await db
-      .select()
-      .from(driversTable)
-      .orderBy(driversTable.createdAt);
-    res.json(drivers);
+    const { rows } = await pool.query(
+      `SELECT * FROM drivers ORDER BY created_at`
+    );
+    res.json(rows);
   } catch (err) {
     req.log.error({ err }, "Failed to list drivers");
     res.status(500).json({ error: "Failed to list drivers" });
@@ -101,7 +100,23 @@ router.post("/drivers", async (req, res) => {
         status: "available",
       })
       .returning();
-    res.status(201).json(driver);
+
+    // Save new extended fields not in Drizzle schema
+    const extFields: string[] = [];
+    const extParams: any[] = [];
+    let ep = 1;
+    if ("id_no" in b)             { extFields.push(`id_no = $${ep++}`);             extParams.push(b.id_no ?? null); }
+    if ("insurance_expiry" in b)  { extFields.push(`insurance_expiry = $${ep++}`);  extParams.push(b.insurance_expiry ?? null); }
+    if ("inspection_date" in b)   { extFields.push(`inspection_date = $${ep++}`);   extParams.push(b.inspection_date ?? null); }
+    if ("bank_code" in b)         { extFields.push(`bank_code = $${ep++}`);         extParams.push(b.bank_code ?? null); }
+    if ("referrer" in b)          { extFields.push(`referrer = $${ep++}`);          extParams.push(b.referrer ?? null); }
+    if (extFields.length > 0) {
+      extParams.push(driver.id);
+      await pool.query(`UPDATE drivers SET ${extFields.join(", ")} WHERE id = $${ep}`, extParams);
+    }
+
+    const { rows } = await pool.query(`SELECT * FROM drivers WHERE id = $1`, [driver.id]);
+    res.status(201).json(rows[0] ?? driver);
   } catch (err) {
     req.log.error({ err }, "Failed to create driver");
     res.status(400).json({ error: "Failed to create driver" });
@@ -160,6 +175,11 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("canHeavyCargo" in b) { rawFields.push(`can_heavy_cargo = $${pIdx++}`); rawParams.push(!!b.canHeavyCargo); }
     if ("availableTimeStart" in b) { rawFields.push(`available_time_start = $${pIdx++}`); rawParams.push(b.availableTimeStart ?? null); }
     if ("availableTimeEnd" in b) { rawFields.push(`available_time_end = $${pIdx++}`); rawParams.push(b.availableTimeEnd ?? null); }
+    if ("id_no" in b)             { rawFields.push(`id_no = $${pIdx++}`);             rawParams.push(b.id_no ?? null); }
+    if ("insurance_expiry" in b)  { rawFields.push(`insurance_expiry = $${pIdx++}`);  rawParams.push(b.insurance_expiry ?? null); }
+    if ("inspection_date" in b)   { rawFields.push(`inspection_date = $${pIdx++}`);   rawParams.push(b.inspection_date ?? null); }
+    if ("bank_code" in b)         { rawFields.push(`bank_code = $${pIdx++}`);         rawParams.push(b.bank_code ?? null); }
+    if ("referrer" in b)          { rawFields.push(`referrer = $${pIdx++}`);          rawParams.push(b.referrer ?? null); }
 
     // Execute Drizzle update for all standard fields
     if (Object.keys(updates).length > 0) {

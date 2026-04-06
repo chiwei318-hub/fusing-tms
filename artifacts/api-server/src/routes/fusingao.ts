@@ -284,6 +284,7 @@ fusingaoRouter.get("/fleets", async (_req, res) => {
       SELECT
         f.id, f.fleet_name, f.contact_name, f.contact_phone, f.username,
         f.vehicle_types, f.notes, f.is_active, f.created_at,
+        f.commission_rate, f.bank_name, f.bank_account, f.rate_override,
         COUNT(o.id)                                               AS total_routes,
         COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL) AS completed_routes,
         COUNT(o.id) FILTER (WHERE o.driver_payment_status = 'paid')  AS billed_routes,

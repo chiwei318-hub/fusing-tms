@@ -122,16 +122,21 @@ const driverFormSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   lineUserId: z.string().optional(),
+  id_no: z.string().optional(),
+  referrer: z.string().optional(),
   bankName: z.string().optional(),
   bankBranch: z.string().optional(),
   bankAccount: z.string().optional(),
   bankAccountName: z.string().optional(),
+  bank_code: z.string().optional(),
   vehicleBrand: z.string().optional(),
   vehicleYear: z.string().optional(),
   vehicleTonnage: z.string().optional(),
   hasTailgate: z.boolean().optional(),
   maxLoadKg: z.string().optional(),
   maxVolumeCbm: z.string().optional(),
+  insurance_expiry: z.string().optional(),
+  inspection_date: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof driverFormSchema>;
 
@@ -300,6 +305,20 @@ function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<Dr
                 <FormMessage />
               </FormItem>
             )} />
+            <FormField control={form.control} name="id_no" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">身分證字號</FormLabel>
+                <FormControl><Input placeholder="A123456789" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="referrer" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">介紹人</FormLabel>
+                <FormControl><Input placeholder="介紹人姓名" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
             <FormField control={form.control} name="username" render={({ field }) => (
               <FormItem>
                 <FormLabel className="text-xs">帳號</FormLabel>
@@ -396,6 +415,20 @@ function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<Dr
                 <FormMessage />
               </FormItem>
             )} />
+            <FormField control={form.control} name="insurance_expiry" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">強制險到期日</FormLabel>
+                <FormControl><Input type="date" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="inspection_date" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">定期驗車日</FormLabel>
+                <FormControl><Input type="date" {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
           </div>
         </div>
       </div>
@@ -436,6 +469,13 @@ function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<Dr
             <DollarSign className="w-3.5 h-3.5" /> 匯款帳號資訊
           </p>
           <div className="grid grid-cols-2 gap-3">
+            <FormField control={form.control} name="bank_code" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">行庫代碼</FormLabel>
+                <FormControl><Input placeholder="004" maxLength={10} {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
             <FormField control={form.control} name="bankName" render={({ field }) => (
               <FormItem>
                 <FormLabel className="text-xs">銀行名稱</FormLabel>
@@ -893,7 +933,7 @@ export default function Admin() {
     setVehicleDetail(data);
   };
 
-  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "" };
+  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", id_no: "", referrer: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", bank_code: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "", insurance_expiry: "", inspection_date: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
 
@@ -961,16 +1001,21 @@ export default function Admin() {
       lineUserId: data.lineUserId || null,
       driverType: data.driverType || null,
       username: data.username || null,
+      id_no: data.id_no || null,
+      referrer: data.referrer || null,
       bankName: data.bankName || null,
       bankBranch: data.bankBranch || null,
       bankAccount: data.bankAccount || null,
       bankAccountName: data.bankAccountName || null,
+      bank_code: data.bank_code || null,
       vehicleBrand: data.vehicleBrand || null,
       vehicleYear: data.vehicleYear ? parseInt(data.vehicleYear) : null,
       vehicleTonnage: data.vehicleTonnage || null,
       hasTailgate: data.hasTailgate ?? false,
       maxLoadKg: data.maxLoadKg ? parseFloat(data.maxLoadKg) : null,
       maxVolumeCbm: data.maxVolumeCbm ? parseFloat(data.maxVolumeCbm) : null,
+      insurance_expiry: data.insurance_expiry || null,
+      inspection_date: data.inspection_date || null,
     };
     if (data.password) base.password = data.password;
     return base;
@@ -999,16 +1044,21 @@ export default function Admin() {
       username: driver.username ?? "",
       password: "",
       lineUserId: driver.lineUserId ?? "",
+      id_no: d.id_no ?? "",
+      referrer: d.referrer ?? "",
       bankName: d.bankName ?? d.bank_name ?? "",
       bankBranch: d.bankBranch ?? d.bank_branch ?? "",
       bankAccount: d.bankAccount ?? d.bank_account ?? "",
       bankAccountName: d.bankAccountName ?? d.bank_account_name ?? "",
+      bank_code: d.bank_code ?? "",
       vehicleBrand: d.vehicleBrand ?? d.vehicle_brand ?? "",
-      vehicleYear: d.vehicleYear ?? d.vehicle_year ?? "",
+      vehicleYear: String(d.vehicleYear ?? d.vehicle_year ?? ""),
       vehicleTonnage: d.vehicleTonnage ?? d.vehicle_tonnage ?? "",
       hasTailgate: d.hasTailgate ?? d.has_tailgate ?? false,
-      maxLoadKg: d.maxLoadKg ?? d.max_load_kg ?? "",
-      maxVolumeCbm: d.maxVolumeCbm ?? d.max_volume_cbm ?? "",
+      maxLoadKg: String(d.maxLoadKg ?? d.max_load_kg ?? ""),
+      maxVolumeCbm: String(d.maxVolumeCbm ?? d.max_volume_cbm ?? ""),
+      insurance_expiry: d.insurance_expiry ? String(d.insurance_expiry).slice(0, 10) : "",
+      inspection_date: d.inspection_date ? String(d.inspection_date).slice(0, 10) : "",
     });
   };
 
@@ -2676,12 +2726,33 @@ export default function Admin() {
                     <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground text-sm">
                       {driverSearch ? "沒有符合搜尋的司機" : "尚無司機資料，請新增"}
                     </td></tr>
-                  ) : filteredDrivers.map((driver) => (
+                  ) : filteredDrivers.map((driver) => {
+                    const d = driver as any;
+                    const daysUntilExpiry = (dateStr?: string | null) => {
+                      if (!dateStr) return null;
+                      return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
+                    };
+                    const insuranceDays = daysUntilExpiry(d.insurance_expiry);
+                    const inspectionDays = daysUntilExpiry(d.inspection_date);
+                    const expiryAlerts = [
+                      insuranceDays !== null && insuranceDays <= 30 ? { label: "強制險", days: insuranceDays } : null,
+                      inspectionDays !== null && inspectionDays <= 30 ? { label: "驗車", days: inspectionDays } : null,
+                    ].filter(Boolean) as { label: string; days: number }[];
+                    return (
                     <tr key={driver.id} className="hover:bg-muted/25 transition-colors group">
                       <td className="px-3 py-2.5">
                         <div className="font-bold text-foreground text-sm">{driver.name}</div>
                         <div className="text-muted-foreground font-mono text-xs">{driver.phone}</div>
                         <div className="sm:hidden text-xs text-muted-foreground mt-0.5">{driver.vehicleType} · <span className="font-mono uppercase">{driver.licensePlate}</span></div>
+                        {expiryAlerts.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {expiryAlerts.map(a => (
+                              <span key={a.label} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${a.days < 0 ? "bg-red-100 text-red-700" : a.days <= 7 ? "bg-red-50 text-red-600" : "bg-orange-50 text-orange-600"}`}>
+                                {a.label}{a.days < 0 ? "已過期" : `${a.days}天到期`}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 hidden sm:table-cell">
                         {driver.driverType ? (
@@ -2778,7 +2849,7 @@ export default function Admin() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  ); })}
                 </tbody>
               </table>
             </div>
