@@ -261,7 +261,7 @@ fleetOwnerRouter.get("/dashboard", async (req, res) => {
      ORDER BY o.route_id`
   );
 
-  // 待派班表車趟：fleet_trips status='pending' driver_id IS NULL trip_date 在今天起 7 天內
+  // 待派班表車趟：fleet_trips status='pending' driver_id IS NULL，不限日期（顯示所有待指派）
   const todayTrips = await pool.query(
     `SELECT
        t.id, t.notes, t.pickup_address, t.delivery_address,
@@ -270,9 +270,8 @@ fleetOwnerRouter.get("/dashboard", async (req, res) => {
      WHERE t.franchisee_id = $1
        AND t.driver_id IS NULL
        AND t.status = 'pending'
-       AND t.trip_date >= CURRENT_DATE
-       AND t.trip_date <= CURRENT_DATE + INTERVAL '7 days'
-     ORDER BY t.trip_date, t.id`,
+     ORDER BY t.trip_date DESC, t.id DESC
+     LIMIT 50`,
     [fid]
   );
 

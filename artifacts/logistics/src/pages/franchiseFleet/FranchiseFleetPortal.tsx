@@ -456,7 +456,7 @@ function DashboardTab() {
               { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "可出車", value: availableCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50" },
               { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
-              { label: "待派班表（近7日）", value: unassignedCount, icon: Package2, color: unassignedCount > 0 ? "text-red-600" : "text-slate-400", bg: unassignedCount > 0 ? "bg-red-50" : "bg-slate-50" },
+              { label: "待派班表", value: unassignedCount, icon: Package2, color: unassignedCount > 0 ? "text-red-600" : "text-slate-400", bg: unassignedCount > 0 ? "bg-red-50" : "bg-slate-50" },
             ].map(c => (
               <Card key={c.label} className="border-0 shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -583,7 +583,7 @@ function DashboardTab() {
                     <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{unassignedCount}</span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400">今日起 7 日內・尚未指派司機</span>
+                <span className="text-[11px] text-slate-400">尚未指派司機・最多顯示 50 筆</span>
               </div>
             </CardHeader>
             <CardContent>
