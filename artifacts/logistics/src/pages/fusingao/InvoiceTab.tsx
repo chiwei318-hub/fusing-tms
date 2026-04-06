@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Download, RefreshCw, FileText, AlertCircle,
   Sheet, CheckCircle2, ArrowRight, AlertTriangle,
@@ -161,40 +161,14 @@ export default function InvoiceTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Sheet import ──────────────────────────────────────────────────────────
-  // Internal: apply parsed sheet data immediately (no dialog needed)
-  const applySheetData = useCallback((sr: SheetImportResult) => {
-    // Apply manual items (上收, 招募獎金, 交通罰單補助)
-    const next = manual.map(m => {
-      const found = sr.items.find(it => it.name === m.label && it.type === "manual");
-      return found ? { ...m, gross: found.total } : m;
-    });
-    saveManual(next);
+  // Keep live refs so the async fetch always reads current values
+  const manualRef  = useRef(manual);
+  const monthRef   = useRef(month);
+  useEffect(() => { manualRef.current  = manual; }, [manual]);
+  useEffect(() => { monthRef.current   = month;  }, [month]);
 
-    // Apply auto items (店配車/NDD/WHNDD) – store under current selected month
-    const autoFromSheet: Category[] = sr.items
-      .filter(it => it.type === "auto")
-      .map(it => ({ name: it.name, trips: 0, gross: it.total, rate: 0 }));
-    setSheetAutoItems(autoFromSheet);
-    localStorage.setItem(`invoice_sheet_auto_${month}`, JSON.stringify(autoFromSheet));
-
-    const now = new Date().toLocaleString("zh-TW");
-    setLastSheetSync(now);
-    localStorage.setItem("invoice_last_sheet_sync", now);
-
-    const autoNames  = autoFromSheet.map(a => a.name);
-    const manualNames = MANUAL_LABELS.filter(l => sr.items.some(it => it.name === l && it.type === "manual" && it.total > 0));
-    toast({
-      title: "✓ 試算表同步完成",
-      description: [...autoNames, ...manualNames].length
-        ? `已填入：${[...autoNames, ...manualNames].join("、")}`
-        : "試算表無可套用的項目",
-    });
-    setSheetDialogOpen(false);
-  }, [manual, month, saveManual, toast]);
-
-  // One-click sync: fetch sheet and immediately apply – no extra dialog step
-  const fetchFromSheet = async () => {
+  // ── One-click sheet sync: fetch and immediately apply ─────────────────────
+  const fetchFromSheet = useCallback(async () => {
     setSheetLoading(true);
     setSheetResult(null);
     try {
@@ -202,13 +176,44 @@ export default function InvoiceTab() {
       const d: SheetImportResult = await res.json();
       if (!d.ok) throw new Error(d.error ?? "解析失敗");
       setSheetResult(d);
-      applySheetData(d);   // ← apply immediately, no second button click needed
+
+      const currentMonth  = monthRef.current;
+      const currentManual = manualRef.current;
+
+      // Apply manual items (上收 / 招募獎金 / 交通罰單補助)
+      const nextManual = currentManual.map(m => {
+        const found = d.items.find(it => it.name === m.label && it.type === "manual");
+        return found ? { ...m, gross: found.total } : m;
+      });
+      setManual(nextManual);
+      localStorage.setItem(`invoice_manual_${currentMonth}`, JSON.stringify(nextManual));
+
+      // Apply auto items (店配車 / NDD / WHNDD) – keyed by the currently-selected month
+      const autoFromSheet: Category[] = d.items
+        .filter(it => it.type === "auto")
+        .map(it => ({ name: it.name, trips: 0, gross: it.total, rate: 0 }));
+      setSheetAutoItems(autoFromSheet);
+      localStorage.setItem(`invoice_sheet_auto_${currentMonth}`, JSON.stringify(autoFromSheet));
+
+      const now = new Date().toLocaleString("zh-TW");
+      setLastSheetSync(now);
+      localStorage.setItem("invoice_last_sheet_sync", now);
+
+      const names = [
+        ...autoFromSheet.map(a => a.name),
+        ...MANUAL_LABELS.filter(l => d.items.some(it => it.name === l && it.type === "manual" && it.total > 0)),
+      ];
+      toast({
+        title: "✓ 試算表同步完成",
+        description: names.length ? `已填入：${names.join("、")}` : "試算表無可套用的項目",
+      });
+      setSheetDialogOpen(false);
     } catch (e: unknown) {
       toast({ title: "試算表匯入失敗", description: String(e), variant: "destructive" });
     } finally {
       setSheetLoading(false);
     }
-  };
+  }, [toast]);
 
   // ── Manual item CRUD ─────────────────────────────────────────────────────
   const openAddDialog = () => {
