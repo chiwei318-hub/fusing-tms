@@ -237,6 +237,23 @@ router.post("/line/webhook", async (req, res) => {
         if (bindMatch) {
           const phone = bindMatch[1];
           try {
+            // ── 先檢查此 LINE 帳號是否已綁定其他人 ──
+            const alreadyBoundCustomer = await db.select({ id: customersTable.id, name: customersTable.name, phone: customersTable.phone })
+              .from(customersTable)
+              .where(eq(customersTable.lineUserId, userId))
+              .limit(1);
+            const alreadyBoundDriver = await db.select({ id: driversTable.id, name: driversTable.name, phone: driversTable.phone })
+              .from(driversTable)
+              .where(eq(driversTable.lineUserId, userId))
+              .limit(1);
+
+            const alreadyBound = alreadyBoundCustomer[0] ?? alreadyBoundDriver[0];
+            if (alreadyBound && alreadyBound.phone !== phone) {
+              await replyTextMessage(replyToken,
+                `⚠️ 此 LINE 帳號已綁定電話 ${alreadyBound.phone}。\n\n如需改綁到 ${phone}，請先聯繫客服解除舊綁定。`);
+              continue;
+            }
+
             const customers = await db
               .select()
               .from(customersTable)
@@ -602,7 +619,10 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
       lineIds = (rows.rows as any[]).map(r => r.line_user_id);
     }
 
-    if (lineIds.length === 0) {
+    // 路由層去重：同一 LINE ID 只推播一次
+    const uniqueLineIds = [...new Set(lineIds.filter(Boolean))];
+
+    if (uniqueLineIds.length === 0) {
       return res.json({ ok: true, sent: 0, failed: 0, message: "沒有已綁定 LINE 的司機" });
     }
 
@@ -619,7 +639,7 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
       requiredVehicleType: order.requiredVehicleType,
     };
 
-    const { sent, failed } = await sendOrderBroadcast(lineIds, broadcastInfo);
+    const { sent, failed } = await sendOrderBroadcast(uniqueLineIds, broadcastInfo);
 
     // 在訂單 notes 記錄廣播記錄（失敗不影響廣播結果）
     try {
@@ -633,8 +653,8 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
       console.warn(`[LINE broadcast] notes 更新失敗（不影響廣播）:`, noteErr);
     }
 
-    console.log(`[LINE broadcast] Order #${orderId} broadcast to ${sent}/${lineIds.length} drivers`);
-    res.json({ ok: true, sent, failed, total: lineIds.length });
+    console.log(`[LINE broadcast] Order #${orderId} broadcast to ${sent}/${uniqueLineIds.length} unique drivers (raw list: ${lineIds.length})`);
+    res.json({ ok: true, sent, failed, total: uniqueLineIds.length });
   } catch (err) {
     console.error("[LINE broadcast] error:", err);
     res.status(500).json({ error: String(err) });

@@ -176,9 +176,29 @@ _migPool.query(`
       LENGTH(line_user_id) <> 33
       OR line_user_id NOT SIMILAR TO 'U[0-9a-f]{32}'
     )
-`).then(r => {
+`).then(async (r) => {
   if (r.rowCount && r.rowCount > 0)
     console.log(`[LineIDCleanup] 已清除 ${r.rowCount} 筆格式錯誤的 LINE User ID（例：填入電話號碼）`);
-}).catch(e => console.warn("[LineIDCleanup] failed:", String(e).slice(0, 120)));
+
+  // 清除重複的 LINE User ID（保留最早綁定的那筆，其餘清空）
+  const dupResult = await _migPool.query(`
+    UPDATE drivers d
+    SET line_user_id = NULL
+    WHERE line_user_id IS NOT NULL
+      AND id NOT IN (
+        SELECT MIN(id) FROM drivers WHERE line_user_id IS NOT NULL GROUP BY line_user_id
+      )
+  `);
+  if (dupResult.rowCount && dupResult.rowCount > 0)
+    console.log(`[LineIDCleanup] 已清除 ${dupResult.rowCount} 筆重複的 LINE User ID（保留最早綁定者）`);
+
+  // 建立唯一索引，防止未來重複綁定（CREATE IF NOT EXISTS 不影響已存在的索引）
+  await _migPool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS drivers_line_user_id_unique
+    ON drivers (line_user_id)
+    WHERE line_user_id IS NOT NULL
+  `);
+  console.log("[LineIDCleanup] drivers.line_user_id 唯一索引已確認");
+}).catch(e => console.warn("[LineIDCleanup] failed:", String(e).slice(0, 200)));
 
 export default app;

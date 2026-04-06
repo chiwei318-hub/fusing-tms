@@ -672,9 +672,15 @@ export async function sendOrderBroadcast(
 
   const altText = `【搶單】訂單 #${order.id}｜${order.pickupAddress} → ${order.deliveryAddress}｜${price ? nt(price) : "洽談"}`;
 
+  // ── 去重，避免同一 LINE ID 被推播多次 ──
+  const uniqueIds = [...new Set(driverLineIds.filter(Boolean))];
+  if (uniqueIds.length < driverLineIds.length) {
+    console.warn(`[LINE broadcast] Order #${order.id}: 去除 ${driverLineIds.length - uniqueIds.length} 個重複 LINE ID`);
+  }
+
   // ── 直接 await 所有推播，取得真實成功/失敗數量 ──
   const results = await Promise.allSettled(
-    driverLineIds.map(uid => pushFlex(uid, altText, bubble))
+    uniqueIds.map(uid => pushFlex(uid, altText, bubble))
   );
 
   let sent = 0;

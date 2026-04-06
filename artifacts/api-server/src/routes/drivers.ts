@@ -139,6 +139,19 @@ router.patch("/drivers/:id", async (req, res) => {
       return res.status(404).json({ error: "Driver not found" });
     }
 
+    // 如果更新 lineUserId，檢查是否已被其他司機使用
+    if ("lineUserId" in body && body.lineUserId) {
+      const conflict = await pool.query(
+        `SELECT id, name FROM drivers WHERE line_user_id = $1 AND id <> $2 LIMIT 1`,
+        [body.lineUserId, id]
+      );
+      if (conflict.rows.length > 0) {
+        return res.status(409).json({
+          error: `此 LINE User ID 已被司機「${conflict.rows[0].name}」使用，每個 LINE 帳號只能綁定一位司機`,
+        });
+      }
+    }
+
     const updates: Partial<typeof driversTable.$inferInsert> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.phone !== undefined) updates.phone = body.phone;
