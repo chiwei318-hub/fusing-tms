@@ -327,6 +327,11 @@ router.post("/line/webhook", async (req, res) => {
                 `❌ 請先綁定帳號才能接單。\n\n發送「綁定 [您的電話]」完成設定。`);
               continue;
             }
+            if (driver.isActive === false) {
+              await replyTextMessage(replyToken,
+                `❌ 您的帳號已停用，無法接單。\n\n如有疑問，請聯繫公司調度人員。`);
+              continue;
+            }
 
             // 2. 原子搶單：WHERE status='pending' AND driver_id IS NULL
             // 若有其他人同時搶，此 UPDATE 只有一人成功（DB 層競態保護）
@@ -605,16 +610,20 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
     let lineIds: string[];
 
     if (driverIds && driverIds.length > 0) {
-      // 指定司機
+      // 指定司機（僅在職者）
       const rows = await db.execute(sql`
         SELECT line_user_id FROM drivers
-        WHERE id = ANY(${driverIds}::int[]) AND line_user_id IS NOT NULL
+        WHERE id = ANY(${driverIds}::int[])
+          AND line_user_id IS NOT NULL
+          AND is_active IS NOT FALSE
       `);
       lineIds = (rows.rows as any[]).map(r => r.line_user_id);
     } else {
-      // 全部已綁定司機
+      // 全部已綁定且在職司機
       const rows = await db.execute(sql`
-        SELECT line_user_id FROM drivers WHERE line_user_id IS NOT NULL
+        SELECT line_user_id FROM drivers
+        WHERE line_user_id IS NOT NULL
+          AND is_active IS NOT FALSE
       `);
       lineIds = (rows.rows as any[]).map(r => r.line_user_id);
     }

@@ -264,16 +264,20 @@ router.post("/orders", async (req, res) => {
         await db.update(driversTable).set({ status: "busy" })
           .where(eq(driversTable.id, chosen.id));
 
-        // LINE 通知司機
+        // LINE 通知司機（僅在職者）
         try {
-          await sendDispatchNotification({
-            orderId: order.id, driverName: chosen.name,
-            lineUserId: chosen.lineUserId ?? undefined,
-            pickupAddress: order.pickupAddress, deliveryAddress: order.deliveryAddress,
-            customerName: order.customerName, customerPhone: order.customerPhone,
-            cargoDescription: order.cargoDescription,
-            vehicleType: chosen.vehicleType, licensePlate: chosen.licensePlate,
-          });
+          if (chosen.isActive !== false) {
+            await sendDispatchNotification({
+              orderId: order.id, driverName: chosen.name,
+              lineUserId: chosen.lineUserId ?? undefined,
+              pickupAddress: order.pickupAddress, deliveryAddress: order.deliveryAddress,
+              customerName: order.customerName, customerPhone: order.customerPhone,
+              cargoDescription: order.cargoDescription,
+              vehicleType: chosen.vehicleType, licensePlate: chosen.licensePlate,
+            });
+          } else {
+            console.log(`[DispatchNotify] 司機 ${chosen.name}(id=${chosen.id}) 已離職，跳過 LINE 通知`);
+          }
         } catch { /* LINE not configured */ }
 
         // 客戶通知：已派車
@@ -406,8 +410,8 @@ router.patch("/orders/:id", async (req, res) => {
         try {
           const driverRows = await db.select().from(driversTable).where(eq(driversTable.id, driverId));
           const driver = driverRows[0];
-          // 通知司機
-          if (driver?.lineUserId) {
+          // 通知司機（僅在職者）
+          if (driver?.lineUserId && driver.isActive !== false) {
             await sendDispatchNotification(driver.lineUserId, {
               id: order.id,
               pickupAddress: order.pickupAddress,
@@ -622,11 +626,14 @@ router.post("/orders/:id/grab", async (req, res) => {
 
     const order = await fetchOrderWithDriver(id);
 
-    // Send LINE notification to driver
+    // Send LINE notification to driver（僅在職者）
     try {
       const { sendDispatchNotification } = await import("../lib/line.js");
-      if (driverRows[0].lineUserId) {
-        await sendDispatchNotification(driverRows[0].lineUserId, id, driverRows[0].name, order as any);
+      const grabDriver = driverRows[0];
+      if (grabDriver.lineUserId && grabDriver.isActive !== false) {
+        await sendDispatchNotification(grabDriver.lineUserId, id, grabDriver.name, order as any);
+      } else if (grabDriver.isActive === false) {
+        req.log.warn({ driverId: grabDriver.id }, "grab order: 司機已離職，跳過 LINE 通知");
       }
     } catch (e) {
       req.log.warn({ err: e }, "LINE grab notify failed");

@@ -630,12 +630,14 @@ async function assignDriver(
 
   setImmediate(async () => {
     try {
-      if (driver.lineUserId) {
+      if (driver.lineUserId && driver.isActive !== false) {
         await sendDispatchNotification(driver.lineUserId, {
           id: orderId, pickupAddress: order.pickupAddress,
           deliveryAddress: order.deliveryAddress, cargoDescription: order.cargoDescription,
           customerName: order.customerName, customerPhone: order.customerPhone ?? undefined,
         });
+      } else if (driver.isActive === false) {
+        console.log(`[DispatchNotify] 司機 ${driver.name}(id=${driver.id}) 已離職，跳過 LINE 通知`);
       }
     } catch { /* silent */ }
   });

@@ -166,6 +166,11 @@ ensureFleetSheetSyncTables()
   .then(() => startFleetSheetSyncScheduler())
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
 
+// 確保 drivers.is_active 欄位存在（離職狀態管理）
+_migPool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`)
+  .then(() => console.log("[DriverActive] is_active 欄位已確認"))
+  .catch(e => console.warn("[DriverActive] 欄位確認失敗:", String(e).slice(0, 120)));
+
 // 清除格式錯誤的 LINE User ID（如填入電話號碼者）
 // 有效 LINE User ID 格式：U + 32 hex 字元（共 33 字元）
 _migPool.query(`
