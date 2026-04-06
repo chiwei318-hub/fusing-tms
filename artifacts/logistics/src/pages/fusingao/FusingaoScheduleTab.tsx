@@ -43,12 +43,22 @@ export default function FusingaoScheduleTab() {
     const params = new URLSearchParams();
     if (selectedMonth) params.set("month", selectedMonth);
     if (routeType) params.set("route_type", routeType);
-    if (search) params.set("search", search);
     const data = await api(`schedule/routes?${params}`).then(r => r.json());
     if (data.ok) { setRoutes(data.routes); setMonths(data.months); }
   };
 
   useEffect(() => { loadRoutes(); }, [selectedMonth, routeType]); // eslint-disable-line
+
+  const q = search.trim().toLowerCase();
+  const filteredRoutes = q
+    ? routes.filter(r =>
+        r.route_id?.toLowerCase().includes(q) ||
+        r.dock_number?.toLowerCase().includes(q) ||
+        r.driver_id?.toLowerCase().includes(q) ||
+        r.vehicle_type?.toLowerCase().includes(q) ||
+        r.route_type?.toLowerCase().includes(q)
+      )
+    : routes;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -146,14 +156,14 @@ export default function FusingaoScheduleTab() {
               <option value="主線">主線</option>
               <option value="店配車">店配車</option>
             </select>
-            <div className="flex items-center gap-1 flex-1 min-w-[160px]">
+            <div className="flex items-center gap-1 flex-1 min-w-[160px] relative">
+              <Search className="w-3 h-3 absolute left-2 text-gray-400 pointer-events-none" />
               <Input placeholder="搜尋路線ID/碼頭/司機..." value={search}
                 onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && loadRoutes()}
-                className="text-xs h-8" />
-              <Button size="sm" variant="outline" className="h-8 px-2" onClick={loadRoutes}>
-                <Search className="w-3 h-3" />
-              </Button>
+                className="text-xs h-8 pl-6" />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+              )}
             </div>
           </div>
 
@@ -168,8 +178,16 @@ export default function FusingaoScheduleTab() {
             </Card>
           ) : (
             <div className="space-y-1">
-              <p className="text-xs text-gray-500">共 {routes.length} 條路線</p>
-              {routes.map(route => (
+              <p className="text-xs text-gray-500">
+                共 {filteredRoutes.length} 條路線
+                {q && filteredRoutes.length !== routes.length && <span className="text-orange-500 ml-1">（已篩選，共 {routes.length} 條）</span>}
+              </p>
+              {filteredRoutes.length === 0 && q && (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  找不到符合「{search}」的路線
+                </div>
+              )}
+              {filteredRoutes.map(route => (
                 <div key={route.id} className="border rounded-lg overflow-hidden bg-white">
                   <button
                     className="w-full text-left px-3 py-2.5 flex items-center gap-2 hover:bg-gray-50 transition-colors"
