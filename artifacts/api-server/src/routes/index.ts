@@ -76,6 +76,7 @@ import { fleetDriverRouter } from "./fleetDriver";
 import { requireFleetOwner, requireFleetDriver } from "../middleware/fleetAuth";
 import { commissionManagementRouter } from "./commissionManagement";
 import { receiptsRouter } from "./receipts";
+import { commissionTiersRouter } from "./commissionTiers";
 
 const router: IRouter = Router();
 
@@ -158,5 +159,6 @@ router.use("/fleet", requireFleetOwner, fleetOwnerRouter);   // 車行老闆（/
 router.use("/driver", requireFleetDriver, fleetDriverRouter); // 司機手機端（/driver/* 才套 auth）
 router.use(commissionManagementRouter);                       // 抽成管理
 router.use(receiptsRouter);                                   // OCR 簽單對帳
+router.use("/commission-tiers", commissionTiersRouter);       // 階梯抽成引擎
 
 export default router;

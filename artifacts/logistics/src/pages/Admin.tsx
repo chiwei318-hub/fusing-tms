@@ -45,6 +45,8 @@ import BiddingTab from "./admin/BiddingTab";
 import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import CommissionTab from "./admin/CommissionTab";
 import DriverCreditTab from "./admin/DriverCreditTab";
+import CommissionTiersTab from "./admin/CommissionTiersTab";
+import BackhaulAnalyticsTab from "./admin/BackhaulAnalyticsTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
@@ -1625,6 +1627,7 @@ export default function Admin() {
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
                     { value: "shopeebilling", icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,        label: "月結對帳匯入" },
                     { value: "pnl",           icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,          label: "盈虧分析" },
+                    { value: "backhaul",    icon: <span className="text-sm leading-none">🔄</span>,                 label: "空車撮合" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -1682,6 +1685,7 @@ export default function Admin() {
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
                     { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
                     { value: "commission",  icon: <span className="text-sm leading-none">%</span>,                    label: "抽成管理" },
+                    { value: "commissiontiers", icon: <span className="text-sm leading-none">📊</span>,              label: "階梯抽成" },
                     { value: "drivercredit", icon: <span className="text-sm leading-none">⭐</span>,                 label: "信用積分" },
                     { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
@@ -3839,6 +3843,11 @@ export default function Admin() {
           <CommissionTab />
         </TabsContent>
 
+        {/* ===== 階梯抽成引擎 TAB ===== */}
+        <TabsContent value="commissiontiers" className="outline-none">
+          <CommissionTiersTab />
+        </TabsContent>
+
         {/* ===== 司機信用積分 TAB ===== */}
         <TabsContent value="drivercredit" className="outline-none">
           <DriverCreditTab />
@@ -3922,6 +3931,11 @@ export default function Admin() {
         {/* ===== 盈虧分析 TAB ===== */}
         <TabsContent value="pnl" className="outline-none">
           <PnLTab />
+        </TabsContent>
+
+        {/* ===== 空車撮合 ROI TAB ===== */}
+        <TabsContent value="backhaul" className="outline-none">
+          <BackhaulAnalyticsTab />
         </TabsContent>
       </Tabs>
 

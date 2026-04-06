@@ -195,6 +195,9 @@ export default function DriverCreditTab() {
     : 0;
   const eliteCount = drivers.filter(d => d.credit_score >= 120).length;
   const lowCount = drivers.filter(d => d.credit_score < 60).length;
+  const priorityThreshold = drivers.length > 0
+    ? Math.ceil(drivers.length * 0.2)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -282,6 +285,11 @@ export default function DriverCreditTab() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-gray-900 text-sm">{d.name}</span>
                       <ScoreBadge score={d.credit_score} />
+                      {idx < priorityThreshold && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                          🎯 優先派單
+                        </span>
+                      )}
                       <Badge variant="outline" className="text-xs hidden sm:inline-flex">{d.vehicle_type || "—"}</Badge>
                     </div>
                     <div className="mt-1.5">
