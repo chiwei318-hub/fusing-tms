@@ -258,7 +258,7 @@ fusingaoScheduleRouter.get("/schedule/routes", async (req, res) => {
       LEFT JOIN shopee_route_stops st ON st.schedule_id = s.id
       ${whereClause}
       GROUP BY s.id
-      ORDER BY s.route_type, s.route_id
+      ORDER BY s.id DESC
       LIMIT 500
     `);
     const months = await db.execute(sql`SELECT DISTINCT import_month FROM shopee_route_schedules ORDER BY import_month DESC`);

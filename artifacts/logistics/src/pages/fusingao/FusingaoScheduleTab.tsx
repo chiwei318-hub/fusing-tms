@@ -119,6 +119,15 @@ export default function FusingaoScheduleTab() {
         </div>
         <div className="flex gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} />
+          <Button size="sm" variant="outline" onClick={loadRoutes} title="重新整理路線資料">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+              <path d="M16 16h5v5"/>
+            </svg>
+            <span className="ml-1">同步</span>
+          </Button>
           <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}
             className="bg-orange-500 hover:bg-orange-600 text-white">
             <Upload className="w-4 h-4 mr-1" />
@@ -160,11 +169,15 @@ export default function FusingaoScheduleTab() {
               <Search className="w-3 h-3 absolute left-2 text-gray-400 pointer-events-none" />
               <Input placeholder="搜尋路線ID/碼頭/司機..." value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="text-xs h-8 pl-6" />
+                onKeyDown={e => e.key === "Enter" && e.currentTarget.blur()}
+                className="text-xs h-8 pl-6 pr-6" />
               {search && (
                 <button onClick={() => setSearch("")} className="absolute right-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
               )}
             </div>
+            <Button size="sm" variant="outline" className="h-8 px-2 shrink-0" onClick={() => {}}>
+              <Search className="w-3 h-3" />
+            </Button>
           </div>
 
           {/* Route list */}
