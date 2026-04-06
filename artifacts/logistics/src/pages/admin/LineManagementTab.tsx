@@ -65,11 +65,22 @@ function SetupCard({ status }: { status: LineStatus }) {
   const { toast } = useToast();
   const webhookUrl = `${window.location.origin}/api/line/webhook`;
 
+  const { data: webhookStatus, refetch: refetchWebhook } = useQuery<{
+    configured: boolean; webhookUrl: string | null;
+    lastReceivedAt: string | null; isConnected: boolean;
+  }>({
+    queryKey: ["line-webhook-status"],
+    queryFn: () => fetch("/api/line/webhook-status").then(r => r.json()),
+    refetchInterval: 30_000,
+  });
+
   const copyWebhook = () => {
     navigator.clipboard.writeText(webhookUrl).then(() => {
       toast({ title: "✅ Webhook URL 已複製" });
     });
   };
+
+  const isWebhookConnected = webhookStatus?.isConnected ?? false;
 
   return (
     <Card className="mb-6">
@@ -83,65 +94,81 @@ function SetupCard({ status }: { status: LineStatus }) {
         <div className="flex flex-wrap gap-2">
           <StatusBadge ok={status.configured} label="API Token 已設定" />
           <StatusBadge ok={status.hasCompanyUserId} label="公司 LINE ID 已設定" />
-          <StatusBadge ok={status.hasAppBaseUrl} label="App 網址已設定" />
+          <StatusBadge ok={isWebhookConnected} label="Webhook 已接通" />
         </div>
 
-        {/* Webhook URL */}
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-slate-700">
-            <Link2 className="w-4 h-4" />
-            LINE Developers Console Webhook URL
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1.5 text-slate-700 break-all">
-              {webhookUrl}
-            </code>
-            <Button variant="outline" size="sm" className="shrink-0 h-7 px-2" onClick={copyWebhook}>
-              <Copy className="w-3 h-3" />
-            </Button>
-          </div>
-          <p className="text-xs text-slate-500 mt-1.5">
-            將此 URL 填入 LINE Developers Console → Messaging API → Webhook URL，並啟用「Use webhook」
-          </p>
-        </div>
-
-        {!status.configured && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-            <div className="font-semibold flex items-center gap-2 mb-2">
-              <AlertCircle className="w-4 h-4" /> 尚未完成 LINE 設定
+        {/* Webhook 狀態 + 設定步驟 */}
+        {!isWebhookConnected && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 font-semibold text-red-700 text-sm">
+              <AlertTriangle className="w-4 h-4" />
+              Webhook 尚未連接 — 司機傳「綁定」訊息無法自動處理
             </div>
-            <p className="mb-3">需要在環境變數中設定以下 3 個值才能啟用 LINE 通知：</p>
-            <ol className="space-y-2 list-decimal list-inside">
-              <li>
-                <strong>LINE_CHANNEL_ACCESS_TOKEN</strong>
-                <span className="text-amber-700">— 至 LINE Developers Console 取得</span>
-              </li>
-              <li>
-                <strong>LINE_CHANNEL_SECRET</strong>
-                <span className="text-amber-700">— 同上</span>
-              </li>
-              <li>
-                <strong>LINE_COMPANY_USER_ID</strong>
-                <span className="text-amber-700">— 公司管理者的 LINE User ID（接收新訂單提醒）</span>
-              </li>
-            </ol>
+            <div className="text-xs text-red-600 space-y-2">
+              <div className="font-medium">請依照以下步驟設定：</div>
+              <ol className="space-y-1.5 list-none">
+                <li className="flex gap-2"><span className="font-bold text-red-700 shrink-0">①</span> 開啟 <a href="https://developers.line.biz/console/" target="_blank" rel="noreferrer" className="underline font-medium">LINE Developers Console</a></li>
+                <li className="flex gap-2"><span className="font-bold text-red-700 shrink-0">②</span> 選擇你的 Messaging API 頻道 → 點「Messaging API」頁籤</li>
+                <li className="flex gap-2"><span className="font-bold text-red-700 shrink-0">③</span> 找到「Webhook URL」欄位，貼入以下網址：</li>
+              </ol>
+              <div className="flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-2">
+                <code className="flex-1 text-xs text-slate-800 break-all font-mono">{webhookUrl}</code>
+                <Button variant="outline" size="sm" className="shrink-0 h-7 px-2 border-red-200" onClick={copyWebhook}>
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+              <ol className="space-y-1.5 list-none" start={4}>
+                <li className="flex gap-2"><span className="font-bold text-red-700 shrink-0">④</span> 點「Update」儲存，再開啟「Use webhook」開關</li>
+                <li className="flex gap-2"><span className="font-bold text-red-700 shrink-0">⑤</span> 點「Verify」按鈕確認連線成功</li>
+              </ol>
+              <div className="flex items-center gap-2 pt-1">
+                <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700" onClick={() => refetchWebhook()}>
+                  <RefreshCw className="w-3 h-3 mr-1" /> 重新檢查連線
+                </Button>
+                {webhookStatus?.lastReceivedAt && (
+                  <span className="text-xs text-red-500">上次接收：{new Date(webhookStatus.lastReceivedAt).toLocaleString("zh-TW")}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isWebhookConnected && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>Webhook 連線正常</span>
+            {webhookStatus?.lastReceivedAt && (
+              <span className="ml-auto text-green-600">
+                上次接收：{new Date(webhookStatus.lastReceivedAt).toLocaleString("zh-TW")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Webhook URL（供已連線時快速複製） */}
+        {isWebhookConnected && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1 text-xs font-medium text-slate-600">
+              <Link2 className="w-3.5 h-3.5" /> Webhook URL
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1.5 text-slate-700 break-all">{webhookUrl}</code>
+              <Button variant="outline" size="sm" className="shrink-0 h-7 px-2" onClick={copyWebhook}>
+                <Copy className="w-3 h-3" />
+              </Button>
+            </div>
           </div>
         )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-          <div className="font-semibold mb-2">📌 客戶/司機如何綁定 LINE？</div>
+          <div className="font-semibold mb-2">📌 司機/客戶綁定 LINE 的方式</div>
           <ol className="space-y-1 list-decimal list-inside text-blue-700">
             <li>加入本公司 LINE 官方帳號為好友</li>
-            <li>傳送文字：<code className="bg-blue-100 px-1 rounded">綁定 [電話號碼]</code></li>
-            <li>例如：<code className="bg-blue-100 px-1 rounded">綁定 0912345678</code></li>
-            <li>系統自動確認並完成綁定</li>
+            <li>傳送：<code className="bg-blue-100 px-1 rounded">綁定 09xxxxxxxx</code>（自己的電話號碼）</li>
+            <li>系統自動回覆確認並完成綁定</li>
           </ol>
-          <div className="mt-3 pt-3 border-t border-blue-200">
-            <div className="font-semibold mb-1">📋 其他指令</div>
-            <ul className="space-y-1 text-blue-700">
-              <li><code className="bg-blue-100 px-1 rounded">查詢 [訂單號碼]</code> — 查詢訂單狀態</li>
-              <li><code className="bg-blue-100 px-1 rounded">說明</code> — 顯示所有指令</li>
-            </ul>
+          <div className="mt-2 text-xs text-blue-600 bg-blue-100/50 rounded p-2">
+            ⚠ 此功能需要上方 Webhook 設定完成才能運作。
           </div>
         </div>
 

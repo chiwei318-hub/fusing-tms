@@ -20,6 +20,22 @@ import {
 
 const router: IRouter = Router();
 
+// Webhook 最後接收時間追蹤（記憶體快取，重啟後重置）
+let lastWebhookAt: Date | null = null;
+
+/** GET /api/line/webhook-status — webhook 連線狀態診斷 */
+router.get("/line/webhook-status", (_req, res) => {
+  const appUrl = process.env.APP_BASE_URL ?? "";
+  const webhookUrl = appUrl ? `${appUrl}/api/line/webhook` : null;
+  const isRecent = lastWebhookAt && (Date.now() - lastWebhookAt.getTime()) < 60 * 60 * 1000; // 1小時內
+  res.json({
+    configured: isLineConfigured(),
+    webhookUrl,
+    lastReceivedAt: lastWebhookAt?.toISOString() ?? null,
+    isConnected: !!isRecent,
+  });
+});
+
 function verifyLineSignature(rawBody: Buffer, signature: string, channelSecret: string): boolean {
   try {
     const hash = crypto.createHmac("SHA256", channelSecret).update(rawBody).digest("base64");
@@ -35,6 +51,7 @@ function verifyLineSignature(rawBody: Buffer, signature: string, channelSecret: 
 router.post("/line/webhook", async (req, res) => {
     // LINE requires 200 response immediately
     res.sendStatus(200);
+    lastWebhookAt = new Date(); // 更新最後接收時間
 
     const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
     const rawBody = req.body as Buffer;
