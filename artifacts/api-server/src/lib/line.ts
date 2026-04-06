@@ -440,6 +440,114 @@ export async function sendInvoiceNotification(
   await pushFlex(lineUserId, `【富詠運輸】電子發票 ${info.invoiceNumber} 已開立，合計 NT$${info.totalAmount.toLocaleString()}`, bubble);
 }
 
+/* ─── 9. 抵達通知 → 司機（含完成按鈕 + 導航） ─── */
+export async function pushArrivedFlexToDriver(lineUserId: string, order: OrderInfo): Promise<void> {
+  const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.deliveryAddress)}`;
+  const bubble: line.messagingApi.FlexBubble = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [{ type: "text", text: "📍 已抵達取貨地", weight: "bold", color: "#ffffff", size: "lg" }],
+      backgroundColor: "#d97706",
+      paddingAll: "md",
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: `訂單 #${order.id}`, weight: "bold", size: "xl", color: "#1e293b" },
+        { type: "separator", margin: "md" },
+        {
+          type: "box", layout: "vertical", margin: "md", spacing: "sm",
+          contents: [
+            row("送達", order.deliveryAddress),
+            row("貨物", order.cargoDescription),
+          ],
+        },
+        { type: "text", text: "完成裝貨後請按「完成配送」，並上傳簽收單照片。", size: "xs", color: "#64748b", margin: "md", wrap: true },
+      ],
+      paddingAll: "md",
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      paddingAll: "md",
+      contents: [
+        {
+          type: "button", style: "primary", color: "#2563EB",
+          action: { type: "postback", label: "🏁 完成配送", data: `action=complete&orderId=${order.id}`, displayText: "已完成配送" },
+        },
+        {
+          type: "button", style: "link",
+          action: { type: "uri", label: "🗺️ 開啟導航至送達地", uri: navUrl },
+        },
+      ],
+    },
+  };
+  await pushFlex(lineUserId, `【配送中】訂單 #${order.id} — 抵達完成，請導航至送達地`, bubble);
+}
+
+/* ─── 10. 配送完成通知 → 司機（含積分更新） ─── */
+export async function pushDeliveryCompletedFlex(
+  lineUserId: string,
+  order: OrderInfo,
+  creditChange: number,
+  newScore: number,
+): Promise<void> {
+  const bubble: line.messagingApi.FlexBubble = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [{ type: "text", text: "🎉 配送完成！", weight: "bold", color: "#ffffff", size: "lg" }],
+      backgroundColor: "#16a34a",
+      paddingAll: "md",
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: `訂單 #${order.id} 配送完成`, weight: "bold", size: "xl", color: "#1e293b" },
+        { type: "separator", margin: "md" },
+        {
+          type: "box", layout: "vertical", margin: "md", spacing: "sm",
+          contents: [
+            row("客戶", order.customerName),
+            row("送達地", order.deliveryAddress),
+            { type: "separator", margin: "sm" },
+            {
+              type: "box", layout: "baseline", spacing: "sm",
+              contents: [
+                { type: "text", text: "信用積分", color: "#64748b", size: "sm", flex: 2 },
+                {
+                  type: "text",
+                  text: `${creditChange >= 0 ? "+" : ""}${creditChange} (累積 ${newScore} 分)`,
+                  color: creditChange >= 0 ? "#16a34a" : "#dc2626",
+                  size: "sm", flex: 5, weight: "bold",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: newScore >= 90
+            ? "⭐ 優良積分，優先取得高單價急單機會！"
+            : newScore >= 70
+              ? "繼續努力，提升積分可接更多好單！"
+              : "⚠️ 積分偏低，請注意服務品質。",
+          size: "xs", color: "#64748b", margin: "md", wrap: true,
+        },
+        { type: "text", text: "如有簽收單請上傳照片以記錄 POD，再獲 +2 積分。", size: "xs", color: "#64748b", margin: "sm", wrap: true },
+      ],
+      paddingAll: "md",
+    },
+  };
+  await pushFlex(lineUserId, `【完成】訂單 #${order.id} 配送完成，積分 ${creditChange >= 0 ? "+" : ""}${creditChange}`, bubble);
+}
+
 /* ─── 8. 回覆訊息（含多則） ─── */
 export async function replyMessages(replyToken: string, messages: line.messagingApi.Message[]): Promise<void> {
   if (!channelAccessToken) return;

@@ -11,6 +11,8 @@ import {
   sendPaymentReminder,
   sendRejectAlertToCompany,
   getOrderNotifyReceivers,
+  pushArrivedFlexToDriver,
+  pushDeliveryCompletedFlex,
 } from "../lib/line.js";
 
 const router: IRouter = Router();
@@ -130,6 +132,71 @@ router.post("/line/webhook", async (req, res) => {
               driverName,
             );
             console.log(`[LINE postback] ✓ Driver rejected order #${orderId}, company notified`);
+
+          } else if (action === "arrive") {
+            /* ── 司機抵達取貨地 ── */
+            if (order.status === "delivered") {
+              await replyTextMessage(replyToken, `ℹ️ 訂單 #${orderId} 已完成，無需重複操作。`);
+              continue;
+            }
+            await db.update(ordersTable).set({ status: "in_transit", updatedAt: now }).where(eq(ordersTable.id, orderId));
+            await replyTextMessage(replyToken, `✅ 已記錄抵達！訂單 #${orderId} 狀態更新為「配送中」。\n\n請將貨物裝載後，完成配送並拍照上傳簽收單。`);
+
+            // 推送含完成按鈕的 Flex 訊息（非同步，不影響回覆時效）
+            const driverLineId = event.source.userId;
+            if (driverLineId) {
+              pushArrivedFlexToDriver(driverLineId, {
+                id: orderId,
+                pickupAddress: order.pickupAddress,
+                deliveryAddress: order.deliveryAddress,
+                cargoDescription: order.cargoDescription || "—",
+                customerName: order.customerName || "—",
+                customerPhone: order.customerPhone ?? undefined,
+              }).catch(() => {});
+            }
+            console.log(`[LINE postback] ✓ Driver arrived for order #${orderId}`);
+
+          } else if (action === "complete") {
+            /* ── 司機完成配送 ── */
+            if (order.status === "delivered") {
+              await replyTextMessage(replyToken, `ℹ️ 訂單 #${orderId} 已完成，無需重複操作。`);
+              continue;
+            }
+            await db.update(ordersTable).set({ status: "delivered", updatedAt: now }).where(eq(ordersTable.id, orderId));
+
+            // 授予信用積分 +5（按時完成）
+            let creditChange = 5;
+            let newScore = 100;
+            if (order.driverId) {
+              const creditResult = await db.execute(sql`
+                UPDATE drivers
+                SET credit_score = LEAST(150, COALESCE(credit_score, 100) + ${creditChange})
+                WHERE id = ${order.driverId}
+                RETURNING credit_score
+              `);
+              newScore = (creditResult.rows[0] as any)?.credit_score ?? 100;
+              // 寫入積分歷史
+              await db.execute(sql`
+                INSERT INTO driver_credit_history (driver_id, order_id, change, reason, score_after, created_at)
+                VALUES (${order.driverId}, ${orderId}, ${creditChange}, '按時完成配送', ${newScore}, NOW())
+              `).catch(() => {});
+            }
+
+            await replyTextMessage(replyToken, `🎉 配送完成！訂單 #${orderId} 已結單。\n\n積分 +${creditChange}，目前共 ${newScore} 分。\n\n請上傳簽收單照片以獲得額外 +2 積分！`);
+
+            // 推送完成 Flex（非同步）
+            const driverLineId2 = event.source.userId;
+            if (driverLineId2) {
+              pushDeliveryCompletedFlex(driverLineId2, {
+                id: orderId,
+                pickupAddress: order.pickupAddress,
+                deliveryAddress: order.deliveryAddress,
+                cargoDescription: order.cargoDescription || "—",
+                customerName: order.customerName || "—",
+                customerPhone: order.customerPhone ?? undefined,
+              }, creditChange, newScore).catch(() => {});
+            }
+            console.log(`[LINE postback] ✓ Driver completed order #${orderId}, credit +${creditChange}`);
           }
         } catch (err) {
           console.error(`Failed to process LINE postback for order ${orderId}:`, err);
@@ -209,8 +276,86 @@ router.post("/line/webhook", async (req, res) => {
 
         // 說明訊息
         if (text === "help" || text === "說明" || text === "指令") {
-          await replyTextMessage(replyToken, "富詠運輸 LINE 服務\n\n📌 可用指令：\n・綁定 [電話] — 綁定您的帳號\n・查詢 [訂單號碼] — 查詢訂單狀態\n\n需要協助請聯絡客服。");
+          await replyTextMessage(replyToken, [
+            "富詠運輸 LINE 服務 🚚",
+            "",
+            "📌 可用指令：",
+            "・綁定 [電話] — 綁定您的帳號",
+            "・查詢 [訂單號碼] — 查詢訂單狀態",
+            "",
+            "📦 司機操作（點擊派車通知中的按鈕）：",
+            "・✅ 接單 — 確認接受訂單",
+            "・❌ 拒單 — 拒絕訂單",
+            "・📍 抵達 — 標記已抵達取貨地",
+            "・🏁 完成配送 — 配送完成",
+            "・📷 上傳照片 — 傳送簽收單即可自動記錄 POD",
+            "",
+            "💡 積分說明：",
+            "・按時完成 +5 分，上傳簽收單 +2 分",
+            "・積分高者優先取得高單價急單",
+            "",
+            "需要協助請聯絡客服。",
+          ].join("\n"));
         }
+      }
+
+      /* ── image message: POD 簽收單辨識 ── */
+      if (event.type === "message" && event.message.type === "image") {
+        const userId = event.source.userId;
+        const replyToken = event.replyToken;
+        if (!userId) continue;
+
+        // 找到此司機的 in_transit 訂單
+        const driverRows = await db.select().from(driversTable).where(eq(driversTable.lineUserId as any, userId)).limit(1);
+        const driver = driverRows[0];
+        if (!driver) {
+          await replyTextMessage(replyToken, "❌ 找不到綁定帳號，請先發送「綁定 [電話]」進行綁定。");
+          continue;
+        }
+
+        // 找正在配送中的訂單
+        const activeOrders = await db.execute(sql`
+          SELECT id, pickup_address, delivery_address, cargo_description, customer_name, status
+          FROM orders
+          WHERE driver_id = ${driver.id}
+            AND status IN ('assigned', 'in_transit')
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `);
+        const activeOrder = (activeOrders.rows[0] as any);
+
+        if (!activeOrder) {
+          await replyTextMessage(replyToken, "ℹ️ 目前沒有進行中的訂單，感謝上傳。");
+          continue;
+        }
+
+        const orderId = activeOrder.id;
+
+        // 儲存 POD 記錄（notes 欄位追加）
+        await db.execute(sql`
+          UPDATE orders
+          SET notes = CONCAT(COALESCE(notes, ''), '\n[POD] LINE圖片已上傳 ', TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI')),
+              updated_at = NOW()
+          WHERE id = ${orderId}
+        `);
+
+        // POD 積分 +2
+        let podScore = 100;
+        const podResult = await db.execute(sql`
+          UPDATE drivers
+          SET credit_score = LEAST(150, COALESCE(credit_score, 100) + 2)
+          WHERE id = ${driver.id}
+          RETURNING credit_score
+        `);
+        podScore = (podResult.rows[0] as any)?.credit_score ?? 100;
+
+        await db.execute(sql`
+          INSERT INTO driver_credit_history (driver_id, order_id, change, reason, score_after, created_at)
+          VALUES (${driver.id}, ${orderId}, 2, 'POD 簽收單上傳', ${podScore}, NOW())
+        `).catch(() => {});
+
+        await replyTextMessage(replyToken, `✅ 簽收單已記錄！訂單 #${orderId} POD 上傳成功。\n\n積分 +2，目前共 ${podScore} 分。感謝您的配合！`);
+        console.log(`[LINE image] ✓ POD photo received for order #${orderId} from driver ${driver.id}`);
       }
     }
   }
@@ -390,6 +535,100 @@ router.delete("/line/receivers/:lineUserId", async (req, res) => {
       ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(updated)}, updated_at = NOW()
     `);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/* ──────────────────────────────────────
+   司機信用積分管理 API
+────────────────────────────────────── */
+
+// DB 初始化：確保信用積分欄位與歷史表存在
+export async function ensureCreditSchema(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE drivers ADD COLUMN IF NOT EXISTS credit_score INTEGER DEFAULT 100
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS driver_credit_history (
+        id SERIAL PRIMARY KEY,
+        driver_id INTEGER NOT NULL REFERENCES drivers(id),
+        order_id INTEGER,
+        change INTEGER NOT NULL,
+        reason TEXT,
+        score_after INTEGER,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("[DriverCredit] schema ensured");
+  } catch (err) {
+    console.error("[DriverCredit] schema error:", err);
+  }
+}
+
+// 列出所有司機信用積分（可用於排行榜）
+router.get("/drivers/credit", async (req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        d.id, d.name, d.phone, d.vehicle_type, d.license_plate, d.status,
+        COALESCE(d.credit_score, 100) AS credit_score,
+        d.rating, d.rating_count,
+        COUNT(o.id) FILTER (WHERE o.status = 'delivered') AS completed_orders,
+        COUNT(o.id) FILTER (WHERE o.status IN ('assigned','in_transit','delivered')) AS total_assigned
+      FROM drivers d
+      LEFT JOIN orders o ON o.driver_id = d.id
+      WHERE d.is_blacklisted IS NOT TRUE
+      GROUP BY d.id
+      ORDER BY credit_score DESC, d.name ASC
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// 取得單一司機積分歷史
+router.get("/drivers/:id/credit-history", async (req, res) => {
+  try {
+    const driverId = parseInt(req.params.id, 10);
+    const rows = await db.execute(sql`
+      SELECT
+        h.id, h.change, h.reason, h.score_after, h.created_at,
+        o.pickup_address, o.delivery_address
+      FROM driver_credit_history h
+      LEFT JOIN orders o ON o.id = h.order_id
+      WHERE h.driver_id = ${driverId}
+      ORDER BY h.created_at DESC
+      LIMIT 50
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// 管理員手動調整積分
+router.patch("/drivers/:id/credit", async (req, res) => {
+  try {
+    const driverId = parseInt(req.params.id, 10);
+    const { change, reason } = req.body as { change: number; reason?: string };
+    if (typeof change !== "number" || isNaN(change)) {
+      return res.status(400).json({ error: "change 必須為整數" });
+    }
+    const result = await db.execute(sql`
+      UPDATE drivers
+      SET credit_score = GREATEST(0, LEAST(150, COALESCE(credit_score, 100) + ${change}))
+      WHERE id = ${driverId}
+      RETURNING credit_score
+    `);
+    const newScore = (result.rows[0] as any)?.credit_score ?? 100;
+    await db.execute(sql`
+      INSERT INTO driver_credit_history (driver_id, order_id, change, reason, score_after, created_at)
+      VALUES (${driverId}, NULL, ${change}, ${reason ?? "管理員手動調整"}, ${newScore}, NOW())
+    `).catch(() => {});
+    res.json({ ok: true, newScore });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

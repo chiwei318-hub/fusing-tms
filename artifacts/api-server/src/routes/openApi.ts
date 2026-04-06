@@ -191,3 +191,82 @@ openApiRouter.get("/open/v1/orders", requireScope("orders:read"), async (req, re
     page, limit,
   });
 });
+
+// ─── GET /open/v1/track/:id — 物流追蹤（對外友善） ─────────────────────────
+openApiRouter.get("/open/v1/track/:id", requireScope("orders:read"), async (req, res) => {
+  const row = await db.execute(sql`
+    SELECT
+      o.id, o.customer_name, o.pickup_address, o.delivery_address,
+      o.status, o.cargo_description, o.required_vehicle_type,
+      o.pickup_date, o.pickup_time, o.created_at, o.updated_at,
+      d.name AS driver_name, d.phone AS driver_phone, d.license_plate,
+      d.latitude AS driver_lat, d.longitude AS driver_lng,
+      d.last_location_at, d.current_location
+    FROM orders o
+    LEFT JOIN drivers d ON d.id = o.driver_id
+    WHERE o.id = ${Number(req.params.id)}
+    LIMIT 1
+  `);
+  if (!row.rows.length) return res.status(404).json({ error: "找不到訂單" });
+  const o = row.rows[0] as any;
+  const statusMap: Record<string, string> = {
+    pending: "待派車", assigned: "已派車", in_transit: "配送中",
+    delivered: "已送達", cancelled: "已取消",
+  };
+  res.json({
+    id: o.id,
+    status: o.status,
+    status_label: statusMap[o.status] ?? o.status,
+    pickup_address: o.pickup_address,
+    delivery_address: o.delivery_address,
+    cargo_description: o.cargo_description,
+    pickup_date: o.pickup_date,
+    estimated_arrival: o.pickup_time,
+    driver: o.driver_name ? {
+      name: o.driver_name,
+      phone: o.driver_phone,
+      license_plate: o.license_plate,
+      location: o.driver_lat ? { lat: o.driver_lat, lng: o.driver_lng, updated_at: o.last_location_at } : null,
+    } : null,
+    created_at: o.created_at,
+    updated_at: o.updated_at,
+  });
+});
+
+// ─── POST /open/v1/webhooks — 註冊 Webhook ────────────────────────────────
+openApiRouter.post("/open/v1/webhooks", requireScope("orders:read"), async (req, res) => {
+  const { url, events, name } = req.body ?? {};
+  if (!url || typeof url !== "string") return res.status(400).json({ error: "url 必填" });
+  if (!url.startsWith("https://")) return res.status(400).json({ error: "url 必須使用 HTTPS" });
+  const validEvents = ["order.created", "order.assigned", "order.delivered", "order.cancelled"];
+  const evList: string[] = Array.isArray(events) ? events.filter((e: string) => validEvents.includes(e)) : validEvents;
+  const note = `api_key_id:${req.apiKeyId}`;
+
+  const result = await db.execute(sql`
+    INSERT INTO webhooks (url, events, status, name, note, created_at)
+    VALUES (${url}, ${JSON.stringify(evList)}, 'active', ${name ?? "API Webhook"}, ${note}, NOW())
+    RETURNING id, url, events, status, name, created_at
+  `);
+  res.status(201).json(result.rows[0]);
+});
+
+// ─── GET /open/v1/webhooks — 列出 Webhook ─────────────────────────────────
+openApiRouter.get("/open/v1/webhooks", requireScope("orders:read"), async (req, res) => {
+  const note = `api_key_id:${req.apiKeyId}`;
+  const rows = await db.execute(sql`
+    SELECT id, url, events, status, name, created_at, failure_count
+    FROM webhooks
+    WHERE note = ${note}
+    ORDER BY created_at DESC
+  `);
+  res.json(rows.rows);
+});
+
+// ─── DELETE /open/v1/webhooks/:id — 刪除 Webhook ──────────────────────────
+openApiRouter.delete("/open/v1/webhooks/:id", requireScope("orders:read"), async (req, res) => {
+  const note = `api_key_id:${req.apiKeyId}`;
+  await db.execute(sql`
+    DELETE FROM webhooks WHERE id = ${Number(req.params.id)} AND note = ${note}
+  `);
+  res.json({ ok: true });
+});

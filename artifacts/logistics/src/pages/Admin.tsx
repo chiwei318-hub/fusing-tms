@@ -44,6 +44,7 @@ import InvoiceManagementTab from "./admin/InvoiceManagementTab";
 import BiddingTab from "./admin/BiddingTab";
 import FleetRegistrationTab from "./admin/FleetRegistrationTab";
 import CommissionTab from "./admin/CommissionTab";
+import DriverCreditTab from "./admin/DriverCreditTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
@@ -1681,6 +1682,7 @@ export default function Admin() {
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
                     { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
                     { value: "commission",  icon: <span className="text-sm leading-none">%</span>,                    label: "抽成管理" },
+                    { value: "drivercredit", icon: <span className="text-sm leading-none">⭐</span>,                 label: "信用積分" },
                     { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
                   ].map(t => (
@@ -3835,6 +3837,11 @@ export default function Admin() {
         {/* ===== 抽成管理 TAB ===== */}
         <TabsContent value="commission" className="outline-none">
           <CommissionTab />
+        </TabsContent>
+
+        {/* ===== 司機信用積分 TAB ===== */}
+        <TabsContent value="drivercredit" className="outline-none">
+          <DriverCreditTab />
         </TabsContent>
 
         {/* ===== 績效稽核 TAB ===== */}

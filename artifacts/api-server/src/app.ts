@@ -16,6 +16,7 @@ import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport"
 import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "./routes/fusingaoSheetSync";
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
+import { ensureCreditSchema } from "./routes/line.js";
 import { pool as _migPool } from "@workspace/db";
 
 const app: Express = express();
@@ -120,6 +121,7 @@ async function runOrdersColumnMigration() {
 runOrdersColumnMigration().catch(e => console.error("[OrderMigration] failed:", e));
 
 ensureDbIndexes().catch((e) => console.error("[dbIndexes] Failed:", e));
+ensureCreditSchema().catch((e) => console.error("[DriverCredit] Failed:", e));
 ensureSheetSyncTable()
   .then(() => startSheetSyncScheduler())
   .catch((e) => console.error("[SheetSync] table setup failed:", e));

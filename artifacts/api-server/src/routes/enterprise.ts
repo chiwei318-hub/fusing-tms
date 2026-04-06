@@ -809,4 +809,31 @@ router.post("/enterprise/:id/orders/bulk-import", upload.single("file"), async (
   }
 });
 
+/* ─── Live Tracking: 即時追蹤 ─────────────────────── */
+router.get("/enterprise/:id/tracking", async (req, res) => {
+  try {
+    const enterpriseId = parseInt(req.params.id, 10);
+    const rows = await db.execute(sql`
+      SELECT
+        o.id, o.pickup_address, o.delivery_address,
+        o.status, o.cargo_description, o.total_fee,
+        o.pickup_date, o.pickup_time, o.updated_at,
+        o.customer_name, o.customer_phone,
+        d.id AS driver_id, d.name AS driver_name, d.phone AS driver_phone,
+        d.license_plate, d.vehicle_type,
+        d.latitude AS driver_lat, d.longitude AS driver_lng,
+        d.last_location_at, d.current_location
+      FROM orders o
+      LEFT JOIN drivers d ON d.id = o.driver_id
+      WHERE o.enterprise_id = ${enterpriseId}
+        AND o.status IN ('assigned', 'in_transit')
+      ORDER BY o.updated_at DESC
+      LIMIT 30
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;

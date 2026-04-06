@@ -11,6 +11,7 @@ import EnterpriseSubAccounts from "./EnterpriseSubAccounts";
 import EnterpriseAccount from "./EnterpriseAccount";
 import EnterpriseImport from "./EnterpriseImport";
 import EnterpriseShopeeImport from "./EnterpriseShopeeImport";
+import EnterpriseTracking from "./EnterpriseTracking";
 
 function loadSession(): EnterpriseSession | null {
   const fromLs = getEnterpriseSession();
@@ -72,6 +73,9 @@ export default function EnterprisePortal() {
             </Route>
             <Route path="/enterprise/import">
               {canOrder ? <EnterpriseImport session={session} /> : <Redirect to="/enterprise" />}
+            </Route>
+            <Route path="/enterprise/tracking">
+              <EnterpriseTracking session={session} />
             </Route>
             <Route path="/enterprise/orders">
               <EnterpriseOrders session={session} />
