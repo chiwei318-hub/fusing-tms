@@ -306,27 +306,31 @@ function DashboardTab() {
     };
 
     if (ext === "xlsx" || ext === "xls") {
-      // XLSX parsing via SheetJS
-      import("xlsx").then(XLSX => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const data = ev.target?.result;
-          const wb = XLSX.read(data, { type: "array", cellDates: true });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-          if (json.length < 2) { toast({ title: "Excel 格式錯誤，需有標題列", variant: "destructive" }); return; }
-          const headers = json[0].map((h: any) => String(h).trim());
-          const rows = json.slice(1).map(row =>
-            headers.map((_, i) => {
-              const v = row[i];
-              if (v instanceof Date) return v.toISOString().split("T")[0];
-              return String(v ?? "").trim();
-            })
-          );
-          parseRows(headers, rows);
-        };
-        reader.readAsArrayBuffer(file);
-      });
+      // XLSX parsing via ExcelJS
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const data = ev.target?.result as ArrayBuffer;
+        const ExcelJS = (await import("exceljs")).default;
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(data);
+        const ws = wb.worksheets[0];
+        if (!ws) { toast({ title: "Excel 格式錯誤，需有標題列", variant: "destructive" }); return; }
+        const json: any[][] = [];
+        ws.eachRow(row => {
+          json.push((row.values as any[]).slice(1));
+        });
+        if (json.length < 2) { toast({ title: "Excel 格式錯誤，需有標題列", variant: "destructive" }); return; }
+        const headers = json[0].map((h: any) => String(h ?? "").trim());
+        const rows = json.slice(1).map(row =>
+          headers.map((_, i) => {
+            const v = row[i];
+            if (v instanceof Date) return v.toISOString().split("T")[0];
+            return String(v ?? "").trim();
+          })
+        );
+        parseRows(headers, rows);
+      };
+      reader.readAsArrayBuffer(file);
     } else {
       // CSV parsing
       const reader = new FileReader();
