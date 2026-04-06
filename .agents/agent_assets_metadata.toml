@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "2Cdg7hDzdvuEWdvpIZQLD"
+uri = "file://exports/富詠運輸_測試帳密.pdf"
+type = "pdf"
+title = "富詠運輸 — 測試帳密總覽"
