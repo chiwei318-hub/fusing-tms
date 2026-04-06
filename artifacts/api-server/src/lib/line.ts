@@ -691,26 +691,34 @@ export async function sendOrderBroadcast(
 
   const altText = `【搶單】訂單 #${order.id}｜${order.pickupAddress} → ${order.deliveryAddress}｜${price ? nt(price) : "洽談"}`;
 
-  // ── 去重，避免同一 LINE ID 被推播多次 ──
+  // ── 去重，避免同一 LINE ID 被推播多次（對應 Python: set(active_uids)）──
   const uniqueIds = [...new Set(driverLineIds.filter(Boolean))];
   if (uniqueIds.length < driverLineIds.length) {
     console.warn(`[LINE broadcast] Order #${order.id}: 去除 ${driverLineIds.length - uniqueIds.length} 個重複 LINE ID`);
   }
 
-  // ── 直接 await 所有推播，取得真實成功/失敗數量 ──
-  const results = await Promise.allSettled(
-    uniqueIds.map(uid => pushFlex(uid, altText, bubble))
-  );
+  const msg: line.messagingApi.FlexMessage = { type: "flex", altText, contents: bubble };
 
+  // ── LINE Multicast API：一次呼叫發給所有人（Python: line_bot_api.multicast(active_uids, ...)）──
+  // LINE 每次最多 500 人，超過自動分批
+  const BATCH = 500;
   let sent = 0;
   let failed = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") sent++;
-    else failed++;
+
+  for (let i = 0; i < uniqueIds.length; i += BATCH) {
+    const batch = uniqueIds.slice(i, i + BATCH);
+    try {
+      await getClient().multicast({ to: batch, messages: [msg] });
+      sent += batch.length;
+      console.log(`[LINE multicast] Order #${order.id}: batch ${Math.floor(i / BATCH) + 1} → ${batch.length} 位`);
+    } catch (err: any) {
+      failed += batch.length;
+      console.error(`[LINE multicast] Order #${order.id}: batch failed —`, err?.message ?? err);
+    }
   }
 
   if (failed > 0) {
-    console.warn(`[LINE broadcast] Order #${order.id}: ${sent} 成功, ${failed} 失敗`);
+    console.warn(`[LINE multicast] Order #${order.id}: ${sent} 成功, ${failed} 失敗`);
   }
 
   return { sent, failed };
