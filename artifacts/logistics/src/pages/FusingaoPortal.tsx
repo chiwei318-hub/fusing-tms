@@ -304,7 +304,14 @@ export default function FusingaoPortal() {
         {tab === "control" && <ControlTowerTab />}
 
         {/* ═══════════════ 派車管理 ════════════════════════════════════════ */}
-        {tab === "dispatch" && <DispatchTab />}
+        {tab === "dispatch" && (
+          <DispatchTab
+            onViewSchedule={(routeId) => {
+              setTab("schedule");
+              sessionStorage.setItem("schedule_search", routeId);
+            }}
+          />
+        )}
 
         {/* ═══════════════ 請款單 ══════════════════════════════════════════ */}
         {tab === "invoice" && <InvoiceTab />}

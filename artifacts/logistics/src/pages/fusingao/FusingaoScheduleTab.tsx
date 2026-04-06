@@ -47,6 +47,15 @@ export default function FusingaoScheduleTab() {
     if (data.ok) { setRoutes(data.routes); setMonths(data.months); }
   };
 
+  // Pick up cross-tab navigation: if dispatch tab sent a route_id via sessionStorage
+  useEffect(() => {
+    const pending = sessionStorage.getItem("schedule_search");
+    if (pending) {
+      setSearch(pending);
+      sessionStorage.removeItem("schedule_search");
+    }
+  }, []);
+
   useEffect(() => { loadRoutes(); }, [selectedMonth, routeType]); // eslint-disable-line
 
   const q = search.trim().toLowerCase();

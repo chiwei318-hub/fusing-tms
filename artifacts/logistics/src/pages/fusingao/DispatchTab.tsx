@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ChevronLeft, ChevronRight, Save, RefreshCw,
-  Send, CheckCircle, Clock, AlertCircle, Trash2,
+  ChevronLeft, ChevronRight, RefreshCw,
+  Send, CheckCircle, Clock, Trash2, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -94,73 +94,88 @@ const STATUS_INFO = {
   assigned:     { label: "已排班",   color: "bg-green-100 text-green-700", icon: CheckCircle },
 };
 
-// ─── Inline editable cell ─────────────────────────────────────────────────────
-function DriverCell({
-  entry, onSave,
+// ─── Fleet assignment cell ────────────────────────────────────────────────────
+function FleetCell({
+  entry, fleets, onAssign,
 }: {
   entry: DateEntry | undefined;
-  onSave: (orderId: number, code: string) => Promise<void>;
+  fleets: Fleet[];
+  onAssign: (orderId: number, fleetId: number | null) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(entry?.dispatch_driver_code ?? "");
+  const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setVal(entry?.dispatch_driver_code ?? "");
-  }, [entry?.dispatch_driver_code]);
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
   if (!entry) return <td className="border border-gray-100 px-2 py-2 bg-gray-50/30" />;
 
-  const filled = !!entry.dispatch_driver_code;
-  const done   = entry.done;
+  const fleet = entry.fleet_name;
+  const done  = entry.done;
 
-  async function commit() {
-    setEditing(false);
-    if (val === (entry!.dispatch_driver_code ?? "")) return;
+  async function assign(fleetId: number | null) {
+    setOpen(false);
     setSaving(true);
-    await onSave(entry!.order_id, val).finally(() => setSaving(false));
-  }
-
-  if (editing) {
-    return (
-      <td className="border border-blue-300 p-0 bg-blue-50">
-        <div className="flex items-center">
-          <input
-            autoFocus
-            value={val}
-            onChange={e => setVal(e.target.value)}
-            onBlur={commit}
-            onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-            className="w-full px-2 py-1.5 text-xs bg-transparent outline-none font-mono"
-            placeholder="代號"
-          />
-          <button onClick={commit} disabled={saving} className="pr-1.5 text-blue-600">
-            <Save className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </td>
-    );
+    await onAssign(entry!.order_id, fleetId).finally(() => setSaving(false));
   }
 
   return (
-    <td
-      onClick={() => setEditing(true)}
-      className={`border border-gray-100 px-2 py-1.5 text-center text-xs cursor-pointer hover:bg-blue-50 transition-colors
-        ${done ? "bg-green-50" : filled ? "bg-blue-50" : ""}`}
-    >
+    <td className={`border border-gray-100 px-1 py-1 text-center text-xs relative
+      ${done ? "bg-green-50" : fleet ? "bg-blue-50" : ""}`}>
       {saving ? (
         <RefreshCw className="h-3 w-3 animate-spin text-gray-400 mx-auto" />
       ) : (
-        <span className={`font-mono ${done ? "text-green-700" : filled ? "text-blue-700" : "text-gray-200"}`}>
-          {entry.dispatch_driver_code || <span className="text-gray-200">+</span>}
-        </span>
+        <div ref={dropRef} className="relative">
+          <button
+            onClick={() => setOpen(o => !o)}
+            className={`text-[11px] px-1.5 py-0.5 rounded w-full truncate max-w-[90px] hover:bg-blue-100 transition-colors
+              ${done ? "text-green-700 font-medium" : fleet ? "text-blue-700 font-medium" : "text-gray-300"}`}
+            title={fleet ?? "點擊指派車隊"}
+          >
+            {fleet ?? <span>＋</span>}
+          </button>
+          {open && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 z-50 bg-white border shadow-xl rounded-lg text-left min-w-[140px] py-1 mt-0.5">
+              <button
+                onClick={() => assign(null)}
+                className="block w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 text-left"
+              >
+                — 清除 —
+              </button>
+              <div className="border-t my-0.5" />
+              {fleets.length === 0 ? (
+                <p className="px-3 py-1.5 text-xs text-gray-400">無可用車隊</p>
+              ) : fleets.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => assign(f.id)}
+                  className={`block w-full px-3 py-1.5 text-xs hover:bg-blue-50 text-left truncate
+                    ${entry.fleet_name === f.fleet_name ? "text-blue-700 font-semibold bg-blue-50/50" : "text-gray-700"}`}
+                >
+                  {f.fleet_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </td>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function DispatchTab() {
+export default function DispatchTab({
+  onViewSchedule,
+}: {
+  onViewSchedule?: (routeId: string) => void;
+}) {
   const { toast } = useToast();
   const [weekOffset, setWeekOffset] = useState(0);
   const [data, setData] = useState<DispatchData | null>(null);
@@ -233,6 +248,34 @@ export default function DispatchTab() {
       toast({ title: "已儲存", description: `司機代號更新為 ${code || "（清空）"}` });
     } else {
       toast({ title: "儲存失敗", description: r.error, variant: "destructive" });
+    }
+  }
+
+  async function handleFleetAssign(orderId: number, fleetId: number | null) {
+    const fleet = fleets.find(f => f.id === fleetId) ?? null;
+    const r = await fetch(apiUrl(`/fusingao/routes/${orderId}/assign-fleet`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fleet_id: fleetId }),
+    }).then(x => x.json());
+    if (r.ok) {
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          routes: prev.routes.map(route => {
+            const newDates = { ...route.dates };
+            for (const [date, entry] of Object.entries(newDates)) {
+              if (entry.order_id === orderId)
+                newDates[date] = { ...entry, fleet_name: fleet?.fleet_name ?? null };
+            }
+            return { ...route, dates: newDates };
+          }),
+        };
+      });
+      toast({ title: "✅ 車隊已指派", description: fleet ? `已指派給 ${fleet.fleet_name}` : "已清除車隊指派" });
+    } else {
+      toast({ title: "指派失敗", description: r.error, variant: "destructive" });
     }
   }
 
@@ -362,10 +405,10 @@ export default function DispatchTab() {
       )}
 
       {/* ── Legend ── */}
-      <div className="flex gap-4 text-xs text-gray-500">
-        <span><span className="inline-block w-3 h-3 rounded bg-blue-100 mr-1" />已填司機代號</span>
+      <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
+        <span><span className="inline-block w-3 h-3 rounded bg-blue-100 mr-1" />已指派車隊</span>
         <span><span className="inline-block w-3 h-3 rounded bg-green-100 mr-1" />已完成</span>
-        <span className="text-gray-400">點擊空白格填入代號，Enter 儲存</span>
+        <span className="text-gray-400">點擊格子選擇車隊，點 <CalendarDays className="inline w-3 h-3" /> 查看班表</span>
       </div>
 
       {/* ── Grid ── */}
@@ -398,13 +441,24 @@ export default function DispatchTab() {
                   <td className="border border-gray-100 px-2 py-1.5 sticky left-0 bg-white z-10">
                     <div className="flex items-center gap-1.5">
                       <Badge className={`text-[10px] px-1.5 py-0 ${prefixColor(route.prefix)}`}>{route.prefix ?? "?"}</Badge>
-                      <span className="text-xs font-medium text-gray-800 truncate max-w-[80px]" title={route.route_id}>
+                      <span className="text-xs font-medium text-gray-800 truncate max-w-[70px]" title={route.route_id}>
                         {route.route_id.replace(route.prefix + "-", "")}
                       </span>
                       {route.stations && <span className="text-[10px] text-gray-400">{route.stations}站</span>}
+                      {onViewSchedule && (
+                        <button
+                          onClick={() => onViewSchedule(route.route_id)}
+                          className="text-gray-300 hover:text-blue-500 transition-colors shrink-0"
+                          title="查看班表"
+                        >
+                          <CalendarDays className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
                   </td>
-                  {data.dates.map(d => <DriverCell key={d} entry={route.dates[d]} onSave={handleSave} />)}
+                  {data.dates.map(d => (
+                    <FleetCell key={d} entry={route.dates[d]} fleets={fleets} onAssign={handleFleetAssign} />
+                  ))}
                 </tr>
               ))}
             </tbody>

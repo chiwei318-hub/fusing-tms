@@ -683,6 +683,21 @@ fusingaoRouter.put("/routes/:id/dispatch-code", async (req, res) => {
   }
 });
 
+// PUT /fusingao/routes/:id/assign-fleet  — admin assigns fleet to a route order
+fusingaoRouter.put("/routes/:id/assign-fleet", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fleet_id } = req.body as { fleet_id: number | null };
+    await db.execute(sql`
+      UPDATE orders SET fusingao_fleet_id = ${fleet_id ?? null}
+      WHERE id = ${Number(id)} AND route_id IS NOT NULL
+    `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/control-tower  — real-time dispatch control dashboard
 fusingaoRouter.get("/control-tower", async (req, res) => {
   try {
