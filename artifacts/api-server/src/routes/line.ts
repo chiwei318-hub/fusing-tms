@@ -276,27 +276,39 @@ router.post("/line/webhook", async (req, res) => {
                 .limit(1);
               if (drivers.length) {
                 const driver = drivers[0];
-                // 綁定同時自動開通（Python: is_active=True, is_verified=True）
-                // 能輸入正確電話即視為身份驗證通過
+
+                // Python: if not driver_info.get('is_active', False): return "🚫 帳號已停權"
+                // 停權司機（由管理員在名冊中控管）→ 拒絕綁定
+                if (driver.isActive === false) {
+                  await replyTextMessage(replyToken, [
+                    `🚫 抱歉，您的帳號已停權。`,
+                    ``,
+                    `請聯繫管理員了解詳情。`,
+                  ].join("\n"));
+                  console.log(`[LINE binding] ⛔ Driver #${driver.id} ${driver.name} is inactive — binding rejected`);
+                  continue;
+                }
+
+                // 在職司機 → 綁定 LINE UID（不變動 is_active，由管理員維護名冊狀態）
                 await db.update(driversTable)
-                  .set({ lineUserId: userId, isActive: true })
+                  .set({ lineUserId: userId })
                   .where(eq(driversTable.phone, phone));
 
-                const wasInactive = driver.isActive === false;
                 await replyTextMessage(replyToken, [
-                  `✅ 綁定成功！`,
-                  `司機：${driver.name}（${phone}）`,
+                  `✅ 驗證成功！${driver.name} 歡迎加入富詠運輸系統。`,
                   ``,
-                  wasInactive
-                    ? `🟢 帳號已同步開通，現在起可以接收派車通知與搶單！`
-                    : `現在起您可以正常接收派車通知。`,
-                  ``,
+                  `現在起可以接收派車通知與搶單。`,
                   `發送「說明」查看可用指令。`,
                 ].join("\n"));
 
-                console.log(`[LINE binding] ✅ Driver #${driver.id} ${driver.name} bound + activated`);
+                console.log(`[LINE binding] ✅ Driver #${driver.id} ${driver.name} bound to LINE ${userId}`);
               } else {
-                await replyTextMessage(replyToken, `❌ 找不到電話 ${phone} 的帳號。\n\n請確認電話號碼是否正確，或聯繫客服協助綁定。`);
+                // Python: "手機號碼不在核可名冊內，請聯繫黃老闆"
+                await replyTextMessage(replyToken, [
+                  `❌ 驗證失敗：手機號碼 ${phone} 不在核可名冊內。`,
+                  ``,
+                  `請聯繫管理員確認您的資料是否已登錄。`,
+                ].join("\n"));
               }
             }
           } catch (err) {
