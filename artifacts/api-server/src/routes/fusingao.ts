@@ -13,14 +13,14 @@ export const fusingaoRouter = Router();
 
 // ── DB Migration: add new columns to fusingao_fleets if absent ───────────────
 async function ensureFusingaoFleetColumns() {
-  const cols = [
-    "commission_rate NUMERIC(5,2) DEFAULT 15",
-    "bank_name TEXT",
-    "bank_account TEXT",
+  const alterStatements = [
+    sql`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(5,2) DEFAULT 15`,
+    sql`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS bank_name TEXT`,
+    sql`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS bank_account TEXT`,
   ];
-  for (const col of cols) {
+  for (const stmt of alterStatements) {
     try {
-      await db.execute(sql.raw(`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS ${col}`));
+      await db.execute(stmt);
     } catch { /* ignore */ }
   }
 }
