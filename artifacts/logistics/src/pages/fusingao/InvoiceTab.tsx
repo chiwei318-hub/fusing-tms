@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Download, RefreshCw, FileText, AlertCircle,
   Sheet, CheckCircle2, ArrowRight, AlertTriangle,
+  Plus, Trash2, Edit2, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -99,6 +102,13 @@ export default function InvoiceTab() {
     () => localStorage.getItem("invoice_last_sheet_sync")
   );
 
+  // Edit/add manual item dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editIndex, setEditIndex] = useState<number | null>(null); // null = new item
+  const [editLabel, setEditLabel] = useState("");
+  const [editRate, setEditRate] = useState("0");
+  const [editGross, setEditGross] = useState("0");
+
   // Load persisted manual entries from localStorage
   // Always apply current DEFAULT commissionRates so rule changes take effect immediately
   useEffect(() => {
@@ -170,6 +180,46 @@ export default function InvoiceTab() {
     });
     setSheetDialogOpen(false);
   };
+
+  // ── Manual item CRUD ─────────────────────────────────────────────────────
+  const openAddDialog = () => {
+    setEditIndex(null);
+    setEditLabel("");
+    setEditRate("0");
+    setEditGross("0");
+    setEditDialogOpen(true);
+  };
+
+  const openEditDialog = (i: number) => {
+    const item = manual[i];
+    setEditIndex(i);
+    setEditLabel(item.label);
+    setEditRate(String(item.commissionRate));
+    setEditGross(String(item.gross));
+    setEditDialogOpen(true);
+  };
+
+  const saveEditDialog = () => {
+    if (!editLabel.trim()) return;
+    const item: ManualItem = {
+      label: editLabel.trim(),
+      gross: Number(editGross) || 0,
+      commissionRate: Number(editRate) || 0,
+    };
+    const next = editIndex === null
+      ? [...manual, item]
+      : manual.map((m, i) => i === editIndex ? item : m);
+    saveManual(next);
+    setEditDialogOpen(false);
+  };
+
+  const deleteManualItem = (i: number) => {
+    const next = manual.filter((_, idx) => idx !== i);
+    saveManual(next);
+  };
+
+  // ── Print ─────────────────────────────────────────────────────────────────
+  const handlePrint = () => window.print();
 
   // ── Calculations ─────────────────────────────────────────────────────────
   const autoCategories: (Category & { fusingaoAmt: number; netAmt: number })[] = [];
@@ -308,8 +358,11 @@ export default function InvoiceTab() {
           <Sheet className="h-3.5 w-3.5 mr-1" />
           從試算表同步
         </Button>
+        <Button size="sm" variant="outline" onClick={handlePrint} className="border-gray-300 text-gray-600 hover:bg-gray-50 print:hidden">
+          <Printer className="h-3.5 w-3.5 mr-1" /> 列印
+        </Button>
         <Button size="sm" onClick={exportExcel} disabled={exporting || !data}
-          className="bg-orange-500 hover:bg-orange-600 text-white">
+          className="bg-orange-500 hover:bg-orange-600 text-white print:hidden">
           <Download className="h-3.5 w-3.5 mr-1" /> 匯出 Excel
         </Button>
       </div>
@@ -347,13 +400,14 @@ export default function InvoiceTab() {
                 <th className="text-right px-4 py-2">趟次總金額</th>
                 <th className="text-right px-4 py-2">福星高 ({commissionPct}%)</th>
                 <th className="text-right px-4 py-2 text-orange-700">實際金額（富詠收）</th>
+                <th className="w-16 print:hidden" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-center py-8 text-gray-400">載入中...</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-gray-400">載入中...</td></tr>
               ) : autoCategories.length === 0 && !loading ? (
-                <tr><td colSpan={5} className="text-center py-4 text-gray-400">本月無路線資料</td></tr>
+                <tr><td colSpan={6} className="text-center py-4 text-gray-400">本月無路線資料</td></tr>
               ) : autoCategories.map(cat => (
                 <tr key={cat.name} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-2 font-medium">{cat.name}
@@ -363,13 +417,15 @@ export default function InvoiceTab() {
                   <td className="px-4 py-2 text-right font-mono">{fmt(cat.gross)}</td>
                   <td className="px-4 py-2 text-right font-mono text-red-500">({fmt(cat.fusingaoAmt)})</td>
                   <td className="px-4 py-2 text-right font-mono font-semibold text-orange-700">{fmt(cat.netAmt)}</td>
+                  <td className="print:hidden" />
                 </tr>
               ))}
 
               {/* Manual rows */}
               {manualCalc.map((item, i) => (
-                <tr key={item.label} className="border-b bg-yellow-50/40 hover:bg-yellow-50">
-                  <td className="px-4 py-2 font-medium text-gray-700">{item.label}
+                <tr key={`${item.label}-${i}`} className="border-b bg-yellow-50/40 hover:bg-yellow-50 group">
+                  <td className="px-4 py-2 font-medium text-gray-700">
+                    {item.label}
                     <span className="ml-1 text-xs text-gray-400">（手動）</span>
                   </td>
                   <td className="px-4 py-2 text-right text-gray-400">—</td>
@@ -397,8 +453,38 @@ export default function InvoiceTab() {
                   <td className="px-4 py-2 text-right font-mono font-semibold text-orange-700">
                     {item.gross > 0 ? fmt(item.netAmt) : "—"}
                   </td>
+                  <td className="px-2 py-1 print:hidden">
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-center">
+                      <button
+                        onClick={() => openEditDialog(i)}
+                        className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                        title="修改"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteManualItem(i)}
+                        className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                        title="刪除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
+
+              {/* Add row button */}
+              <tr className="border-b print:hidden">
+                <td colSpan={6} className="px-4 py-2">
+                  <button
+                    onClick={openAddDialog}
+                    className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded px-2 py-1 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 新增手動欄位
+                  </button>
+                </td>
+              </tr>
 
               {/* Totals */}
               <tr className="border-t-2 border-orange-200 bg-orange-50 font-bold">
@@ -407,6 +493,7 @@ export default function InvoiceTab() {
                 <td className="px-4 py-3 text-right font-mono">{fmt(totalGross)}</td>
                 <td className="px-4 py-3 text-right font-mono text-red-600">({fmt(totalFusingao)})</td>
                 <td className="px-4 py-3 text-right font-mono text-orange-700 text-base">{fmt(totalNet)}</td>
+                <td className="print:hidden" />
               </tr>
             </tbody>
           </table>
@@ -414,19 +501,23 @@ export default function InvoiceTab() {
       </Card>
 
       {/* Invoice summary */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden border-2 border-orange-200">
         <div className="grid grid-cols-3 divide-x">
-          {[
-            { label: "未稅金額",   value: fmt(totalNet),     sub: "富詠實收（未稅）",    cls: "text-gray-800" },
-            { label: "營業稅（5%）", value: fmt(tax),        sub: "加值稅",             cls: "text-gray-600" },
-            { label: "請款金額",   value: fmt(invoiceTotal), sub: "開立發票金額（含稅）", cls: "text-orange-600 text-xl" },
-          ].map(k => (
-            <div key={k.label} className="p-4 text-center">
-              <p className="text-xs text-gray-500 mb-1">{k.label}</p>
-              <p className={`font-bold ${k.cls}`}>{k.value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{k.sub}</p>
-            </div>
-          ))}
+          <div className="p-4 text-center">
+            <p className="text-xs text-gray-500 mb-1">未稅金額</p>
+            <p className="font-bold text-gray-800 text-lg">{fmt(totalNet)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">富詠實收（未稅）</p>
+          </div>
+          <div className="p-4 text-center">
+            <p className="text-xs text-gray-500 mb-1">營業稅（5%）</p>
+            <p className="font-bold text-gray-600 text-lg">{fmt(tax)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">加值稅</p>
+          </div>
+          <div className="p-5 text-center bg-orange-50">
+            <p className="text-xs font-semibold text-orange-600 mb-1">★ 請款金額（含稅）</p>
+            <p className="font-black text-orange-600 text-3xl tracking-tight">NT$ {fmt(invoiceTotal)}</p>
+            <p className="text-xs text-orange-400 mt-1">開立發票金額</p>
+          </div>
         </div>
       </Card>
 
@@ -439,6 +530,70 @@ export default function InvoiceTab() {
           <span className="col-span-2">送達地址：105406 台北市敦化北路207號10樓之1B　財務收</span>
         </div>
       </Card>
+
+      {/* ── Add / Edit manual item dialog ───────────────────────────────── */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              {editIndex === null
+                ? <><Plus className="w-4 h-4 text-blue-600" /> 新增手動欄位</>
+                : <><Edit2 className="w-4 h-4 text-blue-600" /> 修改欄位</>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">欄位名稱 *</Label>
+              <Input
+                value={editLabel}
+                onChange={e => setEditLabel(e.target.value)}
+                placeholder="例：加班費、里程補貼…"
+                className="text-sm"
+                onKeyDown={e => e.key === "Enter" && saveEditDialog()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">金額（元）</Label>
+              <Input
+                type="number"
+                min={0}
+                value={editGross}
+                onChange={e => setEditGross(e.target.value)}
+                className="text-sm font-mono"
+                onKeyDown={e => e.key === "Enter" && saveEditDialog()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">福星高抽成（%）</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={editRate}
+                  onChange={e => setEditRate(e.target.value)}
+                  className="text-sm font-mono w-24"
+                  onKeyDown={e => e.key === "Enter" && saveEditDialog()}
+                />
+                <span className="text-xs text-gray-500">填 0 代表不抽成</span>
+              </div>
+              {Number(editGross) > 0 && Number(editRate) > 0 && (
+                <p className="text-xs text-gray-400">
+                  預計扣除：{fmt(Math.round(Number(editGross) * Number(editRate) / 100))} 元
+                  → 實收 {fmt(Math.round(Number(editGross) * (1 - Number(editRate) / 100)))} 元
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(false)}>取消</Button>
+            <Button size="sm" onClick={saveEditDialog} disabled={!editLabel.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white">
+              {editIndex === null ? "新增" : "儲存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Sheet Import Dialog ─────────────────────────────────────────── */}
       <Dialog open={sheetDialogOpen} onOpenChange={setSheetDialogOpen}>
