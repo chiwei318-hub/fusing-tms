@@ -154,9 +154,18 @@ function DashboardTab() {
     if (!assigningRoute || !assignDriverId) return;
     setAssigning(true);
     try {
-      await api("POST", `/orders/${assigningRoute.id}/assign`, { driver_id: Number(assignDriverId) });
-      const driverName = (data?.drivers ?? []).find((d: any) => d.id === Number(assignDriverId))?.name ?? "";
-      toast({ title: "指派成功", description: `${assigningRoute.route_id} 已指派給 ${driverName}` });
+      const driverId = Number(assignDriverId);
+      const driverName = (data?.drivers ?? []).find((d: any) => d.id === driverId)?.name ?? "";
+      if (assigningRoute._source === "trip") {
+        // fleet_trips 指派：PATCH /trips/:id
+        await api("PATCH", `/trips/${assigningRoute.id}`, { driver_id: driverId, status: "assigned" });
+        const label = assigningRoute.notes?.split("｜")[0]?.trim() ?? `車趟 #${assigningRoute.id}`;
+        toast({ title: "指派成功", description: `${label} 已指派給 ${driverName}` });
+      } else {
+        // 蝦皮訂單指派：POST /orders/:id/assign
+        await api("POST", `/orders/${assigningRoute.id}/assign`, { driver_id: driverId });
+        toast({ title: "指派成功", description: `${assigningRoute.route_id} 已指派給 ${driverName}` });
+      }
       setAssigningRoute(null);
       setAssignDriverId("");
       await load();
@@ -415,6 +424,8 @@ function DashboardTab() {
   const orders = data?.active_orders ?? [];
   const leaves = data?.pending_leaves ?? [];
   const todayRoutes: any[] = data?.today_unassigned_routes ?? [];
+  const todayTrips: any[] = data?.today_unassigned_trips ?? [];
+  const unassignedCount = todayRoutes.length + todayTrips.length;
   const onlineCount = drivers.filter((d: any) => d.status !== "offline").length;
   const busyCount = drivers.filter((d: any) => d.status === "busy").length;
   const availableCount = drivers.filter((d: any) => d.status === "available" && !d.on_leave_today).length;
@@ -445,7 +456,7 @@ function DashboardTab() {
               { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "可出車", value: availableCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50" },
               { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
-              { label: "今日未派班表", value: todayRoutes.length, icon: Package2, color: todayRoutes.length > 0 ? "text-red-600" : "text-slate-400", bg: todayRoutes.length > 0 ? "bg-red-50" : "bg-slate-50" },
+              { label: "今日未派班表", value: unassignedCount, icon: Package2, color: unassignedCount > 0 ? "text-red-600" : "text-slate-400", bg: unassignedCount > 0 ? "bg-red-50" : "bg-slate-50" },
             ].map(c => (
               <Card key={c.label} className="border-0 shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -560,31 +571,32 @@ function DashboardTab() {
           </Card>
 
           {/* 今日蝦皮未派車趟 */}
-          <Card className={`border-0 shadow-sm ${todayRoutes.length > 0 ? "ring-1 ring-red-200" : ""}`}>
+          <Card className={`border-0 shadow-sm ${unassignedCount > 0 ? "ring-1 ring-red-200" : ""}`}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Package2 className={`w-4 h-4 ${todayRoutes.length > 0 ? "text-red-500" : "text-slate-400"}`} />
+                  <Package2 className={`w-4 h-4 ${unassignedCount > 0 ? "text-red-500" : "text-slate-400"}`} />
                   <CardTitle className="text-sm font-semibold text-slate-600">
-                    今日蝦皮未派車趟
+                    今日未派班表
                   </CardTitle>
-                  {todayRoutes.length > 0 && (
-                    <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{todayRoutes.length}</span>
+                  {unassignedCount > 0 && (
+                    <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{unassignedCount}</span>
                   )}
                 </div>
                 <span className="text-[11px] text-slate-400">{new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric" })} 尚未指派司機</span>
               </div>
             </CardHeader>
             <CardContent>
-              {todayRoutes.length === 0 ? (
+              {unassignedCount === 0 ? (
                 <div className="flex items-center justify-center gap-2 py-5 text-slate-400">
                   <CheckCircle2 className="w-4 h-4 text-green-400" />
                   <span className="text-sm">今日所有班表路線均已派車</span>
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* 蝦皮訂單（orders 表） */}
                   {todayRoutes.map((r: any) => (
-                    <div key={r.id} className="flex items-center gap-3 p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                    <div key={`order-${r.id}`} className="flex items-center gap-3 p-2.5 bg-red-50 border border-red-100 rounded-xl">
                       <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center shrink-0">
                         <Package2 className="w-4 h-4 text-red-500" />
                       </div>
@@ -615,6 +627,33 @@ function DashboardTab() {
                       <button
                         onClick={() => { setAssigningRoute(r); setAssignDriverId(""); }}
                         className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+                      >
+                        <Users className="w-3 h-3" />指派
+                      </button>
+                    </div>
+                  ))}
+                  {/* 班表匯入車趟（fleet_trips 表，status=pending，driver_id IS NULL） */}
+                  {todayTrips.map((t: any) => (
+                    <div key={`trip-${t.id}`} className="flex items-center gap-3 p-2.5 bg-orange-50 border border-orange-100 rounded-xl">
+                      <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
+                        <ClipboardList className="w-4 h-4 text-orange-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-slate-700">{t.notes?.split("｜")[0]?.trim() ?? `車趟 #${t.id}`}</span>
+                          {t.notes?.includes("｜") && (
+                            <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{t.notes.split("｜")[1]?.trim()}</span>
+                          )}
+                          {t.notes?.split("｜")[2]?.trim() && (
+                            <span className="text-[10px] text-slate-500">{t.notes.split("｜")[2]?.trim()}</span>
+                          )}
+                          <span className="text-[10px] text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded font-medium">班表匯入</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{t.pickup_address}</p>
+                      </div>
+                      <button
+                        onClick={() => { setAssigningRoute({ ...t, _source: "trip" }); setAssignDriverId(""); }}
+                        className="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
                       >
                         <Users className="w-3 h-3" />指派
                       </button>
@@ -885,26 +924,54 @@ function DashboardTab() {
           {assigningRoute && (
             <div className="space-y-4 py-1">
               {/* Route info */}
-              <div className="bg-slate-50 rounded-xl p-3 space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-sm font-bold text-slate-800">{assigningRoute.route_id}</span>
-                  {assigningRoute.dispatch_dock && assigningRoute.dispatch_dock !== "—" && (
-                    <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">碼頭 {assigningRoute.dispatch_dock}</span>
-                  )}
-                  {(assigningRoute.station_count ?? 0) > 0 && (
-                    <span className="text-[10px] text-slate-500">{assigningRoute.station_count} 站</span>
-                  )}
-                  {assigningRoute.required_vehicle_type && (
-                    <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded font-medium">{assigningRoute.required_vehicle_type}</span>
-                  )}
-                  {assigningRoute.shopee_rate && (
-                    <span className="text-[10px] text-green-700 font-semibold">NT${Number(assigningRoute.shopee_rate).toLocaleString()}</span>
-                  )}
-                </div>
-                {assigningRoute.pickup_time && (
-                  <div className="flex items-center gap-1 text-xs text-slate-500">
-                    <Clock className="w-3 h-3" /> 出發時間：{assigningRoute.pickup_time}
-                  </div>
+              <div className={`rounded-xl p-3 space-y-1.5 ${assigningRoute._source === "trip" ? "bg-orange-50" : "bg-slate-50"}`}>
+                {assigningRoute._source === "trip" ? (
+                  /* 班表車趟：顯示 notes 解析出的路線號 + 車型 + 站數 */
+                  <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm font-bold text-slate-800">
+                        {assigningRoute.notes?.split("｜")[0]?.trim() ?? `車趟 #${assigningRoute.id}`}
+                      </span>
+                      {assigningRoute.notes?.split("｜")[1]?.trim() && (
+                        <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded font-medium">
+                          {assigningRoute.notes.split("｜")[1]?.trim()}
+                        </span>
+                      )}
+                      {assigningRoute.notes?.split("｜")[2]?.trim() && (
+                        <span className="text-[10px] text-slate-500">{assigningRoute.notes.split("｜")[2]?.trim()}</span>
+                      )}
+                      <span className="text-[10px] text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded font-medium">班表匯入</span>
+                    </div>
+                    {assigningRoute.pickup_address && (
+                      <div className="flex items-center gap-1 text-xs text-slate-500">
+                        <Clock className="w-3 h-3" /> {assigningRoute.pickup_address}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* 蝦皮訂單：顯示 route_id / dock / station_count */
+                  <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm font-bold text-slate-800">{assigningRoute.route_id}</span>
+                      {assigningRoute.dispatch_dock && assigningRoute.dispatch_dock !== "—" && (
+                        <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">碼頭 {assigningRoute.dispatch_dock}</span>
+                      )}
+                      {(assigningRoute.station_count ?? 0) > 0 && (
+                        <span className="text-[10px] text-slate-500">{assigningRoute.station_count} 站</span>
+                      )}
+                      {assigningRoute.required_vehicle_type && (
+                        <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded font-medium">{assigningRoute.required_vehicle_type}</span>
+                      )}
+                      {assigningRoute.shopee_rate && (
+                        <span className="text-[10px] text-green-700 font-semibold">NT${Number(assigningRoute.shopee_rate).toLocaleString()}</span>
+                      )}
+                    </div>
+                    {assigningRoute.pickup_time && (
+                      <div className="flex items-center gap-1 text-xs text-slate-500">
+                        <Clock className="w-3 h-3" /> 出發時間：{assigningRoute.pickup_time}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

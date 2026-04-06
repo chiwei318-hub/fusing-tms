@@ -261,12 +261,27 @@ fleetOwnerRouter.get("/dashboard", async (req, res) => {
      ORDER BY o.route_id`
   );
 
+  // 今日班表未指派車趟：fleet_trips status='pending' driver_id IS NULL trip_date = today
+  const todayTrips = await pool.query(
+    `SELECT
+       t.id, t.notes, t.pickup_address, t.delivery_address,
+       t.trip_date, t.amount, t.status, t.customer_name
+     FROM fleet_trips t
+     WHERE t.franchisee_id = $1
+       AND t.driver_id IS NULL
+       AND t.status = 'pending'
+       AND t.trip_date = CURRENT_DATE
+     ORDER BY t.id`,
+    [fid]
+  );
+
   res.json({
     ok: true,
     drivers: drivers.rows,
     active_orders: orders.rows,
     pending_leaves: leaves.rows,
     today_unassigned_routes: todayRoutes.rows,
+    today_unassigned_trips: todayTrips.rows,
   });
 });
 
