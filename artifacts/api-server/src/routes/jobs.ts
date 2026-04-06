@@ -91,6 +91,107 @@ jobsRouter.get("/jobs", async (req, res) => {
 });
 
 /**
+ * GET /api/get-task
+ * FlutterFlow 專用端點：回傳最新一筆待派送任務（格式對應 FastAPI 版本）
+ *
+ * Query params:
+ *   driver_id - 指定司機 ID，只回傳該司機被指派的任務（選填）
+ *   order_id  - 直接查詢指定訂單（選填）
+ *
+ * 回傳 FlutterFlow 直接可用的扁平結構（無巢狀物件）
+ */
+jobsRouter.get("/get-task", async (req, res) => {
+  try {
+    const { driver_id, order_id } = req.query as Record<string, string>;
+
+    const conditions: string[] = ["o.status NOT IN ('cancelled', 'delivered')"];
+    const params: unknown[] = [];
+
+    if (order_id) {
+      params.push(order_id);
+      conditions.push(`o.id = $${params.length}`);
+    } else if (driver_id) {
+      params.push(parseInt(driver_id, 10));
+      conditions.push(`o.driver_id = $${params.length}`);
+    } else {
+      conditions.push(`o.status IN ('pending', 'assigned', 'in_transit')`);
+    }
+
+    const result = await pool.query(`
+      SELECT
+        o.id                  AS order_id,
+        o.customer_name,
+        o.delivery_address    AS address,
+        o.is_cold_chain,
+        o.cargo_description,
+        o.status,
+        o.notes,
+        o.pickup_time,
+        d.phone               AS contact_phone
+      FROM orders o
+      LEFT JOIN drivers d ON d.id = o.driver_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY o.created_at DESC
+      LIMIT 1
+    `, params);
+
+    if (result.rows.length === 0) {
+      return res.json({
+        order_id:      null,
+        customer_name: null,
+        address:       null,
+        temp_type:     null,
+        contact_phone: null,
+        lat:           null,
+        lng:           null,
+        status:        "無待派任務",
+        note:          null,
+      });
+    }
+
+    const r = result.rows[0] as any;
+
+    const tempTypeMap: Record<string, string> = {
+      true:  "冷藏 2-8°C",
+      false: "常溫",
+    };
+
+    res.json({
+      order_id:      r.order_id,
+      customer_name: r.customer_name ?? "",
+      address:       r.address ?? "",
+      temp_type:     tempTypeMap[String(r.is_cold_chain)] ?? "常溫",
+      contact_phone: r.contact_phone ?? "",
+      lat:           null,
+      lng:           null,
+      status:        r.status ?? "",
+      note:          r.notes ?? r.cargo_description ?? "",
+    });
+  } catch (err) {
+    console.error("[get-task] error:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/**
+ * GET /api/get-task/sample
+ * 固定回傳示範任務（格式與 FastAPI 版本完全相同）
+ */
+jobsRouter.get("/get-task/sample", (_req, res) => {
+  res.json({
+    order_id:      "FT-20260405-001",
+    customer_name: "富詠冷鏈物流",
+    address:       "桃園市平鎮區新光路三段150-3號",
+    temp_type:     "冷凍 -18°C",
+    contact_phone: "0912-345-678",
+    lat:           24.9283,
+    lng:           121.2165,
+    status:        "待配送",
+    note:          "需在 14:00 前送達，卸貨區在後門。",
+  });
+});
+
+/**
  * GET /api/jobs/sample
  * 固定回傳測試用示範資料（不需資料庫，方便快速驗證串接）
  */
