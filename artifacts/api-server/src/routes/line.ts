@@ -233,8 +233,8 @@ router.post("/line/webhook", async (req, res) => {
         const replyToken = event.replyToken;
         if (!userId) continue;
 
-        // 格式：「綁定 0912345678」或「綁定0912345678」
-        const bindMatch = text.match(/^綁定\s*([0-9]{8,12})$/);
+        // 格式：「綁定 0912345678」「綁定0912345678」「綁定:0912345678」（Python 冒號格式）
+        const bindMatch = text.match(/^綁定[:\uff1a]?\s*([0-9]{8,12})$/);
         if (bindMatch) {
           const phone = bindMatch[1];
           try {
@@ -275,8 +275,26 @@ router.post("/line/webhook", async (req, res) => {
                 .where(eq(driversTable.phone, phone))
                 .limit(1);
               if (drivers.length) {
-                await db.update(driversTable).set({ lineUserId: userId }).where(eq(driversTable.phone, phone));
-                await replyTextMessage(replyToken, `✅ 司機帳號綁定成功！\n已將 ${phone} 與您的 LINE 帳號連結。\n\n之後派車通知都會自動發送到這裡，您可以直接在 LINE 上接單或拒單。`);
+                const driver = drivers[0];
+                // 綁定同時自動開通（Python: is_active=True, is_verified=True）
+                // 能輸入正確電話即視為身份驗證通過
+                await db.update(driversTable)
+                  .set({ lineUserId: userId, isActive: true })
+                  .where(eq(driversTable.phone, phone));
+
+                const wasInactive = driver.isActive === false;
+                await replyTextMessage(replyToken, [
+                  `✅ 綁定成功！`,
+                  `司機：${driver.name}（${phone}）`,
+                  ``,
+                  wasInactive
+                    ? `🟢 帳號已同步開通，現在起可以接收派車通知與搶單！`
+                    : `現在起您可以正常接收派車通知。`,
+                  ``,
+                  `發送「說明」查看可用指令。`,
+                ].join("\n"));
+
+                console.log(`[LINE binding] ✅ Driver #${driver.id} ${driver.name} bound + activated`);
               } else {
                 await replyTextMessage(replyToken, `❌ 找不到電話 ${phone} 的帳號。\n\n請確認電話號碼是否正確，或聯繫客服協助綁定。`);
               }
