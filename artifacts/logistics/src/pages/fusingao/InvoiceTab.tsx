@@ -102,6 +102,14 @@ export default function InvoiceTab() {
     () => localStorage.getItem("invoice_last_sheet_sync")
   );
 
+  // Sheet-sourced auto categories (店配車/NDD/WHNDD) – persisted per month
+  const [sheetAutoItems, setSheetAutoItems] = useState<Category[]>(() => {
+    try {
+      const raw = localStorage.getItem(`invoice_sheet_auto_${months[1]}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+
   // Edit/add manual item dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null); // null = new item
@@ -125,6 +133,11 @@ export default function InvoiceTab() {
     } else {
       setManual(DEFAULT_MANUAL.map(m => ({ ...m })));
     }
+    // Load sheet auto items for this month
+    try {
+      const raw = localStorage.getItem(`invoice_sheet_auto_${month}`);
+      setSheetAutoItems(raw ? JSON.parse(raw) : []);
+    } catch { setSheetAutoItems([]); }
   }, [month]);
 
   const saveManual = useCallback((items: ManualItem[]) => {
@@ -165,18 +178,39 @@ export default function InvoiceTab() {
   };
 
   const applySheetData = (sr: SheetImportResult) => {
-    // Only apply manual items (上收, 招募獎金, 交通罰單補助)
+    // Apply manual items (上收, 招募獎金, 交通罰單補助)
     const next = manual.map(m => {
       const found = sr.items.find(it => it.name === m.label && it.type === "manual");
       return found ? { ...m, gross: found.total } : m;
     });
     saveManual(next);
+
+    // Also save auto items (店配車/NDD/WHNDD) from sheet to localStorage
+    const autoFromSheet: Category[] = sr.items
+      .filter(it => it.type === "auto")
+      .map(it => ({
+        name: it.name,
+        trips: 0,            // sheet doesn't give per-trip breakdown
+        gross: it.total,
+        rate: 0,
+      }));
+    const targetMonth = sr.month || month;
+    setSheetAutoItems(autoFromSheet);
+    localStorage.setItem(`invoice_sheet_auto_${targetMonth}`, JSON.stringify(autoFromSheet));
+
     const now = new Date().toLocaleString("zh-TW");
     setLastSheetSync(now);
     localStorage.setItem("invoice_last_sheet_sync", now);
+
+    const appliedNames = [
+      ...MANUAL_LABELS.filter(l => sr.items.some(it => it.name === l)),
+      ...autoFromSheet.map(a => a.name),
+    ];
     toast({
       title: "已套用試算表資料",
-      description: `已填入${MANUAL_LABELS.filter(l => sr.items.some(it => it.name === l)).join("、")} 的金額`,
+      description: appliedNames.length
+        ? `已填入：${appliedNames.join("、")}`
+        : "無可套用的項目",
     });
     setSheetDialogOpen(false);
   };
@@ -222,18 +256,26 @@ export default function InvoiceTab() {
   const handlePrint = () => window.print();
 
   // ── Calculations ─────────────────────────────────────────────────────────
-  const autoCategories: (Category & { fusingaoAmt: number; netAmt: number })[] = [];
-  const autoGross = data?.autoGross ?? 0;
+  // Merge DB categories with sheet auto overrides.
+  // For each category name, prefer DB data if it has trips > 0; otherwise use sheet.
+  const dbCats = data?.categories ?? [];
+  const mergedCatMap = new Map<string, Category & { fromSheet?: boolean }>();
+  for (const c of dbCats) mergedCatMap.set(c.name, c);
+  for (const s of sheetAutoItems) {
+    if (!mergedCatMap.has(s.name) || (mergedCatMap.get(s.name)!.trips === 0 && s.gross > 0)) {
+      mergedCatMap.set(s.name, { ...s, fromSheet: true });
+    }
+  }
+  const autoGross = Array.from(mergedCatMap.values()).reduce((s, c) => s + c.gross, 0);
   const manualGross = manual.reduce((s, m) => s + m.gross, 0);
   const totalGross = autoGross + manualGross;
   const commissionPct = totalGross >= COMMISSION_THRESHOLD ? 5 : 7;
 
-  if (data) {
-    for (const cat of data.categories) {
-      const fusingaoAmt = Math.round(cat.gross * commissionPct / 100);
-      autoCategories.push({ ...cat, fusingaoAmt, netAmt: cat.gross - fusingaoAmt });
-    }
-  }
+  const autoCategories = Array.from(mergedCatMap.values()).map(cat => ({
+    ...cat,
+    fusingaoAmt: Math.round(cat.gross * commissionPct / 100),
+    netAmt: cat.gross - Math.round(cat.gross * commissionPct / 100),
+  }));
 
   const manualCalc = manual.map(m => ({
     ...m,
@@ -400,24 +442,37 @@ export default function InvoiceTab() {
                 <th className="text-right px-4 py-2">趟次總金額</th>
                 <th className="text-right px-4 py-2">福星高 ({commissionPct}%)</th>
                 <th className="text-right px-4 py-2 text-orange-700">實際金額（富詠收）</th>
-                <th className="w-16 print:hidden" />
+                <th className="text-center px-2 py-2 w-20 print:hidden text-gray-400 font-normal text-xs">來源</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">載入中...</td></tr>
               ) : autoCategories.length === 0 && !loading ? (
-                <tr><td colSpan={6} className="text-center py-4 text-gray-400">本月無路線資料</td></tr>
+                <tr>
+                  <td colSpan={6} className="text-center py-4 text-gray-400">
+                    本月無路線資料（可從試算表同步）
+                  </td>
+                </tr>
               ) : autoCategories.map(cat => (
                 <tr key={cat.name} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium">{cat.name}
-                    <span className="ml-2 text-xs text-gray-400">（@{fmt(cat.rate)}/趟）</span>
+                  <td className="px-4 py-2 font-medium">
+                    {cat.name}
+                    {!cat.fromSheet && cat.rate > 0 && (
+                      <span className="ml-2 text-xs text-gray-400">（@{fmt(cat.rate)}/趟）</span>
+                    )}
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-600">{cat.trips}</td>
+                  <td className="px-4 py-2 text-right text-gray-600">
+                    {cat.fromSheet ? "—" : cat.trips}
+                  </td>
                   <td className="px-4 py-2 text-right font-mono">{fmt(cat.gross)}</td>
                   <td className="px-4 py-2 text-right font-mono text-red-500">({fmt(cat.fusingaoAmt)})</td>
                   <td className="px-4 py-2 text-right font-mono font-semibold text-orange-700">{fmt(cat.netAmt)}</td>
-                  <td className="print:hidden" />
+                  <td className="px-2 py-2 print:hidden">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${cat.fromSheet ? "bg-green-50 text-green-600 border border-green-200" : "bg-blue-50 text-blue-600 border border-blue-200"}`}>
+                      {cat.fromSheet ? "試算表" : "系統"}
+                    </span>
+                  </td>
                 </tr>
               ))}
 
@@ -685,8 +740,12 @@ export default function InvoiceTab() {
                             <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
                               {sysNoCommission ? fmt(item.total) : fmt(item.net)}
                             </td>
-                            <td className="px-3 py-2 text-center text-xs text-gray-400">
-                              {item.type === "auto" ? "系統計算" : item.type === "manual" ? (
+                            <td className="px-3 py-2 text-center text-xs">
+                              {item.type === "auto" ? (
+                                <span className="text-green-600 flex items-center justify-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" /> 套用
+                                </span>
+                              ) : item.type === "manual" ? (
                                 changed ? (
                                   <span className="flex items-center gap-1 text-amber-600">
                                     <AlertTriangle className="w-3 h-3" />
