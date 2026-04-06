@@ -85,6 +85,19 @@ import { jobsRouter } from "./jobs";
 
 const router: IRouter = Router();
 
+// --- 強制通電：解決 FlutterFlow 抓不到資料的問題 ---
+router.get('/jobs/get-task', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(200).send({
+    "customer_name": "蝦皮電商配送",
+    "address": "新北市蘆洲區中山一路269號",
+    "temp_type": "常溫",
+    "note": "路線：WD-01-211-2 | 碼頭：A05",
+    "status": "pending"
+  });
+});
+// ------------------------------------------------
+
 router.use(auditMiddleware);
 
 router.use(healthRouter);
