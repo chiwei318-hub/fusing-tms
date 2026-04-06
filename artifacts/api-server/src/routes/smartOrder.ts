@@ -673,6 +673,219 @@ async function runAutoDispatch(
   }
 }
 
+// ─── POST /api/smart-quote (enhanced) ─────────────────────────────────────────
+// Override the existing smart-quote with richer historical + address analysis
+smartOrderRouter.post("/smart-quote/v2", async (req, res) => {
+  try {
+    const schema = z.object({
+      distanceKm: z.coerce.number().min(0).optional(),
+      cargoWeightKg: z.coerce.number().min(0).optional(),
+      vehicleType: z.string().optional(),
+      needTailgate: z.boolean().optional(),
+      needHydraulicPallet: z.boolean().optional(),
+      waitingHours: z.coerce.number().min(0).optional(),
+      isColdChain: z.boolean().optional(),
+      urgencyFactor: z.number().min(1).max(3).optional(),
+      pickupAddress: z.string().optional(),
+      deliveryAddress: z.string().optional(),
+      pickupTime: z.string().optional(),
+    });
+    const p = schema.parse(req.body);
+    const cfg = await getConfig();
+
+    // Estimate distance from addresses if distanceKm not given
+    let distKm = p.distanceKm ?? 20;
+    if (!p.distanceKm && p.pickupAddress && p.deliveryAddress) {
+      const pickupLoc = geocodeAddress(p.pickupAddress);
+      const deliveryLoc = geocodeAddress(p.deliveryAddress);
+      if (pickupLoc && deliveryLoc) {
+        distKm = Math.round(haversine(pickupLoc.lat, pickupLoc.lng, deliveryLoc.lat, deliveryLoc.lng) * 10) / 10;
+        // Road distance is typically 1.25x straight line
+        distKm = Math.round(distKm * 1.25 * 10) / 10;
+      }
+    }
+
+    const extras = (p.needTailgate ? 800 : 0) + (p.needHydraulicPallet ? 600 : 0)
+      + (p.waitingHours && p.waitingHours > 1 ? (p.waitingHours - 1) * 500 : 0)
+      + (p.isColdChain ? 1500 : 0);
+
+    const baseRaw = calcBasePrice(distKm, p.vehicleType ?? "箱型車", p.cargoWeightKg ?? 0, extras);
+    const profitRate = parseFloat(cfg.base_profit_rate ?? "25") / 100;
+    const minProfitRate = parseFloat(cfg.min_profit_rate ?? "10") / 100;
+    const peakMult = getPeakMultiplier(cfg, p.pickupTime);
+    const urgencyMult = p.urgencyFactor ?? 1;
+
+    const suggestedPrice = Math.round(baseRaw * (1 + profitRate) * urgencyMult);
+    const minPrice = Math.round(baseRaw * (1 + minProfitRate));
+    const peakPrice = (peakMult > 1 || urgencyMult > 1)
+      ? Math.round(suggestedPrice * Math.max(peakMult, urgencyMult))
+      : null;
+    const coldChainSurcharge = p.isColdChain ? 1500 : 0;
+
+    // Historical price comparison: similar orders ±30% distance, same vehicle type
+    const histRows = await db.execute(sql`
+      SELECT total_fee, suggested_price, distance_km, created_at, pickup_address, delivery_address
+      FROM orders
+      WHERE status NOT IN ('cancelled')
+        AND (total_fee > 0 OR suggested_price > 0)
+        AND vehicle_type = ${p.vehicleType ?? "箱型車"}
+        AND distance_km BETWEEN ${distKm * 0.7} AND ${distKm * 1.3}
+        AND created_at > NOW() - INTERVAL '90 days'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+
+    const histPrices = (histRows.rows as any[])
+      .map(r => Number(r.total_fee ?? r.suggested_price))
+      .filter(v => v > 0);
+    const histAvg = histPrices.length > 0
+      ? Math.round(histPrices.reduce((a, b) => a + b, 0) / histPrices.length)
+      : null;
+    const histMin = histPrices.length > 0 ? Math.min(...histPrices) : null;
+    const histMax = histPrices.length > 0 ? Math.max(...histPrices) : null;
+
+    // Market position analysis
+    let marketPosition: "below" | "market" | "above" | null = null;
+    if (histAvg) {
+      if (suggestedPrice < histAvg * 0.9) marketPosition = "below";
+      else if (suggestedPrice > histAvg * 1.1) marketPosition = "above";
+      else marketPosition = "market";
+    }
+
+    return res.json({
+      estimatedDistanceKm: distKm,
+      breakdown: {
+        base: baseRaw,
+        coldChainSurcharge,
+        urgencyMultiplier: urgencyMult,
+        peakMultiplier: peakMult,
+        isPeakHour: peakMult > 1,
+        profitMargin: Math.round(baseRaw * profitRate),
+        suggested: suggestedPrice,
+        min: minPrice,
+        peak: peakPrice,
+        withTax: Math.round(suggestedPrice * 1.05),
+        expiresAt: new Date(Date.now() + 30 * 60000).toISOString(),
+      },
+      historical: histPrices.length > 0 ? {
+        count: histPrices.length,
+        avg: histAvg,
+        min: histMin,
+        max: histMax,
+        marketPosition,
+      } : null,
+    });
+  } catch (e: any) {
+    return res.status(400).json({ error: e.message ?? "Bad request" });
+  }
+});
+
+// ─── GET /api/smart-dispatch/nearby-drivers ───────────────────────────────────
+
+smartOrderRouter.get("/smart-dispatch/nearby-drivers", async (req, res) => {
+  try {
+    const { lat, lng, orderId, radiusKm = "15" } = req.query as {
+      lat?: string; lng?: string; orderId?: string; radiusKm?: string;
+    };
+
+    const radius = parseFloat(radiusKm);
+    let pickupLat: number | null = lat ? parseFloat(lat) : null;
+    let pickupLng: number | null = lng ? parseFloat(lng) : null;
+    let pickupAddressStr: string | null = null;
+
+    // If orderId is given, get pickup coords from order
+    if (orderId && (!pickupLat || !pickupLng)) {
+      const [order] = await db.execute(sql`
+        SELECT pickup_address, vehicle_type FROM orders WHERE id = ${parseInt(orderId)}
+      `);
+      const orderRow = (order as any)?.rows?.[0];
+      if (orderRow?.pickup_address) {
+        pickupAddressStr = orderRow.pickup_address;
+        const loc = geocodeAddress(orderRow.pickup_address);
+        if (loc) { pickupLat = loc.lat; pickupLng = loc.lng; }
+      }
+    }
+
+    // Get all available drivers
+    const driversResult = await db.execute(sql`
+      SELECT id, name, phone, vehicle_type, license_plate, status,
+             lat, lng, current_location, commission_rate
+      FROM drivers
+      WHERE status IN ('available', 'assigned')
+      ORDER BY name
+    `);
+
+    const drivers = (driversResult.rows as any[]).map(d => {
+      let driverLat = d.lat ? parseFloat(d.lat) : null;
+      let driverLng = d.lng ? parseFloat(d.lng) : null;
+
+      // Fallback: geocode current_location
+      if ((!driverLat || !driverLng) && d.current_location) {
+        const loc = geocodeAddress(d.current_location);
+        if (loc) { driverLat = loc.lat; driverLng = loc.lng; }
+      }
+
+      let distanceKm: number | null = null;
+      if (pickupLat && pickupLng && driverLat && driverLng) {
+        distanceKm = Math.round(haversine(driverLat, driverLng, pickupLat, pickupLng) * 10) / 10;
+      }
+
+      const withinRadius = distanceKm !== null ? distanceKm <= radius : null;
+
+      return {
+        id: d.id,
+        name: d.name,
+        phone: d.phone,
+        vehicleType: d.vehicle_type,
+        licensePlate: d.license_plate,
+        status: d.status,
+        lat: driverLat,
+        lng: driverLng,
+        currentLocation: d.current_location,
+        distanceKm,
+        withinRadius,
+        hasLocation: driverLat !== null && driverLng !== null,
+        commissionRate: d.commission_rate ? parseFloat(d.commission_rate) : 15,
+      };
+    });
+
+    // Sort: within radius first (by distance), then those without location
+    const sorted = [
+      ...drivers.filter(d => d.withinRadius).sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999)),
+      ...drivers.filter(d => d.withinRadius === false).sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999)),
+      ...drivers.filter(d => d.withinRadius === null),
+    ];
+
+    // Return trip opportunities: drivers with orders ending near pickup
+    const returnOpportunities = await db.execute(sql`
+      SELECT DISTINCT d.id, d.name, o.delivery_address, o.id AS order_id
+      FROM drivers d
+      JOIN orders o ON o.driver_id = d.id
+      WHERE o.status = 'in_transit'
+        AND d.status = 'assigned'
+      LIMIT 10
+    `);
+
+    return res.json({
+      pickupLat,
+      pickupLng,
+      pickupAddress: pickupAddressStr,
+      radiusKm: radius,
+      drivers: sorted,
+      nearbyCount: sorted.filter(d => d.withinRadius).length,
+      noLocationCount: sorted.filter(d => !d.hasLocation).length,
+      returnOpportunities: (returnOpportunities.rows as any[]).map(r => ({
+        driverId: r.id,
+        driverName: r.name,
+        currentDeliveryAddress: r.delivery_address,
+        orderId: r.order_id,
+      })),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 function getPipelineStage(order: any): string {
   if (order.status === "cancelled") return "cancelled";
   if (order.status === "delivered") return "completed";

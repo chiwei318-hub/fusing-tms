@@ -9,8 +9,11 @@ import {
   Zap, Truck, TrendingUp, RefreshCw, Settings, Target, BarChart3,
   CheckCircle2, AlertCircle, ArrowRight, MapPin, Package, Users,
   Repeat2, RotateCcw, Gauge, ChevronDown, ChevronUp, X, Star,
-  Navigation, DollarSign, Clock, Route,
+  Navigation, DollarSign, Clock, Route, Sparkles, Scan,
 } from "lucide-react";
+import NearbyDriversPanel from "./NearbyDriversPanel";
+import SmartQuotePanel from "./SmartQuotePanel";
+import OcrReceiptDialog from "./OcrReceiptDialog";
 import { format } from "date-fns";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -494,7 +497,8 @@ function RevenueStatsBar() {
 
 export default function DispatchOptimizerTab() {
   const qc = useQueryClient();
-  const [view, setView] = useState<"orders" | "drivers" | "log" | "weights">("orders");
+  const [view, setView] = useState<"orders" | "drivers" | "log" | "weights" | "nearby" | "quote">("orders");
+  const [ocrOpen, setOcrOpen] = useState(false);
 
   const { data: pendingOrders = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery<PendingOrder[]>({
     queryKey: ["smart-orders"],
@@ -537,9 +541,11 @@ export default function DispatchOptimizerTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
           {[
-            { key: "orders", label: "待派訂單", count: unassignedAll.length },
+            { key: "orders",  label: "待派訂單", count: unassignedAll.length },
             { key: "drivers", label: "司機狀態", count: availableDrivers.length },
-            { key: "log", label: "派車記錄" },
+            { key: "nearby",  label: "🗺 地理圍欄" },
+            { key: "quote",   label: "✨ AI 報價" },
+            { key: "log",     label: "派車記錄" },
             { key: "weights", label: "派單權重" },
           ].map(tab => (
             <button key={tab.key} onClick={() => setView(tab.key as any)}
@@ -640,6 +646,83 @@ export default function DispatchOptimizerTab() {
         </Card>
       )}
 
+      {view === "nearby" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-green-600" /> 地理圍欄司機篩選
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <NearbyDriversPanel />
+            </CardContent>
+          </Card>
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-indigo-600" /> 功能說明
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground space-y-3">
+              <div className="bg-green-50 rounded-lg p-3 space-y-1.5">
+                <p className="font-semibold text-green-700">🗺 地理圍欄（Geofencing）</p>
+                <p>系統依司機目前 GPS 位置，自動篩選半徑內的空車司機，優先推薦距離最近者，縮短等待時間並降低空車成本。</p>
+              </div>
+              <div className="bg-indigo-50 rounded-lg p-3 space-y-1.5">
+                <p className="font-semibold text-indigo-700">↩ 回頭車撮合</p>
+                <p>針對正在配送中的司機，系統偵測其目的地附近是否有新訂單的取貨點，促成「回頭車」，一趟車完成兩件任務，大幅降低空車率。</p>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3 text-amber-700 text-xs">
+                ⚠️ 司機需在 App 開啟定位分享才能顯示距離。無定位的司機仍會列出但無法計算距離。
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {view === "quote" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-violet-600" /> AI 智慧報價引擎
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SmartQuotePanel />
+            </CardContent>
+          </Card>
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Scan className="w-4 h-4 text-violet-600" /> OCR 簽單 & 自動對帳
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-xs text-muted-foreground space-y-2">
+                <div className="bg-violet-50 rounded-lg p-3 space-y-1.5">
+                  <p className="font-semibold text-violet-700">✨ 報價引擎說明</p>
+                  <p>結合車種基本費、里程單價、貨重、附加服務（尾板/液壓台車）、冷鏈費、尖峰時段乘數、急單係數，並對比歷史 90 天同類訂單的實際成交價，提供建議報價範圍。</p>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-3 space-y-1.5">
+                  <p className="font-semibold text-emerald-700">📷 OCR 自動對帳</p>
+                  <p>拍攝司機簽收單，AI 自動辨識訂單編號、司機、客戶、金額、簽收時間，自動計算平台抽成與司機應收款，一鍵寫入 AR 帳冊，解放財務人力。</p>
+                </div>
+              </div>
+              <Button
+                onClick={() => setOcrOpen(true)}
+                className="w-full bg-violet-600 hover:bg-violet-700"
+                size="sm"
+              >
+                <Scan className="w-4 h-4 mr-2" />
+                開啟 OCR 簽單辨識
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {view === "weights" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card className="border shadow-sm">
@@ -686,6 +769,8 @@ export default function DispatchOptimizerTab() {
           </Card>
         </div>
       )}
+
+      <OcrReceiptDialog open={ocrOpen} onClose={() => setOcrOpen(false)} />
     </div>
   );
 }
