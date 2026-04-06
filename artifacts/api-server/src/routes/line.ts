@@ -597,13 +597,17 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
 
     const { sent, failed } = await sendOrderBroadcast(lineIds, broadcastInfo);
 
-    // 在訂單 notes 記錄廣播記錄
-    await db.execute(sql`
-      UPDATE orders
-      SET notes      = CONCAT(COALESCE(notes, ''), '\n[搶單廣播] 已推送給 ', ${sent}, ' 位司機 ', TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI')),
-          updated_at = NOW()
-      WHERE id = ${orderId}
-    `);
+    // 在訂單 notes 記錄廣播記錄（失敗不影響廣播結果）
+    try {
+      await db.execute(sql`
+        UPDATE orders
+        SET notes      = COALESCE(notes, '') || chr(10) || '[搶單廣播] 已推送給 ' || ${sent}::text || ' 位司機 ' || TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI'),
+            updated_at = NOW()
+        WHERE id = ${orderId}
+      `);
+    } catch (noteErr) {
+      console.warn(`[LINE broadcast] notes 更新失敗（不影響廣播）:`, noteErr);
+    }
 
     console.log(`[LINE broadcast] Order #${orderId} broadcast to ${sent}/${lineIds.length} drivers`);
     res.json({ ok: true, sent, failed, total: lineIds.length });
