@@ -74,6 +74,7 @@ import { platformFleetsRouter } from "./platformFleets";
 import { fleetOwnerRouter } from "./fleetOwner";
 import { fleetDriverRouter } from "./fleetDriver";
 import { requireFleetOwner, requireFleetDriver } from "../middleware/fleetAuth";
+import { commissionManagementRouter } from "./commissionManagement";
 
 const router: IRouter = Router();
 
@@ -154,5 +155,6 @@ router.use("/fusingao", fusingaoSheetSyncRouter);
 router.use(platformFleetsRouter);                        // 平台管理端：/platform/fleets
 router.use("/fleet", requireFleetOwner, fleetOwnerRouter);   // 車行老闆（/fleet/* 才套 auth）
 router.use("/driver", requireFleetDriver, fleetDriverRouter); // 司機手機端（/driver/* 才套 auth）
+router.use(commissionManagementRouter);                       // 抽成管理
 
 export default router;
