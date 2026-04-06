@@ -50,6 +50,7 @@ interface Driver {
   phone: string;
   licensePlate: string;
   lineUserId: string | null;
+  isActive: boolean;
 }
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -336,7 +337,25 @@ function DriverBindings() {
     onError: (e: Error) => toast({ title: `設定失敗：${e.message}`, variant: "destructive" }),
   });
 
+  const setActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      fetch(`/api/drivers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
+        return r.json();
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["line-driver-bindings"] });
+      toast({ title: vars.isActive ? "✅ 已標記為在職" : "⚠️ 已標記為離職（停止推播）" });
+    },
+    onError: (e: Error) => toast({ title: `操作失敗：${e.message}`, variant: "destructive" }),
+  });
+
   const bound = drivers.filter((d) => d.lineUserId);
+  const activeCount = drivers.filter((d) => d.isActive !== false).length;
 
   if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">載入中...</div>;
 
@@ -344,7 +363,7 @@ function DriverBindings() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          已綁定 <strong className="text-emerald-600">{bound.length}</strong> 位司機 ／ 共 {drivers.length} 位
+          已綁定 <strong className="text-emerald-600">{bound.length}</strong> 位司機 ／ 在職 <strong className="text-blue-600">{activeCount}</strong> ／ 共 {drivers.length} 位
         </div>
         <Button variant="ghost" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ["line-driver-bindings"] })}>
           <RefreshCw className="w-3 h-3 mr-1" /> 重新整理
@@ -363,6 +382,7 @@ function DriverBindings() {
               <th className="text-left p-3 font-medium text-slate-600">司機</th>
               <th className="text-left p-3 font-medium text-slate-600">電話</th>
               <th className="text-left p-3 font-medium text-slate-600">車牌</th>
+              <th className="text-left p-3 font-medium text-slate-600">在職狀態</th>
               <th className="text-left p-3 font-medium text-slate-600">LINE 狀態</th>
               <th className="text-right p-3 font-medium text-slate-600">操作</th>
             </tr>
@@ -370,16 +390,30 @@ function DriverBindings() {
           <tbody className="divide-y">
             {drivers.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-muted-foreground">尚無司機資料</td>
+                <td colSpan={6} className="text-center py-8 text-muted-foreground">尚無司機資料</td>
               </tr>
             )}
             {drivers.map((d) => (
               <>
-                <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-medium">{d.name}</td>
+                <tr key={d.id} className={`hover:bg-slate-50 ${d.isActive === false ? "opacity-60 bg-slate-50" : ""}`}>
+                  <td className="p-3 font-medium">
+                    {d.name}
+                    {d.isActive === false && <span className="ml-1 text-xs text-slate-400">（離職）</span>}
+                  </td>
                   <td className="p-3 text-slate-600">{d.phone}</td>
                   <td className="p-3">
                     <Badge variant="outline" className="font-mono text-xs">{d.licensePlate}</Badge>
+                  </td>
+                  <td className="p-3">
+                    {d.isActive !== false ? (
+                      <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">
+                        <CheckCircle className="w-3 h-3 mr-1" /> 在職
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-slate-400 border-slate-300 text-xs">
+                        離職
+                      </Badge>
+                    )}
                   </td>
                   <td className="p-3">
                     {d.lineUserId ? (
@@ -399,6 +433,16 @@ function DriverBindings() {
                   </td>
                   <td className="p-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 px-2 text-xs ${d.isActive !== false ? "text-slate-500 hover:text-red-600 hover:bg-red-50" : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"}`}
+                        onClick={() => setActiveMutation.mutate({ id: d.id, isActive: d.isActive === false })}
+                        disabled={setActiveMutation.isPending}
+                        title={d.isActive !== false ? "標記為離職" : "標記為在職"}
+                      >
+                        {d.isActive !== false ? "標記離職" : "恢復在職"}
+                      </Button>
                       {!d.lineUserId && (
                         <Button
                           variant="outline"

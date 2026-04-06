@@ -160,6 +160,7 @@ router.patch("/drivers/:id", async (req, res) => {
     if (body.status !== undefined) updates.status = body.status;
     if ("lineUserId" in body) updates.lineUserId = body.lineUserId ?? null;
     if ("driverType" in body) updates.driverType = body.driverType ?? null;
+    if ("isActive" in b) updates.isActive = b.isActive !== false && b.isActive !== "false";
     if ("username" in b) updates.username = normalizeUsername(b.username);
     if ("password" in b) updates.password = b.password ? hashDriverPassword(b.password) : null;
     if ("engineCc" in b) updates.engineCc = b.engineCc ? parseInt(b.engineCc) : null;
