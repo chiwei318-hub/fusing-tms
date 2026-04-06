@@ -240,12 +240,14 @@ export default function FusingaoPortal() {
         {summary && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { icon: <Package className="h-5 w-5 text-orange-500"/>, label:"本月路線", val: summary.this_month_routes + " 趟", sub:"總計 "+summary.total_routes+" 趟" },
-              { icon: <CheckCircle2 className="h-5 w-5 text-green-500"/>, label:"已完成", val: summary.completed + " 趟", sub: summary.in_progress + " 趟進行中" },
-              { icon: <FileText className="h-5 w-5 text-blue-500"/>, label:"已對帳", val: summary.billed + " 趟", sub: summary.unbilled + " 趟待對帳" },
-              { icon: <DollarSign className="h-5 w-5 text-emerald-500"/>, label:"本月金額", val: fmt(summary.this_month_income), sub: "全期 "+fmt(summary.total_shopee_income) },
+              { icon: <Package className="h-5 w-5 text-orange-500"/>, label:"本月路線", val: summary.this_month_routes + " 趟", sub:"總計 "+summary.total_routes+" 趟", targetTab:"dispatch" as PortalTab },
+              { icon: <CheckCircle2 className="h-5 w-5 text-green-500"/>, label:"已完成", val: summary.completed + " 趟", sub: summary.in_progress + " 趟進行中", targetTab:"notify" as PortalTab },
+              { icon: <FileText className="h-5 w-5 text-blue-500"/>, label:"已對帳", val: summary.billed + " 趟", sub: summary.unbilled + " 趟待對帳", targetTab:"monthly" as PortalTab },
+              { icon: <DollarSign className="h-5 w-5 text-emerald-500"/>, label:"本月金額", val: fmt(summary.this_month_income), sub: "全期 "+fmt(summary.total_shopee_income), targetTab:"settlement" as PortalTab },
             ].map(k => (
-              <Card key={k.label}>
+              <Card key={k.label}
+                className="cursor-pointer hover:shadow-md hover:border-orange-300 transition-all"
+                onClick={() => setTab(k.targetTab)}>
                 <CardContent className="p-4">
                   {k.icon}
                   <p className="text-xs text-gray-500 mt-2">{k.label}</p>
