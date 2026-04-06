@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, SQL } from "drizzle-orm";
 import ExcelJS from "exceljs";
 
 export const orderSettlementsRouter = Router();
@@ -20,14 +20,14 @@ orderSettlementsRouter.get("/", async (req, res) => {
       to,
     } = req.query as Record<string, string>;
 
-    const conditions: string[] = [];
-    if (payment_status) conditions.push(`s.payment_status = '${payment_status}'`);
-    if (driver_id)      conditions.push(`s.driver_id = ${parseInt(driver_id)}`);
-    if (from)           conditions.push(`s.created_at >= '${from}'::timestamptz`);
-    if (to)             conditions.push(`s.created_at <= '${to}'::timestamptz`);
-    const where = conditions.length ? `AND ${conditions.join(" AND ")}` : "";
+    const conditions: SQL[] = [];
+    if (payment_status) conditions.push(sql`s.payment_status = ${payment_status}`);
+    if (driver_id)      conditions.push(sql`s.driver_id = ${parseInt(driver_id)}`);
+    if (from)           conditions.push(sql`s.created_at >= ${from}::timestamptz`);
+    if (to)             conditions.push(sql`s.created_at <= ${to}::timestamptz`);
+    const where = conditions.length ? sql`AND ${sql.join(conditions, sql` AND `)}` : sql``;
 
-    const result = await db.execute(sql.raw(`
+    const result = await db.execute(sql`
       SELECT
         s.id,
         s.order_id,
@@ -55,11 +55,11 @@ orderSettlementsRouter.get("/", async (req, res) => {
       ORDER BY s.created_at DESC
       LIMIT  ${parseInt(limit)}
       OFFSET ${parseInt(offset)}
-    `));
+    `);
 
-    const countResult = await db.execute(sql.raw(`
+    const countResult = await db.execute(sql`
       SELECT COUNT(*)::int AS total FROM order_settlements s WHERE 1=1 ${where}
-    `));
+    `);
 
     res.json({ data: result.rows, total: countResult.rows[0]?.total ?? 0 });
   } catch (e) {
@@ -73,9 +73,9 @@ orderSettlementsRouter.get("/", async (req, res) => {
 orderSettlementsRouter.get("/summary", async (req, res) => {
   try {
     const { month } = req.query as { month?: string }; // YYYY-MM
-    const monthFilter = month ? `AND TO_CHAR(created_at, 'YYYY-MM') = '${month}'` : "";
+    const monthFilter = month ? sql`AND TO_CHAR(created_at, 'YYYY-MM') = ${month}` : sql``;
 
-    const result = await db.execute(sql.raw(`
+    const result = await db.execute(sql`
       SELECT
         COUNT(*)::int                                                     AS total_orders,
         COALESCE(SUM(total_amount), 0)::numeric                          AS gross_revenue,
@@ -88,7 +88,7 @@ orderSettlementsRouter.get("/summary", async (req, res) => {
                                                                          AS pending_payout
       FROM order_settlements
       WHERE 1=1 ${monthFilter}
-    `));
+    `);
 
     res.json(result.rows[0] ?? {});
   } catch (e) {
@@ -104,16 +104,26 @@ orderSettlementsRouter.get("/export", async (req, res) => {
   try {
     const { month, from, to, payment_status } = req.query as Record<string, string>;
 
-    const conditions: string[] = [];
-    if (month)          conditions.push(`TO_CHAR(s.created_at,'YYYY-MM') = '${month}'`);
-    if (from)           conditions.push(`s.created_at >= '${from}'::timestamptz`);
-    if (to)             conditions.push(`s.created_at <= '${to}'::timestamptz`);
+    // Conditions for queries that use the `s.` alias (joined queries)
+    const conditions: SQL[] = [];
+    if (month)          conditions.push(sql`TO_CHAR(s.created_at,'YYYY-MM') = ${month}`);
+    if (from)           conditions.push(sql`s.created_at >= ${from}::timestamptz`);
+    if (to)             conditions.push(sql`s.created_at <= ${to}::timestamptz`);
     if (payment_status && payment_status !== "all")
-                        conditions.push(`s.payment_status = '${payment_status}'`);
-    const where = conditions.length ? `AND ${conditions.join(" AND ")}` : "";
+                        conditions.push(sql`s.payment_status = ${payment_status}`);
+    const where = conditions.length ? sql`AND ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    // Conditions for the summary sub-query which has no table alias
+    const summaryConditions: SQL[] = [];
+    if (month)          summaryConditions.push(sql`TO_CHAR(created_at,'YYYY-MM') = ${month}`);
+    if (from)           summaryConditions.push(sql`created_at >= ${from}::timestamptz`);
+    if (to)             summaryConditions.push(sql`created_at <= ${to}::timestamptz`);
+    if (payment_status && payment_status !== "all")
+                        summaryConditions.push(sql`payment_status = ${payment_status}`);
+    const summaryWhere = summaryConditions.length ? sql`AND ${sql.join(summaryConditions, sql` AND `)}` : sql``;
 
     /* ── 1. 全台總覽（摘要） ── */
-    const summaryRow = (await db.execute(sql.raw(`
+    const summaryRow = (await db.execute(sql`
       SELECT
         COUNT(*)::int                                                         AS "總訂單筆數",
         COALESCE(SUM(total_amount),0)::numeric                               AS "總運費營收(NT$)",
@@ -127,11 +137,11 @@ orderSettlementsRouter.get("/export", async (req, res) => {
         COALESCE(SUM(driver_payout) FILTER
           (WHERE payment_status='unpaid'),0)::numeric                        AS "待付金額(NT$)"
       FROM order_settlements
-      WHERE 1=1 ${where.replace(/s\./g, "")}
-    `))).rows[0] as Record<string, unknown>;
+      WHERE 1=1 ${summaryWhere}
+    `)).rows[0] as Record<string, unknown>;
 
     /* ── 2. 司機薪資單（per-driver 對帳單） ── */
-    const driverRows = (await db.execute(sql.raw(`
+    const driverRows = (await db.execute(sql`
       SELECT
         d.name                                     AS "司機姓名",
         COALESCE(d.phone,'—')                      AS "聯絡電話",
@@ -150,10 +160,10 @@ orderSettlementsRouter.get("/export", async (req, res) => {
       WHERE 1=1 ${where}
       GROUP BY d.id, d.name, d.phone, d.vehicle_type
       ORDER BY SUM(s.driver_payout) DESC NULLS LAST
-    `))).rows as Record<string, unknown>[];
+    `)).rows as Record<string, unknown>[];
 
     /* ── 3. 訂單明細（含毛利率預警） ── */
-    const detailRows = (await db.execute(sql.raw(`
+    const detailRows = (await db.execute(sql`
       SELECT
         s.order_no                                 AS "單號",
         TO_CHAR(s.created_at,'YYYY-MM-DD')         AS "結算日期",
@@ -178,7 +188,7 @@ orderSettlementsRouter.get("/export", async (req, res) => {
       LEFT JOIN orders  o ON o.id = s.order_id
       WHERE 1=1 ${where}
       ORDER BY s.created_at DESC
-    `))).rows as Record<string, unknown>[];
+    `)).rows as Record<string, unknown>[];
 
     /* ── 建立 Excel 工作簿 ── */
     const wb = new ExcelJS.Workbook();
