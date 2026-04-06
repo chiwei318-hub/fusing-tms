@@ -7,7 +7,7 @@ import {
   Phone, Car, Badge, Banknote, TrendingUp, FileText,
   Upload, Download, ListFilter, ChevronDown,
   Link2, Zap, ToggleLeft, ToggleRight, Settings2,
-  Package2, CheckCircle2, XCircle, MinusCircle, Umbrella,
+  Package2, CheckCircle2, XCircle, MinusCircle, Umbrella, CalendarDays,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -456,7 +456,7 @@ function DashboardTab() {
               { label: "旗下司機", value: drivers.length, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "可出車", value: availableCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50" },
               { label: "執行中", value: busyCount, icon: ClipboardList, color: "text-orange-600", bg: "bg-orange-50" },
-              { label: "今日未派班表", value: unassignedCount, icon: Package2, color: unassignedCount > 0 ? "text-red-600" : "text-slate-400", bg: unassignedCount > 0 ? "bg-red-50" : "bg-slate-50" },
+              { label: "待派班表（近7日）", value: unassignedCount, icon: Package2, color: unassignedCount > 0 ? "text-red-600" : "text-slate-400", bg: unassignedCount > 0 ? "bg-red-50" : "bg-slate-50" },
             ].map(c => (
               <Card key={c.label} className="border-0 shadow-sm">
                 <CardContent className="p-4 flex items-center gap-3">
@@ -570,27 +570,33 @@ function DashboardTab() {
             </CardContent>
           </Card>
 
-          {/* 今日蝦皮未派車趟 */}
+          {/* 待派班表（近 7 日） */}
           <Card className={`border-0 shadow-sm ${unassignedCount > 0 ? "ring-1 ring-red-200" : ""}`}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Package2 className={`w-4 h-4 ${unassignedCount > 0 ? "text-red-500" : "text-slate-400"}`} />
                   <CardTitle className="text-sm font-semibold text-slate-600">
-                    今日未派班表
+                    待派班表
                   </CardTitle>
                   {unassignedCount > 0 && (
                     <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{unassignedCount}</span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400">{new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric" })} 尚未指派司機</span>
+                <span className="text-[11px] text-slate-400">今日起 7 日內・尚未指派司機</span>
               </div>
             </CardHeader>
             <CardContent>
               {unassignedCount === 0 ? (
-                <div className="flex items-center justify-center gap-2 py-5 text-slate-400">
+                <div className="flex flex-col items-center justify-center gap-2 py-5 text-slate-400">
                   <CheckCircle2 className="w-4 h-4 text-green-400" />
-                  <span className="text-sm">今日所有班表路線均已派車</span>
+                  <span className="text-sm">近 7 日所有班表均已派車</span>
+                  <button
+                    onClick={() => { setImportRows([]); setSheetTrips([]); setImportErrors([]); setShowImport(true); }}
+                    className="mt-1 text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2"
+                  >
+                    ＋ 匯入班表 / 連結 Google 試算表
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -632,14 +638,25 @@ function DashboardTab() {
                       </button>
                     </div>
                   ))}
-                  {/* 班表匯入車趟（fleet_trips 表，status=pending，driver_id IS NULL） */}
-                  {todayTrips.map((t: any) => (
+                  {/* 班表匯入車趟（fleet_trips 表，status=pending，driver_id IS NULL，近7日） */}
+                  {todayTrips.map((t: any) => {
+                    const tripDateStr = t.trip_date ? String(t.trip_date).split("T")[0] : "";
+                    const tripDate = tripDateStr ? new Date(tripDateStr + "T00:00:00") : null;
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const isToday = tripDate?.toDateString() === today.toDateString();
+                    const isTomorrow = tripDate ? (tripDate.getTime() - today.getTime()) === 86400000 : false;
+                    const dateBadge = isToday ? "今日" : isTomorrow ? "明日" : tripDateStr ? `${tripDate!.getMonth()+1}/${tripDate!.getDate()}` : "";
+                    const dateBadgeColor = isToday ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600";
+                    return (
                     <div key={`trip-${t.id}`} className="flex items-center gap-3 p-2.5 bg-orange-50 border border-orange-100 rounded-xl">
                       <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
                         <ClipboardList className="w-4 h-4 text-orange-500" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {dateBadge && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${dateBadgeColor}`}>{dateBadge}</span>
+                          )}
                           <span className="font-mono text-xs font-bold text-slate-700">{t.notes?.split("｜")[0]?.trim() ?? `車趟 #${t.id}`}</span>
                           {t.notes?.includes("｜") && (
                             <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{t.notes.split("｜")[1]?.trim()}</span>
@@ -658,7 +675,8 @@ function DashboardTab() {
                         <Users className="w-3 h-3" />指派
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -942,6 +960,11 @@ function DashboardTab() {
                       )}
                       <span className="text-[10px] text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded font-medium">班表匯入</span>
                     </div>
+                    {assigningRoute.trip_date && (
+                      <div className="flex items-center gap-1 text-xs text-slate-500">
+                        <CalendarDays className="w-3 h-3" /> 出車日期：{String(assigningRoute.trip_date).split("T")[0]}
+                      </div>
+                    )}
                     {assigningRoute.pickup_address && (
                       <div className="flex items-center gap-1 text-xs text-slate-500">
                         <Clock className="w-3 h-3" /> {assigningRoute.pickup_address}
