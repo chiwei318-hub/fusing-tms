@@ -26,6 +26,7 @@ interface SyncConfig {
   interval_hours: number; is_active: boolean;
   last_sync_at: string | null; last_sync_status: string | null;
   last_sync_count: number | null; last_sync_error: string | null;
+  last_sync_skipped: number | null; last_sync_errors: number | null;
 }
 
 export default function FusingaoSheetSyncTab() {
@@ -247,7 +248,7 @@ export default function FusingaoSheetSyncTab() {
         ) : (
           <div className="space-y-2">
             {configs.map(cfg => (
-              <Card key={cfg.id} className="overflow-hidden">
+              <Card key={cfg.id} className={`overflow-hidden ${cfg.last_sync_status === "warning" ? "border-yellow-300" : ""}`}>
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -256,38 +257,66 @@ export default function FusingaoSheetSyncTab() {
                         <Badge className={`text-[10px] ${cfg.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                           {cfg.is_active ? "啟用中" : "已停用"}
                         </Badge>
-                        <Badge variant="outline" className="text-[10px]">{cfg.sync_type}</Badge>
-                        <span className="text-xs text-gray-400">每 {cfg.interval_hours} 小時</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {cfg.sync_type === "billing_trips" ? "帳務趟次" : cfg.sync_type}
+                        </Badge>
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />每 {cfg.interval_hours} 小時同步
+                        </span>
                       </div>
                       <p className="text-[10px] text-gray-400 mt-1 truncate font-mono">{cfg.sheet_url}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs">
-                        <span className="flex items-center gap-1 text-gray-500">
-                          <Clock className="w-3 h-3" /> 上次同步：{cfg.last_sync_at ? fmtDate(cfg.last_sync_at) : "從未"}
-                        </span>
-                        {cfg.last_sync_status === "success" && (
-                          <span className="text-green-600 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> 成功更新 {cfg.last_sync_count} 筆
+
+                      {/* Sync status row */}
+                      <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs">
+                        <span className="text-gray-400">上次同步：{cfg.last_sync_at ? fmtDate(cfg.last_sync_at) : "從未"}</span>
+                        {(cfg.last_sync_status === "success" || cfg.last_sync_status === "warning") && (
+                          <>
+                            <span className="text-green-600 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> 新增 {cfg.last_sync_count ?? 0} 筆
+                            </span>
+                            {(cfg.last_sync_skipped ?? 0) > 0 && (
+                              <span className="text-gray-500 flex items-center gap-1">略過重複 {cfg.last_sync_skipped}</span>
+                            )}
+                          </>
+                        )}
+                        {cfg.last_sync_status === "warning" && (cfg.last_sync_errors ?? 0) > 0 && (
+                          <span className="text-yellow-600 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> {cfg.last_sync_errors} 筆格式錯誤
                           </span>
                         )}
                         {cfg.last_sync_status === "error" && (
-                          <span className="text-red-500 flex items-center gap-1" title={cfg.last_sync_error ?? ""}>
+                          <span className="text-red-500 flex items-center gap-1">
                             <XCircle className="w-3 h-3" /> 同步失敗
                           </span>
                         )}
                       </div>
+
+                      {/* Warning / error detail */}
+                      {(cfg.last_sync_status === "warning" || cfg.last_sync_status === "error") && cfg.last_sync_error && (
+                        <div className={`mt-1.5 px-2 py-1 rounded text-[10px] ${cfg.last_sync_status === "warning" ? "bg-yellow-50 text-yellow-700 border border-yellow-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+                          ⚠️ {cfg.last_sync_error}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button size="sm" variant="outline" className="h-7 text-xs px-2"
-                        onClick={() => runNow(cfg.id, cfg.sync_name)} disabled={running[cfg.id]}>
-                        {running[cfg.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                        {running[cfg.id] ? "同步中" : "立即同步"}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
-                        onClick={() => toggleActive(cfg)}>
-                        {cfg.is_active ? "停用" : "啟用"}
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      {/* Toggle switch */}
+                      <button
+                        onClick={() => toggleActive(cfg)}
+                        title={cfg.is_active ? "點擊停用" : "點擊啟用"}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${cfg.is_active ? "bg-green-500" : "bg-gray-300"}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cfg.is_active ? "translate-x-4" : "translate-x-1"}`} />
+                      </button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-500"
+                        title="立即同步" onClick={() => runNow(cfg.id, cfg.sync_name)} disabled={running[cfg.id]}>
+                        {running[cfg.id]
+                          ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          : <Play className="w-3.5 h-3.5" />}
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
-                        onClick={() => deleteConfig(cfg.id)}>
+                        title="刪除此同步" onClick={() => deleteConfig(cfg.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>

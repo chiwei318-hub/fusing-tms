@@ -26,10 +26,14 @@ export async function ensureFusingaoSheetSyncTables() {
       last_sync_at     TIMESTAMP,
       last_sync_status TEXT,
       last_sync_count  INTEGER,
-      last_sync_error  TEXT,
-      created_at       TIMESTAMP DEFAULT NOW()
+      last_sync_error   TEXT,
+      last_sync_skipped INTEGER,
+      last_sync_errors  INTEGER,
+      created_at        TIMESTAMP DEFAULT NOW()
     )
   `);
+  await db.execute(sql`ALTER TABLE fusingao_sheet_configs ADD COLUMN IF NOT EXISTS last_sync_skipped INTEGER`);
+  await db.execute(sql`ALTER TABLE fusingao_sheet_configs ADD COLUMN IF NOT EXISTS last_sync_errors INTEGER`);
 
   // Add UNIQUE constraint to billing_trips to support UPSERT (idempotent imports)
   await db.execute(sql`
@@ -178,13 +182,19 @@ export async function runFusingaoSheetSync(configId: number): Promise<{
     }
   }
 
-  // Update sync status
+  // Update sync status — 'warning' when some rows errored, 'success' when clean
+  const syncStatus = errors > 0 ? 'warning' : 'success';
+  const syncError = errors > 0
+    ? `同步完成但有 ${errors} 筆資料格式錯誤（新增 ${upserted} 筆，略過重複 ${skipped} 筆）`
+    : null;
   await db.execute(sql`
     UPDATE fusingao_sheet_configs SET
       last_sync_at = NOW(),
-      last_sync_status = 'success',
+      last_sync_status = ${syncStatus},
       last_sync_count = ${upserted},
-      last_sync_error = NULL
+      last_sync_skipped = ${skipped},
+      last_sync_errors = ${errors},
+      last_sync_error = ${syncError}
     WHERE id = ${configId}
   `);
 
