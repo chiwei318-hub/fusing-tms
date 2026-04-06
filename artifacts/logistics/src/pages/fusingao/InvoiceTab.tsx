@@ -194,9 +194,10 @@ export default function InvoiceTab() {
         gross: it.total,
         rate: 0,
       }));
-    const targetMonth = sr.month || month;
+    // Always store under the CURRENTLY SELECTED month (not sr.month which
+    // reflects the spreadsheet's internal label and may differ from the UI selection)
     setSheetAutoItems(autoFromSheet);
-    localStorage.setItem(`invoice_sheet_auto_${targetMonth}`, JSON.stringify(autoFromSheet));
+    localStorage.setItem(`invoice_sheet_auto_${month}`, JSON.stringify(autoFromSheet));
 
     const now = new Date().toLocaleString("zh-TW");
     setLastSheetSync(now);
@@ -782,9 +783,11 @@ export default function InvoiceTab() {
                   ))}
                 </div>
 
-                <p className="text-xs text-gray-400">
-                  ※ 「套用資料」只會填入手動欄位（上收、招募獎金、交通罰單補助），系統計算欄位（店配車/NDD/WHNDD）不受影響。
-                </p>
+                <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700 space-y-0.5">
+                  <p>✓ <strong>系統計算欄位</strong>（店配車／NDD／WHNDD）— 金額套用至請款單</p>
+                  <p>✓ <strong>手動欄位</strong>（上收、招募獎金、交通罰單補助）— 填入對應輸入框</p>
+                  <p className="text-blue-500 mt-1">套用後資料會存入目前選擇的月份（{monthLabel(month)}）</p>
+                </div>
               </>
             )}
           </div>
@@ -797,7 +800,7 @@ export default function InvoiceTab() {
                 onClick={() => applySheetData(sheetResult)}
               >
                 <CheckCircle2 className="w-4 h-4 mr-1" />
-                套用手動欄位資料
+                套用全部資料至 {monthLabel(month)}
               </Button>
             )}
           </DialogFooter>
