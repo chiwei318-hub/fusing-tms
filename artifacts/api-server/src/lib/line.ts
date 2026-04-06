@@ -41,7 +41,16 @@ export function isLineConfigured(): boolean {
 async function pushFlex(to: string, altText: string, bubble: line.messagingApi.FlexBubble) {
   if (!channelAccessToken) throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
   const msg: line.messagingApi.FlexMessage = { type: "flex", altText, contents: bubble };
-  await getClient().pushMessage({ to, messages: [msg] });
+  try {
+    await getClient().pushMessage({ to, messages: [msg] });
+  } catch (err: any) {
+    const detail = err?.originalError?.response?.data
+      ?? err?.response?.data
+      ?? err?.statusCode
+      ?? String(err);
+    console.error(`[LINE pushFlex] ✗ 推播失敗 to=${to.slice(-6)}: ${JSON.stringify(detail)}`);
+    throw err;
+  }
 }
 
 function row(label: string, value: string): line.messagingApi.FlexBox {
@@ -657,13 +666,21 @@ export async function sendOrderBroadcast(
 
   const altText = `【搶單】訂單 #${order.id}｜${order.pickupAddress} → ${order.deliveryAddress}｜${price ? nt(price) : "洽談"}`;
 
-  // ── 非同步佇列推播（爆單時不阻塞 HTTP 回應）──
-  for (const uid of driverLineIds) {
-    enqueueNotification(
-      () => pushFlex(uid, altText, bubble),
-      `broadcast#${order.id}→${uid.slice(-6)}`,
-    );
+  // ── 直接 await 所有推播，取得真實成功/失敗數量 ──
+  const results = await Promise.allSettled(
+    driverLineIds.map(uid => pushFlex(uid, altText, bubble))
+  );
+
+  let sent = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled") sent++;
+    else failed++;
   }
 
-  return { sent: driverLineIds.length, failed: 0 };
+  if (failed > 0) {
+    console.warn(`[LINE broadcast] Order #${order.id}: ${sent} 成功, ${failed} 失敗`);
+  }
+
+  return { sent, failed };
 }

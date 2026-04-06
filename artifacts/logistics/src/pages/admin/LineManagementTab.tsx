@@ -27,6 +27,7 @@ import {
   Package,
   MapPin,
   Clock,
+  AlertTriangle,
 } from "lucide-react";
 
 interface LineStatus {
@@ -675,10 +676,24 @@ function GrabOrderPanel() {
       const d = await res.json();
       if (d.ok) {
         setResults(prev => ({ ...prev, [orderId]: d }));
-        toast({
-          title: `✅ 廣播成功`,
-          description: `訂單 #${orderId} 已推送給 ${d.sent} 位司機，等待搶單`,
-        });
+        if (d.sent === 0) {
+          toast({
+            title: "⚠️ 廣播發出但無人接收",
+            description: d.message ?? "目前沒有司機綁定 LINE，請先至「司機綁定」設定 LINE User ID",
+            variant: "destructive",
+          });
+        } else if (d.failed > 0) {
+          toast({
+            title: `⚠️ 部分推播失敗`,
+            description: `訂單 #${orderId}：${d.sent} 位成功，${d.failed} 位 LINE ID 無效或未加好友`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: `✅ 廣播成功`,
+            description: `訂單 #${orderId} 已推送給 ${d.sent} 位司機，等待搶單`,
+          });
+        }
         refetch();
       } else {
         toast({ title: "廣播失敗", description: d.error, variant: "destructive" });
@@ -706,6 +721,25 @@ function GrabOrderPanel() {
 
   return (
     <div className="space-y-4">
+
+      {/* 0位綁定警告 */}
+      {driverCount === 0 && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="p-2 rounded-lg bg-red-100 shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm text-red-700">目前沒有司機綁定 LINE</div>
+            <div className="text-xs text-red-600 mt-1 space-y-1">
+              <div>廣播按下後訊息無法發送給任何人。請先完成以下其中一種綁定方式：</div>
+              <div className="pl-2 space-y-0.5">
+                <div>① 請司機加入 LINE 官方帳號，並傳送「<code className="bg-red-100 px-1 rounded">綁定 {"{電話號碼}"}</code>」</div>
+                <div>② 切換到「司機綁定」頁籤，手動貼上司機的 LINE User ID</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 說明卡 */}
       <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
@@ -787,8 +821,18 @@ function GrabOrderPanel() {
                     )}
                   </div>
                   {sentResult && (
-                    <span className="text-xs text-green-700 font-medium">
-                      已推送 {sentResult.sent}/{sentResult.total} 位
+                    <span className={`text-xs font-medium ${
+                      sentResult.sent === 0
+                        ? "text-red-600"
+                        : sentResult.failed > 0
+                        ? "text-amber-600"
+                        : "text-green-700"
+                    }`}>
+                      {sentResult.sent === 0
+                        ? "⚠ 無人接收"
+                        : sentResult.failed > 0
+                        ? `⚠ ${sentResult.sent} 成功 / ${sentResult.failed} 失敗`
+                        : `✓ 已推送 ${sentResult.sent} 位`}
                     </span>
                   )}
                 </div>
