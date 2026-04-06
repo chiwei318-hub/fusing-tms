@@ -59,9 +59,6 @@ import RouteImportTab from "./admin/RouteImportTab";
 import FormImportTab from "./admin/FormImportTab";
 import SheetSyncTab from "./admin/SheetSyncTab";
 import FranchiseeTab from "./admin/FranchiseeTab";
-import PenaltiesTab from "./admin/PenaltiesTab";
-import ShopeeRatesTab from "./admin/ShopeeRatesTab";
-import DriverEarningsTab from "./admin/DriverEarningsTab";
 import ShopeeBillingTab from "./admin/ShopeeBillingTab";
 import PnLTab from "./admin/PnLTab";
 import CashFlowTab from "./admin/CashFlowTab";
@@ -1625,9 +1622,6 @@ export default function Admin() {
                     { value: "formimport",  icon: <FileText className="w-3.5 h-3.5 text-green-600" />,              label: "表單匯入" },
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
                     { value: "shopeebilling", icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,        label: "月結對帳匯入" },
-                    { value: "penalties",   icon: <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />,        label: "Shopee罰款" },
-                    { value: "shopeerate",  icon: <Tag className="w-3.5 h-3.5 text-blue-500" />,                    label: "Shopee報價" },
-                    { value: "driverearnings", icon: <Calculator className="w-3.5 h-3.5 text-green-600" />,          label: "運費試算" },
                     { value: "pnl",           icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,          label: "盈虧分析" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
@@ -3909,21 +3903,6 @@ export default function Admin() {
         {/* ===== 蝦皮月結對帳匯入 TAB ===== */}
         <TabsContent value="shopeebilling" className="outline-none">
           <ShopeeBillingTab />
-        </TabsContent>
-
-        {/* ===== Shopee 罰款管理 TAB ===== */}
-        <TabsContent value="penalties" className="outline-none">
-          <PenaltiesTab />
-        </TabsContent>
-
-        {/* ===== Shopee 報價單 TAB ===== */}
-        <TabsContent value="shopeerate" className="outline-none">
-          <ShopeeRatesTab />
-        </TabsContent>
-
-        {/* ===== 運費試算 TAB ===== */}
-        <TabsContent value="driverearnings" className="outline-none">
-          <DriverEarningsTab />
         </TabsContent>
 
         {/* ===== 盈虧分析 TAB ===== */}
