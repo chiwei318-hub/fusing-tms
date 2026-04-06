@@ -8,6 +8,7 @@ import {
   sendDispatchNotification,
   sendCustomerDispatch,
 } from "../lib/line.js";
+import { getDistanceKm } from "../lib/distanceService";
 
 export const smartOrderRouter = Router();
 
@@ -694,14 +695,16 @@ smartOrderRouter.post("/smart-quote/v2", async (req, res) => {
     const cfg = await getConfig();
 
     // Estimate distance from addresses if distanceKm not given
+    // 優先呼叫 Google Maps（有 API Key）；否則 Haversine 直線 × 1.25 估算路程
     let distKm = p.distanceKm ?? 20;
+    let distanceSource: "google" | "haversine" | "provided" = p.distanceKm ? "provided" : "haversine";
     if (!p.distanceKm && p.pickupAddress && p.deliveryAddress) {
-      const pickupLoc = geocodeAddress(p.pickupAddress);
-      const deliveryLoc = geocodeAddress(p.deliveryAddress);
-      if (pickupLoc && deliveryLoc) {
-        distKm = Math.round(haversine(pickupLoc.lat, pickupLoc.lng, deliveryLoc.lat, deliveryLoc.lng) * 10) / 10;
-        // Road distance is typically 1.25x straight line
-        distKm = Math.round(distKm * 1.25 * 10) / 10;
+      const result = await getDistanceKm(p.pickupAddress, p.deliveryAddress);
+      if (result.distance_km > 0) {
+        distKm = result.source === "haversine"
+          ? Math.round(result.distance_km * 1.25 * 10) / 10  // 直線 → 路程補正
+          : result.distance_km;
+        distanceSource = result.source;
       }
     }
 
@@ -754,6 +757,7 @@ smartOrderRouter.post("/smart-quote/v2", async (req, res) => {
 
     return res.json({
       estimatedDistanceKm: distKm,
+      distanceSource,
       breakdown: {
         base: baseRaw,
         coldChainSurcharge,

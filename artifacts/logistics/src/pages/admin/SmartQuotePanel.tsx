@@ -34,6 +34,7 @@ interface Historical {
 
 interface QuoteResult {
   estimatedDistanceKm: number;
+  distanceSource?: "google" | "haversine" | "provided";
   breakdown: QuoteBreakdown;
   historical: Historical | null;
 }
@@ -271,8 +272,18 @@ export default function SmartQuotePanel({ initialPickup = "", initialDelivery = 
                   <p className="text-sm font-bold text-violet-600">NT${result.breakdown.suggested.toLocaleString()}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] text-gray-400">估算里程</p>
+                  <p className="text-[10px] text-gray-400">
+                    估算里程
+                    {result.distanceSource === "google" && (
+                      <span className="ml-1 text-green-600">🗺️</span>
+                    )}
+                  </p>
                   <p className="text-sm font-bold text-gray-700">{result.estimatedDistanceKm} km</p>
+                  {result.distanceSource && result.distanceSource !== "provided" && (
+                    <p className="text-[9px] text-gray-400">
+                      {result.distanceSource === "google" ? "Google Maps路線" : "直線估算×1.25"}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>

@@ -6,6 +6,10 @@ import { driversTable } from "./drivers";
 export const orderStatusEnum = ["pending", "assigned", "in_transit", "delivered", "cancelled"] as const;
 export type OrderStatus = typeof orderStatusEnum[number];
 
+/** TMS 生命週期狀態（比 status 更細粒度） */
+export const tmsStatusEnum = ["pending", "accepted", "picking", "delivered", "settled", "cancelled"] as const;
+export type TmsStatus = typeof tmsStatusEnum[number];
+
 export const feeStatusEnum = ["unpaid", "paid", "invoiced"] as const;
 export type FeeStatus = typeof feeStatusEnum[number];
 
@@ -68,7 +72,8 @@ export const ordersTable = pgTable("orders", {
   fleetId: integer("fleet_id"),          // 車隊ID（通用）
   // 系統
   status: text("status").notNull().default("pending"),
-  orderStatus: text("order_status"),     // 冗餘別名，方便前端使用
+  orderStatus: text("order_status"),     // TMS 生命週期: pending/accepted/picking/delivered/settled/cancelled
+  isColdChain: boolean("is_cold_chain").notNull().default(false),  // 是否冷鏈
   driverId: integer("driver_id").references(() => driversTable.id),
   notes: text("notes"),                  // 純備註，不再存結構資料
   basePrice: real("base_price"),

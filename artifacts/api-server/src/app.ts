@@ -115,6 +115,28 @@ async function runOrdersColumnMigration() {
     `);
   } catch (e) { console.warn("[OrderMigration] source_channel backfill:", String(e).slice(0, 120)); }
 
+  // 5. 加入 is_cold_chain 欄位（冷鏈標記）
+  try {
+    await _migPool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_cold_chain BOOLEAN NOT NULL DEFAULT FALSE`);
+  } catch (e) { console.warn("[OrderMigration] is_cold_chain column:", String(e).slice(0, 120)); }
+
+  // 6. 同步 order_status TMS 生命週期（pending→pending, assigned→accepted,
+  //    in_transit/picking→picking, delivered→delivered, cancelled→cancelled）
+  try {
+    await _migPool.query(`
+      UPDATE orders
+      SET order_status = CASE
+        WHEN status = 'pending'    THEN 'pending'
+        WHEN status = 'assigned'   THEN 'accepted'
+        WHEN status IN ('in_transit', 'picking') THEN 'picking'
+        WHEN status = 'delivered'  THEN 'delivered'
+        WHEN status = 'cancelled'  THEN 'cancelled'
+        ELSE status
+      END
+      WHERE order_status IS NULL AND status IS NOT NULL
+    `);
+  } catch (e) { console.warn("[OrderMigration] order_status backfill:", String(e).slice(0, 120)); }
+
   console.log("[OrderMigration] orders column migration complete");
 }
 

@@ -1,6 +1,7 @@
 import * as line from "@line/bot-sdk";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { enqueueNotification } from "./notificationQueue";
 
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
 const channelSecret = process.env.LINE_CHANNEL_SECRET ?? "";
@@ -180,9 +181,11 @@ export async function sendNewOrderAlertToCompany(order: OrderInfo): Promise<void
     },
   };
 
-  // Send to ALL receivers concurrently
+  // 非阻塞推播：加入通知佇列，不等待回應
   const altText = `【新訂單】#${order.id} ${order.customerName} 已下單`;
-  await Promise.allSettled(all.map(uid => pushFlex(uid, altText, bubble)));
+  for (const uid of all) {
+    enqueueNotification(() => pushFlex(uid, altText, bubble), `newOrder#${order.id}`);
+  }
 }
 
 /* ─── 3. 派車成功 → 客戶（含司機/車牌/時間） ─── */
@@ -385,7 +388,9 @@ export async function sendRejectAlertToCompany(order: OrderInfo, driverName: str
   };
 
   const altText = `【拒單警告】司機 ${driverName} 拒絕訂單 #${order.id}`;
-  await Promise.allSettled(all.map(uid => pushFlex(uid, altText, bubble)));
+  for (const uid of all) {
+    enqueueNotification(() => pushFlex(uid, altText, bubble), `reject#${order.id}`);
+  }
 }
 
 /* ─── 7. 發票通知（推播給客戶） ─── */
@@ -651,11 +656,14 @@ export async function sendOrderBroadcast(
   };
 
   const altText = `【搶單】訂單 #${order.id}｜${order.pickupAddress} → ${order.deliveryAddress}｜${price ? nt(price) : "洽談"}`;
-  const results = await Promise.allSettled(
-    driverLineIds.map(uid => pushFlex(uid, altText, bubble)),
-  );
 
-  const sent = results.filter(r => r.status === "fulfilled").length;
-  const failed = results.filter(r => r.status === "rejected").length;
-  return { sent, failed };
+  // ── 非同步佇列推播（爆單時不阻塞 HTTP 回應）──
+  for (const uid of driverLineIds) {
+    enqueueNotification(
+      () => pushFlex(uid, altText, bubble),
+      `broadcast#${order.id}→${uid.slice(-6)}`,
+    );
+  }
+
+  return { sent: driverLineIds.length, failed: 0 };
 }

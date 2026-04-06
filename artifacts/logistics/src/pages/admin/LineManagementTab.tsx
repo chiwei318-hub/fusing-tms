@@ -656,6 +656,14 @@ function GrabOrderPanel() {
     refetchInterval: 30_000,
   });
 
+  const { data: queueStatus } = useQuery<{
+    pending: number; running: number; completed: number; failed: number; queueLength: number; concurrency: number;
+  }>({
+    queryKey: ["line-queue-status"],
+    queryFn: () => fetch("/api/line/queue-status").then(r => r.json()),
+    refetchInterval: 3_000,
+  });
+
   const broadcast = async (orderId: number) => {
     setBroadcasting(orderId);
     try {
@@ -720,6 +728,30 @@ function GrabOrderPanel() {
           <code className="text-xs font-mono text-green-800">接單:123　接單：123　接單 123</code>
         </div>
       </div>
+
+      {/* 非同步推播佇列狀態 */}
+      {queueStatus && (queueStatus.pending > 0 || queueStatus.running > 0 || queueStatus.completed > 0) && (
+        <div className="flex items-center gap-3 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg text-xs">
+          <Zap className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+          <span className="font-medium text-blue-800">非同步推播佇列</span>
+          <div className="flex gap-3 ml-auto">
+            {queueStatus.running > 0 && (
+              <span className="text-blue-700 flex items-center gap-1">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin" />推送中 {queueStatus.running}
+              </span>
+            )}
+            {queueStatus.pending > 0 && (
+              <span className="text-amber-700">排隊中 {queueStatus.pending}</span>
+            )}
+            {queueStatus.completed > 0 && (
+              <span className="text-green-700">✓ 完成 {queueStatus.completed}</span>
+            )}
+            {queueStatus.failed > 0 && (
+              <span className="text-red-700">✗ 失敗 {queueStatus.failed}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 可廣播訂單清單 */}
       <div className="flex items-center justify-between">

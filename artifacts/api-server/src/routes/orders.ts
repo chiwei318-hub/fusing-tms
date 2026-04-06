@@ -186,6 +186,8 @@ router.post("/orders", async (req, res) => {
         extraPickupAddresses: body.extraPickupAddresses ?? null,
         extraDeliveryAddresses: body.extraDeliveryAddresses ?? null,
         operatorName: body.operatorName ?? null,
+        isColdChain: !!(req.body.isColdChain ?? req.body.is_cold_chain),
+        orderStatus: "pending",
         status: "pending",
         feeStatus: "unpaid",
       })

@@ -4,6 +4,7 @@ import * as lineLib from "@line/bot-sdk";
 import { db, ordersTable, customersTable, driversTable } from "@workspace/db";
 import { lineAccountsTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { getQueueStats } from "../lib/notificationQueue";
 import {
   replyTextMessage,
   replyMessages,
@@ -785,6 +786,14 @@ router.get("/drivers/:id/credit-history", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+/**
+ * GET /api/line/queue-status
+ * 取得非同步 LINE 推播佇列目前狀態
+ */
+router.get("/line/queue-status", (_req, res) => {
+  res.json(getQueueStats());
 });
 
 // 管理員手動調整積分
