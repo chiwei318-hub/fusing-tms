@@ -476,16 +476,20 @@ function OrderSettlementsPanel() {
   const [rows, setRows]         = useState<OrderSettlementRow[]>([]);
   const [summary, setSummary]   = useState<SettlementSummary | null>(null);
   const [loading, setLoading]   = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [filter, setFilter]     = useState<string>("all");
+  const [month, setMonth]       = useState<string>(() => new Date().toISOString().substring(0, 7));
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = filter !== "all" ? `?payment_status=${filter}` : "";
+      const params = new URLSearchParams({ limit: "100" });
+      if (filter !== "all") params.set("payment_status", filter);
+      if (month) params.set("month", month);
       const [listRes, sumRes] = await Promise.all([
-        fetch(apiUrl(`/api/order-settlements${qs}&limit=100`)),
-        fetch(apiUrl("/api/order-settlements/summary")),
+        fetch(apiUrl(`/api/order-settlements?${params}`)),
+        fetch(apiUrl(`/api/order-settlements/summary?month=${month}`)),
       ]);
       const list = await listRes.json();
       const sum  = await sumRes.json();
@@ -493,7 +497,28 @@ function OrderSettlementsPanel() {
       setSummary(sum);
     } catch { toast({ title: "載入失敗", variant: "destructive" }); }
     finally { setLoading(false); }
-  }, [filter]);
+  }, [filter, month]);
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (month) params.set("month", month);
+      if (filter !== "all") params.set("payment_status", filter);
+      const res = await fetch(apiUrl(`/api/order-settlements/export?${params}`));
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `富詠運輸_財務報表_${month || "全部"}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "✅ Excel 報表已下載" });
+    } catch (e) {
+      toast({ title: "匯出失敗", description: String(e), variant: "destructive" });
+    } finally { setExporting(false); }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -559,13 +584,31 @@ function OrderSettlementsPanel() {
 
       {/* 操作列 */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* 月份選擇 */}
+        <input
+          type="month"
+          value={month}
+          onChange={e => setMonth(e.target.value)}
+          className="h-7 text-xs border rounded px-2 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+        />
+        {/* 狀態篩選 */}
         <div className="flex gap-1">
           {[["all","全部"],["unpaid","待付款"],["paid","已付款"]].map(([v,l]) => (
             <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="text-xs h-7" onClick={() => setFilter(v)}>{l}</Button>
           ))}
         </div>
-        <Button size="sm" variant="outline" className="text-xs h-7 gap-1 ml-auto" onClick={load} disabled={loading}>
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={load} disabled={loading}>
           <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> 重整
+        </Button>
+        {/* Excel 導出 */}
+        <Button
+          size="sm"
+          className="text-xs h-7 gap-1 ml-auto bg-emerald-700 hover:bg-emerald-800"
+          onClick={handleExportExcel}
+          disabled={exporting}
+        >
+          <Download className={`w-3 h-3 ${exporting ? "animate-pulse" : ""}`} />
+          {exporting ? "產生中…" : "一鍵導出 Excel"}
         </Button>
         {selected.size > 0 && (
           <Button size="sm" className="text-xs h-7 gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleBatchPay}>
