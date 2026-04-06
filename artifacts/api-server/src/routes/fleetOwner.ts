@@ -450,14 +450,15 @@ fleetOwnerRouter.post("/pricing/import-shopee", async (req, res) => {
       : 70;
     const notesStr = [r.service_type, r.route_od, r.notes].filter(Boolean).join(" | ");
 
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO fleet_pricing_rules
          (franchisee_id, name, vehicle_type, base_fee, per_km_rate,
           per_stop_rate, min_fee, driver_ratio, notes)
-       VALUES ($1,$2,$3,$4,0,0,$4,$5,$6)`,
+       VALUES ($1,$2,$3,$4,0,0,$4,$5,$6)
+       ON CONFLICT (franchisee_id, name) DO NOTHING`,
       [fid, name, r.vehicle_type ?? "大貨車", baseFee, driverRatio, notesStr || null]
     );
-    imported++;
+    if ((result.rowCount ?? 0) > 0) imported++;
   }
   res.json({ ok: true, imported });
 });
