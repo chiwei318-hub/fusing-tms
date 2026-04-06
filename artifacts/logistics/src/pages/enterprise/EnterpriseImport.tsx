@@ -221,6 +221,30 @@ export default function EnterpriseImport({ session }: { session: EnterpriseSessi
             </div>
           </div>
 
+          {/* Smart diagnostic banner – when ALL rows have same column-missing error */}
+          {dryResult.errors > 0 && (() => {
+            const allSameColError = dryResult.rows.every(r =>
+              !r.valid && r.errors.some(e => e.includes("取貨地址") || e.includes("送貨地址"))
+            );
+            if (!allSameColError) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-amber-800">可能欄位標題不符合範本格式</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    系統找不到「<strong>取貨地址</strong>」或「<strong>送貨地址</strong>」欄位。<br />
+                    請確認第一列（標題列）的欄位名稱與範本完全一致，或重新下載範本填寫。
+                  </p>
+                  <button onClick={downloadTemplate}
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors">
+                    <Download className="w-3.5 h-3.5" /> 重新下載範本
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Row preview */}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -229,34 +253,49 @@ export default function EnterpriseImport({ session }: { session: EnterpriseSessi
             </div>
             <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
               {dryResult.rows.slice(0, 20).map(row => (
-                <div key={row.rowNum} className={`px-4 py-3 ${row.valid ? "" : "bg-red-50"}`}>
+                <div key={row.rowNum} className={`px-4 py-3 ${row.valid ? "" : "bg-red-50/60"}`}>
                   <div className="flex items-start gap-2">
                     {row.valid
                       ? <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                      : <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
+                      : <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className="text-xs font-mono text-gray-400">#{row.rowNum}</span>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[11px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">列 #{row.rowNum}</span>
                         {row.preview.cargo_description && (
                           <span className="text-xs text-gray-500 truncate">{row.preview.cargo_description}</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-800 truncate">
-                        <span className="text-[#0d2d6e] font-semibold">取</span> {row.preview.pickup_address}
-                      </p>
-                      <p className="text-xs text-gray-800 truncate">
-                        <span className="text-emerald-600 font-semibold">送</span> {row.preview.delivery_address}
-                      </p>
+                      {/* Address lines – only show when not empty */}
+                      {row.preview.pickup_address ? (
+                        <p className="text-xs text-gray-800 truncate">
+                          <span className="text-[#0d2d6e] font-bold">取</span>{" "}{row.preview.pickup_address}
+                        </p>
+                      ) : row.errors.some(e => e.includes("取貨地址")) ? (
+                        <p className="text-xs text-red-400 italic">（取貨地址未填）</p>
+                      ) : null}
+                      {row.preview.delivery_address ? (
+                        <p className="text-xs text-gray-800 truncate">
+                          <span className="text-emerald-600 font-bold">送</span>{" "}{row.preview.delivery_address}
+                        </p>
+                      ) : row.errors.some(e => e.includes("送貨地址")) ? (
+                        <p className="text-xs text-red-400 italic">（送貨地址未填）</p>
+                      ) : null}
                       {row.preview.pickup_date && (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {row.preview.pickup_date} {row.preview.pickup_time}
+                          {row.preview.pickup_date}{row.preview.pickup_time ? ` ${row.preview.pickup_time}` : ""}
                           {row.preview.receiver_name ? ` → ${row.preview.receiver_name}` : ""}
                         </p>
                       )}
+                      {/* Errors – one per line */}
                       {row.errors.length > 0 && (
-                        <p className="text-xs text-red-600 mt-0.5 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />{row.errors.join("、")}
-                        </p>
+                        <ul className="mt-1.5 space-y-0.5">
+                          {row.errors.map((e, i) => (
+                            <li key={i} className="text-xs text-red-600 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                              {e}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   </div>
@@ -267,14 +306,18 @@ export default function EnterpriseImport({ session }: { session: EnterpriseSessi
 
           {/* Actions */}
           {dryResult.errors > 0 && dryResult.valid === 0 && (
-            <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-sm text-red-700">
-              所有資料均有錯誤，請修正後重新上傳。
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+              <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-red-700">所有資料均有錯誤，無法匯入</p>
+                <p className="text-xs text-red-600 mt-0.5">請依照上方提示修正後重新上傳，或下載範本重新填寫。</p>
+              </div>
             </div>
           )}
           {dryResult.errors > 0 && dryResult.valid > 0 && (
             <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-xs text-amber-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              有 {dryResult.errors} 筆資料有誤將被跳過，{dryResult.valid} 筆將正常建立
+              <span><strong>{dryResult.errors} 筆</strong>有錯誤將被略過，<strong>{dryResult.valid} 筆</strong>正常資料將建立訂單</span>
             </div>
           )}
 
