@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Users, Truck, DollarSign, RefreshCw, Edit2, Save, X,
   ChevronDown, ChevronRight, Calculator, BadgeCheck, Clock,
-  Plus, Trash2, Upload, RotateCcw,
+  Plus, Trash2, Upload, RotateCcw, Link,
 } from "lucide-react";
 import { PrintSaveBar } from "@/components/PrintSaveBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,16 @@ const EMPTY_SHOPEE_DRIVER: Omit<ShopeeDriver, "route_count"> = {
   fleet_name: "", is_own_driver: false, notes: "",
 };
 
+interface ShopeeRateCard {
+  id: number;
+  service_type: string;
+  route: string;
+  vehicle_type: string;
+  unit_price: number | null;
+  price_unit: string;
+  notes: string | null;
+}
+
 type TabKey = "earnings" | "prefixRates" | "driverSetup";
 
 export default function DriverEarningsTab() {
@@ -83,6 +93,7 @@ export default function DriverEarningsTab() {
   const [summary, setSummary] = useState<{ total_routes: string; grand_total: string } | null>(null);
   const [prefixRates, setPrefixRates] = useState<PrefixRate[]>([]);
   const [shopeeDrivers, setShopeeDrivers] = useState<ShopeeDriver[]>([]);
+  const [shopeeRateCards, setShopeeRateCards] = useState<ShopeeRateCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
 
@@ -137,11 +148,20 @@ export default function DriverEarningsTab() {
     setShopeeDrivers(d.items ?? []);
   }, []);
 
+  const loadShopeeRateCards = useCallback(async () => {
+    try {
+      const r = await fetch(apiUrl("/shopee-rates"));
+      const d = await r.json();
+      setShopeeRateCards(Array.isArray(d) ? d : d.rates ?? d.items ?? []);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     loadEarnings();
     loadPrefixRates();
     loadShopeeDrivers();
-  }, [loadEarnings, loadPrefixRates, loadShopeeDrivers]);
+    loadShopeeRateCards();
+  }, [loadEarnings, loadPrefixRates, loadShopeeDrivers, loadShopeeRateCards]);
 
   const savePrefixRate = async (prefix: string) => {
     await fetch(apiUrl(`/driver-earnings/prefix-rates/${encodeURIComponent(prefix)}`), {
