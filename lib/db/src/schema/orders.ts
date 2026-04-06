@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, numeric, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { driversTable } from "./drivers";
@@ -24,7 +24,9 @@ export type SourceChannel = typeof sourceChannelEnum[number];
 
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
+  orderNo: text("order_no"),              // 人類可讀訂單編號 e.g. FY20260406-0001 (DB trigger 自動生成)
   // 委託方
+  customerId: integer("customer_id"),     // FK → customers.id (企業客戶，個人客戶為 null)
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
   customerEmail: text("customer_email"),
@@ -69,7 +71,12 @@ export const ordersTable = pgTable("orders", {
   shopeeDriverId: text("shopee_driver_id"), // 蝦皮司機工號
   dispatchDock: text("dispatch_dock"),   // 碼頭編號
   // ── 車隊 ─────────────────────────────────────────────────────────────────
-  fleetId: integer("fleet_id"),          // 車隊ID（通用）
+  fleetId: integer("fleet_id"),           // 車隊ID（通用）
+  fleetDriverId: integer("fleet_driver_id"), // 車隊司機ID
+  fusingaoFleetId: integer("fusingao_fleet_id"), // 富詠車隊ID
+  teamId: integer("team_id"),             // 班組ID
+  zoneId: integer("zone_id"),             // 派送區域ID
+  monthlyBillId: integer("monthly_bill_id"), // 月結帳單ID
   // 系統
   status: text("status").notNull().default("pending"),
   orderStatus: text("order_status"),     // TMS 生命週期: pending/accepted/picking/delivered/settled/cancelled
@@ -87,8 +94,14 @@ export const ordersTable = pgTable("orders", {
   invoiceStatus: text("invoice_status").default("none"), // 發票狀態
   // 來源渠道
   sourceChannel: text("source_channel"), // website/line/enterprise/monthly/manual/route_import/api
+  assignedMethod: varchar("assigned_method", { length: 20 }), // dispatch/grab/auto
   // 快速下單 token
+  quickOrderToken: text("quick_order_token"),
   quickOrderTokenKey: text("quick_order_token_key"),
+  // 異常管理
+  exceptionCode: text("exception_code"),
+  // 自動報價
+  suggestedPrice: real("suggested_price"),
   // Driver portal fields
   driverAcceptedAt: timestamp("driver_accepted_at"),
   checkInAt: timestamp("check_in_at"),
@@ -121,6 +134,7 @@ export const ordersTable = pgTable("orders", {
   customFieldValues: text("custom_field_values"),
   // 接單人員（後台開單時記錄哪位員工建立）
   operatorName: text("operator_name"),
+  settledAt: timestamp("settled_at", { withTimezone: true }), // 結案時間 (TMS settled 狀態)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -130,6 +144,8 @@ export const insertOrderSchema = createInsertSchema(ordersTable, {
   feeStatus: z.enum(feeStatusEnum).default("unpaid"),
   driverPaymentStatus: z.enum(payoutStatusEnum).default("unpaid"),
   franchiseePaymentStatus: z.enum(payoutStatusEnum).default("unpaid"),
-}).omit({ id: true, createdAt: true, updatedAt: true });
+  orderStatus: z.enum(tmsStatusEnum).default("pending").optional().nullable(),
+  sourceChannel: z.enum(sourceChannelEnum).optional().nullable(),
+}).omit({ id: true, createdAt: true, updatedAt: true, orderNo: true }); // orderNo 由 DB trigger 自動生成
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof ordersTable.$inferSelect;
