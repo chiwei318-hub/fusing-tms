@@ -280,7 +280,7 @@ function FleetCard({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function SettlementChainTab({
-  months,
+  months: monthsProp,
 }: {
   months: { month: string; month_label?: string }[];
 }) {
@@ -288,8 +288,27 @@ export default function SettlementChainTab({
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [months, setMonths] = useState<{ month: string; month_label: string }[]>([]);
   const [data, setData] = useState<SettlementData | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Self-load month list from /fusingao/monthly
+  useEffect(() => {
+    fetch(apiUrl("/fusingao/monthly")).then(r => r.json()).then(d => {
+      if (d.ok && Array.isArray(d.months)) {
+        const list = d.months.map((m: any) => ({ month: m.month, month_label: m.month_label ?? m.month }));
+        setMonths(list);
+        // If current month not in list but list is non-empty, do NOT reset — keep current month
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Also absorb parent prop if self-load yields nothing
+  useEffect(() => {
+    if (months.length === 0 && monthsProp.length > 0) {
+      setMonths(monthsProp.map(m => ({ month: m.month, month_label: m.month_label ?? m.month })));
+    }
+  }, [monthsProp]); // eslint-disable-line
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -316,15 +335,23 @@ export default function SettlementChainTab({
   return (
     <div className="space-y-5">
       {/* ── Controls ─────────────────────────────────────────────────────── */}
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <Select value={month || "all"} onValueChange={v => setMonth(v === "all" ? "" : v)}>
-          <SelectTrigger className="h-8 w-36 text-sm">
+          <SelectTrigger className="h-8 w-40 text-sm">
             <SelectValue placeholder="全部期間" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部期間</SelectItem>
+            {/* Always include current month even if not in list */}
+            {(() => {
+              const now = new Date();
+              const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              const curLabel = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, "0")}月`;
+              const hasCur = months.some(m => m.month === cur);
+              return !hasCur ? <SelectItem key={cur} value={cur}>{curLabel}（本月）</SelectItem> : null;
+            })()}
             {months.map(m => (
-              <SelectItem key={m.month} value={m.month}>{m.month_label ?? m.month}</SelectItem>
+              <SelectItem key={m.month} value={m.month}>{m.month_label}</SelectItem>
             ))}
           </SelectContent>
         </Select>

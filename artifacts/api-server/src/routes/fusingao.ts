@@ -805,9 +805,10 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
 fusingaoRouter.get("/settlement", async (req, res) => {
   try {
     const { month } = req.query as Record<string, string>;
-    const monthFilter = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+    const monthFilter    = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+    const monthFilterWh  = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
 
-    // Top-level summary
+    // Top-level summary (all route orders regardless of fleet assignment)
     const [summary] = await db.execute(sql`
       SELECT
         COUNT(o.id)                              AS total_routes,
@@ -817,11 +818,11 @@ fusingaoRouter.get("/settlement", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
-      WHERE o.route_id IS NOT NULL ${monthFilter}
+      WHERE o.route_id IS NOT NULL ${monthFilterWh}
     `).then(r => r.rows as any[]);
 
-    // Per-fleet breakdown
-    const fleets = await db.execute(sql`
+    // Per-fleet breakdown (orders assigned to a fleet)
+    const fleetsRows = await db.execute(sql`
       SELECT
         f.id, f.fleet_name, f.commission_rate,
         COUNT(o.id)                              AS route_count,
@@ -837,7 +838,31 @@ fusingaoRouter.get("/settlement", async (req, res) => {
       ORDER BY shopee_income DESC
     `);
 
-    res.json({ ok: true, summary: summary ?? {}, fleets: fleets.rows });
+    // Unassigned routes (no fusingao_fleet_id) — show as a special row if any exist
+    const [unassigned] = await db.execute(sql`
+      SELECT
+        COUNT(o.id)                       AS route_count,
+        COALESCE(SUM(pr.rate_per_trip),0) AS shopee_income,
+        COALESCE(SUM(pr.rate_per_trip),0) AS fleet_payout,
+        0                                 AS commission_earned,
+        COUNT(o.id) FILTER (WHERE o.driver_payment_status='paid') AS billed_count,
+        COUNT(o.fleet_completed_at)       AS completed_count
+      FROM orders o
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id IS NULL ${monthFilterWh}
+    `).then(r => r.rows as any[]);
+
+    const fleets = [...fleetsRows.rows] as any[];
+    if (Number(unassigned?.route_count ?? 0) > 0) {
+      fleets.push({
+        id: -1,
+        fleet_name: "（未指派車隊）",
+        commission_rate: "0",
+        ...unassigned,
+      });
+    }
+
+    res.json({ ok: true, summary: summary ?? {}, fleets });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
