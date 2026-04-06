@@ -543,7 +543,7 @@ export default function FusingaoFleetPortal() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b bg-white rounded-t-lg px-3 pt-2 overflow-x-auto">
+        <div className="flex flex-wrap gap-x-0.5 gap-y-0 border-b bg-white rounded-t-lg px-2 pt-1.5">
           {(isSubAccount ? [
             { id:"mine",     label:`📦 我的路線 (${mine.filter(r => !shopeeDriverId || r.driverId === shopeeDriverId).length})` },
             { id:"billing",  label:"💰 月結帳單" },
@@ -554,15 +554,15 @@ export default function FusingaoFleetPortal() {
             { id:"billing",       label:"💰 月結帳單" },
             { id:"drivers",       label:`👤 旗下司機 (${drivers.length})` },
             { id:"settlement",    label:"📊 結算分析" },
-            { id:"sub-accounts",  label:`🔑 司機子帳號${subAccounts.length > 0 ? ` (${subAccounts.length})` : ""}` },
+            { id:"sub-accounts",  label:`🔑 子帳號${subAccounts.length > 0 ? ` (${subAccounts.length})` : ""}` },
           ] as { id: PortalTab; label: string }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
+              className={`px-2.5 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${t.id===tab?"border-orange-500 text-orange-600":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {t.label}
             </button>
           ))}
-          <Button variant="ghost" size="sm" className="ml-auto h-8 text-gray-400" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="ghost" size="sm" className="ml-auto h-7 text-gray-400" onClick={load} disabled={loading}>
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
 
