@@ -75,7 +75,7 @@ const COMMISSION_THRESHOLD = 2_000_000;
 
 const DEFAULT_MANUAL: ManualItem[] = [
   { label: "上收",         gross: 0, commissionRate: 7 },
-  { label: "招募獎金",     gross: 0, commissionRate: 7 },
+  { label: "招募獎金",     gross: 0, commissionRate: 0 },
   { label: "交通罰單補助", gross: 0, commissionRate: 0 },
 ];
 
@@ -100,11 +100,18 @@ export default function InvoiceTab() {
   );
 
   // Load persisted manual entries from localStorage
+  // Always apply current DEFAULT commissionRates so rule changes take effect immediately
   useEffect(() => {
     const saved = localStorage.getItem(`invoice_manual_${month}`);
     if (saved) {
-      try { setManual(JSON.parse(saved)); }
-      catch { setManual(DEFAULT_MANUAL.map(m => ({ ...m }))); }
+      try {
+        const parsed: ManualItem[] = JSON.parse(saved);
+        const merged = DEFAULT_MANUAL.map(def => {
+          const found = parsed.find(p => p.label === def.label);
+          return found ? { ...found, commissionRate: def.commissionRate } : { ...def };
+        });
+        setManual(merged);
+      } catch { setManual(DEFAULT_MANUAL.map(m => ({ ...m }))); }
     } else {
       setManual(DEFAULT_MANUAL.map(m => ({ ...m })));
     }
@@ -503,6 +510,7 @@ export default function InvoiceTab() {
                         const isManual = item.type === "manual";
                         const currentManual = manual.find(m => m.label === item.name);
                         const changed = isManual && currentManual && currentManual.gross !== item.total;
+                        const sysNoCommission = isManual && currentManual && currentManual.commissionRate === 0;
                         return (
                           <tr key={item.name} className={`border-b ${isManual ? "bg-yellow-50/60" : ""}`}>
                             <td className="px-3 py-2 font-medium">
@@ -512,10 +520,16 @@ export default function InvoiceTab() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-right font-mono">{fmt(item.total)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-red-500">
-                              {item.fusingao > 0 ? `(${fmt(item.fusingao)})` : "—"}
+                            <td className="px-3 py-2 text-right font-mono">
+                              {sysNoCommission ? (
+                                <span className="text-gray-400 text-xs">—<span className="ml-1 text-blue-500">（系統不抽成）</span></span>
+                              ) : item.fusingao > 0 ? (
+                                <span className="text-red-500">({fmt(item.fusingao)})</span>
+                              ) : "—"}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">{fmt(item.net)}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
+                              {sysNoCommission ? fmt(item.total) : fmt(item.net)}
+                            </td>
                             <td className="px-3 py-2 text-center text-xs text-gray-400">
                               {item.type === "auto" ? "系統計算" : item.type === "manual" ? (
                                 changed ? (
