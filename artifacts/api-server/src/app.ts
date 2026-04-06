@@ -166,4 +166,19 @@ ensureFleetSheetSyncTables()
   .then(() => startFleetSheetSyncScheduler())
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
 
+// 清除格式錯誤的 LINE User ID（如填入電話號碼者）
+// 有效 LINE User ID 格式：U + 32 hex 字元（共 33 字元）
+_migPool.query(`
+  UPDATE drivers
+  SET line_user_id = NULL
+  WHERE line_user_id IS NOT NULL
+    AND (
+      LENGTH(line_user_id) <> 33
+      OR line_user_id NOT SIMILAR TO 'U[0-9a-f]{32}'
+    )
+`).then(r => {
+  if (r.rowCount && r.rowCount > 0)
+    console.log(`[LineIDCleanup] 已清除 ${r.rowCount} 筆格式錯誤的 LINE User ID（例：填入電話號碼）`);
+}).catch(e => console.warn("[LineIDCleanup] failed:", String(e).slice(0, 120)));
+
 export default app;

@@ -491,7 +491,14 @@ router.patch("/line/bindings/drivers/:id", async (req, res) => {
     if (!lineUserId || typeof lineUserId !== "string") {
       return res.status(400).json({ error: "lineUserId is required" });
     }
-    await db.update(driversTable).set({ lineUserId: lineUserId.trim() }).where(eq(driversTable.id, id));
+    const trimmed = lineUserId.trim();
+    // 驗證 LINE User ID 格式：U + 32 hex 字元（共 33 字元）
+    if (!/^U[0-9a-f]{32}$/.test(trimmed)) {
+      return res.status(400).json({
+        error: `LINE User ID 格式錯誤。正確格式為「U」開頭加 32 個英數字元，例：Uabcdef1234567890abcdef1234567890\n\n請勿填入電話號碼。`,
+      });
+    }
+    await db.update(driversTable).set({ lineUserId: trimmed }).where(eq(driversTable.id, id));
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to set driver LINE ID" });

@@ -399,31 +399,48 @@ function DriverBindings() {
                     </div>
                   </td>
                 </tr>
-                {expandedId === d.id && (
+                {expandedId === d.id && (() => {
+                  const isValidLineId = /^U[0-9a-f]{32}$/.test(manualId.trim());
+                  const isPhoneNumber = /^09[0-9]{8}$/.test(manualId.trim());
+                  return (
                   <tr key={`${d.id}-input`} className="bg-blue-50">
                     <td colSpan={5} className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <label className="block text-xs text-blue-700 font-medium mb-1">
-                            輸入 {d.name} 的 LINE User ID
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="例：U1234abcd5678efgh..."
-                            value={manualId}
-                            onChange={(e) => setManualId(e.target.value)}
-                            className="w-full border border-blue-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                          />
-                          <p className="text-xs text-blue-500 mt-1">
-                            可在 LINE OA Manager → 用戶管理 中查詢司機的 User ID
+                      <div className="space-y-2">
+                        <label className="block text-xs text-blue-700 font-medium">
+                          輸入 {d.name} 的 LINE User ID
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx（U 開頭，共 33 字元）"
+                          value={manualId}
+                          onChange={(e) => setManualId(e.target.value)}
+                          className={`w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-white font-mono ${
+                            manualId && !isValidLineId
+                              ? "border-red-300 focus:ring-red-400"
+                              : "border-blue-200 focus:ring-blue-400"
+                          }`}
+                        />
+                        {isPhoneNumber && (
+                          <p className="text-xs text-red-600 font-medium">
+                            ⚠ 請勿填入電話號碼！LINE User ID 是「U」開頭的英數字串，不是電話。
                           </p>
+                        )}
+                        {manualId && !isValidLineId && !isPhoneNumber && (
+                          <p className="text-xs text-red-500">
+                            格式不對。LINE User ID 必須是「U」開頭 + 32 個小寫英數字元，共 33 字元。
+                          </p>
+                        )}
+                        <div className="bg-blue-100/70 rounded p-2 text-xs text-blue-800 space-y-1">
+                          <div className="font-medium">📋 如何取得 LINE User ID？</div>
+                          <div>✅ <strong>推薦方式（自動）</strong>：請司機加入 LINE 官方帳號好友，傳送「<code className="bg-white px-1 rounded">綁定 {d.phone ?? "0912345678"}</code>」，系統自動記錄。</div>
+                          <div>🔧 <strong>手動方式</strong>：登入 LINE Official Account Manager → 用戶管理 → 找到司機 → 複製「User ID」欄位（U 開頭）。</div>
                         </div>
-                        <div className="flex gap-1 self-end">
+                        <div className="flex gap-1">
                           <Button
                             size="sm"
                             className="bg-blue-600 hover:bg-blue-700 text-white h-8 px-3 text-xs"
                             onClick={() => manualBindMutation.mutate({ id: d.id, lineUserId: manualId })}
-                            disabled={!manualId.trim() || manualBindMutation.isPending}
+                            disabled={!isValidLineId || manualBindMutation.isPending}
                           >
                             {manualBindMutation.isPending ? "儲存中..." : "儲存"}
                           </Button>
@@ -439,7 +456,8 @@ function DriverBindings() {
                       </div>
                     </td>
                   </tr>
-                )}
+                  );
+                })()}
               </>
             ))}
           </tbody>
