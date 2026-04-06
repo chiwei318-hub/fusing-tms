@@ -1,0 +1,102 @@
+import os
+import uuid
+import datetime
+from replit import db
+import googlemaps
+
+# 初始化 Google Maps
+gmaps = googlemaps.Client(key=os.environ.get("GOOGLE_MAPS_API_KEY"))
+
+class LogisticsPlatform:
+    def __init__(self, commission_rate=0.15):
+        self.commission_rate = commission_rate
+
+    # 步驟一：客戶下單 -> 自動算價
+    def create_order_workflow(self, customer_id, origin, destination, is_cold=True):
+        order_id = f"ORD-{datetime.datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4]}"
+        
+        # 1. 呼叫 Google Maps 算里程
+        dist_result = gmaps.distance_matrix(origin, destination, mode="driving")
+        dist_meters = dist_result['rows'][0]['elements'][0]['distance']['value']
+        dist_km = dist_meters / 1000
+
+        # 2. 自動報價邏輯
+        per_km = 35 if is_cold else 25
+        total_price = round(500 + (dist_km * per_km))
+        platform_fee = round(total_price * self.commission_rate)
+        driver_pay = total_price - platform_fee
+
+        # 3. 寫入資料庫
+        order_data = {
+            "order_id": order_id,
+            "customer_id": customer_id,
+            "origin": origin,
+            "destination": destination,
+            "total_price": total_price,
+            "platform_fee": platform_fee,
+            "driver_pay": driver_pay,
+            "status": "pending", # 待接單
+            "is_cold": is_cold,
+            "created_at": str(datetime.datetime.now())
+        }
+        db[f"order:{order_id}"] = order_data
+        
+        # 4. 模擬發送 LINE 給所有司機 (這裏應串接 LINE Push API)
+        print(f"📢 [系統通知] 已發送 LINE 報價卡片給全台司機。單號：{order_id}, 報價：{total_price}")
+        return order_id
+
+    # 步驟二：司機接單 (接續之前的 Postback 邏輯)
+    def driver_accept_order(self, order_id, driver_id):
+        key = f"order:{order_id}"
+        if key in db and db[key]['status'] == 'pending':
+            order = db[key]
+            order['status'] = 'accepted'
+            order['driver_id'] = driver_id
+            db[key] = order
+            print(f"✅ 司機 {driver_id} 已接單 {order_id}")
+            return True
+        return False
+
+    # 步驟三：自動產出財務報表 (抽成結算)
+    def generate_financial_report(self):
+        """
+        遍歷資料庫中所有已完成的訂單，生成本月結算報表
+        """
+        total_revenue = 0
+        total_platform_profit = 0
+        driver_payouts = {}
+
+        # 搜尋資料庫中所有 order: 開頭的 Key
+        order_keys = db.prefix("order:")
+        
+        for k in order_keys:
+            order = db[k]
+            if order['status'] == 'accepted': # 實務上應改為 'completed'
+                total_revenue += order['total_price']
+                total_platform_profit += order['platform_fee']
+                
+                # 累計各司機應領金額
+                d_id = order['driver_id']
+                driver_payouts[d_id] = driver_payouts.get(d_id, 0) + order['driver_pay']
+
+        return {
+            "總運費營收": total_revenue,
+            "平台淨利(15%抽成)": total_platform_profit,
+            "司機帳款清單": driver_payouts,
+            "報表生成時間": str(datetime.datetime.now())
+        }
+
+# --- 實戰模擬執行 ---
+platform = LogisticsPlatform()
+
+# 1. 客戶下單
+oid = platform.create_order_workflow("建商A", "台北車站", "桃園中正路")
+
+# 2. 司機接單
+platform.driver_accept_order(oid, "司機_小王")
+
+# 3. 產出報表
+report = platform.generate_financial_report()
+print("\n--- 本日財務結算報表 ---")
+for key, value in report.items():
+    print(f"{key}: {value}")

@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { format } from "date-fns";
 import {
   DollarSign, Users, Truck, RefreshCw, CheckCircle,
   Download, AlertCircle, FileText, Building2, Package,
+  TrendingUp, CreditCard, Clock, BarChart3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -455,6 +456,190 @@ function AbnormalCostSettlement() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Section 5 — 訂單結算明細 (Order Settlements)
+// ══════════════════════════════════════════════════════════════════════════
+interface OrderSettlementRow {
+  id: number; order_id: number; order_no: string; driver_id: number | null;
+  driver_name: string | null; pickup_address: string; delivery_address: string;
+  total_amount: string; commission_rate: string;
+  commission_amount: string; platform_revenue: string; driver_payout: string;
+  payment_status: "unpaid" | "processing" | "paid" | "cancelled";
+  paid_at: string | null; payment_ref: string | null; created_at: string;
+}
+interface SettlementSummary {
+  total_orders: number; gross_revenue: string; platform_revenue: string;
+  driver_payout_total: string; avg_commission_rate: string;
+  paid_count: number; unpaid_count: number; pending_payout: string;
+}
+function OrderSettlementsPanel() {
+  const { toast } = useToast();
+  const [rows, setRows]         = useState<OrderSettlementRow[]>([]);
+  const [summary, setSummary]   = useState<SettlementSummary | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [filter, setFilter]     = useState<string>("all");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = filter !== "all" ? `?payment_status=${filter}` : "";
+      const [listRes, sumRes] = await Promise.all([
+        fetch(apiUrl(`/api/order-settlements${qs}&limit=100`)),
+        fetch(apiUrl("/api/order-settlements/summary")),
+      ]);
+      const list = await listRes.json();
+      const sum  = await sumRes.json();
+      setRows(list.data ?? []);
+      setSummary(sum);
+    } catch { toast({ title: "載入失敗", variant: "destructive" }); }
+    finally { setLoading(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const nt = (n: string | number) => `NT$${Number(n).toLocaleString("zh-TW")}`;
+  const pct = (n: string | number) => `${Number(n).toFixed(1)}%`;
+
+  const handlePay = async (id: number) => {
+    try {
+      const r = await fetch(apiUrl(`/api/order-settlements/${id}/pay`), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      if (!r.ok) throw new Error();
+      toast({ title: "✅ 已標記付款" });
+      load();
+    } catch { toast({ title: "操作失敗", variant: "destructive" }); }
+  };
+
+  const handleBatchPay = async () => {
+    if (selected.size === 0) return;
+    try {
+      const r = await fetch(apiUrl("/api/order-settlements/batch-pay"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      if (!r.ok) throw new Error();
+      const data = await r.json();
+      toast({ title: `✅ 批次付款完成，共 ${data.updated} 筆` });
+      setSelected(new Set());
+      load();
+    } catch { toast({ title: "批次操作失敗", variant: "destructive" }); }
+  };
+
+  const toggleSelect = (id: number) => setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+
+  const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
+    unpaid:     { label: "待付款", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+    processing: { label: "處理中", cls: "bg-blue-100 text-blue-700 border-blue-200" },
+    paid:       { label: "已付款", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    cancelled:  { label: "已取消", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 摘要卡 */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { icon: BarChart3,   label: "總運費",   value: nt(summary.gross_revenue),     cls: "text-slate-800" },
+            { icon: TrendingUp,  label: "平台利潤", value: nt(summary.platform_revenue),  cls: "text-emerald-700" },
+            { icon: Truck,       label: "司機應付", value: nt(summary.pending_payout),    cls: "text-orange-700" },
+            { icon: Clock,       label: "待付款筆", value: `${summary.unpaid_count} 筆`,  cls: "text-amber-700" },
+          ].map(({ icon: Icon, label, value, cls }) => (
+            <Card key={label} className="border shadow-sm">
+              <CardContent className="p-3 flex items-center gap-2.5">
+                <Icon className={`w-4 h-4 ${cls}`} />
+                <div>
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  <div className={`font-bold text-sm ${cls}`}>{value}</div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* 操作列 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1">
+          {[["all","全部"],["unpaid","待付款"],["paid","已付款"]].map(([v,l]) => (
+            <Button key={v} size="sm" variant={filter === v ? "default" : "outline"} className="text-xs h-7" onClick={() => setFilter(v)}>{l}</Button>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1 ml-auto" onClick={load} disabled={loading}>
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> 重整
+        </Button>
+        {selected.size > 0 && (
+          <Button size="sm" className="text-xs h-7 gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleBatchPay}>
+            <CreditCard className="w-3 h-3" /> 批次付款 ({selected.size})
+          </Button>
+        )}
+      </div>
+
+      {/* 明細表 */}
+      {rows.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm border rounded-xl bg-muted/20">
+          {loading ? "載入中…" : "暫無結算記錄"}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(row => {
+            const cfg = STATUS_CONFIG[row.payment_status] ?? STATUS_CONFIG.unpaid;
+            const isSelected = selected.has(row.id);
+            return (
+              <div key={row.id} className={`border rounded-xl p-3 bg-white shadow-sm transition-colors ${isSelected ? "border-emerald-300 bg-emerald-50/30" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {row.payment_status === "unpaid" && (
+                      <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-600 flex-shrink-0"
+                        checked={isSelected} onChange={() => toggleSelect(row.id)} />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm">{row.order_no ?? `#${row.order_id}`}</div>
+                      <div className="text-xs text-muted-foreground truncate max-w-[180px]">
+                        {row.driver_name ?? "—"} · {row.pickup_address?.substring(0,8)}→{row.delivery_address?.substring(0,8)}
+                      </div>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={`text-[10px] flex-shrink-0 ${cfg.cls}`}>{cfg.label}</Badge>
+                </div>
+
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div className="bg-slate-50 rounded-lg p-2 text-center">
+                    <div className="text-muted-foreground">總運費</div>
+                    <div className="font-bold text-slate-800">{nt(row.total_amount)}</div>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-2 text-center">
+                    <div className="text-muted-foreground">平台抽成 {pct(row.commission_rate)}</div>
+                    <div className="font-bold text-emerald-700">{nt(row.platform_revenue)}</div>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-2 text-center">
+                    <div className="text-muted-foreground">司機應得</div>
+                    <div className="font-bold text-orange-700">{nt(row.driver_payout)}</div>
+                  </div>
+                </div>
+
+                {row.payment_status === "unpaid" && (
+                  <div className="mt-2 flex justify-end">
+                    <Button size="sm" className="text-xs h-6 gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => handlePay(row.id)}>
+                      <CheckCircle className="w-3 h-3" /> 標記已付款
+                    </Button>
+                  </div>
+                )}
+                {row.payment_status === "paid" && row.paid_at && (
+                  <div className="mt-1 text-[10px] text-muted-foreground text-right">
+                    已於 {format(new Date(row.paid_at), "yyyy/MM/dd HH:mm")} 付款
+                    {row.payment_ref && ` · ${row.payment_ref}`}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // Main Component
 // ══════════════════════════════════════════════════════════════════════════
 export default function SettlementCenterTab() {
@@ -482,12 +667,16 @@ export default function SettlementCenterTab() {
           <TabsTrigger value="outsourcer" className="flex-1 gap-1.5 text-xs">
             <Package className="w-3.5 h-3.5" /> 外包請款
           </TabsTrigger>
+          <TabsTrigger value="settlements" className="flex-1 gap-1.5 text-xs">
+            <TrendingUp className="w-3.5 h-3.5" /> 訂單利潤
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="customer"   className="mt-4"><CustomerStatements /></TabsContent>
-        <TabsContent value="driver"     className="mt-4"><DriverPayroll /></TabsContent>
-        <TabsContent value="abnormal"   className="mt-4"><AbnormalCostSettlement /></TabsContent>
-        <TabsContent value="outsourcer" className="mt-4"><OutsourcerInvoices /></TabsContent>
+        <TabsContent value="customer"     className="mt-4"><CustomerStatements /></TabsContent>
+        <TabsContent value="driver"       className="mt-4"><DriverPayroll /></TabsContent>
+        <TabsContent value="abnormal"     className="mt-4"><AbnormalCostSettlement /></TabsContent>
+        <TabsContent value="outsourcer"   className="mt-4"><OutsourcerInvoices /></TabsContent>
+        <TabsContent value="settlements"  className="mt-4"><OrderSettlementsPanel /></TabsContent>
       </Tabs>
     </div>
   );

@@ -12,3 +12,4 @@ export * from "./routePrices";
 export * from "./vehicleCosts";
 export * from "./ratings";
 export * from "./quoteRequests";
+export * from "./settlements";

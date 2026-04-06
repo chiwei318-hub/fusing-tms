@@ -44,6 +44,6 @@ export const driversTable = pgTable("drivers", {
 export const insertDriverSchema = createInsertSchema(driversTable, {
   status: z.enum(driverStatusEnum).default("available"),
   driverType: z.enum(driverTypeEnum).optional().nullable(),
-}).omit({ id: true, createdAt: true, isFranchisee: true });
+}).omit({ id: true, createdAt: true }); // isFranchisee 是 GENERATED 欄位，createInsertSchema 自動排除
 export type InsertDriver = z.infer<typeof insertDriverSchema>;
 export type Driver = typeof driversTable.$inferSelect;

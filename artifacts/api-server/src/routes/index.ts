@@ -80,6 +80,7 @@ import { commissionTiersRouter } from "./commissionTiers";
 import { strategicKpiRouter } from "./strategicKpi";
 import { pricingEngineRoute } from "./pricingEngineRoute";
 import { mapsRouter } from "./mapsRoute";
+import { orderSettlementsRouter } from "./orderSettlements";
 
 const router: IRouter = Router();
 
@@ -166,5 +167,6 @@ router.use("/commission-tiers", commissionTiersRouter);       // 階梯抽成引
 router.use("/kpi/strategic", strategicKpiRouter);             // 戰略 KPI 追蹤
 router.use("/pe", pricingEngineRoute);                        // 透明公式報價引擎
 router.use(mapsRouter);                                        // Google Maps 距離 API
+router.use("/order-settlements", orderSettlementsRouter);      // 訂單結算 & 利潤拆分
 
 export default router;
