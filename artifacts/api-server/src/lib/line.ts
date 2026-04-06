@@ -562,3 +562,100 @@ export async function replyTextMessage(replyToken: string, text: string): Promis
     messages: [{ type: "text", text }],
   });
 }
+
+/* ─── 9. 搶單廣播 → 所有已綁定 LINE 的司機 ─── */
+export interface BroadcastOrderInfo {
+  id: number;
+  pickupAddress: string;
+  deliveryAddress: string;
+  cargoDescription?: string | null;
+  customerName?: string | null;
+  distanceKm?: number | null;
+  totalFee?: number | null;
+  suggestedPrice?: number | null;
+  pickupTime?: string | null;
+  requiredVehicleType?: string | null;
+}
+
+export async function sendOrderBroadcast(
+  driverLineIds: string[],
+  order: BroadcastOrderInfo,
+): Promise<{ sent: number; failed: number }> {
+  if (!channelAccessToken || driverLineIds.length === 0) return { sent: 0, failed: 0 };
+
+  const nt = (n: number | null | undefined) => n ? `NT$${n.toLocaleString()}` : "待定";
+  const price = order.totalFee ?? order.suggestedPrice;
+  const pickupTimeStr = order.pickupTime
+    ? new Date(order.pickupTime).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "即時";
+
+  const bubble: line.messagingApi.FlexBubble = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: "🔥 搶單機會！", weight: "bold", color: "#ffffff", size: "xl" },
+        { type: "text", text: `訂單 #${order.id} — 先搶先得`, color: "#fde68a", size: "sm" },
+      ],
+      backgroundColor: "#16a34a",
+      paddingAll: "lg",
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "md",
+      contents: [
+        {
+          type: "box", layout: "vertical", spacing: "sm",
+          contents: [
+            row("貨物", order.cargoDescription ?? "—"),
+            row("取貨", order.pickupAddress),
+            row("送達", order.deliveryAddress),
+            ...(order.distanceKm ? [row("距離", `${order.distanceKm} km`)] : []),
+            row("時間", pickupTimeStr),
+            ...(order.requiredVehicleType ? [row("車型", order.requiredVehicleType)] : []),
+            { type: "separator", margin: "md" },
+            {
+              type: "box", layout: "baseline", spacing: "sm",
+              contents: [
+                { type: "text", text: "報酬", color: "#64748b", size: "sm", flex: 2 },
+                { type: "text", text: price ? nt(price) : "洽談", color: "#16a34a", size: "lg", weight: "bold", flex: 5 },
+              ],
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: `回覆「接單:${order.id}」或點下方按鈕搶單`,
+          size: "xs", color: "#64748b", margin: "md", wrap: true,
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "horizontal",
+      spacing: "sm",
+      paddingAll: "md",
+      contents: [
+        {
+          type: "button", style: "primary", color: "#16a34a", flex: 2,
+          action: { type: "message", label: "✅ 我要接單", text: `接單:${order.id}` },
+        },
+        {
+          type: "button", style: "secondary", flex: 1,
+          action: { type: "message", label: "查詢詳情", text: `查詢 ${order.id}` },
+        },
+      ],
+    },
+  };
+
+  const altText = `【搶單】訂單 #${order.id}｜${order.pickupAddress} → ${order.deliveryAddress}｜${price ? nt(price) : "洽談"}`;
+  const results = await Promise.allSettled(
+    driverLineIds.map(uid => pushFlex(uid, altText, bubble)),
+  );
+
+  const sent = results.filter(r => r.status === "fulfilled").length;
+  const failed = results.filter(r => r.status === "rejected").length;
+  return { sent, failed };
+}

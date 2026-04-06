@@ -13,6 +13,8 @@ import {
   getOrderNotifyReceivers,
   pushArrivedFlexToDriver,
   pushDeliveryCompletedFlex,
+  sendOrderBroadcast,
+  type BroadcastOrderInfo,
 } from "../lib/line.js";
 
 const router: IRouter = Router();
@@ -274,6 +276,77 @@ router.post("/line/webhook", async (req, res) => {
           continue;
         }
 
+        // ── 搶單：接單:123 / 接單：123 / 接單 123 ──────────────────────────────
+        // Python 等效：if "接單" in msg_text → accept_order(order_id, user_id)
+        // 升級：DB 層原子 UPDATE 取代記憶體 dict，自動防重複接單
+        const grabMatch = text.match(/^接單[:\uff1a\s]\s*([0-9]+)$/);
+        if (grabMatch) {
+          const orderId = parseInt(grabMatch[1], 10);
+          try {
+            // 1. 查詢司機身份（必須 LINE 已綁定）
+            const driverRows = await db.select().from(driversTable)
+              .where(eq(driversTable.lineUserId as any, userId)).limit(1);
+            const driver = driverRows[0];
+            if (!driver) {
+              await replyTextMessage(replyToken,
+                `❌ 請先綁定帳號才能接單。\n\n發送「綁定 [您的電話]」完成設定。`);
+              continue;
+            }
+
+            // 2. 原子搶單：WHERE status='pending' AND driver_id IS NULL
+            // 若有其他人同時搶，此 UPDATE 只有一人成功（DB 層競態保護）
+            const result = await db.execute(sql`
+              UPDATE orders
+              SET status      = 'assigned',
+                  driver_id   = ${driver.id},
+                  driver_accepted_at = NOW(),
+                  assigned_method = 'grab',
+                  updated_at  = NOW()
+              WHERE id = ${orderId}
+                AND status = 'pending'
+                AND (driver_id IS NULL)
+              RETURNING id, cargo_description, pickup_address, delivery_address,
+                        pickup_time, total_fee, suggested_price
+            `);
+
+            if (!result.rows.length) {
+              // 訂單不存在 or 狀態不是 pending or 已被搶走
+              const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+              if (!existing) {
+                await replyTextMessage(replyToken, `❌ 找不到訂單 #${orderId}，請確認編號。`);
+              } else {
+                await replyTextMessage(replyToken,
+                  `🚫 手速太慢，這單已經被搶走囉！\n\n訂單 #${orderId} 目前狀態：${existing.status}`);
+              }
+              continue;
+            }
+
+            // 3. 成功搶單 — 回覆詳情
+            const o = result.rows[0] as any;
+            const fee = o.total_fee ?? o.suggested_price;
+            const pickupStr = o.pickup_time
+              ? new Date(o.pickup_time).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "即時出發";
+            await replyTextMessage(replyToken, [
+              `✅ 接單成功！訂單 #${orderId}`,
+              ``,
+              `📦 貨物：${o.cargo_description || "—"}`,
+              `📍 取貨：${o.pickup_address}`,
+              `🏁 送達：${o.delivery_address}`,
+              `🕐 取貨時間：${pickupStr}`,
+              fee ? `💰 報酬：NT$${Number(fee).toLocaleString()}` : "",
+              ``,
+              `抵達取貨地後請點「📍 抵達」，完成後點「🏁 完成配送」。\n祝行車順利！`,
+            ].filter(Boolean).join("\n"));
+
+            console.log(`[LINE grab] ✓ Driver ${driver.id} grabbed order #${orderId}`);
+          } catch (err) {
+            console.error("[LINE grab] error:", err);
+            await replyTextMessage(replyToken, "搶單時發生錯誤，請稍後再試。");
+          }
+          continue;
+        }
+
         // 說明訊息
         if (text === "help" || text === "說明" || text === "指令") {
           await replyTextMessage(replyToken, [
@@ -282,6 +355,7 @@ router.post("/line/webhook", async (req, res) => {
             "📌 可用指令：",
             "・綁定 [電話] — 綁定您的帳號",
             "・查詢 [訂單號碼] — 查詢訂單狀態",
+            "・接單:[訂單號碼] — 搶單（如：接單:123）",
             "",
             "📦 司機操作（點擊派車通知中的按鈕）：",
             "・✅ 接單 — 確認接受訂單",
@@ -460,6 +534,110 @@ router.post("/line/send-payment-reminder/:orderId", async (req, res) => {
     res.json({ ok: true, sentTo: customer.lineUserId });
   } catch (err) {
     res.status(500).json({ error: "Failed to send reminder" });
+  }
+});
+
+/* ──────────────────────────────────────
+   搶單廣播 API
+────────────────────────────────────── */
+
+/**
+ * POST /api/line/broadcast-order/:orderId
+ * 廣播訂單到所有 LINE 已綁定司機，讓他們可搶單
+ * body: { driverIds?: number[] }  ← 若指定則只廣播給特定司機；否則廣播全部
+ */
+router.post("/line/broadcast-order/:orderId", async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId, 10);
+    if (isNaN(orderId)) return res.status(400).json({ error: "Invalid orderId" });
+
+    // 取得訂單資訊
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.status !== "pending") {
+      return res.status(400).json({ error: `訂單狀態為 ${order.status}，僅 pending 可廣播` });
+    }
+
+    // 決定目標司機
+    const { driverIds }: { driverIds?: number[] } = req.body ?? {};
+    let lineIds: string[];
+
+    if (driverIds && driverIds.length > 0) {
+      // 指定司機
+      const rows = await db.execute(sql`
+        SELECT line_user_id FROM drivers
+        WHERE id = ANY(${driverIds}::int[]) AND line_user_id IS NOT NULL
+      `);
+      lineIds = (rows.rows as any[]).map(r => r.line_user_id);
+    } else {
+      // 全部已綁定司機
+      const rows = await db.execute(sql`
+        SELECT line_user_id FROM drivers WHERE line_user_id IS NOT NULL
+      `);
+      lineIds = (rows.rows as any[]).map(r => r.line_user_id);
+    }
+
+    if (lineIds.length === 0) {
+      return res.json({ ok: true, sent: 0, failed: 0, message: "沒有已綁定 LINE 的司機" });
+    }
+
+    const broadcastInfo: BroadcastOrderInfo = {
+      id:                  order.id,
+      pickupAddress:       order.pickupAddress,
+      deliveryAddress:     order.deliveryAddress,
+      cargoDescription:    order.cargoDescription,
+      customerName:        order.customerName,
+      distanceKm:          order.distanceKm,
+      totalFee:            order.totalFee,
+      suggestedPrice:      order.suggestedPrice,
+      pickupTime:          order.pickupTime ? String(order.pickupTime) : null,
+      requiredVehicleType: order.requiredVehicleType,
+    };
+
+    const { sent, failed } = await sendOrderBroadcast(lineIds, broadcastInfo);
+
+    // 在訂單 notes 記錄廣播記錄
+    await db.execute(sql`
+      UPDATE orders
+      SET notes      = CONCAT(COALESCE(notes, ''), '\n[搶單廣播] 已推送給 ', ${sent}, ' 位司機 ', TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI')),
+          updated_at = NOW()
+      WHERE id = ${orderId}
+    `);
+
+    console.log(`[LINE broadcast] Order #${orderId} broadcast to ${sent}/${lineIds.length} drivers`);
+    res.json({ ok: true, sent, failed, total: lineIds.length });
+  } catch (err) {
+    console.error("[LINE broadcast] error:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/**
+ * GET /api/line/broadcast-candidates
+ * 取得可廣播搶單的訂單（pending 且未指派司機）
+ */
+router.get("/line/broadcast-candidates", async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, pickup_address, delivery_address, cargo_description,
+             customer_name, total_fee, suggested_price, pickup_time,
+             required_vehicle_type, distance_km, created_at, notes
+      FROM orders
+      WHERE status = 'pending'
+        AND (driver_id IS NULL)
+        AND created_at > NOW() - INTERVAL '7 days'
+      ORDER BY created_at DESC
+      LIMIT 30
+    `);
+
+    const boundDriverCount = await db.execute(sql`
+      SELECT COUNT(*) as cnt FROM drivers WHERE line_user_id IS NOT NULL
+    `);
+    const driverCount = Number((boundDriverCount.rows[0] as any)?.cnt ?? 0);
+
+    res.json({ orders: rows.rows, boundDriverCount: driverCount });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

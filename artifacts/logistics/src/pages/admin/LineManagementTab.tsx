@@ -22,6 +22,11 @@ import {
   Copy,
   Link2,
   BellRing,
+  Zap,
+  Radio,
+  Package,
+  MapPin,
+  Clock,
 } from "lucide-react";
 
 interface LineStatus {
@@ -623,6 +628,200 @@ function NotifyReceiversPanel() {
   );
 }
 
+/* ───────────────────────────────────────────────────────────────
+   搶單廣播面板
+─────────────────────────────────────────────────────────────── */
+interface BroadcastOrder {
+  id: number;
+  pickup_address: string;
+  delivery_address: string;
+  cargo_description: string | null;
+  customer_name: string | null;
+  total_fee: number | null;
+  suggested_price: number | null;
+  pickup_time: string | null;
+  required_vehicle_type: string | null;
+  distance_km: number | null;
+  notes: string | null;
+}
+
+function GrabOrderPanel() {
+  const { toast } = useToast();
+  const [broadcasting, setBroadcasting] = useState<number | null>(null);
+  const [results, setResults] = useState<Record<number, { sent: number; failed: number; total: number }>>({});
+
+  const { data, isLoading, refetch } = useQuery<{ orders: BroadcastOrder[]; boundDriverCount: number }>({
+    queryKey: ["line-broadcast-candidates"],
+    queryFn: () => fetch("/api/line/broadcast-candidates").then(r => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const broadcast = async (orderId: number) => {
+    setBroadcasting(orderId);
+    try {
+      const res = await fetch(`/api/line/broadcast-order/${orderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setResults(prev => ({ ...prev, [orderId]: d }));
+        toast({
+          title: `✅ 廣播成功`,
+          description: `訂單 #${orderId} 已推送給 ${d.sent} 位司機，等待搶單`,
+        });
+        refetch();
+      } else {
+        toast({ title: "廣播失敗", description: d.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "廣播失敗", description: "網路錯誤", variant: "destructive" });
+    } finally {
+      setBroadcasting(null);
+    }
+  };
+
+  const alreadyBroadcast = (order: BroadcastOrder) =>
+    order.notes?.includes("[搶單廣播]") ?? false;
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12 text-muted-foreground text-sm">
+        <RefreshCw className="w-4 h-4 animate-spin mr-2" /> 載入中…
+      </div>
+    );
+  }
+
+  const orders = data?.orders ?? [];
+  const driverCount = data?.boundDriverCount ?? 0;
+
+  return (
+    <div className="space-y-4">
+
+      {/* 說明卡 */}
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-green-100">
+            <Radio className="w-4 h-4 text-green-700" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm text-green-800">搶單廣播機制</div>
+            <div className="text-xs text-green-700 mt-1 space-y-1">
+              <div>📡 點「廣播搶單」→ 推送 Flex 訊息給 <strong>{driverCount}</strong> 位已綁定 LINE 司機</div>
+              <div>✅ 司機點訊息中的按鈕（或回覆「接單:訂單號」）→ DB 層競態保護，先搶先得</div>
+              <div>🚫 若已被搶走 → 其他司機收到「手速太慢」回覆，不重複指派</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 bg-white/70 rounded-lg border border-green-100">
+          <div className="text-xs text-muted-foreground mb-1">司機搶單指令格式（Python 等效）：</div>
+          <code className="text-xs font-mono text-green-800">接單:123　接單：123　接單 123</code>
+        </div>
+      </div>
+
+      {/* 可廣播訂單清單 */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold">待派訂單（{orders.length}）</div>
+        <Button size="sm" variant="outline" onClick={() => refetch()} className="gap-1 text-xs">
+          <RefreshCw className="w-3 h-3" /> 重整
+        </Button>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground text-sm border rounded-xl bg-muted/20">
+          目前沒有待派訂單
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map(order => {
+            const price = order.total_fee ?? order.suggested_price;
+            const nt = (n: number) => `NT$${n.toLocaleString()}`;
+            const isBroadcasting = broadcasting === order.id;
+            const sentResult = results[order.id];
+            const wasBroadcast = alreadyBroadcast(order);
+
+            return (
+              <div key={order.id} className={`border rounded-xl overflow-hidden shadow-sm ${wasBroadcast ? "border-green-200 bg-green-50/30" : "bg-white"}`}>
+                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="font-semibold text-sm">訂單 #{order.id}</span>
+                    {wasBroadcast && (
+                      <Badge className="text-[10px] bg-green-100 text-green-700 border-0 gap-1">
+                        <Radio className="w-2.5 h-2.5" /> 已廣播
+                      </Badge>
+                    )}
+                  </div>
+                  {sentResult && (
+                    <span className="text-xs text-green-700 font-medium">
+                      已推送 {sentResult.sent}/{sentResult.total} 位
+                    </span>
+                  )}
+                </div>
+
+                <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <div className="text-muted-foreground">取貨</div>
+                      <div>{order.pickup_address}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <div className="text-muted-foreground">送達</div>
+                      <div>{order.delivery_address}</div>
+                    </div>
+                  </div>
+                  {order.cargo_description && (
+                    <div className="text-xs text-muted-foreground col-span-2">
+                      📦 {order.cargo_description}
+                      {order.distance_km && ` ・ ${order.distance_km} km`}
+                      {order.required_vehicle_type && ` ・ ${order.required_vehicle_type}`}
+                    </div>
+                  )}
+                  {order.pickup_time && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground col-span-2">
+                      <Clock className="w-3 h-3" />
+                      {new Date(order.pickup_time).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between px-4 py-2.5 border-t bg-muted/10">
+                  <div className="text-sm font-bold text-emerald-700">
+                    {price ? nt(price) : "報酬待定"}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={isBroadcasting || driverCount === 0}
+                    onClick={() => broadcast(order.id)}
+                    className="gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isBroadcasting
+                      ? <><RefreshCw className="w-3 h-3 animate-spin" /> 廣播中…</>
+                      : <><Zap className="w-3 h-3" /> {wasBroadcast ? "再次廣播" : "廣播搶單"}</>
+                    }
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {driverCount === 0 && (
+        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          ⚠️ 目前沒有已綁定 LINE 的司機，請先到「司機綁定」分頁完成綁定。
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LineManagementTab() {
   const { data: status, isLoading } = useQuery<LineStatus>({
     queryKey: ["line-status"],
@@ -665,21 +864,27 @@ export default function LineManagementTab() {
       {status && <SetupCard status={status} />}
 
       {/* Tabs */}
-      <Tabs defaultValue="notify">
-        <TabsList className="w-full">
-          <TabsTrigger value="notify" className="flex-1 gap-1 text-xs">
+      <Tabs defaultValue="grab">
+        <TabsList className="w-full flex flex-wrap h-auto gap-0.5 p-1">
+          <TabsTrigger value="grab" className="flex-1 gap-1 text-xs py-1.5">
+            <Zap className="w-3.5 h-3.5 text-green-600" /> 搶單廣播
+          </TabsTrigger>
+          <TabsTrigger value="notify" className="flex-1 gap-1 text-xs py-1.5">
             <BellRing className="w-3.5 h-3.5 text-green-600" /> 通知設定
           </TabsTrigger>
-          <TabsTrigger value="customers" className="flex-1 gap-1 text-xs">
+          <TabsTrigger value="customers" className="flex-1 gap-1 text-xs py-1.5">
             <Users className="w-3.5 h-3.5" /> 客戶綁定
           </TabsTrigger>
-          <TabsTrigger value="drivers" className="flex-1 gap-1 text-xs">
+          <TabsTrigger value="drivers" className="flex-1 gap-1 text-xs py-1.5">
             <Truck className="w-3.5 h-3.5" /> 司機綁定
           </TabsTrigger>
-          <TabsTrigger value="reminder" className="flex-1 gap-1 text-xs">
+          <TabsTrigger value="reminder" className="flex-1 gap-1 text-xs py-1.5">
             <Bell className="w-3.5 h-3.5" /> 付款提醒
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="grab" className="mt-4">
+          <GrabOrderPanel />
+        </TabsContent>
         <TabsContent value="notify" className="mt-4">
           <NotifyReceiversPanel />
         </TabsContent>
