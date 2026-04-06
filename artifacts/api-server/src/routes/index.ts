@@ -77,6 +77,7 @@ import { requireFleetOwner, requireFleetDriver } from "../middleware/fleetAuth";
 import { commissionManagementRouter } from "./commissionManagement";
 import { receiptsRouter } from "./receipts";
 import { commissionTiersRouter } from "./commissionTiers";
+import { strategicKpiRouter } from "./strategicKpi";
 
 const router: IRouter = Router();
 
@@ -160,5 +161,6 @@ router.use("/driver", requireFleetDriver, fleetDriverRouter); // 司機手機端
 router.use(commissionManagementRouter);                       // 抽成管理
 router.use(receiptsRouter);                                   // OCR 簽單對帳
 router.use("/commission-tiers", commissionTiersRouter);       // 階梯抽成引擎
+router.use("/kpi/strategic", strategicKpiRouter);             // 戰略 KPI 追蹤
 
 export default router;

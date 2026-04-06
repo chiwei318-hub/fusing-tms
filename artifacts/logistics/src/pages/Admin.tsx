@@ -14,7 +14,7 @@ import {
   Pencil, MessageCircle, MessageCircleOff, Eye, EyeOff, Info, Zap, Calculator,
   Layers, Map, Brain, Navigation, Car, Save, Plus, MapPin, Bell, Shield, Upload,
   Search, X, Building2, Trophy, Star, AlertTriangle, Percent, KeyRound, FileText, Globe,
-  RotateCcw, RefreshCw, Tag, FileSpreadsheet,
+  RotateCcw, RefreshCw, Tag, FileSpreadsheet, Target,
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,6 +47,7 @@ import CommissionTab from "./admin/CommissionTab";
 import DriverCreditTab from "./admin/DriverCreditTab";
 import CommissionTiersTab from "./admin/CommissionTiersTab";
 import BackhaulAnalyticsTab from "./admin/BackhaulAnalyticsTab";
+import StrategicKPITab from "./admin/StrategicKPITab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
@@ -1628,6 +1629,7 @@ export default function Admin() {
                     { value: "shopeebilling", icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,        label: "月結對帳匯入" },
                     { value: "pnl",           icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,          label: "盈虧分析" },
                     { value: "backhaul",    icon: <span className="text-sm leading-none">🔄</span>,                 label: "空車撮合" },
+                    { value: "strategickpi", icon: <Target className="w-3.5 h-3.5 text-yellow-500" />,             label: "戰略KPI" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
@@ -3936,6 +3938,11 @@ export default function Admin() {
         {/* ===== 空車撮合 ROI TAB ===== */}
         <TabsContent value="backhaul" className="outline-none">
           <BackhaulAnalyticsTab />
+        </TabsContent>
+
+        {/* ===== 戰略 KPI TAB ===== */}
+        <TabsContent value="strategickpi" className="outline-none">
+          <StrategicKPITab />
         </TabsContent>
       </Tabs>
 
