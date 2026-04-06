@@ -44,11 +44,17 @@ async function pushFlex(to: string, altText: string, bubble: line.messagingApi.F
   try {
     await getClient().pushMessage({ to, messages: [msg] });
   } catch (err: any) {
-    const detail = err?.originalError?.response?.data
-      ?? err?.response?.data
-      ?? err?.statusCode
-      ?? String(err);
-    console.error(`[LINE pushFlex] ✗ 推播失敗 to=${to.slice(-6)}: ${JSON.stringify(detail)}`);
+    // 盡量取出 LINE API 原始錯誤 body
+    let detail: string;
+    try {
+      const respText = err?.originalError?.response
+        ? await err.originalError.response.text?.()
+        : null;
+      detail = respText ?? err?.originalError?.message ?? err?.statusCode ?? String(err);
+    } catch {
+      detail = String(err);
+    }
+    console.error(`[LINE pushFlex] ✗ 推播失敗 to=${to.slice(-6)} status=${err?.statusCode ?? "?"}: ${detail}`);
     throw err;
   }
 }

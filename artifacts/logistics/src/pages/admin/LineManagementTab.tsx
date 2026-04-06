@@ -676,16 +676,22 @@ function GrabOrderPanel() {
       const d = await res.json();
       if (d.ok) {
         setResults(prev => ({ ...prev, [orderId]: d }));
-        if (d.sent === 0) {
+        if (d.sent === 0 && d.failed === 0) {
           toast({
-            title: "⚠️ 廣播發出但無人接收",
-            description: d.message ?? "目前沒有司機綁定 LINE，請先至「司機綁定」設定 LINE User ID",
+            title: "⚠️ 無人綁定 LINE",
+            description: "目前沒有司機設定 LINE User ID，請至「司機綁定」頁籤新增",
+            variant: "destructive",
+          });
+        } else if (d.sent === 0 && d.failed > 0) {
+          toast({
+            title: "⚠️ LINE 推播全部失敗",
+            description: `司機 LINE ID 已設定但 LINE API 拒絕（${d.failed} 位）。最可能原因：司機尚未加LINE官方帳號為好友`,
             variant: "destructive",
           });
         } else if (d.failed > 0) {
           toast({
             title: `⚠️ 部分推播失敗`,
-            description: `訂單 #${orderId}：${d.sent} 位成功，${d.failed} 位 LINE ID 無效或未加好友`,
+            description: `訂單 #${orderId}：${d.sent} 位成功，${d.failed} 位失敗（可能未加好友）`,
             variant: "destructive",
           });
         } else {
