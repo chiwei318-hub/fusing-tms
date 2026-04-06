@@ -162,6 +162,38 @@ export default function InvoiceTab() {
   useEffect(() => { load(); }, [load]);
 
   // ── Sheet import ──────────────────────────────────────────────────────────
+  // Internal: apply parsed sheet data immediately (no dialog needed)
+  const applySheetData = useCallback((sr: SheetImportResult) => {
+    // Apply manual items (上收, 招募獎金, 交通罰單補助)
+    const next = manual.map(m => {
+      const found = sr.items.find(it => it.name === m.label && it.type === "manual");
+      return found ? { ...m, gross: found.total } : m;
+    });
+    saveManual(next);
+
+    // Apply auto items (店配車/NDD/WHNDD) – store under current selected month
+    const autoFromSheet: Category[] = sr.items
+      .filter(it => it.type === "auto")
+      .map(it => ({ name: it.name, trips: 0, gross: it.total, rate: 0 }));
+    setSheetAutoItems(autoFromSheet);
+    localStorage.setItem(`invoice_sheet_auto_${month}`, JSON.stringify(autoFromSheet));
+
+    const now = new Date().toLocaleString("zh-TW");
+    setLastSheetSync(now);
+    localStorage.setItem("invoice_last_sheet_sync", now);
+
+    const autoNames  = autoFromSheet.map(a => a.name);
+    const manualNames = MANUAL_LABELS.filter(l => sr.items.some(it => it.name === l && it.type === "manual" && it.total > 0));
+    toast({
+      title: "✓ 試算表同步完成",
+      description: [...autoNames, ...manualNames].length
+        ? `已填入：${[...autoNames, ...manualNames].join("、")}`
+        : "試算表無可套用的項目",
+    });
+    setSheetDialogOpen(false);
+  }, [manual, month, saveManual, toast]);
+
+  // One-click sync: fetch sheet and immediately apply – no extra dialog step
   const fetchFromSheet = async () => {
     setSheetLoading(true);
     setSheetResult(null);
@@ -170,50 +202,12 @@ export default function InvoiceTab() {
       const d: SheetImportResult = await res.json();
       if (!d.ok) throw new Error(d.error ?? "解析失敗");
       setSheetResult(d);
+      applySheetData(d);   // ← apply immediately, no second button click needed
     } catch (e: unknown) {
       toast({ title: "試算表匯入失敗", description: String(e), variant: "destructive" });
     } finally {
       setSheetLoading(false);
     }
-  };
-
-  const applySheetData = (sr: SheetImportResult) => {
-    // Apply manual items (上收, 招募獎金, 交通罰單補助)
-    const next = manual.map(m => {
-      const found = sr.items.find(it => it.name === m.label && it.type === "manual");
-      return found ? { ...m, gross: found.total } : m;
-    });
-    saveManual(next);
-
-    // Also save auto items (店配車/NDD/WHNDD) from sheet to localStorage
-    const autoFromSheet: Category[] = sr.items
-      .filter(it => it.type === "auto")
-      .map(it => ({
-        name: it.name,
-        trips: 0,            // sheet doesn't give per-trip breakdown
-        gross: it.total,
-        rate: 0,
-      }));
-    // Always store under the CURRENTLY SELECTED month (not sr.month which
-    // reflects the spreadsheet's internal label and may differ from the UI selection)
-    setSheetAutoItems(autoFromSheet);
-    localStorage.setItem(`invoice_sheet_auto_${month}`, JSON.stringify(autoFromSheet));
-
-    const now = new Date().toLocaleString("zh-TW");
-    setLastSheetSync(now);
-    localStorage.setItem("invoice_last_sheet_sync", now);
-
-    const appliedNames = [
-      ...MANUAL_LABELS.filter(l => sr.items.some(it => it.name === l)),
-      ...autoFromSheet.map(a => a.name),
-    ];
-    toast({
-      title: "已套用試算表資料",
-      description: appliedNames.length
-        ? `已填入：${appliedNames.join("、")}`
-        : "無可套用的項目",
-    });
-    setSheetDialogOpen(false);
   };
 
   // ── Manual item CRUD ─────────────────────────────────────────────────────
@@ -395,11 +389,13 @@ export default function InvoiceTab() {
         <Button
           size="sm"
           variant="outline"
-          className="border-green-300 text-green-700 hover:bg-green-50"
-          onClick={() => { setSheetDialogOpen(true); fetchFromSheet(); }}
+          className="border-green-300 text-green-700 hover:bg-green-50 print:hidden"
+          disabled={sheetLoading}
+          onClick={fetchFromSheet}
         >
-          <Sheet className="h-3.5 w-3.5 mr-1" />
-          從試算表同步
+          {sheetLoading
+            ? <><RefreshCw className="h-3.5 w-3.5 mr-1 animate-spin" /> 同步中…</>
+            : <><Sheet className="h-3.5 w-3.5 mr-1" /> 從試算表同步</>}
         </Button>
         <Button size="sm" variant="outline" onClick={handlePrint} className="border-gray-300 text-gray-600 hover:bg-gray-50 print:hidden">
           <Printer className="h-3.5 w-3.5 mr-1" /> 列印
