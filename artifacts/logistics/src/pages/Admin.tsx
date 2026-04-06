@@ -48,6 +48,7 @@ import DriverCreditTab from "./admin/DriverCreditTab";
 import CommissionTiersTab from "./admin/CommissionTiersTab";
 import BackhaulAnalyticsTab from "./admin/BackhaulAnalyticsTab";
 import StrategicKPITab from "./admin/StrategicKPITab";
+import PricingEngineTab from "./admin/PricingEngineTab";
 import PerformanceAuditTab from "./admin/PerformanceAuditTab";
 import CarbonReportTab from "./admin/CarbonReportTab";
 import KPIDashboardTab from "./admin/KPIDashboardTab";
@@ -1655,6 +1656,7 @@ export default function Admin() {
               <span className="shrink-0 w-14 text-center text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wide border-r border-muted py-2.5 bg-muted/60 leading-tight px-1 self-stretch flex items-center justify-center">帳務<br/>財務</span>
               <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
+                    { value: "pricingengine", icon: <span className="text-sm leading-none">🔢</span>,               label: "定價引擎" },
                     { value: "quotation",   icon: <span className="text-sm leading-none">🧮</span>,                 label: "報價試算" },
                     { value: "quotes",      icon: <span className="text-sm leading-none">📋</span>,                 label: "報價管理" },
                     { value: "routeprice",  icon: <MapPin className="w-3.5 h-3.5" />,                               label: "路線報價" },
@@ -3753,6 +3755,11 @@ export default function Admin() {
         {/* ===== 金流收款 TAB ===== */}
         <TabsContent value="payment" className="outline-none">
           <PaymentCenter />
+        </TabsContent>
+
+        {/* ===== 定價引擎 TAB ===== */}
+        <TabsContent value="pricingengine" className="outline-none">
+          <PricingEngineTab />
         </TabsContent>
 
         {/* ===== 報價試算 TAB ===== */}
