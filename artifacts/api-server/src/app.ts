@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startAlertScheduler } from "./lib/alertScheduler";
+import { startWeeklyReportScheduler } from "./lib/weeklyReportScheduler";
 import { startSheetSyncScheduler } from "./lib/sheetSyncScheduler";
 import { ensureSheetSyncTable } from "./routes/sheetSync";
 import { ensurePenaltySyncTables, startPenaltySyncScheduler } from "./routes/penaltySync";
@@ -50,6 +51,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 startAlertScheduler();
+startWeeklyReportScheduler();
 
 // ── 訂單資料結構正規化遷移（冪等，只補空值）────────────────────────────
 async function runOrdersColumnMigration() {
