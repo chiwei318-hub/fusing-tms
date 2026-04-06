@@ -738,7 +738,7 @@ interface BroadcastOrder {
 function GrabOrderPanel() {
   const { toast } = useToast();
   const [broadcasting, setBroadcasting] = useState<number | null>(null);
-  const [results, setResults] = useState<Record<number, { sent: number; failed: number; total: number }>>({});
+  const [results, setResults] = useState<Record<number, { sent: number; failed: number; skipped: number; total: number }>>({});
 
   const { data, isLoading, refetch } = useQuery<{ orders: BroadcastOrder[]; boundDriverCount: number }>({
     queryKey: ["line-broadcast-candidates"],
@@ -764,29 +764,30 @@ function GrabOrderPanel() {
       });
       const d = await res.json();
       if (d.ok) {
-        setResults(prev => ({ ...prev, [orderId]: d }));
+        setResults(prev => ({ ...prev, [orderId]: { ...d, skipped: d.skipped ?? 0 } }));
+        const skippedNote = (d.skipped ?? 0) > 0 ? `（另有 ${d.skipped} 位在職司機尚未綁定 LINE）` : "";
         if (d.sent === 0 && d.failed === 0) {
           toast({
             title: "⚠️ 無人綁定 LINE",
-            description: "目前沒有司機設定 LINE User ID，請至「司機綁定」頁籤新增",
+            description: `目前沒有司機設定 LINE User ID，請至「司機綁定」頁籤新增${skippedNote ? "\n" + skippedNote : ""}`,
             variant: "destructive",
           });
         } else if (d.sent === 0 && d.failed > 0) {
           toast({
             title: "⚠️ LINE 推播全部失敗",
-            description: `司機 LINE ID 已設定但 LINE API 拒絕（${d.failed} 位）。最可能原因：司機尚未加LINE官方帳號為好友`,
+            description: `司機 LINE ID 已設定但 LINE API 拒絕（${d.failed} 位）。最可能原因：司機尚未加LINE官方帳號為好友${skippedNote ? "\n" + skippedNote : ""}`,
             variant: "destructive",
           });
         } else if (d.failed > 0) {
           toast({
             title: `⚠️ 部分推播失敗`,
-            description: `訂單 #${orderId}：${d.sent} 位成功，${d.failed} 位失敗（可能未加好友）`,
+            description: `訂單 #${orderId}：${d.sent} 位成功，${d.failed} 位失敗（可能未加好友）${skippedNote ? "\n" + skippedNote : ""}`,
             variant: "destructive",
           });
         } else {
           toast({
             title: `✅ 廣播成功`,
-            description: `訂單 #${orderId} 已推送給 ${d.sent} 位司機，等待搶單`,
+            description: `訂單 #${orderId} 已推送給 ${d.sent} 位司機，等待搶單${skippedNote ? "。" + skippedNote : ""}`,
           });
         }
         refetch();
@@ -928,6 +929,9 @@ function GrabOrderPanel() {
                         : sentResult.failed > 0
                         ? `⚠ ${sentResult.sent} 成功 / ${sentResult.failed} 失敗`
                         : `✓ 已推送 ${sentResult.sent} 位`}
+                      {sentResult.skipped > 0 && (
+                        <span className="text-slate-400 font-normal ml-1">（跳過未綁定 {sentResult.skipped} 位）</span>
+                      )}
                     </span>
                   )}
                 </div>

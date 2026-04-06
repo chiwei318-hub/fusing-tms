@@ -605,34 +605,41 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
       return res.status(400).json({ error: `訂單狀態為 ${order.status}，僅 pending 可廣播` });
     }
 
-    // 決定目標司機
+    // 決定目標司機：先撈所有在職司機（含未綁定），分類計數
     const { driverIds }: { driverIds?: number[] } = req.body ?? {};
-    let lineIds: string[];
+    let activeDrivers: { name: string; line_user_id: string | null }[];
 
     if (driverIds && driverIds.length > 0) {
       // 指定司機（僅在職者）
       const rows = await db.execute(sql`
-        SELECT line_user_id FROM drivers
+        SELECT name, line_user_id FROM drivers
         WHERE id = ANY(${driverIds}::int[])
-          AND line_user_id IS NOT NULL
           AND is_active IS NOT FALSE
       `);
-      lineIds = (rows.rows as any[]).map(r => r.line_user_id);
+      activeDrivers = rows.rows as any[];
     } else {
-      // 全部已綁定且在職司機
+      // 全部在職司機
       const rows = await db.execute(sql`
-        SELECT line_user_id FROM drivers
-        WHERE line_user_id IS NOT NULL
-          AND is_active IS NOT FALSE
+        SELECT name, line_user_id FROM drivers
+        WHERE is_active IS NOT FALSE
       `);
-      lineIds = (rows.rows as any[]).map(r => r.line_user_id);
+      activeDrivers = rows.rows as any[];
     }
+
+    // 分類：有 LINE ID → 推播；沒有 → 跳過（在職但未綁定）
+    const skipped = activeDrivers.filter(d => !d.line_user_id).length;
+    const lineIds = activeDrivers.filter(d => !!d.line_user_id).map(d => d.line_user_id as string);
 
     // 路由層去重：同一 LINE ID 只推播一次
     const uniqueLineIds = [...new Set(lineIds.filter(Boolean))];
 
     if (uniqueLineIds.length === 0) {
-      return res.json({ ok: true, sent: 0, failed: 0, message: "沒有已綁定 LINE 的司機" });
+      return res.json({
+        ok: true, sent: 0, failed: 0, skipped,
+        message: skipped > 0
+          ? `所有在職司機（${skipped} 位）尚未綁定 LINE`
+          : "沒有在職司機",
+      });
     }
 
     const broadcastInfo: BroadcastOrderInfo = {
@@ -662,8 +669,8 @@ router.post("/line/broadcast-order/:orderId", async (req, res) => {
       console.warn(`[LINE broadcast] notes 更新失敗（不影響廣播）:`, noteErr);
     }
 
-    console.log(`[LINE broadcast] Order #${orderId} broadcast to ${sent}/${uniqueLineIds.length} unique drivers (raw list: ${lineIds.length})`);
-    res.json({ ok: true, sent, failed, total: uniqueLineIds.length });
+    console.log(`[LINE broadcast] Order #${orderId}: sent=${sent} failed=${failed} skipped(no LINE)=${skipped} total_active=${activeDrivers.length}`);
+    res.json({ ok: true, sent, failed, skipped, total: uniqueLineIds.length });
   } catch (err) {
     console.error("[LINE broadcast] error:", err);
     res.status(500).json({ error: String(err) });
