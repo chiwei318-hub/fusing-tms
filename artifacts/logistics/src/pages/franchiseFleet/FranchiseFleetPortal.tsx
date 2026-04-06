@@ -1694,6 +1694,13 @@ function PricingTab() {
   const [editRule, setEditRule] = useState<any>(null);
   const [form, setForm] = useState<any>({ name: "", vehicle_type: "小貨車", base_fee: 500, per_stop_rate: 50, driver_ratio: 70 });
 
+  // 蝦皮費率匯入
+  const [showShopeeImport, setShowShopeeImport] = useState(false);
+  const [shopeeRates, setShopeeRates] = useState<any[]>([]);
+  const [shopeeLoading, setShopeeLoading] = useState(false);
+  const [selectedPrefixes, setSelectedPrefixes] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+
   const load = useCallback(async () => {
     try { setLoading(true); const d = await api("GET", "/pricing"); setRules(d.rules ?? []); }
     catch { } finally { setLoading(false); }
@@ -1718,16 +1725,66 @@ function PricingTab() {
     catch (err: any) { toast({ title: "操作失敗", description: err.message, variant: "destructive" }); }
   };
 
+  const openShopeeImport = async () => {
+    setShowShopeeImport(true);
+    setSelectedPrefixes(new Set());
+    setShopeeLoading(true);
+    try {
+      const d = await api("GET", "/pricing/shopee-rates");
+      setShopeeRates(d.rates ?? []);
+    } catch (err: any) {
+      toast({ title: "載入失敗", description: err.message, variant: "destructive" });
+    } finally { setShopeeLoading(false); }
+  };
+
+  const togglePrefix = (prefix: string) => {
+    setSelectedPrefixes(prev => {
+      const next = new Set(prev);
+      if (next.has(prefix)) next.delete(prefix); else next.add(prefix);
+      return next;
+    });
+  };
+
+  const handleShopeeImport = async () => {
+    if (selectedPrefixes.size === 0) { toast({ title: "請至少選擇一個費率", variant: "destructive" }); return; }
+    setImporting(true);
+    try {
+      const d = await api("POST", "/pricing/import-shopee", { prefixes: Array.from(selectedPrefixes) });
+      toast({ title: `匯入成功`, description: `已新增 ${d.imported} 筆計費規則` });
+      setShowShopeeImport(false);
+      load();
+    } catch (err: any) {
+      toast({ title: "匯入失敗", description: err.message, variant: "destructive" });
+    } finally { setImporting(false); }
+  };
+
+  const SERVICE_COLOR: Record<string, string> = {
+    "店配模式": "bg-blue-100 text-blue-700",
+    "NDD快速到貨": "bg-orange-100 text-orange-700",
+    "WH NDD": "bg-purple-100 text-purple-700",
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-800">計費規則</h2>
-        <Button onClick={openAdd} className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"><Plus className="w-4 h-4" />新增規則</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openShopeeImport} className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50">
+            <Download className="w-4 h-4" />從蝦皮費率匯入
+          </Button>
+          <Button onClick={openAdd} className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"><Plus className="w-4 h-4" />新增規則</Button>
+        </div>
       </div>
       {loading ? (
         <div className="flex items-center justify-center h-32 text-slate-400"><RefreshCw className="w-4 h-4 animate-spin mr-2" />載入中…</div>
       ) : rules.length === 0 ? (
-        <div className="text-center py-16 text-slate-400"><DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>尚無計費規則</p></div>
+        <div className="flex flex-col items-center py-16 text-slate-400 gap-3">
+          <DollarSign className="w-12 h-12 opacity-30" />
+          <p>尚無計費規則</p>
+          <Button variant="outline" onClick={openShopeeImport} className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 text-sm">
+            <Download className="w-3.5 h-3.5" />從蝦皮費率匯入
+          </Button>
+        </div>
       ) : (
         <div className="grid gap-3">
           {rules.map((r: any) => (
@@ -1739,9 +1796,10 @@ function PricingTab() {
                   </div>
                   <div className="flex-1">
                     <p className="font-bold text-slate-800">{r.name}</p>
+                    {r.notes && <p className="text-xs text-slate-400 mt-0.5">{r.notes}</p>}
                     <div className="flex flex-wrap gap-2 mt-1.5">
                       <span className="text-xs bg-slate-100 px-2 py-0.5 rounded-full text-slate-600">{r.vehicle_type}</span>
-                      <span className="text-xs bg-blue-50 px-2 py-0.5 rounded-full text-blue-700">底價 ${r.base_fee}</span>
+                      <span className="text-xs bg-blue-50 px-2 py-0.5 rounded-full text-blue-700">底價 NT${Number(r.base_fee).toLocaleString()}</span>
                       {r.per_stop_rate > 0 && <span className="text-xs bg-purple-50 px-2 py-0.5 rounded-full text-purple-700">每站 +${r.per_stop_rate}</span>}
                       <span className="text-xs bg-orange-50 px-2 py-0.5 rounded-full text-orange-700">司機 {r.driver_ratio}%</span>
                     </div>
@@ -1756,6 +1814,89 @@ function PricingTab() {
           ))}
         </div>
       )}
+
+      {/* ── 蝦皮費率匯入 Dialog ── */}
+      <Dialog open={showShopeeImport} onOpenChange={setShowShopeeImport}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-4 h-4 text-orange-500" />從蝦皮費率匯入計費規則
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+              <p className="font-semibold text-orange-700">說明</p>
+              <p>選取要匯入的蝦皮路線前綴，系統會依費率自動建立計費規則。匯入後可手動編輯司機抽成比例。</p>
+            </div>
+            {shopeeLoading ? (
+              <div className="flex items-center justify-center h-32 text-slate-400"><RefreshCw className="w-4 h-4 animate-spin mr-2" />載入費率中…</div>
+            ) : shopeeRates.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">尚未設定任何蝦皮費率（請先由後台管理員設定）</div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-xs text-slate-500 px-0.5">
+                  <span>共 {shopeeRates.length} 筆費率</span>
+                  <button
+                    className="text-indigo-500 hover:text-indigo-700 font-medium"
+                    onClick={() => setSelectedPrefixes(
+                      selectedPrefixes.size === shopeeRates.length
+                        ? new Set()
+                        : new Set(shopeeRates.map((r: any) => r.prefix))
+                    )}
+                  >
+                    {selectedPrefixes.size === shopeeRates.length ? "取消全選" : "全選"}
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {shopeeRates.map((r: any) => {
+                    const checked = selectedPrefixes.has(r.prefix);
+                    const svcColor = SERVICE_COLOR[r.service_type] ?? "bg-slate-100 text-slate-600";
+                    return (
+                      <button
+                        key={r.prefix}
+                        onClick={() => togglePrefix(r.prefix)}
+                        className={`w-full text-left rounded-xl border p-3 transition-all ${checked ? "bg-orange-50 border-orange-300 ring-1 ring-orange-200" : "bg-white border-slate-200 hover:border-slate-300"}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${checked ? "bg-orange-500 border-orange-500" : "border-slate-300 bg-white"}`}>
+                            {checked && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-bold text-slate-800 text-sm">{r.prefix}</span>
+                              {r.service_type && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${svcColor}`}>{r.service_type}</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5 truncate">{r.description}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs font-semibold text-green-700">NT${Number(r.rate_per_trip).toLocaleString()} / 趟</span>
+                              {r.route_od && <span className="text-xs text-slate-400">{r.route_od}</span>}
+                              {r.vehicle_type && <span className="text-xs text-slate-400">{r.vehicle_type}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowShopeeImport(false)}>取消</Button>
+            <Button
+              onClick={handleShopeeImport}
+              disabled={importing || selectedPrefixes.size === 0}
+              className="bg-orange-600 hover:bg-orange-700 text-white gap-1.5"
+            >
+              {importing ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />匯入中…</> : <><Download className="w-3.5 h-3.5" />匯入 {selectedPrefixes.size} 筆</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 新增／編輯規則 Dialog ── */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{editRule ? "編輯計費規則" : "新增計費規則"}</DialogTitle></DialogHeader>
@@ -1765,7 +1906,7 @@ function PricingTab() {
               <Label className="text-xs">適用車型</Label>
               <Select value={form.vehicle_type} onValueChange={v => setForm((f: any) => ({ ...f, vehicle_type: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{["小貨車", "中貨車", "大貨車", "廂型車", "機車"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                <SelectContent>{["小貨車", "中貨車", "大貨車", "廂型車", "機車", "6.2T"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-3 gap-2">

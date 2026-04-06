@@ -418,6 +418,51 @@ fleetOwnerRouter.delete("/pricing/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// 蝦皮費率列表（讀取全域 route_prefix_rates，供匯入用）
+fleetOwnerRouter.get("/pricing/shopee-rates", async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT prefix, description, service_type, route_od, vehicle_type,
+            rate_per_trip, driver_pay_rate, notes
+     FROM route_prefix_rates ORDER BY prefix`
+  );
+  res.json({ ok: true, rates: rows });
+});
+
+// 從蝦皮費率批次匯入計費規則
+fleetOwnerRouter.post("/pricing/import-shopee", async (req, res) => {
+  const fid = req.fleet!.franchisee_id;
+  const { prefixes } = req.body as { prefixes: string[] };
+  if (!Array.isArray(prefixes) || prefixes.length === 0) {
+    return res.status(400).json({ error: "prefixes 為必填" });
+  }
+
+  const { rows: rates } = await pool.query(
+    `SELECT * FROM route_prefix_rates WHERE prefix = ANY($1::text[])`,
+    [prefixes]
+  );
+
+  let imported = 0;
+  for (const r of rates) {
+    const name = `蝦皮${r.prefix} - ${r.description ?? r.service_type ?? r.prefix}`;
+    const baseFee = Number(r.rate_per_trip ?? 0);
+    const driverPay = Number(r.driver_pay_rate ?? 0);
+    const driverRatio = baseFee > 0 && driverPay > 0
+      ? Math.min(100, Math.round((driverPay / baseFee) * 100))
+      : 70;
+    const notesStr = [r.service_type, r.route_od, r.notes].filter(Boolean).join(" | ");
+
+    await pool.query(
+      `INSERT INTO fleet_pricing_rules
+         (franchisee_id, name, vehicle_type, base_fee, per_km_rate,
+          per_stop_rate, min_fee, driver_ratio, notes)
+       VALUES ($1,$2,$3,$4,0,0,$4,$5,$6)`,
+      [fid, name, r.vehicle_type ?? "大貨車", baseFee, driverRatio, notesStr || null]
+    );
+    imported++;
+  }
+  res.json({ ok: true, imported });
+});
+
 // 試算費用
 fleetOwnerRouter.post("/pricing/calculate", async (req, res) => {
   const { rule_id, distance_km = 0, stops = 1 } = req.body ?? {};
