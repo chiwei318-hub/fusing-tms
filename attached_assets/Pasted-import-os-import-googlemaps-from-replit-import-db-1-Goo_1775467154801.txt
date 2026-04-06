@@ -1,0 +1,69 @@
+import os
+import googlemaps
+from replit import db
+
+# 1. 初始化 Google Maps (請在 Replit Secrets 設定你的 API_KEY)
+gmaps = googlemaps.Client(key=os.environ.get("GOOGLE_MAPS_API_KEY"))
+
+def get_distance_and_quote(origin, destination, is_cold=True):
+    """
+    輸入起訖點，自動計算里程並產出報價
+    """
+    try:
+        # 向 Google Maps 請求里程數據
+        result = gmaps.distance_matrix(origin, destination, mode="driving")
+        
+        # 提取公里數 (將公尺轉為公里)
+        distance_meters = result['rows'][0]['elements'][0]['distance']['value']
+        distance_km = distance_meters / 1000
+        
+        # 2. 報價邏輯 (依照你的物流規則)
+        base_fee = 500
+        per_km = 35 if is_cold else 25 # 冷鏈 35元, 常溫 25元
+        
+        # 總運費計算
+        total_quote = round(base_fee + (distance_km * per_km))
+        
+        # 平台獲利 (15%) 與 司機實領 (85%)
+        platform_revenue = round(total_quote * 0.15)
+        driver_pay = total_quote - platform_revenue
+        
+        return {
+            "distance_km": distance_km,
+            "total_quote": total_quote,
+            "platform_revenue": platform_revenue,
+            "driver_pay": driver_pay
+        }
+    except Exception as e:
+        print(f"計算出錯: {e}")
+        return None
+
+def save_order_to_db(order_no, origin, destination, is_cold=True):
+    """
+    執行報價並直接寫入 Replit Database
+    """
+    # 獲取報價結果
+    quote_data = get_distance_and_quote(origin, destination, is_cold)
+    
+    if quote_data:
+        # 組合訂單資料
+        order_info = {
+            "origin": origin,
+            "destination": destination,
+            "is_cold": is_cold,
+            "distance_km": quote_data['distance_km'],
+            "estimated_price": quote_data['total_quote'],
+            "platform_revenue": quote_data['platform_revenue'],
+            "driver_pay": quote_data['driver_pay'],
+            "status": "pending"
+        }
+        
+        # 寫入 Replit 資料庫
+        db[f"order_{order_no}"] = order_info
+        print(f"✅ 訂單 {order_no} 已建立。系統自動報價：{quote_data['total_quote']} 元")
+        return True
+    return False
+
+# --- 實戰執行測試 ---
+# 假設有一筆從 台北車站 到 桃園中正路 的訂單
+save_order_to_db("2024040101", "台北車站", "桃園市桃園區中正路", is_cold=True)

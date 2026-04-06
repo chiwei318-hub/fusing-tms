@@ -110,16 +110,19 @@ const STATUS_LABEL: Record<string, string> = {
   available: "空車待命",
   busy: "運送中",
   offline: "離線",
+  on_leave: "休假中",
 };
 const STATUS_COLOR: Record<string, string> = {
   available: "bg-green-100 text-green-800 border-green-200",
   busy: "bg-orange-100 text-orange-800 border-orange-200",
   offline: "bg-slate-100 text-slate-500 border-slate-200",
+  on_leave: "bg-purple-100 text-purple-800 border-purple-200",
 };
 const STATUS_DOT: Record<string, string> = {
   available: "bg-green-500",
   busy: "bg-orange-500",
   offline: "bg-slate-400",
+  on_leave: "bg-purple-400",
 };
 
 function estimateETA(order: Order): string {
@@ -228,6 +231,7 @@ export default function FleetMapTab() {
               <SelectItem value="available">空車待命</SelectItem>
               <SelectItem value="busy">運送中</SelectItem>
               <SelectItem value="offline">離線</SelectItem>
+              <SelectItem value="on_leave">休假中</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm" onClick={handleRefresh} className="h-8 gap-1 text-xs">

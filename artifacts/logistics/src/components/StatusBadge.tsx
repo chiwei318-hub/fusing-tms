@@ -21,11 +21,12 @@ export function OrderStatusBadge({ status }: { status: OrderStatus | string }) {
   );
 }
 
-export function DriverStatusBadge({ status }: { status: DriverStatus }) {
-  const config: Record<DriverStatus, { label: string; className: string }> = {
+export function DriverStatusBadge({ status }: { status: DriverStatus | string }) {
+  const config: Record<string, { label: string; className: string }> = {
     available: { label: "可接單", className: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-emerald-200" },
     busy:      { label: "忙碌中", className: "bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200" },
     offline:   { label: "下線",   className: "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200" },
+    on_leave:  { label: "休假中", className: "bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200" },
   };
   const { label, className } = config[status] ?? { label: status, className: "" };
   return (

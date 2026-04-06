@@ -83,7 +83,8 @@ export default function AdminHome({ onTabChange }: AdminHomeProp) {
   const driverPieData = [
     { name: "可接單", value: availableDrivers.length, color: "#10b981" },
     { name: "派送中", value: busyDrivers.length, color: "#f97316" },
-    { name: "離線", value: drivers.filter(d => d.status === "offline").length, color: "#6b7280" },
+    { name: "離線", value: drivers.filter((d: any) => d.status === "offline").length, color: "#6b7280" },
+    { name: "休假中", value: drivers.filter((d: any) => d.status === "on_leave").length, color: "#a855f7" },
   ].filter(d => d.value > 0);
 
   const shortcuts = [

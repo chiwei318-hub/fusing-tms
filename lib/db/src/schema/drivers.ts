@@ -1,8 +1,9 @@
 import { pgTable, text, serial, timestamp, integer, boolean, real } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const driverStatusEnum = ["available", "busy", "offline"] as const;
+export const driverStatusEnum = ["available", "busy", "offline", "on_leave"] as const;
 export type DriverStatus = typeof driverStatusEnum[number];
 
 export const driverTypeEnum = ["self", "affiliated", "external"] as const;
@@ -31,12 +32,18 @@ export const driversTable = pgTable("drivers", {
   bankBranch: text("bank_branch"),
   bankAccount: text("bank_account"),
   bankAccountName: text("bank_account_name"),
+  creditScore: integer("credit_score").default(100),
+  rating: real("rating").default(5.0),
+  ratingCount: integer("rating_count").default(0),
+  canColdChain: boolean("can_cold_chain").default(false),
+  franchiseeId: integer("franchisee_id"),
+  isFranchisee: boolean("is_franchisee").generatedAlwaysAs(sql`franchisee_id IS NOT NULL`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertDriverSchema = createInsertSchema(driversTable, {
   status: z.enum(driverStatusEnum).default("available"),
   driverType: z.enum(driverTypeEnum).optional().nullable(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true, createdAt: true, isFranchisee: true });
 export type InsertDriver = z.infer<typeof insertDriverSchema>;
 export type Driver = typeof driversTable.$inferSelect;

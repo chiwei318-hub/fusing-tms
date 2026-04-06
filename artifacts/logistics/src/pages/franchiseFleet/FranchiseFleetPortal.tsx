@@ -542,6 +542,7 @@ function DashboardTab() {
                               { value: "available", label: "待命", color: "text-green-600" },
                               { value: "busy",      label: "忙碌", color: "text-orange-600" },
                               { value: "offline",   label: "離線", color: "text-slate-500" },
+                              { value: "on_leave",  label: "休假", color: "text-purple-600" },
                             ].map(opt => (
                               <DropdownMenuItem
                                 key={opt.value}

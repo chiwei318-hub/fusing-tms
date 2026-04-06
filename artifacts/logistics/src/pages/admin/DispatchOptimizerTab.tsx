@@ -111,9 +111,11 @@ function ScoreBarRow({ label, value, color = "bg-primary" }: { label: string; va
 
 function DriverCard({ driver }: { driver: DriverAvail }) {
   const statusColor = driver.status === "available" ? "bg-green-500" :
-    driver.status === "busy" ? "bg-orange-400" : "bg-slate-300";
+    driver.status === "busy" ? "bg-orange-400" :
+    driver.status === "on_leave" ? "bg-purple-400" : "bg-slate-300";
   const statusLabel = driver.status === "available" ? "空車" :
-    driver.status === "busy" ? "出車中" : "下線";
+    driver.status === "busy" ? "出車中" :
+    driver.status === "on_leave" ? "休假中" : "下線";
 
   return (
     <div className={`border rounded-lg p-2.5 space-y-1.5 ${driver.isBusy ? "border-orange-200 bg-orange-50/30" : "bg-card"}`}>
