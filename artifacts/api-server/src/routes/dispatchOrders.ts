@@ -206,3 +206,144 @@ dispatchOrdersRouter.delete("/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// ── POST /dispatch-orders/import-sheet — import from Google Sheet ─────────────
+// Must be registered BEFORE /:id to avoid path conflict
+function toSheetCsvUrl(raw: string): string {
+  const m = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) return raw;
+  const id = m[1];
+  const gidM = raw.match(/gid=(\d+)/);
+  const gid = gidM ? gidM[1] : "0";
+  return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+}
+
+interface SheetRoute { route_label: string; route_date: string; prefix: string | null }
+
+function parseSheetRoutes(text: string): SheetRoute[] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+
+  const splitCsv = (line: string) =>
+    line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+
+  const headers = splitCsv(lines[0]);
+
+  // ── Strategy 1: Horizontal (routes as rows, dates as column headers) ──
+  // Detect if column headers look like dates: "4/1", "2026-04-01", "04-01" etc.
+  const DATE_RE = /^(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)$/;
+  const dateColIndices: { idx: number; date: string }[] = [];
+  headers.forEach((h, i) => {
+    if (DATE_RE.test(h.replace(/\s/g, ""))) {
+      // Normalise to YYYY-MM-DD
+      let d = h.replace(/\s/g, "");
+      const parts = d.split(/[-/]/);
+      if (parts.length === 2) {
+        const year = new Date().getFullYear();
+        d = `${year}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
+      } else if (parts.length === 3 && parts[0].length <= 2) {
+        // M/D/YY or M/D/YYYY
+        const yr = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        d = `${yr}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
+      } else if (parts.length === 3 && parts[0].length === 4) {
+        d = `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+      }
+      dateColIndices.push({ idx: i, date: d });
+    }
+  });
+
+  const routeColIdx = headers.findIndex(h =>
+    /路線|route|route_id|route_no/i.test(h)
+  );
+
+  if (dateColIndices.length > 0 && routeColIdx >= 0) {
+    // Horizontal mode
+    const routes: SheetRoute[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = splitCsv(lines[i]);
+      const routeLabel = cols[routeColIdx]?.trim();
+      if (!routeLabel) continue;
+      const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
+      for (const { idx, date } of dateColIndices) {
+        const cell = cols[idx]?.trim();
+        if (!cell || cell === "0" || cell.toLowerCase() === "n" || cell === "-") continue;
+        routes.push({ route_label: routeLabel, route_date: date, prefix });
+      }
+    }
+    if (routes.length > 0) return routes;
+  }
+
+  // ── Strategy 2: Vertical (one row per route per date) ──
+  const colIdx = (names: string[]) => {
+    for (const n of names) {
+      const i = headers.findIndex(h => h.toLowerCase().includes(n));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+
+  const routeCol = colIdx(["路線號碼", "路線", "route", "route_id"]);
+  const dateCol  = colIdx(["日期", "出車日期", "date", "trip_date"]);
+
+  if (routeCol < 0 || dateCol < 0) return [];
+
+  const routes: SheetRoute[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCsv(lines[i]);
+    const routeLabel = cols[routeCol]?.trim();
+    const dateRaw    = cols[dateCol]?.trim();
+    if (!routeLabel || !dateRaw) continue;
+    // Try to normalise date
+    let date = dateRaw;
+    const parts = dateRaw.split(/[-/]/);
+    if (parts.length === 2) {
+      date = `${new Date().getFullYear()}-${parts[0].padStart(2,"0")}-${parts[1].padStart(2,"0")}`;
+    }
+    const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
+    routes.push({ route_label: routeLabel, route_date: date, prefix });
+  }
+  return routes;
+}
+
+dispatchOrdersRouter.post("/import-sheet", async (req, res) => {
+  try {
+    const { sheet_url, fleet_id, fleet_name, title, week_start, week_end, notes = null } = req.body;
+    if (!sheet_url || !fleet_id || !title || !week_start || !week_end) {
+      return res.status(400).json({ ok: false, error: "sheet_url / fleet_id / title / week_start / week_end 為必填" });
+    }
+
+    const csvUrl = toSheetCsvUrl(sheet_url);
+    const resp = await fetch(csvUrl);
+    if (!resp.ok) throw new Error(`無法讀取試算表（HTTP ${resp.status}）`);
+    const text = await resp.text();
+    if (text.trim().startsWith("<!DOCTYPE")) {
+      throw new Error("無法讀取試算表，請確認已設為「知道連結的人可查看」");
+    }
+
+    const routes = parseSheetRoutes(text);
+    if (routes.length === 0) {
+      return res.status(422).json({
+        ok: false,
+        error: "找不到可解析的路線資料。請確認試算表包含「路線」欄位（垂直格式）或日期欄位（橫向格式）",
+      });
+    }
+
+    const [inserted] = await db.execute(sql`
+      INSERT INTO dispatch_orders (fleet_id, fleet_name, title, week_start, week_end, notes, status)
+      VALUES (${Number(fleet_id)}, ${fleet_name ?? null}, ${title}, ${week_start}, ${week_end}, ${notes}, 'sent')
+      RETURNING id
+    `).then(r => r.rows as any[]);
+
+    const orderId = inserted.id;
+    for (const r of routes) {
+      await db.execute(sql`
+        INSERT INTO dispatch_order_routes (dispatch_order_id, route_label, route_date, prefix)
+        VALUES (${orderId}, ${r.route_label}, ${r.route_date}, ${r.prefix})
+      `);
+    }
+
+    res.json({ ok: true, id: orderId, route_count: routes.length });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});

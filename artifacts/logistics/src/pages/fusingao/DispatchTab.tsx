@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft, ChevronRight, RefreshCw,
-  Send, CheckCircle, Clock, Trash2, CalendarDays,
+  Send, CheckCircle, Clock, Trash2, CalendarDays, Link2, FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { apiUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -189,6 +190,16 @@ export default function DispatchTab({
   const [sendNotes, setSendNotes] = useState("");
   const [sending, setSending] = useState(false);
 
+  // ── Import from sheet state ───────────────────────────────────────────────
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importSheetUrl, setImportSheetUrl] = useState("");
+  const [importFleet, setImportFleet] = useState<string>("");
+  const [importTitle, setImportTitle] = useState("");
+  const [importWeekStart, setImportWeekStart] = useState(weekStart(0).start);
+  const [importWeekEnd, setImportWeekEnd] = useState(weekStart(0).end);
+  const [importNotes, setImportNotes] = useState("");
+  const [importing, setImporting] = useState(false);
+
   // ── Sent orders panel ─────────────────────────────────────────────────────
   const [sentOrders, setSentOrders] = useState<DispatchOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -338,6 +349,39 @@ export default function DispatchTab({
     toast({ title: "已撤銷派車單" });
   }
 
+  async function handleImportSheet() {
+    if (!importSheetUrl || !importFleet || !importTitle || !importWeekStart || !importWeekEnd) return;
+    setImporting(true);
+    const fleet = fleets.find(f => String(f.id) === importFleet);
+    try {
+      const r = await fetch(apiUrl("/dispatch-orders/import-sheet"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheet_url: importSheetUrl,
+          fleet_id: Number(importFleet),
+          fleet_name: fleet?.fleet_name,
+          title: importTitle,
+          week_start: importWeekStart,
+          week_end: importWeekEnd,
+          notes: importNotes || null,
+        }),
+      }).then(x => x.json());
+
+      if (r.ok) {
+        toast({ title: "✅ 班表匯入成功", description: `已建立派車單，共匯入 ${r.route_count} 筆路線` });
+        setImportDialogOpen(false);
+        setImportSheetUrl("");
+        setImportNotes("");
+        loadSentOrders();
+      } else {
+        toast({ title: "匯入失敗", description: r.error, variant: "destructive" });
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const prefixes = data ? [...new Set(data.routes.map(r => r.prefix).filter(Boolean))] as string[] : [];
   const filteredRoutes = data?.routes.filter(r => prefixFilter === "all" || r.prefix === prefixFilter) ?? [];
 
@@ -376,6 +420,22 @@ export default function DispatchTab({
             <span>完成 <strong className="text-green-700">{doneCells}</strong></span>
             <span>待派 <strong className="text-orange-600">{totalCells - filledCells}</strong></span>
           </div>
+          {/* Import from sheet button */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            onClick={() => {
+              const w = weekStart(weekOffset);
+              setImportWeekStart(w.start);
+              setImportWeekEnd(w.end);
+              if (!importTitle) setImportTitle(`${w.start.slice(0,7)} 蝦皮北倉派車單`);
+              setImportDialogOpen(true);
+            }}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            從班表匯入
+          </Button>
           {/* Send button */}
           <Button
             size="sm"
@@ -506,6 +566,105 @@ export default function DispatchTab({
           </div>
         </div>
       )}
+
+      {/* ── Import from sheet dialog ──────────────────────────────────────── */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              從 Google 班表匯入派車單
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-emerald-50 rounded-lg p-3 text-xs text-emerald-700">
+              <p className="font-semibold mb-1 flex items-center gap-1"><Link2 className="h-3 w-3" />支援格式</p>
+              <p>• 橫向格式：第一行為日期欄位（如 4/1、4/2），路線號碼在「路線」欄</p>
+              <p>• 直向格式：每筆記錄一行，含「路線號碼」和「日期」欄</p>
+              <p className="mt-1 text-emerald-600">請確認試算表已設為「知道連結的人可查看」</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Google 試算表連結 *</Label>
+              <Input
+                value={importSheetUrl}
+                onChange={e => setImportSheetUrl(e.target.value)}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                className="text-xs h-9"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">派車單名稱 *</Label>
+                <Input
+                  value={importTitle}
+                  onChange={e => setImportTitle(e.target.value)}
+                  placeholder="2026-04 蝦皮北倉派車單"
+                  className="text-xs h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">接收車隊 *</Label>
+                <Select value={importFleet} onValueChange={setImportFleet}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="選擇車隊" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fleets.map(f => (
+                      <SelectItem key={f.id} value={String(f.id)}>{f.fleet_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">週期起始日</Label>
+                <Input
+                  type="date"
+                  value={importWeekStart}
+                  onChange={e => setImportWeekStart(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">週期結束日</Label>
+                <Input
+                  type="date"
+                  value={importWeekEnd}
+                  onChange={e => setImportWeekEnd(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">備注（選填）</Label>
+              <Textarea
+                value={importNotes}
+                onChange={e => setImportNotes(e.target.value)}
+                placeholder="特殊交代事項…"
+                className="text-sm h-16 resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>取消</Button>
+            <Button
+              disabled={!importSheetUrl || !importFleet || !importTitle || importing}
+              onClick={handleImportSheet}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {importing
+                ? <><RefreshCw className="h-4 w-4 animate-spin mr-1" />匯入中…</>
+                : <><FileSpreadsheet className="h-4 w-4 mr-1" />確認匯入</>
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Send dispatch order dialog ────────────────────────────────────── */}
       <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
