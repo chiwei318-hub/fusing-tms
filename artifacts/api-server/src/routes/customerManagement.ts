@@ -3,6 +3,10 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import ExcelJS from "exceljs";
+import multer from "multer";
+import { Readable } from "stream";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 export const customerManagementRouter = Router();
 
@@ -491,6 +495,202 @@ customerManagementRouter.get("/customers/addresses/search", async (req, res) => 
     `);
 
     return res.json(rows.rows);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/customers/import-template ───────────────────────────────────────
+// 下載 Excel 匯入範本
+
+customerManagementRouter.get("/customers/import-template", async (_req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("客戶資料");
+
+    sheet.columns = [
+      { header: "客戶名稱*", key: "name", width: 20 },
+      { header: "電話*", key: "phone", width: 15 },
+      { header: "簡稱", key: "short_name", width: 15 },
+      { header: "聯絡人", key: "contact_person", width: 15 },
+      { header: "Email", key: "email", width: 25 },
+      { header: "地址", key: "address", width: 35 },
+      { header: "郵遞區號", key: "postal_code", width: 10 },
+      { header: "統一編號", key: "tax_id", width: 12 },
+      { header: "發票抬頭", key: "invoice_title", width: 25 },
+      { header: "付款方式", key: "payment_type", width: 15 },
+      { header: "價格等級", key: "price_level", width: 12 },
+      { header: "折扣%", key: "discount_pct", width: 10 },
+      { header: "信用額度", key: "credit_limit", width: 12 },
+      { header: "信用天數", key: "credit_days", width: 12 },
+      { header: "行業別", key: "industry", width: 20 },
+      { header: "備註", key: "notes", width: 30 },
+    ];
+
+    // Style header row
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1A56DB" } };
+    headerRow.height = 20;
+
+    // Instructions sheet
+    const infoSheet = workbook.addWorksheet("填寫說明");
+    infoSheet.getColumn(1).width = 20;
+    infoSheet.getColumn(2).width = 50;
+    [
+      ["欄位", "說明"],
+      ["客戶名稱*", "必填，公司或個人名稱"],
+      ["電話*", "必填，系統以電話號碼辨識客戶（重複則更新）"],
+      ["簡稱", "選填，客戶簡稱"],
+      ["聯絡人", "選填"],
+      ["Email", "選填"],
+      ["地址", "選填，客戶主要地址"],
+      ["郵遞區號", "選填"],
+      ["統一編號", "選填，8碼統編"],
+      ["發票抬頭", "選填，開立發票用抬頭"],
+      ["付款方式", "cash=現金 / monthly=月結 / transfer=銀行轉帳 / cod=代收 / credit_card=信用卡（預設：cash）"],
+      ["價格等級", "standard=標準 / vip=VIP / enterprise=企業 / custom=自訂（預設：standard）"],
+      ["折扣%", "0~100之間的數字，例如10表示打九折（預設：0）"],
+      ["信用額度", "數字，NT$（預設：0）"],
+      ["信用天數", "數字，例如30（預設：0）"],
+      ["行業別", "選填，例如：製造業、零售業"],
+      ["備註", "選填"],
+    ].forEach((row, i) => {
+      const r = infoSheet.addRow(row);
+      if (i === 0) {
+        r.font = { bold: true };
+        r.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE599" } };
+      }
+    });
+
+    // Sample data
+    sheet.addRow({
+      name: "範例科技有限公司", phone: "0912345678", short_name: "範例",
+      contact_person: "王大明", email: "contact@example.com",
+      address: "台北市中山區中山北路一段100號", postal_code: "10441",
+      tax_id: "12345678", invoice_title: "範例科技有限公司",
+      payment_type: "monthly", price_level: "vip", discount_pct: 10,
+      credit_limit: 100000, credit_days: 30, industry: "科技業", notes: "VIP優先處理",
+    });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent("客戶匯入範本")}.xlsx`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── POST /api/customers/import ───────────────────────────────────────────────
+// 匯入客戶資料（Excel / CSV）
+
+customerManagementRouter.post("/customers/import", upload.single("file"), async (req, res) => {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) return res.status(400).json({ error: "請上傳檔案" });
+
+    const workbook = new ExcelJS.Workbook();
+    const readable = Readable.from(file.buffer);
+    const ext = (file.originalname ?? "").toLowerCase();
+
+    if (ext.endsWith(".csv")) {
+      await workbook.csv.read(readable);
+    } else {
+      await workbook.xlsx.read(readable);
+    }
+
+    const sheet = workbook.worksheets[0];
+    if (!sheet) return res.status(400).json({ error: "無法讀取工作表" });
+
+    // Map header row to column indices
+    const headers: string[] = [];
+    const headerRow = sheet.getRow(1);
+    headerRow.eachCell((cell, colNumber) => {
+      const v = String(cell.value ?? "").replace("*", "").trim();
+      headers[colNumber - 1] = v;
+    });
+
+    const COL: Record<string, string> = {
+      "客戶名稱": "name", "電話": "phone", "簡稱": "short_name", "聯絡人": "contact_person",
+      "Email": "email", "地址": "address", "郵遞區號": "postal_code",
+      "統一編號": "tax_id", "發票抬頭": "invoice_title",
+      "付款方式": "payment_type", "價格等級": "price_level",
+      "折扣%": "discount_pct", "信用額度": "credit_limit", "信用天數": "credit_days",
+      "行業別": "industry", "備註": "notes",
+    };
+
+    const rows: Record<string, any>[] = [];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // skip header
+      const obj: Record<string, any> = {};
+      row.eachCell((cell, colNumber) => {
+        const colName = headers[colNumber - 1];
+        if (!colName) return;
+        const key = COL[colName];
+        if (key) obj[key] = cell.value !== null && cell.value !== undefined ? String(cell.value).trim() : "";
+      });
+      if (obj.name || obj.phone) rows.push(obj);
+    });
+
+    if (rows.length === 0) return res.status(400).json({ error: "沒有可匯入的資料列" });
+
+    let created = 0, updated = 0, skipped = 0;
+    const errors: string[] = [];
+
+    for (const row of rows) {
+      const name = row.name?.trim();
+      const phone = row.phone?.trim();
+      if (!name || !phone) { skipped++; errors.push(`跳過：名稱或電話為空（${name ?? ""}）`); continue; }
+
+      const paymentType = ["cash","monthly","transfer","cod","credit_card","check","eft"].includes(row.payment_type) ? row.payment_type : "cash";
+      const priceLevel = ["standard","vip","enterprise","custom"].includes(row.price_level) ? row.price_level : "standard";
+      const discountPct = Math.max(0, Math.min(100, parseFloat(row.discount_pct) || 0));
+      const creditLimit = parseFloat(row.credit_limit) || 0;
+      const creditDays = parseInt(row.credit_days) || 0;
+
+      try {
+        const existing = (await db.execute(sql`SELECT id FROM customers WHERE phone = ${phone} LIMIT 1`)).rows[0] as any;
+        if (existing) {
+          await db.execute(sql`
+            UPDATE customers SET
+              name = ${name},
+              short_name = ${row.short_name || null},
+              contact_person = ${row.contact_person || null},
+              email = ${row.email || null},
+              address = ${row.address || null},
+              postal_code = ${row.postal_code || null},
+              tax_id = ${row.tax_id || null},
+              invoice_title = ${row.invoice_title || null},
+              payment_type = ${paymentType},
+              price_level = ${priceLevel},
+              discount_pct = ${discountPct},
+              credit_limit = ${creditLimit},
+              credit_days = ${creditDays},
+              industry = ${row.industry || null},
+              notes = ${row.notes || null}
+            WHERE id = ${existing.id}
+          `);
+          updated++;
+        } else {
+          await db.execute(sql`
+            INSERT INTO customers (name, phone, short_name, contact_person, email, address, postal_code,
+              tax_id, invoice_title, payment_type, price_level, discount_pct, credit_limit, credit_days,
+              industry, notes, is_active)
+            VALUES (${name}, ${phone}, ${row.short_name || null}, ${row.contact_person || null},
+              ${row.email || null}, ${row.address || null}, ${row.postal_code || null},
+              ${row.tax_id || null}, ${row.invoice_title || null}, ${paymentType}, ${priceLevel},
+              ${discountPct}, ${creditLimit}, ${creditDays}, ${row.industry || null}, ${row.notes || null}, TRUE)
+          `);
+          created++;
+        }
+      } catch (e: any) {
+        skipped++;
+        errors.push(`${name}（${phone}）匯入失敗：${e.message}`);
+      }
+    }
+
+    return res.json({ success: true, total: rows.length, created, updated, skipped, errors });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }

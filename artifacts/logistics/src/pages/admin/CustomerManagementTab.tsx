@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
   Building2, Phone, MapPin, Star, AlertTriangle, Plus, Trash2,
   Download, Search, X, RefreshCw, Edit, UserX, CheckCircle2,
   CreditCard, FileText, Package, Clock, TrendingUp, Users, Zap,
+  Upload, FileSpreadsheet, CheckCircle, XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -688,6 +689,188 @@ function CustomerDetailDialog({ customer, onClose, onUpdate }: {
   );
 }
 
+// ─── Customer Import Dialog ────────────────────────────────────────────────────
+
+interface ImportResult {
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+function CustomerImportDialog({ open, onClose, onSuccess }: {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<"upload" | "result">("upload");
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  function reset() {
+    setStep("upload"); setFile(null); setResult(null); setDragOver(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function handleFile(f: File | null | undefined) {
+    if (!f) return;
+    const ok = f.name.toLowerCase().endsWith(".xlsx") || f.name.toLowerCase().endsWith(".xls") || f.name.toLowerCase().endsWith(".csv");
+    if (!ok) { toast({ title: "格式錯誤", description: "請上傳 Excel (.xlsx) 或 CSV 檔案", variant: "destructive" }); return; }
+    setFile(f);
+  }
+
+  function downloadTemplate() {
+    window.open(`${API}/customers/import-template`, "_blank");
+  }
+
+  async function handleImport() {
+    if (!file) return;
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API}/customers/import`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "匯入失敗");
+      setResult(data);
+      setStep("result");
+      onSuccess();
+    } catch (e: any) {
+      toast({ title: "匯入失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) { reset(); onClose(); } }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+            匯入客戶資料
+          </DialogTitle>
+          <DialogDescription>
+            支援 Excel (.xlsx) 或 CSV 格式，以電話號碼識別客戶（重複則更新，新增則建立）
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === "upload" && (
+          <div className="space-y-4 py-2">
+            {/* Step 1: Download template */}
+            <div className="rounded-xl border border-dashed p-4 bg-blue-50/50 text-center space-y-2">
+              <FileSpreadsheet className="w-8 h-8 mx-auto text-blue-500" />
+              <p className="text-sm font-medium text-foreground">尚未有範本？</p>
+              <p className="text-xs text-muted-foreground">下載 Excel 範本，按格式填寫後再上傳</p>
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs border-blue-300 text-blue-700 hover:bg-blue-100" onClick={downloadTemplate}>
+                <Download className="w-3.5 h-3.5" /> 下載 Excel 範本
+              </Button>
+            </div>
+
+            {/* Step 2: Upload */}
+            <div
+              className={`rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors
+                ${dragOver ? "border-blue-500 bg-blue-50" : file ? "border-emerald-400 bg-emerald-50/40" : "border-muted hover:border-blue-400 hover:bg-blue-50/20"}`}
+              onClick={() => fileRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+            >
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                onChange={e => handleFile(e.target.files?.[0])} />
+              {file ? (
+                <>
+                  <CheckCircle className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
+                  <p className="text-sm font-medium text-emerald-700">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB · 點擊更換檔案</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm font-medium">點擊或拖拽上傳檔案</p>
+                  <p className="text-xs text-muted-foreground mt-1">支援 .xlsx / .xls / .csv</p>
+                </>
+              )}
+            </div>
+
+            {/* Column guide */}
+            <div className="bg-muted/30 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground text-xs mb-1.5">欄位對應說明</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                <span>客戶名稱* <span className="text-red-500">必填</span></span>
+                <span>電話* <span className="text-red-500">必填</span></span>
+                <span>簡稱 / 聯絡人 / Email</span>
+                <span>地址 / 郵遞區號</span>
+                <span>統一編號 / 發票抬頭</span>
+                <span>付款方式 / 價格等級</span>
+                <span>折扣% / 信用額度</span>
+                <span>行業別 / 備註</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === "result" && result && (
+          <div className="py-2 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "新增", value: result.created, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200", icon: <CheckCircle className="w-4 h-4" /> },
+                { label: "更新", value: result.updated, color: "text-blue-600", bg: "bg-blue-50 border-blue-200", icon: <RefreshCw className="w-4 h-4" /> },
+                { label: "跳過", value: result.skipped, color: "text-orange-500", bg: "bg-orange-50 border-orange-200", icon: <XCircle className="w-4 h-4" /> },
+              ].map(item => (
+                <div key={item.label} className={`rounded-xl border p-3 text-center ${item.bg}`}>
+                  <div className={`flex justify-center mb-1 ${item.color}`}>{item.icon}</div>
+                  <div className={`text-2xl font-black ${item.color}`}>{item.value}</div>
+                  <div className="text-xs text-muted-foreground">{item.label}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm text-center text-muted-foreground">共處理 {result.total} 筆資料</p>
+
+            {result.errors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
+                <p className="text-xs font-bold text-red-700 flex items-center gap-1 mb-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" /> 錯誤 / 跳過明細
+                </p>
+                {result.errors.map((e, i) => (
+                  <p key={i} className="text-xs text-red-600">· {e}</p>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              匯入完成，客戶列表已自動更新
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {step === "upload" ? (
+            <>
+              <Button variant="outline" onClick={() => { reset(); onClose(); }}>取消</Button>
+              <Button onClick={handleImport} disabled={!file || loading} className="gap-1.5">
+                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {loading ? "匯入中..." : "確認匯入"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => { reset(); }}>再次匯入</Button>
+              <Button onClick={() => { reset(); onClose(); }}>完成</Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export default function CustomerManagementTab() {
@@ -699,6 +882,7 @@ export default function CustomerManagementTab() {
   const [showBlacklisted, setShowBlacklisted] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -811,6 +995,9 @@ export default function CustomerManagementTab() {
           </Button>
         </div>
 
+        <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => setShowImport(true)}>
+          <Upload className="w-3.5 h-3.5" /> 匯入客戶
+        </Button>
         <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={() => setShowNewForm(true)}>
           <Plus className="w-3.5 h-3.5" /> 新增客戶
         </Button>
@@ -879,6 +1066,11 @@ export default function CustomerManagementTab() {
         <CustomerDetailDialog customer={selectedCustomer} onClose={() => setSelectedCustomer(null)}
           onUpdate={() => qc.invalidateQueries({ queryKey: ["customers-extended"] })} />
       )}
+      <CustomerImportDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ["customers-extended"] })}
+      />
     </div>
   );
 }
