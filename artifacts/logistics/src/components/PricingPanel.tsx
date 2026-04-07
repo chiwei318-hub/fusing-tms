@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { Calculator, Lock, Unlock, Bell, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Clock, Weight, Box, Zap, Star, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Calculator, Lock, Bell, AlertTriangle, CheckCircle2,
+  ChevronDown, ChevronUp, Clock, Weight, Box, Zap, Star, Plus,
+  User, Percent, Tag,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +14,7 @@ import { getGetOrderQueryKey, getListOrdersQueryKey } from "@workspace/api-clien
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface Breakdown {
   distanceKm: number;
   base: number;
@@ -22,7 +27,17 @@ interface Breakdown {
   anomalyFee: number;
   anomalyItems: string[];
   subtotal: number;
+  discountPct?: number;
+  discountAmount?: number;
   total: number;
+}
+
+interface CustomerPricing {
+  customerId?: number;
+  customerName?: string;
+  priceLevel?: string;
+  priceLevelLabel?: string;
+  discountPct: number;
 }
 
 interface PricingPanelProps {
@@ -48,12 +63,14 @@ interface PricingPanelProps {
     surchargeAmount?: number | null;
     surchargeReason?: string | null;
     customerPhone?: string | null;
+    customerName?: string | null;
     status?: string;
   };
   mode?: "admin" | "driver";
   onRefresh?: () => void;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function parseBd(raw: unknown): Breakdown | null {
   if (!raw) return null;
   try { return typeof raw === "string" ? JSON.parse(raw) : raw as Breakdown; } catch { return null; }
@@ -65,6 +82,14 @@ const slotLabel: Record<string, string> = {
   normal: "一般時段",
 };
 
+const LEVEL_STYLE: Record<string, string> = {
+  vip: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  enterprise: "bg-blue-100 text-blue-800 border-blue-300",
+  custom: "bg-purple-100 text-purple-800 border-purple-300",
+  standard: "bg-gray-100 text-gray-700 border-gray-200",
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function PricingPanel({ order, mode = "admin", onRefresh }: PricingPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -79,6 +104,11 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
   const [surchargeAmt, setSurchargeAmt] = useState<string>("0");
   const [showSurcharge, setShowSurcharge] = useState(false);
 
+  // Customer pricing
+  const [customerPricing, setCustomerPricing] = useState<CustomerPricing | null>(null);
+  const [discountOverride, setDiscountOverride] = useState<string>("");
+  const [showDiscountOverride, setShowDiscountOverride] = useState(false);
+
   const isLocked = !!order.priceLocked;
   const wasNotified = !!order.arrivalNotifiedAt;
 
@@ -86,6 +116,22 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
     queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(order.id) });
     queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
   };
+
+  // Load customer pricing when panel opens
+  useEffect(() => {
+    if (!open || customerPricing !== null) return;
+    fetch(`${BASE_URL}/api/orders/${order.id}/customer-pricing`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: CustomerPricing | null) => {
+        if (data) {
+          setCustomerPricing(data);
+          if (discountOverride === "") setDiscountOverride(String(data.discountPct ?? 0));
+        }
+      })
+      .catch(() => {});
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const effectiveDiscount = discountOverride !== "" ? parseFloat(discountOverride) || 0 : (customerPricing?.discountPct ?? 0);
 
   const handleCalculate = async (save = false) => {
     setLoading(true);
@@ -98,12 +144,14 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
           waitMinutes: parseFloat(waitMin) || 0,
           overweightKg: parseFloat(overKg) || 0,
           excessItems: parseFloat(excessItems) || 0,
+          discountPct: effectiveDiscount,
           save,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setBreakdown(data.breakdown);
+      if (data.customerPricing && !customerPricing) setCustomerPricing(data.customerPricing);
       if (save) { toast({ title: "✅ 運費已計算並儲存" }); invalidate(); onRefresh?.(); }
       else setOpen(true);
     } catch (e: unknown) {
@@ -189,7 +237,71 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
       {open && (
         <div className="p-4 space-y-4">
 
-          {/* Arrival Notification */}
+          {/* ── Customer Pricing Info ─────────────── */}
+          {customerPricing?.customerName ? (
+            <div className="rounded-xl border bg-gradient-to-br from-slate-50 to-blue-50 p-3 space-y-2">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <User className="w-3 h-3" /> 客戶批價設定
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-foreground">{customerPricing.customerName}</span>
+                {customerPricing.priceLevel && (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${LEVEL_STYLE[customerPricing.priceLevel] ?? LEVEL_STYLE.standard}`}
+                  >
+                    <Tag className="w-2.5 h-2.5 mr-1" />
+                    {customerPricing.priceLevelLabel ?? customerPricing.priceLevel}
+                  </Badge>
+                )}
+                {customerPricing.discountPct > 0 && (
+                  <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300">
+                    <Percent className="w-2.5 h-2.5 mr-1" />
+                    折扣 {customerPricing.discountPct}%
+                  </Badge>
+                )}
+              </div>
+
+              {/* Discount override (admin only) */}
+              {mode === "admin" && !isLocked && (
+                <div>
+                  <button
+                    className="text-xs text-blue-600 font-medium hover:text-blue-700 flex items-center gap-1"
+                    onClick={() => setShowDiscountOverride(v => !v)}
+                  >
+                    <Percent className="w-3 h-3" />
+                    {showDiscountOverride ? "收起" : "調整折扣"}
+                  </button>
+                  {showDiscountOverride && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Label className="text-xs shrink-0">折扣（%）</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={discountOverride}
+                        onChange={e => setDiscountOverride(e.target.value)}
+                        placeholder={String(customerPricing.discountPct)}
+                        className="h-7 text-sm w-24"
+                      />
+                      <span className="text-xs text-muted-foreground">套用至本次計算</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* No customer found */
+            order.customerPhone && (
+              <div className="rounded-xl border border-dashed border-muted p-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <User className="w-3.5 h-3.5 shrink-0" />
+                <span>{order.customerName ?? order.customerPhone} · 無特定批價設定（使用標準定價）</span>
+              </div>
+            )
+          )}
+
+          {/* ── Arrival Notification ──────────────── */}
           <div className={`rounded-xl p-3 border ${wasNotified ? "bg-emerald-50 border-emerald-200" : "bg-blue-50 border-blue-200"}`}>
             <div className="flex items-center justify-between">
               <div>
@@ -226,7 +338,7 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
             )}
           </div>
 
-          {/* Price Lock Status */}
+          {/* ── Price Lock Status ─────────────────── */}
           {isLocked && (
             <div className="rounded-xl p-3 bg-yellow-50 border border-yellow-200 flex items-center gap-3">
               <Lock className="w-5 h-5 text-yellow-600 shrink-0" />
@@ -240,72 +352,46 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
             </div>
           )}
 
-          {/* Inputs */}
+          {/* ── Inputs ───────────────────────────── */}
           {!isLocked && (
             <div className="space-y-3">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">計價參數</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Zap className="w-3 h-3" />距離（公里）</Label>
-                  <Input
-                    type="number" min="0" step="0.1"
-                    value={distKm}
-                    onChange={e => setDistKm(e.target.value)}
-                    placeholder="e.g. 25"
-                    className="h-8 text-sm"
-                  />
+                  <Input type="number" min="0" step="0.1" value={distKm} onChange={e => setDistKm(e.target.value)} placeholder="e.g. 25" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" />等候（分鐘）</Label>
-                  <Input
-                    type="number" min="0" step="1"
-                    value={waitMin}
-                    onChange={e => setWaitMin(e.target.value)}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
+                  <Input type="number" min="0" step="1" value={waitMin} onChange={e => setWaitMin(e.target.value)} placeholder="0" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Weight className="w-3 h-3" />超重（公斤）</Label>
-                  <Input
-                    type="number" min="0"
-                    value={overKg}
-                    onChange={e => setOverKg(e.target.value)}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
+                  <Input type="number" min="0" value={overKg} onChange={e => setOverKg(e.target.value)} placeholder="0" className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Box className="w-3 h-3" />超件（件數）</Label>
-                  <Input
-                    type="number" min="0"
-                    value={excessItems}
-                    onChange={e => setExcessItems(e.target.value)}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
+                  <Input type="number" min="0" value={excessItems} onChange={e => setExcessItems(e.target.value)} placeholder="0" className="h-8 text-sm" />
                 </div>
               </div>
+              {effectiveDiscount > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                  <Percent className="w-3 h-3" />
+                  已套用客戶折扣 <strong>{effectiveDiscount}%</strong>（將減扣運費小計）
+                </div>
+              )}
               <div className="flex gap-2">
-                <Button
-                  variant="outline" size="sm" className="flex-1 text-xs h-9 gap-1"
-                  onClick={() => handleCalculate(false)}
-                  disabled={loading}
-                >
+                <Button variant="outline" size="sm" className="flex-1 text-xs h-9 gap-1" onClick={() => handleCalculate(false)} disabled={loading}>
                   <Calculator className="w-3.5 h-3.5" /> 試算
                 </Button>
-                <Button
-                  size="sm" className="flex-1 text-xs h-9 gap-1 bg-blue-700 hover:bg-blue-800"
-                  onClick={() => handleCalculate(true)}
-                  disabled={loading}
-                >
+                <Button size="sm" className="flex-1 text-xs h-9 gap-1 bg-blue-700 hover:bg-blue-800" onClick={() => handleCalculate(true)} disabled={loading}>
                   <Calculator className="w-3.5 h-3.5" /> 計算並儲存
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Breakdown */}
+          {/* ── Breakdown ────────────────────────── */}
           {displayBd && (
             <div className="space-y-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">費用明細</p>
@@ -316,7 +402,7 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
                 </div>
                 {displayBd.weightFee > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground flex items-center gap-1"><Weight className="w-3 h-3" />重量費（超出部分）</span>
+                    <span className="text-muted-foreground flex items-center gap-1"><Weight className="w-3 h-3" />重量費</span>
                     <span className="font-medium">+NT${displayBd.weightFee.toLocaleString()}</span>
                   </div>
                 )}
@@ -345,6 +431,24 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
                     ))}
                   </div>
                 )}
+
+                {/* 小計 (before discount) */}
+                {(displayBd.discountPct ?? 0) > 0 && (
+                  <>
+                    <div className="flex justify-between text-muted-foreground border-t pt-1.5">
+                      <span>小計</span>
+                      <span>NT${displayBd.subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700">
+                      <span className="flex items-center gap-1">
+                        <Percent className="w-3 h-3" />
+                        客戶折扣 {displayBd.discountPct}%
+                      </span>
+                      <span className="font-medium">−NT${(displayBd.discountAmount ?? 0).toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
+
                 {displayBd.anomalyFee > 0 && (
                   <div className="flex justify-between">
                     <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />異常加價</span>
@@ -386,7 +490,7 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
             </div>
           )}
 
-          {/* Existing surcharges */}
+          {/* ── Existing surcharges ───────────────── */}
           {(order.surchargeAmount ?? 0) > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
               <p className="text-xs font-bold text-red-700 flex items-center gap-1 mb-1">
@@ -399,7 +503,7 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
             </div>
           )}
 
-          {/* Anomaly Surcharge Form */}
+          {/* ── Anomaly Surcharge Form ────────────── */}
           {!isLocked && (
             <div>
               <button
@@ -420,12 +524,7 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
                     </div>
                     <div className="space-y-1 col-span-2">
                       <Label className="text-xs">原因說明</Label>
-                      <Input
-                        value={surchargeReason}
-                        onChange={e => setSurchargeReason(e.target.value)}
-                        placeholder="e.g. 等候45分鐘、超重20kg"
-                        className="h-8 text-sm"
-                      />
+                      <Input value={surchargeReason} onChange={e => setSurchargeReason(e.target.value)} placeholder="e.g. 等候45分鐘、超重20kg" className="h-8 text-sm" />
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground space-y-0.5 bg-white/70 rounded p-2">
@@ -434,10 +533,8 @@ export default function PricingPanel({ order, mode = "admin", onRefresh }: Prici
                     <p>📦 超件費：每超10件 +NT$300</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 text-xs h-8"
-                      onClick={() => setShowSurcharge(false)}>取消</Button>
-                    <Button size="sm" className="flex-1 text-xs h-8 bg-red-500 hover:bg-red-600 text-white gap-1"
-                      onClick={handleAddSurcharge} disabled={loading}>
+                    <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => setShowSurcharge(false)}>取消</Button>
+                    <Button size="sm" className="flex-1 text-xs h-8 bg-red-500 hover:bg-red-600 text-white gap-1" onClick={handleAddSurcharge} disabled={loading}>
                       <Plus className="w-3 h-3" /> 加計
                     </Button>
                   </div>

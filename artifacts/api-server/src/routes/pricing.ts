@@ -1,27 +1,34 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ordersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export const pricingRouter = Router();
 
 // ── Pricing Config ────────────────────────────────────────────────────────────
 const CFG = {
-  baseFlat: 500,           // NTD base flat
-  perKm: 35,               // NTD per km
-  freeWeightKg: 100,       // free weight
-  perExtraKg: 5,           // NTD per extra kg
-  freeVolumeCbm: 1.0,      // free volume (cbm)
-  perExtraCbm: 500,        // NTD per extra cbm
-  peakRatio: 0.20,         // peak surcharge ratio
-  nightRatio: 0.30,        // night surcharge ratio
+  baseFlat: 500,
+  perKm: 35,
+  freeWeightKg: 100,
+  perExtraKg: 5,
+  freeVolumeCbm: 1.0,
+  perExtraCbm: 500,
+  peakRatio: 0.20,
+  nightRatio: 0.30,
   tailgateFee: 800,
   hydraulicFee: 600,
   fridgeFee: 1200,
-  waitFreeMin: 30,         // free wait minutes
-  waitPer30Min: 200,       // NTD per 30 min over free
-  overweightPerKg: 8,      // NTD per kg over declared
-  excessItemFlat: 300,     // NTD per 10 items over declared
+  waitFreeMin: 30,
+  waitPer30Min: 200,
+  overweightPerKg: 8,
+  excessItemFlat: 300,
+};
+
+const PRICE_LEVEL_LABELS: Record<string, string> = {
+  standard: "標準",
+  vip: "VIP",
+  enterprise: "企業",
+  custom: "自訂",
 };
 
 function getTimeSlot(pickupTime?: string | null): "peak" | "night" | "normal" {
@@ -32,6 +39,37 @@ function getTimeSlot(pickupTime?: string | null): "peak" | "night" | "normal" {
   return "normal";
 }
 
+// ── Customer Pricing Lookup ───────────────────────────────────────────────────
+async function getCustomerPricing(customerPhone?: string | null): Promise<{
+  customerId?: number;
+  customerName?: string;
+  priceLevel?: string;
+  priceLevelLabel?: string;
+  discountPct: number;
+} | null> {
+  if (!customerPhone) return null;
+  try {
+    const result = await db.execute(sql`
+      SELECT id, name, price_level, discount_pct
+      FROM customers
+      WHERE phone = ${customerPhone} AND is_active = TRUE
+      LIMIT 1
+    `);
+    const row = result.rows[0] as any;
+    if (!row) return null;
+    const discountPct = parseFloat(String(row.discount_pct ?? 0)) || 0;
+    const priceLevel = row.price_level ?? "standard";
+    return {
+      customerId: row.id,
+      customerName: row.name,
+      priceLevel,
+      priceLevelLabel: PRICE_LEVEL_LABELS[priceLevel] ?? priceLevel,
+      discountPct,
+    };
+  } catch { return null; }
+}
+
+// ── Core Pricing Function ─────────────────────────────────────────────────────
 export function calculatePricing(params: {
   distanceKm?: number | null;
   cargoWeight?: number | null;
@@ -45,6 +83,7 @@ export function calculatePricing(params: {
   waitMinutes?: number | null;
   overweightKg?: number;
   excessItems?: number;
+  discountPct?: number;
 }) {
   const dist = params.distanceKm ?? 0;
   const weight = params.cargoWeight ?? 0;
@@ -82,7 +121,12 @@ export function calculatePricing(params: {
   if (excessFee > 0) anomalyItems.push(`超件+${excessFee}`);
 
   const subtotal = base + weightFee + volumeFee + timeFee + specialFee;
-  const total = Math.round(subtotal + anomalyFee);
+
+  // Customer discount applied on subtotal (before anomaly fees)
+  const discountPct = Math.max(0, Math.min(100, params.discountPct ?? 0));
+  const discountAmount = discountPct > 0 ? Math.round(subtotal * discountPct / 100) : 0;
+
+  const total = Math.round(subtotal - discountAmount + anomalyFee);
 
   return {
     distanceKm: dist,
@@ -96,11 +140,29 @@ export function calculatePricing(params: {
     anomalyFee: Math.round(anomalyFee),
     anomalyItems,
     subtotal: Math.round(subtotal),
+    discountPct,
+    discountAmount,
     total,
   };
 }
 
-// POST /api/orders/:id/calculate-price
+// ── GET /api/orders/:id/customer-pricing ──────────────────────────────────────
+// 查詢訂單客戶的批價設定
+pricingRouter.get("/:id/customer-pricing", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id)).limit(1);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const pricing = await getCustomerPricing(order.customerPhone);
+    return res.json(pricing ?? { discountPct: 0 });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── POST /api/orders/:id/calculate-price ──────────────────────────────────────
 pricingRouter.post("/:id/calculate-price", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -108,6 +170,17 @@ pricingRouter.post("/:id/calculate-price", async (req, res) => {
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     const overrides = req.body ?? {};
+
+    // Determine discount: explicit override > customer lookup > 0
+    let discountPct = 0;
+    let customerInfo = null;
+    if (overrides.discountPct !== undefined) {
+      discountPct = parseFloat(String(overrides.discountPct)) || 0;
+    } else {
+      customerInfo = await getCustomerPricing(order.customerPhone);
+      discountPct = customerInfo?.discountPct ?? 0;
+    }
+
     const breakdown = calculatePricing({
       distanceKm: overrides.distanceKm ?? order.distanceKm,
       cargoWeight: overrides.cargoWeight ?? order.cargoWeight,
@@ -121,6 +194,7 @@ pricingRouter.post("/:id/calculate-price", async (req, res) => {
       waitMinutes: overrides.waitMinutes ?? order.waitMinutes,
       overweightKg: overrides.overweightKg ?? 0,
       excessItems: overrides.excessItems ?? 0,
+      discountPct,
     });
 
     if (overrides.save) {
@@ -137,14 +211,17 @@ pricingRouter.post("/:id/calculate-price", async (req, res) => {
       }).where(eq(ordersTable.id, id));
     }
 
-    return res.json({ breakdown });
+    return res.json({
+      breakdown,
+      customerPricing: customerInfo ?? (overrides.discountPct !== undefined ? { discountPct } : null),
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Server error" });
   }
 });
 
-// POST /api/orders/:id/notify-arrival
+// ── POST /api/orders/:id/notify-arrival ───────────────────────────────────────
 pricingRouter.post("/:id/notify-arrival", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -157,7 +234,6 @@ pricingRouter.post("/:id/notify-arrival", async (req, res) => {
       updatedAt: now,
     }).where(eq(ordersTable.id, id));
 
-    // In production: send LINE/SMS here using order.customerPhone
     console.log(`[Arrival Notify] Order #${id} → ${order.customerPhone} · Driver arriving at ${order.pickupAddress}`);
 
     return res.json({
@@ -171,7 +247,7 @@ pricingRouter.post("/:id/notify-arrival", async (req, res) => {
   }
 });
 
-// POST /api/orders/:id/lock-price
+// ── POST /api/orders/:id/lock-price ───────────────────────────────────────────
 pricingRouter.post("/:id/lock-price", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -194,7 +270,7 @@ pricingRouter.post("/:id/lock-price", async (req, res) => {
   }
 });
 
-// POST /api/orders/:id/add-surcharge
+// ── POST /api/orders/:id/add-surcharge ────────────────────────────────────────
 pricingRouter.post("/:id/add-surcharge", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
