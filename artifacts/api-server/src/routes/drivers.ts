@@ -97,6 +97,7 @@ router.post("/drivers", async (req, res) => {
         bankBranch: b.bankBranch ?? null,
         bankAccount: b.bankAccount ?? null,
         bankAccountName: b.bankAccountName ?? null,
+        employeeId: b.employeeId ? String(b.employeeId) : null,
         status: "available",
       })
       .returning();
@@ -175,6 +176,7 @@ router.patch("/drivers/:id", async (req, res) => {
     if ("bankBranch" in b) updates.bankBranch = b.bankBranch ?? null;
     if ("bankAccount" in b) updates.bankAccount = b.bankAccount ?? null;
     if ("bankAccountName" in b) updates.bankAccountName = b.bankAccountName ?? null;
+    if ("employeeId" in b) updates.employeeId = b.employeeId ? String(b.employeeId) : null;
 
     // New capability/schedule fields — raw SQL since not in drizzle schema yet
     const rawFields: string[] = [];

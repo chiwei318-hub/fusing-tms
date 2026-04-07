@@ -123,6 +123,7 @@ const driverFormSchema = z.object({
   vehicleType: z.string().min(1, "車型必填"),
   licensePlate: z.string().min(3, "車牌必填"),
   driverType: z.string().optional(),
+  employeeId: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
   lineUserId: z.string().optional(),
@@ -306,6 +307,13 @@ function DriverFormFields({ form, isEdit }: { form: ReturnType<typeof useForm<Dr
                     <SelectItem value="external">外車司機</SelectItem>
                   </SelectContent>
                 </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="employeeId" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">工號</FormLabel>
+                <FormControl><Input placeholder="如：14681" {...field} value={field.value ?? ""} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
@@ -937,7 +945,7 @@ export default function Admin() {
     setVehicleDetail(data);
   };
 
-  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", username: "", password: "", lineUserId: "", id_no: "", referrer: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", bank_code: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "", insurance_expiry: "", inspection_date: "" };
+  const driverDefaults = { name: "", phone: "", vehicleType: "", licensePlate: "", driverType: "", employeeId: "", username: "", password: "", lineUserId: "", id_no: "", referrer: "", bankName: "", bankBranch: "", bankAccount: "", bankAccountName: "", bank_code: "", vehicleBrand: "", vehicleYear: "", vehicleTonnage: "", hasTailgate: false, maxLoadKg: "", maxVolumeCbm: "", insurance_expiry: "", inspection_date: "" };
   const createDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
   const editDriverForm = useForm<DriverFormValues>({ resolver: zodResolver(driverFormSchema), defaultValues: driverDefaults });
 
@@ -979,7 +987,9 @@ export default function Admin() {
       d.name?.toLowerCase().includes(q) ||
       d.phone?.toLowerCase().includes(q) ||
       d.vehicleType?.toLowerCase().includes(q) ||
-      d.licensePlate?.toLowerCase().includes(q)
+      d.licensePlate?.toLowerCase().includes(q) ||
+      (d as any).employeeId?.toLowerCase().includes(q) ||
+      (d as any).employee_id?.toLowerCase().includes(q)
     );
   }, [drivers, driverSearch]);
 
@@ -1005,6 +1015,7 @@ export default function Admin() {
       lineUserId: data.lineUserId || null,
       driverType: data.driverType || null,
       username: data.username || null,
+      employeeId: data.employeeId || null,
       id_no: data.id_no || null,
       referrer: data.referrer || null,
       bankName: data.bankName || null,
@@ -1045,6 +1056,7 @@ export default function Admin() {
       vehicleType: driver.vehicleType,
       licensePlate: driver.licensePlate,
       driverType: driver.driverType ?? "",
+      employeeId: d.employeeId ?? d.employee_id ?? "",
       username: driver.username ?? "",
       password: "",
       lineUserId: driver.lineUserId ?? "",
@@ -2757,7 +2769,14 @@ export default function Admin() {
                     return (
                     <tr key={driver.id} className="hover:bg-muted/25 transition-colors group">
                       <td className="px-3 py-2.5">
-                        <div className="font-bold text-foreground text-sm">{driver.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-foreground text-sm">{driver.name}</span>
+                          {(d.employeeId || d.employee_id) && (
+                            <span className="text-[10px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                              工號 {d.employeeId ?? d.employee_id}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-muted-foreground font-mono text-xs">{driver.phone}</div>
                         <div className="sm:hidden text-xs text-muted-foreground mt-0.5">{driver.vehicleType} · <span className="font-mono uppercase">{driver.licensePlate}</span></div>
                         {expiryAlerts.length > 0 && (

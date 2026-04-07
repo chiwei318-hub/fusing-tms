@@ -38,6 +38,7 @@ export const driversTable = pgTable("drivers", {
   canColdChain: boolean("can_cold_chain").default(false),
   franchiseeId: integer("franchisee_id"),
   isFranchisee: boolean("is_franchisee").generatedAlwaysAs(sql`franchisee_id IS NOT NULL`),
+  employeeId: text("employee_id"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
