@@ -1,17 +1,18 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateOrderMutation } from "@/hooks/use-orders";
+import { getListOrdersQueryKey, getGetOrderQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { OrderStatusBadge } from "@/components/StatusBadge";
-import { Loader2, Save, X, MapPin, Calendar, Clock, FileText, Truck, Receipt } from "lucide-react";
+import { Loader2, Save, X, MapPin, Calendar, Clock, FileText, Truck, Receipt, Package, User } from "lucide-react";
 
 const STATUS_OPTIONS = [
-  { value: "pending",    label: "待處理" },
+  { value: "pending",    label: "待派車" },
   { value: "assigned",   label: "已指派" },
   { value: "in_transit", label: "運送中" },
   { value: "delivered",  label: "已送達" },
@@ -41,6 +42,7 @@ interface OrderRow {
   id: number;
   status?: string;
   customerName?: string;
+  customerPhone?: string;
   pickupAddress?: string;
   pickupDate?: string | null;
   pickupTime?: string | null;
@@ -49,6 +51,8 @@ interface OrderRow {
   deliveryDate?: string | null;
   deliveryTime?: string | null;
   deliveryContactName?: string | null;
+  cargoDescription?: string | null;
+  specialRequirements?: string | null;
   notes?: string | null;
   requiredVehicleType?: string | null;
   vehicleType?: string | null;
@@ -72,9 +76,12 @@ function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: s
   );
 }
 
+const BASE = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+
 export default function OrderEditSheet({ order, open, onClose }: Props) {
   const { toast } = useToast();
-  const updateOrder = useUpdateOrderMutation();
+  const queryClient = useQueryClient();
+  const [isSaving, setIsSaving] = useState(false);
 
   const [form, setForm] = useState({
     status: "",
@@ -86,6 +93,8 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
     deliveryDate: "",
     deliveryTime: "",
     deliveryContactName: "",
+    cargoDescription: "",
+    specialRequirements: "",
     notes: "",
     requiredVehicleType: "",
     vehicleType: "",
@@ -106,6 +115,8 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
         deliveryDate: order.deliveryDate ?? "",
         deliveryTime: order.deliveryTime ?? "",
         deliveryContactName: order.deliveryContactName ?? "",
+        cargoDescription: order.cargoDescription ?? "",
+        specialRequirements: order.specialRequirements ?? "",
         notes: order.notes ?? "",
         requiredVehicleType: order.requiredVehicleType ?? "",
         vehicleType: order.vehicleType ?? "",
@@ -121,11 +132,17 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
 
   const handleSave = async () => {
     if (!order) return;
+    setIsSaving(true);
+    const token = localStorage.getItem("auth-jwt");
     try {
-      await updateOrder.mutateAsync({
-        id: order.id,
-        data: {
-          status: form.status as any,
+      const res = await fetch(`${BASE}/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          status: form.status || undefined,
           pickupAddress: form.pickupAddress || undefined,
           pickupDate: form.pickupDate || null,
           pickupTime: form.pickupTime || null,
@@ -134,18 +151,28 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           deliveryDate: form.deliveryDate || null,
           deliveryTime: form.deliveryTime || null,
           deliveryContactName: form.deliveryContactName || null,
+          cargoDescription: form.cargoDescription || null,
+          specialRequirements: form.specialRequirements || null,
           notes: form.notes || null,
           requiredVehicleType: form.requiredVehicleType || null,
           vehicleType: form.vehicleType || null,
           totalFee: form.totalFee ? Number(form.totalFee) : null,
-          feeStatus: form.feeStatus as any || undefined,
-          invoiceStatus: form.invoiceStatus as any || undefined,
-        },
+          feeStatus: (form.feeStatus || undefined) as any,
+          invoiceStatus: (form.invoiceStatus || undefined) as any,
+        }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? `更新失敗 (${res.status})`);
+      }
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(order.id) });
       toast({ title: `訂單 #${order.id} 已更新`, description: "修改已儲存成功" });
       onClose();
     } catch (err: any) {
       toast({ title: "更新失敗", description: err?.message ?? "請稍後再試", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -158,6 +185,11 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
             <span className="text-base font-semibold text-foreground">{order?.customerName}</span>
             {order?.status && <OrderStatusBadge status={order.status} />}
           </SheetTitle>
+          {order?.customerPhone && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <User className="w-3 h-3" /> {order.customerPhone}
+            </p>
+          )}
         </SheetHeader>
 
         <div className="space-y-3 py-4 px-1">
@@ -213,6 +245,23 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
               <Label className="text-xs text-muted-foreground mb-1.5 block">運費（元）</Label>
               <Input type="number" className="h-9 text-sm" placeholder="未設定" value={form.totalFee} onChange={set("totalFee")} />
             </div>
+          </div>
+
+          {/* 貨物資訊 */}
+          <SectionLabel icon={Package} label="貨物內容" />
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">貨物描述</Label>
+            <Textarea
+              className="text-sm resize-none"
+              rows={2}
+              placeholder="請輸入貨物描述…"
+              value={form.cargoDescription}
+              onChange={set("cargoDescription")}
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">特殊需求</Label>
+            <Input className="h-9 text-sm" placeholder="特殊搬運、溫控等需求" value={form.specialRequirements} onChange={set("specialRequirements")} />
           </div>
 
           {/* 車輛 */}
@@ -308,12 +357,12 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
         </div>
 
         <SheetFooter className="border-t pt-4 gap-2">
-          <Button variant="outline" className="flex-1 gap-2" onClick={onClose} disabled={updateOrder.isPending}>
+          <Button variant="outline" className="flex-1 gap-2" onClick={onClose} disabled={isSaving}>
             <X className="w-4 h-4" /> 取消
           </Button>
-          <Button className="flex-1 gap-2" onClick={handleSave} disabled={updateOrder.isPending}>
-            {updateOrder.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {updateOrder.isPending ? "儲存中…" : "儲存變更"}
+          <Button className="flex-1 gap-2" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? "儲存中…" : "儲存變更"}
           </Button>
         </SheetFooter>
       </SheetContent>

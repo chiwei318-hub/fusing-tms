@@ -863,7 +863,8 @@ router.post("/orders/:id/duplicate", async (req, res) => {
     if (!src) return res.status(404).json({ error: "Order not found" });
     const { id: _id, createdAt: _ca, updatedAt: _ua, driverId: _di,
       driverAcceptedAt: _daa, checkInAt: _cia, completedAt: _coa,
-      paymentConfirmedAt: _pca, priceLockedAt: _pla, arrivalNotifiedAt: _ana,
+      paymentConfirmedAt: _pca, priceLockedAt: _pla, priceLockedBy: _plby,
+      priceLocked: _pl, arrivalNotifiedAt: _ana,
       orderGroupId: _ogi, status: _st, feeStatus: _fs,
       ...fields } = src;
     const [newOrder] = await db.insert(ordersTable).values({

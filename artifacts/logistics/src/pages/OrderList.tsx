@@ -287,7 +287,6 @@ export default function OrderList() {
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50 hover:border-green-400 hover:text-green-700"
-                          onMouseDown={e => e.preventDefault()}
                           onClick={() => handleDuplicate(order)}
                           disabled={duplicateOrder.isPending}
                           title="複製新增"
@@ -295,7 +294,7 @@ export default function OrderList() {
                           {duplicateOrder.isPending
                             ? <Loader2 className="w-3 h-3 animate-spin" />
                             : <Copy className="w-3 h-3" />}
-                          新增
+                          複製
                         </Button>
 
                         {/* 修改 */}
@@ -303,7 +302,6 @@ export default function OrderList() {
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700"
-                          onMouseDown={e => e.preventDefault()}
                           onClick={() => setEditOrder(order)}
                           title="修改訂單"
                         >
