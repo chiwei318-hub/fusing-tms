@@ -85,6 +85,7 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
 
   const [form, setForm] = useState({
     status: "",
+    customerPhone: "",
     pickupAddress: "",
     pickupDate: "",
     pickupTime: "",
@@ -107,6 +108,7 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
     if (order) {
       setForm({
         status: order.status ?? "pending",
+        customerPhone: order.customerPhone ?? "",
         pickupAddress: order.pickupAddress ?? "",
         pickupDate: order.pickupDate ?? "",
         pickupTime: order.pickupTime ?? "",
@@ -143,6 +145,7 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
         },
         body: JSON.stringify({
           status: form.status || undefined,
+          customerPhone: form.customerPhone || undefined,
           pickupAddress: form.pickupAddress || undefined,
           pickupDate: form.pickupDate || null,
           pickupTime: form.pickupTime || null,
@@ -185,14 +188,16 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
             <span className="text-base font-semibold text-foreground">{order?.customerName}</span>
             {order?.status && <OrderStatusBadge status={order.status} />}
           </SheetTitle>
-          {order?.customerPhone && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-              <User className="w-3 h-3" /> {order.customerPhone}
-            </p>
-          )}
         </SheetHeader>
 
         <div className="space-y-3 py-4 px-1">
+
+          {/* 聯絡資訊 */}
+          <SectionLabel icon={User} label="聯絡資訊" />
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">聯絡電話</Label>
+            <Input className="h-9 text-sm" placeholder="聯絡電話" value={form.customerPhone} onChange={set("customerPhone")} />
+          </div>
 
           {/* 狀態 */}
           <SectionLabel icon={FileText} label="訂單狀態" />

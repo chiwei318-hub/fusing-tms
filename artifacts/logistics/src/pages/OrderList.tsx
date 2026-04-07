@@ -223,9 +223,22 @@ export default function OrderList() {
                     </td>
 
                     {/* 客戶 */}
-                    <td className="px-3 py-2.5">
-                      <div className="font-medium text-foreground text-sm leading-tight">{order.customerName}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{order.customerPhone}</div>
+                    <td className="px-3 py-2.5 max-w-[180px]">
+                      <div className="font-medium text-foreground text-sm leading-tight truncate" title={order.customerName ?? ""}>{order.customerName}</div>
+                      {order.customerPhone && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{order.customerPhone}</div>
+                      )}
+                      {order.pickupContactName && (
+                        <div className="text-xs text-sky-600 mt-0.5">聯絡人：{order.pickupContactName}</div>
+                      )}
+                      {(order.specialRequirements || order.notes) && (
+                        <div
+                          className="text-xs text-amber-600/90 mt-0.5 truncate"
+                          title={[order.specialRequirements, order.notes].filter(Boolean).join(" ｜ ")}
+                        >
+                          備注：{order.specialRequirements || order.notes}
+                        </div>
+                      )}
                     </td>
 
                     {/* 狀態 */}
