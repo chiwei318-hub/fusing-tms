@@ -169,7 +169,7 @@ router.get("/orders/search", async (req, res) => {
         o.delivery_contact_person, o.delivery_contact_name,
         o.cargo_description, o.cargo_name, o.cargo_weight, o.cargo_quantity,
         o.special_requirements, o.notes,
-        o.total_fee, o.base_price,
+        o.total_fee, o.base_price, o.extra_fee, o.driver_pay,
         o.required_vehicle_type, o.need_tailgate, o.need_hydraulic_pallet,
         o.source, o.created_at, o.updated_at,
         o.driver_id,
@@ -423,6 +423,7 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.quoteAmount !== undefined) updates.quoteAmount = body.quoteAmount ?? null;
     if (body.costAmount !== undefined) updates.costAmount = body.costAmount ?? null;
     if (body.profitAmount !== undefined) updates.profitAmount = body.profitAmount ?? null;
+    if (body.driverPay !== undefined) updates.driverPay = body.driverPay ?? null;
     if (body.sourceChannel !== undefined) updates.sourceChannel = body.sourceChannel ?? null;
     // Editable content fields
     if (body.pickupDate !== undefined) updates.pickupDate = body.pickupDate ?? null;

@@ -89,6 +89,7 @@ export const ordersTable = pgTable("orders", {
   quoteAmount: real("quote_amount"),     // 報價金額
   costAmount: real("cost_amount"),       // 成本金額
   profitAmount: real("profit_amount"),   // 毛利
+  driverPay: real("driver_pay"),         // 司機酬勞
   feeStatus: text("fee_status").notNull().default("unpaid"),
   paymentStatus: text("payment_status"), // 付款狀態別名
   invoiceStatus: text("invoice_status").default("none"), // 發票狀態
