@@ -436,10 +436,12 @@ router.patch("/orders/:id", async (req, res) => {
     if (body.deliveryContactPerson !== undefined) updates.deliveryContactPerson = body.deliveryContactPerson ?? null;
     if (body.deliveryContactName !== undefined) updates.deliveryContactName = body.deliveryContactName ?? null;
     if (body.requiredVehicleType !== undefined) updates.requiredVehicleType = body.requiredVehicleType ?? null;
+    if (body.cargoQuantity !== undefined) updates.cargoQuantity = body.cargoQuantity ?? null;
     if (body.cargoWeight !== undefined) updates.cargoWeight = body.cargoWeight ?? null;
     if (body.cargoLengthM !== undefined) updates.cargoLengthM = body.cargoLengthM ?? null;
     if (body.cargoWidthM !== undefined) updates.cargoWidthM = body.cargoWidthM ?? null;
     if (body.cargoHeightM !== undefined) updates.cargoHeightM = body.cargoHeightM ?? null;
+    if (body.cargoDescription !== undefined) updates.cargoDescription = body.cargoDescription ?? null;
     if (body.specialRequirements !== undefined) updates.specialRequirements = body.specialRequirements ?? null;
     if (body.extraPickupAddresses !== undefined) updates.extraPickupAddresses = body.extraPickupAddresses ?? null;
     if (body.extraDeliveryAddresses !== undefined) updates.extraDeliveryAddresses = body.extraDeliveryAddresses ?? null;

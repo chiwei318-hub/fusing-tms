@@ -19,8 +19,9 @@ const STATUS_OPTIONS = [
   { value: "cancelled",  label: "已取消" },
 ];
 
+const VEHICLE_NONE = "__none__";
 const VEHICLE_OPTIONS = [
-  { value: "", label: "不指定" },
+  { value: VEHICLE_NONE, label: "不指定" },
   { value: "機車", label: "機車" },
   { value: "小貨車", label: "小貨車" },
   { value: "廂型車", label: "廂型車" },
@@ -52,6 +53,8 @@ interface OrderRow {
   deliveryTime?: string | null;
   deliveryContactName?: string | null;
   cargoDescription?: string | null;
+  cargoQuantity?: string | null;
+  cargoWeight?: number | null;
   specialRequirements?: string | null;
   notes?: string | null;
   requiredVehicleType?: string | null;
@@ -95,6 +98,8 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
     deliveryTime: "",
     deliveryContactName: "",
     cargoDescription: "",
+    cargoQuantity: "",
+    cargoWeight: "",
     specialRequirements: "",
     notes: "",
     requiredVehicleType: "",
@@ -118,10 +123,12 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
         deliveryTime: order.deliveryTime ?? "",
         deliveryContactName: order.deliveryContactName ?? "",
         cargoDescription: order.cargoDescription ?? "",
+        cargoQuantity: order.cargoQuantity ?? "",
+        cargoWeight: order.cargoWeight != null ? String(order.cargoWeight) : "",
         specialRequirements: order.specialRequirements ?? "",
         notes: order.notes ?? "",
-        requiredVehicleType: order.requiredVehicleType ?? "",
-        vehicleType: order.vehicleType ?? "",
+        requiredVehicleType: order.requiredVehicleType || VEHICLE_NONE,
+        vehicleType: order.vehicleType || VEHICLE_NONE,
         totalFee: order.totalFee != null ? String(order.totalFee) : "",
         feeStatus: order.feeStatus ?? "unpaid",
         invoiceStatus: order.invoiceStatus ?? "none",
@@ -155,10 +162,12 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           deliveryTime: form.deliveryTime || null,
           deliveryContactName: form.deliveryContactName || null,
           cargoDescription: form.cargoDescription || null,
+          cargoQuantity: form.cargoQuantity || null,
+          cargoWeight: form.cargoWeight ? Number(form.cargoWeight) : null,
           specialRequirements: form.specialRequirements || null,
           notes: form.notes || null,
-          requiredVehicleType: form.requiredVehicleType || null,
-          vehicleType: form.vehicleType || null,
+          requiredVehicleType: (form.requiredVehicleType && form.requiredVehicleType !== VEHICLE_NONE) ? form.requiredVehicleType : null,
+          vehicleType: (form.vehicleType && form.vehicleType !== VEHICLE_NONE) ? form.vehicleType : null,
           totalFee: form.totalFee ? Number(form.totalFee) : null,
           feeStatus: (form.feeStatus || undefined) as any,
           invoiceStatus: (form.invoiceStatus || undefined) as any,
@@ -263,6 +272,16 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
               value={form.cargoDescription}
               onChange={set("cargoDescription")}
             />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">數量</Label>
+              <Input className="h-9 text-sm" placeholder="如：10箱、3托盤" value={form.cargoQuantity} onChange={set("cargoQuantity")} />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1.5 block">重量（kg）</Label>
+              <Input type="number" className="h-9 text-sm" placeholder="公斤數" value={form.cargoWeight} onChange={set("cargoWeight")} />
+            </div>
           </div>
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">特殊需求</Label>

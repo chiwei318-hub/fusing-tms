@@ -185,8 +185,10 @@ export default function OrderList() {
                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />到貨時間
                   </span>
                 </th>
+                <th className="px-3 py-3 font-semibold hidden md:table-cell">車型</th>
                 <th className="px-3 py-3 font-semibold hidden lg:table-cell">提貨地址</th>
                 <th className="px-3 py-3 font-semibold hidden lg:table-cell">到貨地址</th>
+                <th className="px-3 py-3 font-semibold hidden xl:table-cell">數量／重量</th>
                 <th className="px-3 py-3 font-semibold hidden xl:table-cell">運費</th>
                 <th className="px-3 py-3 font-semibold hidden xl:table-cell">收款</th>
                 <th className="px-3 py-3 font-semibold">建單時間</th>
@@ -206,7 +208,7 @@ export default function OrderList() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={14} className="px-6 py-12 text-center text-muted-foreground">
                     <InboxIcon className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="font-medium">{search ? "找不到符合的訂單" : "目前沒有訂單"}</p>
                     <p className="text-xs mt-1">{search ? "請嘗試不同的搜尋關鍵字" : "尚未有符合此條件的訂單記錄"}</p>
@@ -263,6 +265,24 @@ export default function OrderList() {
                       <DateTimeCell date={order.deliveryDate} time={order.deliveryTime} />
                     </td>
 
+                    {/* 車型 */}
+                    <td className="px-3 py-2.5 hidden md:table-cell">
+                      {(order.requiredVehicleType || (order as any).vehicleType) ? (
+                        <div className="space-y-0.5">
+                          {order.requiredVehicleType && (
+                            <span className="inline-block text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">
+                              {order.requiredVehicleType}
+                            </span>
+                          )}
+                          {(order as any).vehicleType && (order as any).vehicleType !== order.requiredVehicleType && (
+                            <div className="text-[10px] text-muted-foreground">派：{(order as any).vehicleType}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">未設</span>
+                      )}
+                    </td>
+
                     {/* 提貨地址 */}
                     <td className="px-3 py-2.5 hidden lg:table-cell max-w-[160px]">
                       <span className="text-xs text-foreground/80 line-clamp-2">{order.pickupAddress || "—"}</span>
@@ -271,6 +291,20 @@ export default function OrderList() {
                     {/* 到貨地址 */}
                     <td className="px-3 py-2.5 hidden lg:table-cell max-w-[160px]">
                       <span className="text-xs text-foreground/80 line-clamp-2">{order.deliveryAddress || "—"}</span>
+                    </td>
+
+                    {/* 數量 / 重量 */}
+                    <td className="px-3 py-2.5 hidden xl:table-cell">
+                      <div className="space-y-0.5">
+                        {order.cargoQuantity ? (
+                          <div className="text-xs text-foreground font-medium">{order.cargoQuantity}</div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground italic">—</div>
+                        )}
+                        {order.cargoWeight != null && (
+                          <div className="text-[10px] text-muted-foreground">{order.cargoWeight} kg</div>
+                        )}
+                      </div>
                     </td>
 
                     {/* 運費 */}
