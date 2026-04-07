@@ -397,6 +397,7 @@ export default function OrderReport() {
                       <th className="px-3 py-3 font-semibold">到貨地址</th>
                       <th className="px-3 py-3 font-semibold text-right">運費</th>
                       <th className="px-3 py-3 font-semibold">收款</th>
+                      <th className="px-3 py-3 font-semibold">建單人員</th>
                       <th className="px-3 py-3 font-semibold">建單時間</th>
                     </tr>
                   </thead>
@@ -449,6 +450,9 @@ export default function OrderReport() {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {o.operatorName ?? <span className="italic opacity-50">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                           {o.createdAt ? format(new Date(o.createdAt), "yyyy/MM/dd HH:mm") : "—"}
                         </td>
                       </tr>
@@ -464,7 +468,7 @@ export default function OrderReport() {
                         <td className="px-3 py-2.5 text-right font-bold text-primary">
                           NT${totalFee.toLocaleString()}
                         </td>
-                        <td colSpan={2} />
+                        <td colSpan={3} />
                       </tr>
                     </tfoot>
                   )}

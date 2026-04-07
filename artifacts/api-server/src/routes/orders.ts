@@ -778,22 +778,23 @@ router.get("/orders/report/excel", async (req, res) => {
     };
 
     ws.columns = [
-      { header: "單號",     key: "id",          width: 8  },
-      { header: "狀態",     key: "status",       width: 10 },
-      { header: "資料來源", key: "source",       width: 14 },
-      { header: "客戶名稱", key: "customerName", width: 18 },
-      { header: "客戶電話", key: "customerPhone",width: 14 },
-      { header: "司機",     key: "driver",       width: 12 },
-      { header: "提貨日期", key: "pickupDate",   width: 12 },
-      { header: "提貨時間", key: "pickupTime",   width: 10 },
-      { header: "提貨地址", key: "pickupAddress",width: 30 },
-      { header: "到貨日期", key: "deliveryDate", width: 12 },
-      { header: "到貨時間", key: "deliveryTime", width: 10 },
-      { header: "到貨地址", key: "deliveryAddress",width:30 },
-      { header: "運費(元)", key: "totalFee",     width: 12 },
-      { header: "收款狀態", key: "feeStatus",    width: 10 },
-      { header: "備注",     key: "notes",        width: 24 },
-      { header: "建單時間", key: "createdAt",    width: 20 },
+      { header: "單號",     key: "id",            width: 8  },
+      { header: "狀態",     key: "status",         width: 10 },
+      { header: "資料來源", key: "source",         width: 14 },
+      { header: "客戶名稱", key: "customerName",   width: 18 },
+      { header: "客戶電話", key: "customerPhone",  width: 14 },
+      { header: "司機",     key: "driver",         width: 12 },
+      { header: "提貨日期", key: "pickupDate",     width: 12 },
+      { header: "提貨時間", key: "pickupTime",     width: 10 },
+      { header: "提貨地址", key: "pickupAddress",  width: 30 },
+      { header: "到貨日期", key: "deliveryDate",   width: 12 },
+      { header: "到貨時間", key: "deliveryTime",   width: 10 },
+      { header: "到貨地址", key: "deliveryAddress",width: 30 },
+      { header: "運費(元)", key: "totalFee",       width: 12 },
+      { header: "收款狀態", key: "feeStatus",      width: 10 },
+      { header: "備注",     key: "notes",          width: 24 },
+      { header: "建單人員", key: "operatorName",   width: 14 },
+      { header: "建單時間", key: "createdAt",      width: 20 },
     ];
 
     // Style header row
@@ -820,6 +821,7 @@ router.get("/orders/report/excel", async (req, res) => {
         totalFee:        o.totalFee ?? "",
         feeStatus:       FEE_MAP[o.feeStatus ?? "unpaid"] ?? "",
         notes:           o.notes ?? "",
+        operatorName:    o.operatorName ?? "",
         createdAt:       o.createdAt ? new Date(o.createdAt).toLocaleString("zh-TW") : "",
       });
     });
