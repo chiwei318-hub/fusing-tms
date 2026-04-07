@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getDistanceKm, isGoogleMapsConfigured } from "../lib/distanceService";
+import { getDistanceKm, getRouteDistanceKm, isGoogleMapsConfigured } from "../lib/distanceService";
 
 export const mapsRouter = Router();
 
@@ -22,6 +22,31 @@ mapsRouter.get("/maps/distance", async (req, res) => {
   } catch (err) {
     console.error("[mapsRoute] distance error:", err);
     res.status(500).json({ error: "距離計算失敗" });
+  }
+});
+
+/**
+ * POST /maps/route-distance
+ * 計算多點路線總距離（最多 5 個地址）
+ * body: { addresses: string[] }
+ */
+mapsRouter.post("/maps/route-distance", async (req, res) => {
+  const { addresses } = req.body as { addresses?: string[] };
+  if (!Array.isArray(addresses) || addresses.length < 2) {
+    res.status(400).json({ error: "至少需要 2 個地址" });
+    return;
+  }
+  const cleaned = addresses.map((a: string) => String(a).trim()).filter(Boolean).slice(0, 5);
+  if (cleaned.length < 2) {
+    res.status(400).json({ error: "有效地址不足 2 個" });
+    return;
+  }
+  try {
+    const result = await getRouteDistanceKm(cleaned);
+    res.json(result);
+  } catch (err) {
+    console.error("[mapsRoute] route-distance error:", err);
+    res.status(500).json({ error: "路線距離計算失敗" });
   }
 });
 

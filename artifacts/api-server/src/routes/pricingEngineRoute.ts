@@ -24,6 +24,10 @@ async function getPEConfig() {
     min_distance_km:   Number(cfg.pe_min_distance_km   ?? 5),
     remote_threshold:  Number(cfg.pe_remote_threshold  ?? 100),
     remote_surcharge:  Number(cfg.pe_remote_surcharge  ?? 500),
+    zone_per_km:       Number(cfg.pe_zone_per_km       ?? 20),
+    cross_zone_fee:    Number(cfg.pe_cross_zone_fee    ?? 200),
+    handling_fee:      Number(cfg.pe_handling_fee      ?? 0),
+    special_fee:       Number(cfg.pe_special_fee       ?? 0),
   };
 }
 
@@ -103,8 +107,9 @@ pricingEngineRoute.put("/config", async (req, res) => {
   for (const [key, val] of Object.entries(updates)) {
     if (!key.startsWith("pe_")) continue;
     await db.execute(sql`
-      UPDATE pricing_config SET value = ${String(val)}, updated_at = NOW()
-      WHERE key = ${key}
+      INSERT INTO pricing_config (key, value, label, updated_at)
+      VALUES (${key}, ${String(val)}, ${key}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = ${String(val)}, updated_at = NOW()
     `);
   }
   res.json({ ok: true, config: await getPEConfig() });

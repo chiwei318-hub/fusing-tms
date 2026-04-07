@@ -92,6 +92,71 @@ export async function getDistanceKm(
   return { distance_km: 0, source: "haversine" };
 }
 
+/** 多點路線距離（Directions API；無 key 則逐段 Haversine 加總） */
+export async function getRouteDistanceKm(
+  addresses: string[],
+): Promise<DistanceResult & { legs?: { from: string; to: string; km: number }[] }> {
+  if (addresses.length < 2) return { distance_km: 0, source: "haversine" };
+  if (addresses.length === 2) {
+    const r = await getDistanceKm(addresses[0], addresses[1]);
+    return {
+      ...r,
+      legs: [{ from: addresses[0], to: addresses[1], km: r.distance_km }],
+    };
+  }
+
+  if (GOOGLE_MAPS_KEY) {
+    try {
+      const origin = addresses[0];
+      const destination = addresses[addresses.length - 1];
+      const waypoints = addresses.slice(1, -1);
+      const wpStr = waypoints.map(w => encodeURIComponent(w)).join("|");
+      const url =
+        `https://maps.googleapis.com/maps/api/directions/json` +
+        `?origin=${encodeURIComponent(origin)}` +
+        `&destination=${encodeURIComponent(destination)}` +
+        (wpStr ? `&waypoints=${wpStr}` : "") +
+        `&key=${GOOGLE_MAPS_KEY}&language=zh-TW&region=TW`;
+
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data.status === "OK" && data.routes?.[0]?.legs) {
+          const legs = data.routes[0].legs as any[];
+          const totalMeters = legs.reduce((s: number, l: any) => s + (l.distance?.value ?? 0), 0);
+          const totalDuration = legs.reduce((s: number, l: any) => s + (l.duration?.value ?? 0), 0);
+          return {
+            distance_km: Math.round(totalMeters / 100) / 10,
+            duration_min: Math.round(totalDuration / 60),
+            source: "google",
+            legs: legs.map((l: any, i: number) => ({
+              from: addresses[i],
+              to: addresses[i + 1],
+              km: Math.round((l.distance?.value ?? 0) / 100) / 10,
+            })),
+          };
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // Haversine 逐段加總
+  let totalKm = 0;
+  const legs: { from: string; to: string; km: number }[] = [];
+  for (let i = 0; i < addresses.length - 1; i++) {
+    const r = await getDistanceKm(addresses[i], addresses[i + 1]);
+    totalKm += r.distance_km;
+    legs.push({ from: addresses[i], to: addresses[i + 1], km: r.distance_km });
+  }
+  return {
+    distance_km: Math.round(totalKm * 10) / 10,
+    source: "haversine",
+    legs,
+  };
+}
+
 export function isGoogleMapsConfigured(): boolean {
   return !!GOOGLE_MAPS_KEY;
 }
