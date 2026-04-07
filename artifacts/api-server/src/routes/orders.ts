@@ -105,6 +105,89 @@ router.get("/orders/suggestions", async (req, res) => {
   }
 });
 
+// ─── GET /orders/search?q=keyword — 全域關鍵字搜尋 ─────────────────────────────
+router.get("/orders/search", async (req, res) => {
+  try {
+    const q = ((req.query as any).q ?? "").toString().trim();
+    const limit = Math.min(parseInt((req.query as any).limit ?? "50", 10), 200);
+    const status = ((req.query as any).status ?? "").toString().trim();
+
+    if (!q && !status) return res.json([]);
+
+    const like = `%${q}%`;
+
+    // Build WHERE clause
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (q) {
+      // Try numeric match for order ID
+      const isNum = /^\d+$/.test(q);
+      conditions.push(`(
+        ${isNum ? `o.id = $${pIdx++} OR` : ""}
+        o.order_no ILIKE $${pIdx++}
+        OR o.customer_name ILIKE $${pIdx++}
+        OR o.customer_phone ILIKE $${pIdx++}
+        OR o.pickup_address ILIKE $${pIdx++}
+        OR o.delivery_address ILIKE $${pIdx++}
+        OR o.cargo_description ILIKE $${pIdx++}
+        OR o.cargo_name ILIKE $${pIdx++}
+        OR o.special_requirements ILIKE $${pIdx++}
+        OR o.notes ILIKE $${pIdx++}
+        OR o.pickup_contact_person ILIKE $${pIdx++}
+        OR o.delivery_contact_person ILIKE $${pIdx++}
+        OR o.pickup_contact_name ILIKE $${pIdx++}
+        OR o.delivery_contact_name ILIKE $${pIdx++}
+        OR d.name ILIKE $${pIdx++}
+        OR d.license_plate ILIKE $${pIdx++}
+        OR d.phone ILIKE $${pIdx++}
+        OR o.pickup_city ILIKE $${pIdx++}
+        OR o.delivery_city ILIKE $${pIdx++}
+        OR o.pickup_district ILIKE $${pIdx++}
+        OR o.delivery_district ILIKE $${pIdx++}
+      )`);
+      if (isNum) params.push(parseInt(q, 10));
+      // all ILIKE params share the same like pattern
+      const ilikeCount = isNum ? 20 : 20;
+      for (let i = 0; i < ilikeCount; i++) params.push(like);
+    }
+
+    if (status && status !== "all") {
+      conditions.push(`o.status = $${pIdx++}`);
+      params.push(status);
+    }
+
+    params.push(limit);
+
+    const { rows } = await pool.query(`
+      SELECT
+        o.id, o.order_no, o.status, o.fee_status, o.customer_name, o.customer_phone,
+        o.pickup_address, o.pickup_date, o.pickup_time, o.pickup_city, o.pickup_district,
+        o.pickup_contact_person, o.pickup_contact_name,
+        o.delivery_address, o.delivery_date, o.delivery_time, o.delivery_city, o.delivery_district,
+        o.delivery_contact_person, o.delivery_contact_name,
+        o.cargo_description, o.cargo_name, o.cargo_weight, o.cargo_quantity,
+        o.special_requirements, o.notes,
+        o.total_fee, o.base_price,
+        o.required_vehicle_type, o.need_tailgate, o.need_hydraulic_pallet,
+        o.source, o.created_at, o.updated_at,
+        o.driver_id,
+        d.name AS driver_name, d.license_plate, d.phone AS driver_phone, d.vehicle_type
+      FROM orders o
+      LEFT JOIN drivers d ON o.driver_id = d.id
+      ${conditions.length ? "WHERE " + conditions.join(" AND ") : ""}
+      ORDER BY o.created_at DESC
+      LIMIT $${pIdx}
+    `, params);
+
+    return res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "Failed to search orders");
+    return res.status(500).json({ error: "Search failed" });
+  }
+});
+
 router.get("/orders", async (req, res) => {
   try {
     const query = ListOrdersQueryParams.parse(req.query);

@@ -71,6 +71,7 @@ import CashFlowTab from "./admin/CashFlowTab";
 import OpenApiTab from "./admin/OpenApiTab";
 import BillingFlowTab from "./admin/BillingFlowTab";
 import PricingPanel from "@/components/PricingPanel";
+import OrderSearchTab from "./admin/OrderSearchTab";
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1561,6 +1562,10 @@ export default function Admin() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="order-search" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
+            <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <span className="text-[10px] sm:text-xs leading-tight">搜尋</span>
+          </TabsTrigger>
           <TabsTrigger value="drivers" className="gap-1 text-xs flex-1 flex-col sm:flex-row py-2 sm:py-1.5">
             <Truck className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="text-[10px] sm:text-xs leading-tight">司機</span>
@@ -2466,6 +2471,11 @@ export default function Admin() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </TabsContent>
+
+        {/* ===== 訂單搜尋 TAB ===== */}
+        <TabsContent value="order-search" className="outline-none">
+          <OrderSearchTab />
         </TabsContent>
 
         {/* ===== 司機 TAB ===== */}
