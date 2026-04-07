@@ -7,11 +7,13 @@
  * - 門牌號：打數字，失焦自動補「號」
  * - 歷史記錄：點第一個欄位時顯示
  * - 可直接貼入完整地址（自動解析）
+ * - 常用地址搜尋：點搜尋圖示，輸入關鍵字找客戶常用地址
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { MapPin, X, Clock, Loader2, CheckCircle2, ChevronDown } from "lucide-react";
+import { MapPin, X, Clock, Loader2, CheckCircle2, ChevronDown, Search, User, Tag } from "lucide-react";
 import { isAddressComplete, TAIWAN_POSTAL, type PostalEntry } from "@/lib/taiwan-postal";
 import { cn } from "@/lib/utils";
+import { getApiUrl } from "@/lib/api";
 
 // ── Nominatim ─────────────────────────────────────────────────────────────────
 interface NomResult {
@@ -36,6 +38,35 @@ async function fetchRoads(city: string, district: string, q = ""): Promise<strin
     const roads = [...new Set(data.map(d => d.address.road).filter(Boolean) as string[])];
     if (roads.length > 0) roadCache.set(key, roads);
     return roads;
+  } catch { return []; }
+}
+
+// ── Saved address search ───────────────────────────────────────────────────────
+interface SavedAddress {
+  id: number;
+  label: string;
+  address: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  address_type: string;
+  is_default: boolean;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+}
+
+let searchAbort: AbortController | null = null;
+
+async function searchSavedAddresses(q: string): Promise<SavedAddress[]> {
+  if (!q.trim()) return [];
+  if (searchAbort) searchAbort.abort();
+  searchAbort = new AbortController();
+  try {
+    const res = await fetch(getApiUrl(`/api/customers/addresses/search?q=${encodeURIComponent(q)}`), {
+      signal: searchAbort.signal,
+    });
+    if (!res.ok) return [];
+    return await res.json();
   } catch { return []; }
 }
 
@@ -110,6 +141,14 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
   const [hist, setHist]       = useState<string[]>([]);
   const [histOpen, setHistOpen] = useState(false);
 
+  // Saved address search
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SavedAddress[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const roadTimer = useRef<ReturnType<typeof setTimeout>>();
   const boxRef    = useRef<HTMLDivElement>(null);
   const numRef    = useRef<HTMLInputElement>(null);
@@ -120,7 +159,7 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
   useEffect(() => {
     const h = (e: PointerEvent) => {
       if (!boxRef.current?.contains(e.target as Node)) {
-        setRoadOpen(false); setHistOpen(false);
+        setRoadOpen(false); setHistOpen(false); setSearchOpen(false);
       }
     };
     document.addEventListener("pointerdown", h);
@@ -141,6 +180,11 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
     if (!city || !district) { setPreloaded([]); return; }
     fetchRoads(city, district).then(roads => setPreloaded(roads));
   }, [city, district]);
+
+  // Auto-focus search input when opened
+  useEffect(() => {
+    if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
+  }, [searchOpen]);
 
   const emit = useCallback((c: string, d: string, r: string, n: string) => {
     const full = buildAddr(c, d, r, n);
@@ -171,18 +215,15 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
     clearTimeout(roadTimer.current);
 
     if (!r.trim()) {
-      // Show preloaded list
       if (preloaded.length > 0) { setRoadSugs(preloaded.slice(0, 8)); setRoadOpen(true); }
       return;
     }
 
-    // Filter preloaded first (instant)
     const filtered = preloaded.filter(rd => rd.includes(r));
     if (filtered.length > 0) {
       setRoadSugs(filtered.slice(0, 8)); setRoadOpen(true); return;
     }
 
-    // Fallback: Nominatim search with city+district context
     if (r.length >= 2 && city && district) {
       setRoadLoading(true);
       roadTimer.current = setTimeout(async () => {
@@ -222,17 +263,49 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
     prevVal.current = addr; onChange(addr); setHistOpen(false);
   };
 
+  // ── Saved address search ──
+  const handleSearchQuery = (q: string) => {
+    setSearchQuery(q);
+    clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(async () => {
+      const results = await searchSavedAddresses(q);
+      setSearchResults(results);
+      setSearchLoading(false);
+    }, 300);
+  };
+
+  const pickSavedAddress = (addr: SavedAddress) => {
+    const p = parseAddress(addr.address);
+    setCity(p.city); setDistrict(p.district); setRoad(p.road); setNum(p.num);
+    prevVal.current = addr.address;
+    onChange(addr.address);
+    if (isAddressComplete(addr.address)) saveHist(historyKey, addr.address);
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
+
   const clearAll = () => {
     setCity(""); setDistrict(""); setRoad(""); setNum("");
     setRoadSugs([]); setPreloaded([]);
     prevVal.current = ""; onChange("");
   };
 
+  const toggleSearch = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearchOpen(o => !o);
+    setHistOpen(false);
+    setRoadOpen(false);
+    if (searchOpen) { setSearchQuery(""); setSearchResults([]); }
+  };
+
   const full      = buildAddr(city, district, road, num);
   const districts = city ? getDistricts(city) : [];
   const validated = full ? isAddressComplete(full) : null;
 
-  // Road suggestions to show (filtered by what's typed)
   const visibleRoads = road.trim()
     ? roadSugs.filter(r => r.includes(road)).slice(0, 8)
     : preloaded.slice(0, 8);
@@ -246,7 +319,29 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
           : "border-input",
       )}>
 
-        {/* ── Row 1: 縣市 + 區域 ─────────────────── */}
+        {/* ── Search bar (when open) ──────────────── */}
+        {searchOpen && (
+          <div className="flex items-center gap-2 px-3 py-2 border-b bg-primary/5">
+            <Search className="w-3.5 h-3.5 text-primary shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchQuery(e.target.value)}
+              placeholder="輸入客戶名稱、地址標籤或地址關鍵字…"
+              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground/50"
+            />
+            {searchLoading && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />}
+            {searchQuery && !searchLoading && (
+              <button type="button" onPointerDown={e => { e.preventDefault(); setSearchQuery(""); setSearchResults([]); }}
+                className="text-muted-foreground hover:text-foreground shrink-0">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── Row 1: 縣市 + 區域 + search icon ────── */}
         <div className="flex gap-0 border-b">
           {/* 縣市 */}
           <div className="relative flex-1 border-r">
@@ -263,7 +358,7 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
           </div>
 
           {/* 區域 */}
-          <div className="relative flex-1">
+          <div className="relative flex-1 border-r">
             <select
               value={district}
               onChange={e => handleDistrict(e.target.value)}
@@ -275,6 +370,21 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
             </select>
             <ChevronDown className="absolute right-1.5 top-3 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
+
+          {/* 搜尋常用地址按鈕 */}
+          <button
+            type="button"
+            onClick={toggleSearch}
+            title="搜尋常用地址"
+            className={cn(
+              "px-3 flex items-center justify-center transition-colors shrink-0",
+              searchOpen
+                ? "text-primary bg-primary/10 hover:bg-primary/15"
+                : "text-muted-foreground hover:text-primary hover:bg-muted/40"
+            )}
+          >
+            <Search className="w-4 h-4" />
+          </button>
         </div>
 
         {/* ── Row 2: 路街 + 門牌 ─────────────────── */}
@@ -310,7 +420,6 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
               disabled={!road}
               className="w-full h-10 pl-3 pr-7 text-sm bg-transparent outline-none placeholder:text-muted-foreground/50 disabled:text-muted-foreground"
             />
-            {/* Clear or validated indicator */}
             {full && (
               <button type="button" onPointerDown={e => { e.preventDefault(); clearAll(); }}
                 className="absolute right-2 text-muted-foreground hover:text-foreground">
@@ -328,6 +437,56 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
           </div>
         )}
       </div>
+
+      {/* ── Saved address search results ────────── */}
+      {searchOpen && searchQuery && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
+          {searchLoading ? (
+            <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> 搜尋中…
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-muted-foreground">找不到符合的常用地址</div>
+          ) : (
+            <>
+              <div className="px-3 py-1.5 border-b bg-primary/5 text-[10px] font-semibold text-primary uppercase tracking-wide flex items-center gap-1">
+                <Search className="w-3 h-3" /> 常用地址搜尋結果
+              </div>
+              {searchResults.map((addr) => (
+                <button
+                  key={addr.id}
+                  type="button"
+                  onPointerDown={e => { e.preventDefault(); pickSavedAddress(addr); }}
+                  className="w-full flex flex-col gap-0.5 px-3 py-2.5 hover:bg-muted/60 text-left border-b last:border-0 transition-colors"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="flex items-center gap-1 text-xs font-medium text-primary">
+                      <User className="w-3 h-3 shrink-0" />
+                      {addr.customer_name}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Tag className="w-3 h-3 shrink-0" />
+                      {addr.label}
+                    </span>
+                    {addr.is_default && (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-700 rounded px-1.5 py-0.5">預設</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm text-foreground">
+                    <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="truncate">{addr.address}</span>
+                  </div>
+                  {(addr.contact_name || addr.contact_phone) && (
+                    <div className="text-xs text-muted-foreground ml-4.5">
+                      {[addr.contact_name, addr.contact_phone].filter(Boolean).join("　")}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Road suggestions dropdown ───────────── */}
       {roadOpen && visibleRoads.length > 0 && (

@@ -456,6 +456,46 @@ customerManagementRouter.get("/customers/statement/all/export", async (req, res)
   }
 });
 
+// ─── GET /api/customers/addresses/search?q=keyword ────────────────────────────
+// 搜尋所有客戶的常用地址（label、address、客戶名稱）
+
+customerManagementRouter.get("/customers/addresses/search", async (req, res) => {
+  try {
+    const q = ((req.query as any).q ?? "").toString().trim();
+    if (!q) return res.json([]);
+
+    const like = `%${q}%`;
+    const rows = await db.execute(sql`
+      SELECT
+        ca.id,
+        ca.label,
+        ca.address,
+        ca.contact_name,
+        ca.contact_phone,
+        ca.address_type,
+        ca.is_default,
+        c.id   AS customer_id,
+        c.name AS customer_name,
+        c.phone AS customer_phone
+      FROM customer_addresses ca
+      JOIN customers c ON c.id = ca.customer_id
+      WHERE c.is_active = TRUE
+        AND (
+          ca.address    ILIKE ${like}
+          OR ca.label   ILIKE ${like}
+          OR c.name     ILIKE ${like}
+          OR c.phone    ILIKE ${like}
+        )
+      ORDER BY ca.is_default DESC, c.name
+      LIMIT 20
+    `);
+
+    return res.json(rows.rows);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── GET /api/customers/:id/orders (quick order history) ──────────────────────
 
 customerManagementRouter.get("/customers/:id/orders", async (req, res) => {
