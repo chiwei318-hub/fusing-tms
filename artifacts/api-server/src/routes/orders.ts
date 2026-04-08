@@ -23,6 +23,7 @@ import {
 } from "../lib/line.js";
 import { autoIssueInvoice } from "../lib/autoInvoice.js";
 import { customersTable } from "@workspace/db";
+import { broadcastWebhook } from "./webhooks.js";
 
 const router: IRouter = Router();
 
@@ -533,6 +534,28 @@ router.patch("/orders/:id", async (req, res) => {
               );
             }
           }
+          // ── 派單 Webhook 廣播（Atoms 等外部系統）──
+          broadcastWebhook("order.assigned", {
+            order_id:         order.id,
+            status:           "assigned",
+            customer_name:    order.customerName,
+            customer_phone:   order.customerPhone,
+            pickup_date:      order.pickupDate,
+            pickup_time:      order.pickupTime,
+            pickup_address:   order.pickupAddress,
+            delivery_date:    order.deliveryDate,
+            delivery_time:    order.deliveryTime,
+            delivery_address: order.deliveryAddress,
+            cargo_description: order.cargoDescription,
+            total_fee:        order.totalFee,
+            notes:            order.notes,
+            driver_id:        driver?.id ?? null,
+            driver_name:      driver?.name ?? null,
+            driver_phone:     driver?.phone ?? null,
+            driver_license:   driver?.licensePlate ?? null,
+            driver_vehicle:   driver?.vehicleType ?? null,
+            assigned_at:      new Date().toISOString(),
+          }).catch((e: Error) => log.warn({ err: e }, "[Webhook] order.assigned broadcast failed"));
         } catch (err) {
           log.warn({ err }, "Failed to send LINE dispatch notification");
         }

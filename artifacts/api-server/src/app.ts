@@ -18,7 +18,8 @@ import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
-import { pool as _migPool } from "@workspace/db";
+import { pool as _migPool, db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -213,5 +214,33 @@ _migPool.query(`
   `);
   console.log("[LineIDCleanup] drivers.line_user_id 唯一索引已確認");
 }).catch(e => console.warn("[LineIDCleanup] failed:", String(e).slice(0, 200)));
+
+// ── 自動將 ATOMS_WEBHOOK_URL 環境變數註冊進 webhooks 表 ──────────────────────
+(async () => {
+  const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
+  if (!atomsUrl) return;
+  try {
+    const existing = await db.execute(sql`
+      SELECT id FROM webhooks WHERE url = ${atomsUrl} LIMIT 1
+    `);
+    if (existing.rows.length > 0) {
+      console.log("[AtomsWebhook] 已登錄，跳過建立");
+      return;
+    }
+    await db.execute(sql`
+      INSERT INTO webhooks (name, url, events, note, status)
+      VALUES (
+        'Atoms 派單系統',
+        ${atomsUrl},
+        ARRAY['order.assigned']::text[],
+        '自動由 ATOMS_WEBHOOK_URL 環境變數建立',
+        'active'
+      )
+    `);
+    console.log(`[AtomsWebhook] ✅ 已自動登錄：${atomsUrl}`);
+  } catch (e) {
+    console.warn("[AtomsWebhook] 登錄失敗：", String(e).slice(0, 200));
+  }
+})();
 
 export default app;
