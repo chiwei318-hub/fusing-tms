@@ -28,6 +28,7 @@ import {
   MapPin,
   Clock,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 
 interface LineStatus {
@@ -355,6 +356,19 @@ function DriverBindings() {
     onError: (e: Error) => toast({ title: `操作失敗：${e.message}`, variant: "destructive" }),
   });
 
+  const deleteDriverMutation = useMutation({
+    mutationFn: (id: number) =>
+      fetch(`/api/drivers/${id}`, { method: "DELETE" }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["line-driver-bindings"] });
+      toast({ title: "✅ 司機資料已刪除" });
+    },
+    onError: (e: Error) => toast({ title: `刪除失敗：${e.message}`, variant: "destructive" }),
+  });
+
   const genTokenMutation = useMutation({
     mutationFn: (id: number) =>
       fetch(`/api/line/bindings/drivers/${id}/gen-token`, { method: "POST" }).then(async (r) => {
@@ -520,6 +534,21 @@ function DriverBindings() {
                           disabled={unbindMutation.isPending}
                         >
                           <Unlink className="w-3 h-3 mr-1" /> 解除
+                        </Button>
+                      )}
+                      {d.isActive === false && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 px-2 text-xs"
+                          onClick={() => {
+                            if (!confirm(`確定要永久刪除司機「${d.name}」的所有資料？此操作無法復原。`)) return;
+                            deleteDriverMutation.mutate(d.id);
+                          }}
+                          disabled={deleteDriverMutation.isPending}
+                          title="刪除此離職司機的全部資料（不可復原）"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" /> 刪除
                         </Button>
                       )}
                     </div>
