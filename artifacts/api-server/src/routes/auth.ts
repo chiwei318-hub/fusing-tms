@@ -566,11 +566,31 @@ router.post("/auth/register/driver", async (req, res) => {
 
     const hashed   = hashPassword(pwd);
     const username = `d${phone.slice(-6)}`;
-    await db.insert(driversTable).values({
+    const inserted = await db.insert(driversTable).values({
       name: name_, phone, vehicleType: vType, licensePlate: plate,
       username, password: hashed, status: "offline",
+    }).returning({ id: driversTable.id });
+    const driverId = inserted[0]?.id;
+
+    // 產生 6 位英數字綁定碼（效期 48 小時）
+    let lineBindingToken: string | null = null;
+    if (driverId) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      lineBindingToken = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      await db.execute(sql`
+        UPDATE drivers
+        SET line_binding_token = ${lineBindingToken},
+            line_token_expires_at = ${expiresAt}
+        WHERE id = ${driverId}
+      `);
+    }
+
+    return res.status(201).json({
+      ok: true,
+      message: "申請成功！資料審核通過後即可登入，我們將以電話通知您。",
+      lineBindingToken,
     });
-    return res.status(201).json({ ok: true, message: "申請成功！資料審核通過後即可登入，我們將以電話通知您。" });
   } catch (err) {
     req.log.error({ err }, "register driver failed");
     res.status(500).json({ error: "申請失敗，請稍後再試" });

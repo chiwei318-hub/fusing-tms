@@ -303,6 +303,7 @@ function DriverBindings() {
   const qc = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [manualId, setManualId] = useState("");
+  const [generatedTokens, setGeneratedTokens] = useState<Record<number, string>>({});
 
   const { data: drivers = [], isLoading } = useQuery<Driver[]>({
     queryKey: ["line-driver-bindings"],
@@ -354,6 +355,27 @@ function DriverBindings() {
     onError: (e: Error) => toast({ title: `操作失敗：${e.message}`, variant: "destructive" }),
   });
 
+  const genTokenMutation = useMutation({
+    mutationFn: (id: number) =>
+      fetch(`/api/line/bindings/drivers/${id}/gen-token`, { method: "POST" }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
+        return r.json() as Promise<{ token: string }>;
+      }),
+    onSuccess: (data, id) => {
+      setGeneratedTokens((prev) => ({ ...prev, [id]: data.token }));
+      toast({ title: `✅ 綁定碼已產生：${data.token}（有效 48 小時）` });
+    },
+    onError: (e: Error) => toast({ title: `產生失敗：${e.message}`, variant: "destructive" }),
+  });
+
+  const copyToken = (id: number) => {
+    const t = generatedTokens[id];
+    if (!t) return;
+    navigator.clipboard.writeText(`綁定碼 ${t}`).then(() =>
+      toast({ title: `已複製「綁定碼 ${t}」，請傳給司機` })
+    );
+  };
+
   const bound = drivers.filter((d) => d.lineUserId);
   const activeCount = drivers.filter((d) => d.isActive !== false).length;
 
@@ -370,9 +392,10 @@ function DriverBindings() {
         </Button>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-        <strong>司機自助綁定：</strong>加入 LINE 官方帳號後，傳送「<code className="bg-amber-100 px-1 rounded">綁定 {"{電話號碼}"}</code>」即可自動綁定。
-        若 webhook 無法使用，可使用下方「手動設定」輸入司機的 LINE User ID。
+      <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-900 space-y-1">
+        <div><strong>🆕 推薦：綁定碼一鍵綁定</strong>（新方法）</div>
+        <div>點擊右方「<strong>綁定碼</strong>」按鈕產生 6 位代碼 → 將代碼傳給司機 → 司機加入 LINE 官方帳號後傳送「<code className="bg-green-100 px-1 rounded">綁定碼 XXXXXX</code>」即完成，不需輸入電話。</div>
+        <div className="text-green-700">或讓司機自行傳送「<code className="bg-green-100 px-1 rounded">綁定 {"{電話號碼}"}</code>」傳統方式，或使用「手動設定」輸入 LINE User ID。</div>
       </div>
 
       <div className="rounded-lg border overflow-hidden">
@@ -463,17 +486,30 @@ function DriverBindings() {
                         {d.isActive !== false ? "標記離職" : "恢復在職"}
                       </Button>
                       {!d.lineUserId && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
-                          onClick={() => {
-                            setExpandedId(expandedId === d.id ? null : d.id);
-                            setManualId("");
-                          }}
-                        >
-                          手動設定
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-[#06C755] border-[#06C755]/40 hover:bg-[#06C755]/10"
+                            onClick={() => genTokenMutation.mutate(d.id)}
+                            disabled={genTokenMutation.isPending}
+                            title="產生一次性綁定碼，傳給司機後讓他傳給 LINE Bot 即可完成綁定"
+                          >
+                            <Link2 className="w-3 h-3 mr-1" />
+                            {generatedTokens[d.id] ? "重新產生" : "綁定碼"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => {
+                              setExpandedId(expandedId === d.id ? null : d.id);
+                              setManualId("");
+                            }}
+                          >
+                            手動設定
+                          </Button>
+                        </>
                       )}
                       {d.lineUserId && (
                         <Button
@@ -489,6 +525,29 @@ function DriverBindings() {
                     </div>
                   </td>
                 </tr>
+                {generatedTokens[d.id] && !d.lineUserId && (
+                  <tr key={`${d.id}-token`} className="bg-[#06C755]/5 border-t border-[#06C755]/20">
+                    <td colSpan={6} className="px-4 py-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-xs text-gray-600 font-medium">📱 傳送給 {d.name}：</span>
+                        <div className="flex items-center gap-2 bg-white border border-[#06C755]/30 rounded-lg px-3 py-1.5">
+                          <span className="font-mono font-bold tracking-widest text-gray-800">
+                            綁定碼 {generatedTokens[d.id]}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs text-[#06C755] border-[#06C755]/40 hover:bg-[#06C755]/10"
+                          onClick={() => copyToken(d.id)}
+                        >
+                          <Copy className="w-3 h-3 mr-1" /> 複製
+                        </Button>
+                        <span className="text-xs text-gray-400">有效 48 小時 · 使用一次即失效</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {expandedId === d.id && (() => {
                   const isValidLineId = /^U[0-9a-f]{32}$/.test(manualId.trim());
                   const isPhoneNumber = /^09[0-9]{8}$/.test(manualId.trim());

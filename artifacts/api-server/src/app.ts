@@ -171,6 +171,14 @@ _migPool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_active BOOLEAN N
   .then(() => console.log("[DriverActive] is_active 欄位已確認"))
   .catch(e => console.warn("[DriverActive] 欄位確認失敗:", String(e).slice(0, 120)));
 
+// 確保 drivers.line_binding_token / line_token_expires_at 欄位存在（LINE 綁定碼機制）
+_migPool.query(`
+  ALTER TABLE drivers
+    ADD COLUMN IF NOT EXISTS line_binding_token      VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS line_token_expires_at   TIMESTAMPTZ
+`).then(() => console.log("[LineBindingToken] 欄位已確認"))
+  .catch(e => console.warn("[LineBindingToken] 欄位確認失敗:", String(e).slice(0, 120)));
+
 // 清除格式錯誤的 LINE User ID（如填入電話號碼者）
 // 有效 LINE User ID 格式：U + 32 hex 字元（共 33 字元）
 _migPool.query(`

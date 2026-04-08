@@ -233,6 +233,58 @@ router.post("/line/webhook", async (req, res) => {
         const replyToken = event.replyToken;
         if (!userId) continue;
 
+        // ── 綁定碼快速綁定：「綁定碼 XXXXXX」格式（司機申請完成後取得的一次性代碼）──
+        const tokenBindMatch = text.match(/^綁定碼[:\uff1a]?\s*([A-Z0-9]{4,10})$/i);
+        if (tokenBindMatch) {
+          const token = tokenBindMatch[1].toUpperCase();
+          try {
+            // 查詢對應司機（尚未過期的 token）
+            const tokenRows = await db.execute(sql`
+              SELECT id, name, phone, is_active
+              FROM drivers
+              WHERE UPPER(line_binding_token) = ${token}
+                AND line_token_expires_at > NOW()
+              LIMIT 1
+            `);
+            const tokenDriver = (tokenRows.rows as any[])[0];
+            if (!tokenDriver) {
+              await replyTextMessage(replyToken, [
+                `❌ 綁定碼無效或已過期。`,
+                ``,
+                `請重新申請帳號取得新的綁定碼，或改用「綁定 手機號碼」方式連結。`,
+              ].join("\n"));
+              continue;
+            }
+            const isActive = tokenDriver.is_active !== false;
+            // 執行綁定，清除 token（不論審核狀態，先完成預綁定）
+            await db.execute(sql`
+              UPDATE drivers
+              SET line_user_id          = ${userId},
+                  line_binding_token    = NULL,
+                  line_token_expires_at = NULL
+              WHERE id = ${tokenDriver.id}
+            `);
+            await replyTextMessage(replyToken, isActive
+              ? [
+                  `✅ 綁定成功！${tokenDriver.name} 歡迎加入富詠運輸。`,
+                  ``,
+                  `帳號已審核通過，您將開始接收派車通知與搶單資訊。`,
+                  `發送「說明」查看可用指令。`,
+                ].join("\n")
+              : [
+                  `✅ LINE 帳號預綁定完成！`,
+                  ``,
+                  `您的帳號 (${tokenDriver.name}) 仍在審核中，管理員開通後即可自動接收派車通知，無需再操作任何步驟。`,
+                ].join("\n")
+            );
+            console.log(`[LINE token-bind] ✅ Driver #${tokenDriver.id} ${tokenDriver.name} bound via token (active=${isActive})`);
+          } catch (err) {
+            console.error("[LINE token-bind] error:", err);
+            await replyTextMessage(replyToken, "系統處理中，請稍後再試。");
+          }
+          continue;
+        }
+
         // 格式：「綁定 0912345678」「綁定0912345678」「綁定:0912345678」（Python 冒號格式）
         const bindMatch = text.match(/^綁定[:\uff1a]?\s*([0-9]{8,12})$/);
         if (bindMatch) {
@@ -636,6 +688,31 @@ router.delete("/line/bindings/drivers/:id", async (req, res) => {
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Failed to unbind driver" });
+  }
+});
+
+// 為既有司機產生（或重新產生）LINE 綁定碼（效期 48 小時）
+router.post("/line/bindings/drivers/:id/gen-token", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [driver] = await db.select({ id: driversTable.id, name: driversTable.name, lineUserId: driversTable.lineUserId })
+      .from(driversTable).where(eq(driversTable.id, id)).limit(1);
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    if (driver.lineUserId) return res.status(400).json({ error: "此司機已綁定 LINE，如需重新綁定請先解除" });
+
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const token = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    await db.execute(sql`
+      UPDATE drivers
+      SET line_binding_token    = ${token},
+          line_token_expires_at = ${expiresAt}
+      WHERE id = ${id}
+    `);
+    res.json({ ok: true, token, expiresAt });
+  } catch {
+    res.status(500).json({ error: "Failed to generate binding token" });
   }
 });
 

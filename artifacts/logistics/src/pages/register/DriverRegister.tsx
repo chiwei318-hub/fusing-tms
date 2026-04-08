@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { Truck, User, Phone, Lock, Eye, EyeOff, ChevronLeft, Car, CheckCircle } from "lucide-react";
+import { Truck, User, Phone, Lock, Eye, EyeOff, ChevronLeft, Car, CheckCircle, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -22,9 +22,19 @@ export default function DriverRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [lineToken, setLineToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const copyToken = () => {
+    if (!lineToken) return;
+    navigator.clipboard.writeText(`綁定碼 ${lineToken}`).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +53,7 @@ export default function DriverRegister() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "申請失敗"); return; }
+      setLineToken(data.lineBindingToken ?? null);
       setDone(true);
       toast({ title: "申請成功！", description: data.message });
     } catch { setError("網路錯誤，請稍後再試"); }
@@ -70,12 +81,53 @@ export default function DriverRegister() {
 
         <div className="bg-white rounded-3xl shadow-2xl p-6">
           {done ? (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <CheckCircle className="w-14 h-14 text-green-500" />
-              <p className="text-lg font-bold text-gray-800">申請已收到！</p>
-              <p className="text-sm text-gray-500 leading-relaxed">我們將在 1–2 個工作天內審核您的資料，<br />審核通過後以電話通知您。</p>
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <CheckCircle className="w-12 h-12 text-green-500" />
+                <p className="text-lg font-bold text-gray-800">申請已收到！</p>
+                <p className="text-xs text-gray-500 leading-relaxed">審核通過後以電話通知您，通常 1–2 個工作天。</p>
+              </div>
+
+              {lineToken && (
+                <div className="bg-[#06C755]/8 border border-[#06C755]/30 rounded-2xl p-4 space-y-3">
+                  <p className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                    <span className="text-base">📱</span> 同步綁定 LINE 接收派車通知
+                  </p>
+
+                  {/* 步驟 1 */}
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-gray-600">① 加入富詠運輸官方帳號</p>
+                    <p className="text-xs text-gray-500">開啟 LINE → 搜尋「富詠運輸」或掃描 QR Code 加為好友。</p>
+                  </div>
+
+                  {/* 步驟 2 */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-600">② 傳送以下訊息給機器人</p>
+                    <div className="bg-white border border-[#06C755]/40 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                      <span className="font-mono font-bold text-gray-800 tracking-widest text-base">
+                        綁定碼 {lineToken}
+                      </span>
+                      <button
+                        onClick={copyToken}
+                        className="flex items-center gap-1 text-xs text-[#06C755] font-semibold hover:opacity-70 transition-opacity shrink-0"
+                      >
+                        {copied
+                          ? <><Check className="w-3.5 h-3.5" /> 已複製</>
+                          : <><Copy className="w-3.5 h-3.5" /> 複製</>
+                        }
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400">綁定碼有效期限：48 小時</p>
+                  </div>
+
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    完成後，機器人將確認綁定。即使帳號尚在審核，派車通知在開通後會自動推送，不需再操作。
+                  </p>
+                </div>
+              )}
+
               <Link href="/login/driver">
-                <Button variant="outline" className="mt-2">返回登入頁</Button>
+                <Button variant="outline" className="w-full">返回登入頁</Button>
               </Link>
             </div>
           ) : (
