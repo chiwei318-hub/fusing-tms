@@ -253,7 +253,7 @@ export default function FranchiseSettlementTab() {
           { id: "calculator" as const, label: "試算工具", icon: <Calculator className="w-3.5 h-3.5" /> },
           { id: "config"     as const, label: "費率設定", icon: <Settings2 className="w-3.5 h-3.5" /> },
         ].map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
+          <button type="button" key={t.id} onClick={() => setActiveTab(t.id)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all border
               ${activeTab === t.id
                 ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
