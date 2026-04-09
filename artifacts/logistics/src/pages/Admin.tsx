@@ -55,6 +55,7 @@ import KPIDashboardTab from "./admin/KPIDashboardTab";
 import { SmartDatePicker } from "@/components/SmartDatePicker";
 import ApprovalCenterTab from "./admin/ApprovalCenterTab";
 import SettlementCenterTab from "./admin/SettlementCenterTab";
+import FranchiseSettlementTab from "./admin/FranchiseSettlementTab";
 import AuditLogTab from "./admin/AuditLogTab";
 import CostAnalysisTab from "./admin/CostAnalysisTab";
 import { DemandForecastTab } from "./admin/DemandForecastTab";
@@ -1701,6 +1702,7 @@ export default function Admin() {
                     { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
                     { value: "join",        icon: <UserPlus className="w-3.5 h-3.5" />,                               label: "加盟審核" },
                     { value: "franchisee",  icon: <Building2 className="w-3.5 h-3.5 text-indigo-600" />,             label: "加盟主" },
+                    { value: "franchise-settlement", icon: <DollarSign className="w-3.5 h-3.5 text-indigo-500" />,    label: "加盟清算" },
                     { value: "openapi",     icon: <Globe className="w-3.5 h-3.5 text-blue-500" />,                    label: "API 接口" },
                     { value: "fleetreg",    icon: <Building2 className="w-3.5 h-3.5 text-blue-600" />,               label: "車隊入駐" },
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
@@ -3819,6 +3821,11 @@ export default function Admin() {
         {/* ===== 加盟審核 TAB ===== */}
         <TabsContent value="join" className="outline-none">
           <DriverApplicationsTab />
+        </TabsContent>
+
+        {/* ===== 加盟清算 TAB ===== */}
+        <TabsContent value="franchise-settlement" className="outline-none">
+          <FranchiseSettlementTab />
         </TabsContent>
 
         {/* ===== 加盟主管理 TAB ===== */}

@@ -24,6 +24,7 @@ import {
 import { autoIssueInvoice } from "../lib/autoInvoice.js";
 import { customersTable } from "@workspace/db";
 import { broadcastWebhook } from "./webhooks.js";
+import { autoCalculateSettlement } from "./franchiseSettlements.js";
 
 const router: IRouter = Router();
 
@@ -462,6 +463,8 @@ router.patch("/orders/:id", async (req, res) => {
     // 自動開發票（後台手動將狀態改為 delivered）
     if (body.status === "delivered" && order?.id) {
       setImmediate(() => autoIssueInvoice(order.id, "admin_delivered").catch(() => {}));
+      // 自動計算清算並推送 ATOMS 分潤數據
+      setImmediate(() => autoCalculateSettlement(order.id).catch(() => {}));
     }
 
     // 客戶通知：狀態變更
@@ -608,6 +611,8 @@ router.post("/orders/:id/driver-action", async (req, res) => {
     // 自動開發票（訂單完成時）
     if (body.action === "complete") {
       setImmediate(() => autoIssueInvoice(id, "driver_complete").catch(() => {}));
+      // 自動計算清算並推送 ATOMS 分潤數據
+      setImmediate(() => autoCalculateSettlement(id).catch(() => {}));
     }
 
     // 通知客戶：到達 / 完成
