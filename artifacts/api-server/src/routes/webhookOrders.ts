@@ -51,7 +51,8 @@ function normalise(body: Record<string, any>): Record<string, any> {
 
 function buildNotes(raw: Record<string, any>): string | null {
   const parts: string[] = [];
-  if (raw.notes)      parts.push(raw.notes);
+  const freeText = raw.notes ?? raw.note ?? null;
+  if (freeText)       parts.push(String(freeText));
   if (raw.lat != null && raw.lng != null) parts.push(`坐標：${raw.lat},${raw.lng}`);
   if (raw.order_id)   parts.push(`外部單號：${raw.order_id}`);
   return parts.length ? parts.join(" | ") : null;
