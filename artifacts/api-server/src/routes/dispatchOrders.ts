@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 export const dispatchOrdersRouter = Router();
@@ -220,6 +220,36 @@ function toSheetCsvUrl(raw: string): string {
 
 interface SheetRoute { route_label: string; route_date: string; prefix: string | null }
 
+function normaliseDate(raw: string): string | null {
+  const s = raw.replace(/\s/g, "");
+  const year = new Date().getFullYear();
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+
+  // M/D or M-D (no year) — e.g. 4/1, 04-01
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})$/);
+  if (m) return `${year}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
+
+  // M.D — e.g. 4.1
+  m = s.match(/^(\d{1,2})\.(\d{1,2})$/);
+  if (m) return `${year}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
+
+  // M月D日 or M月D — e.g. 4月1日, 4月1
+  m = s.match(/^(\d{1,2})月(\d{1,2})日?$/);
+  if (m) return `${year}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
+
+  // M/D/YY or M/D/YYYY
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (m) {
+    const yr = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${yr}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
+  }
+
+  return null;
+}
+
 function parseSheetRoutes(text: string): SheetRoute[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
@@ -230,30 +260,15 @@ function parseSheetRoutes(text: string): SheetRoute[] {
   const headers = splitCsv(lines[0]);
 
   // ── Strategy 1: Horizontal (routes as rows, dates as column headers) ──
-  // Detect if column headers look like dates: "4/1", "2026-04-01", "04-01" etc.
-  const DATE_RE = /^(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)$/;
+  // Detect column headers that look like dates in any supported format
   const dateColIndices: { idx: number; date: string }[] = [];
   headers.forEach((h, i) => {
-    if (DATE_RE.test(h.replace(/\s/g, ""))) {
-      // Normalise to YYYY-MM-DD
-      let d = h.replace(/\s/g, "");
-      const parts = d.split(/[-/]/);
-      if (parts.length === 2) {
-        const year = new Date().getFullYear();
-        d = `${year}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
-      } else if (parts.length === 3 && parts[0].length <= 2) {
-        // M/D/YY or M/D/YYYY
-        const yr = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-        d = `${yr}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
-      } else if (parts.length === 3 && parts[0].length === 4) {
-        d = `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
-      }
-      dateColIndices.push({ idx: i, date: d });
-    }
+    const d = normaliseDate(h);
+    if (d) dateColIndices.push({ idx: i, date: d });
   });
 
   const routeColIdx = headers.findIndex(h =>
-    /路線|route|route_id|route_no/i.test(h)
+    /路線|編號|route|route_id|route_no/i.test(h)
   );
 
   if (dateColIndices.length > 0 && routeColIdx >= 0) {
@@ -293,12 +308,7 @@ function parseSheetRoutes(text: string): SheetRoute[] {
     const routeLabel = cols[routeCol]?.trim();
     const dateRaw    = cols[dateCol]?.trim();
     if (!routeLabel || !dateRaw) continue;
-    // Try to normalise date
-    let date = dateRaw;
-    const parts = dateRaw.split(/[-/]/);
-    if (parts.length === 2) {
-      date = `${new Date().getFullYear()}-${parts[0].padStart(2,"0")}-${parts[1].padStart(2,"0")}`;
-    }
+    const date = normaliseDate(dateRaw) ?? dateRaw;
     const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
     routes.push({ route_label: routeLabel, route_date: date, prefix });
   }
@@ -324,7 +334,7 @@ dispatchOrdersRouter.post("/import-sheet", async (req, res) => {
     if (routes.length === 0) {
       return res.status(422).json({
         ok: false,
-        error: "找不到可解析的路線資料。請確認試算表包含「路線」欄位（垂直格式）或日期欄位（橫向格式）",
+        error: "找不到可解析的路線資料。應確認試算表包含「路線」欄位（直向格式）或日期欄位（橫向格式），支援 4/1、4月1日、4.1 等日期格式",
       });
     }
 
@@ -343,6 +353,64 @@ dispatchOrdersRouter.post("/import-sheet", async (req, res) => {
     }
 
     res.json({ ok: true, id: orderId, route_count: routes.length });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── POST /dispatch-orders/from-shopee — build dispatch order from existing Shopee orders ──
+// Must be registered BEFORE /:id
+dispatchOrdersRouter.post("/from-shopee", async (req, res) => {
+  try {
+    const {
+      fleet_id, fleet_name, title, week_start, week_end,
+      notes = null,
+      customer_names,
+    } = req.body;
+
+    if (!fleet_id || !title || !week_start || !week_end) {
+      return res.status(400).json({ ok: false, error: "fleet_id / title / week_start / week_end 必填" });
+    }
+
+    const names: string[] = customer_names ?? ["蝦皮電商配送", "蝦皮電商配送（代收代付）"];
+
+    const ordersRes = await pool.query(
+      `SELECT id, order_no, pickup_date, delivery_address, cargo_description
+       FROM orders
+       WHERE customer_name = ANY($1)
+         AND status NOT IN ('cancelled', 'delivered')
+         AND (pickup_date IS NULL OR pickup_date BETWEEN $2 AND $3)
+       ORDER BY pickup_date NULLS LAST, id`,
+      [names, week_start, week_end],
+    );
+
+    if (ordersRes.rows.length === 0) {
+      return res.status(422).json({
+        ok: false,
+        error: `在 ${week_start} ～ ${week_end} 期間找不到符合的訂單（${names.join("、")}）`,
+      });
+    }
+
+    const [inserted] = await db.execute(sql`
+      INSERT INTO dispatch_orders (fleet_id, fleet_name, title, week_start, week_end, notes, status)
+      VALUES (${Number(fleet_id)}, ${fleet_name ?? null}, ${title}, ${week_start}, ${week_end}, ${notes}, 'sent')
+      RETURNING id
+    `).then(r => r.rows as any[]);
+
+    const dispatchId = inserted.id;
+
+    for (const o of ordersRes.rows) {
+      const label = o.order_no || o.delivery_address?.slice(0, 40) || `訂單 #${o.id}`;
+      const date  = o.pickup_date
+        ? (o.pickup_date instanceof Date ? o.pickup_date.toISOString() : String(o.pickup_date)).slice(0, 10)
+        : week_start;
+      await db.execute(sql`
+        INSERT INTO dispatch_order_routes (dispatch_order_id, order_id, route_label, route_date, prefix)
+        VALUES (${dispatchId}, ${o.id}, ${label}, ${date}, ${null})
+      `);
+    }
+
+    res.json({ ok: true, id: dispatchId, route_count: ordersRes.rows.length });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

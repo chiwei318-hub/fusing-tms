@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft, ChevronRight, RefreshCw,
-  Send, CheckCircle, Clock, Trash2, CalendarDays, Link2, FileSpreadsheet,
+  Send, CheckCircle, Clock, Trash2, CalendarDays, Link2, FileSpreadsheet, ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -200,6 +200,15 @@ export default function DispatchTab({
   const [importNotes, setImportNotes] = useState("");
   const [importing, setImporting] = useState(false);
 
+  // ── From-Shopee state ─────────────────────────────────────────────────────
+  const [shopeeDialogOpen, setShopeeDialogOpen] = useState(false);
+  const [shopeeFleet, setShopeeFleet] = useState<string>("");
+  const [shopeeTitle, setShopeeTitle] = useState("");
+  const [shopeeStart, setShopeeStart] = useState(weekStart(0).start);
+  const [shopeeEnd, setShopeeEnd] = useState(weekStart(0).end);
+  const [shopeeNotes, setShopeeNotes] = useState("");
+  const [shopeeCreating, setShopeeCreating] = useState(false);
+
   // ── Sent orders panel ─────────────────────────────────────────────────────
   const [sentOrders, setSentOrders] = useState<DispatchOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -349,6 +358,37 @@ export default function DispatchTab({
     toast({ title: "已撤銷派車單" });
   }
 
+  async function handleFromShopee() {
+    if (!shopeeFleet || !shopeeTitle || !shopeeStart || !shopeeEnd) return;
+    setShopeeCreating(true);
+    const fleet = fleets.find(f => String(f.id) === shopeeFleet);
+    try {
+      const r = await fetch(apiUrl("/dispatch-orders/from-shopee"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fleet_id: Number(shopeeFleet),
+          fleet_name: fleet?.fleet_name,
+          title: shopeeTitle,
+          week_start: shopeeStart,
+          week_end: shopeeEnd,
+          notes: shopeeNotes || null,
+        }),
+      }).then(x => x.json());
+
+      if (r.ok) {
+        toast({ title: "✅ 蝦皮派車單已建立", description: `共加入 ${r.route_count} 筆訂單，已發送給 ${fleet?.fleet_name}` });
+        setShopeeDialogOpen(false);
+        setShopeeNotes("");
+        loadSentOrders();
+      } else {
+        toast({ title: "建立失敗", description: r.error, variant: "destructive" });
+      }
+    } finally {
+      setShopeeCreating(false);
+    }
+  }
+
   async function handleImportSheet() {
     if (!importSheetUrl || !importFleet || !importTitle || !importWeekStart || !importWeekEnd) return;
     setImporting(true);
@@ -435,6 +475,22 @@ export default function DispatchTab({
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             從班表匯入
+          </Button>
+          {/* Shopee-to-dispatch button */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5 text-orange-700 border-orange-300 hover:bg-orange-50"
+            onClick={() => {
+              const w = weekStart(weekOffset);
+              setShopeeStart(w.start);
+              setShopeeEnd(w.end);
+              if (!shopeeTitle) setShopeeTitle(`${w.start.slice(0,7)} 蝦皮派車單`);
+              setShopeeDialogOpen(true);
+            }}
+          >
+            <ShoppingBag className="h-3.5 w-3.5" />
+            從蝦皮訂單建立
           </Button>
           {/* Send button */}
           <Button
@@ -660,6 +716,91 @@ export default function DispatchTab({
               {importing
                 ? <><RefreshCw className="h-4 w-4 animate-spin mr-1" />匯入中…</>
                 : <><FileSpreadsheet className="h-4 w-4 mr-1" />確認匯入</>
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── From Shopee orders dialog ─────────────────────────────────────── */}
+      <Dialog open={shopeeDialogOpen} onOpenChange={setShopeeDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <ShoppingBag className="h-4 w-4 text-orange-600" />
+              從蝦皮訂單建立派車單
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-orange-50 rounded-lg p-3 text-xs text-orange-700">
+              <p className="font-semibold mb-1">📦 說明</p>
+              <p>系統將自動把「蝦皮電商配送」與「蝦皮電商配送（代收代付）」的</p>
+              <p>進行中訂單（含日期區間內）打包成一份派車單，發送給指定車隊。</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5 col-span-2">
+                <Label className="text-xs font-medium">派車單名稱 *</Label>
+                <Input
+                  value={shopeeTitle}
+                  onChange={e => setShopeeTitle(e.target.value)}
+                  placeholder="2026-04 蝦皮派車單"
+                  className="text-xs h-9"
+                />
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <Label className="text-xs font-medium">接收車隊 *</Label>
+                <Select value={shopeeFleet} onValueChange={setShopeeFleet}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="選擇車隊" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fleets.map(f => (
+                      <SelectItem key={f.id} value={String(f.id)}>{f.fleet_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">訂單起始日 *</Label>
+                <Input
+                  type="date"
+                  value={shopeeStart}
+                  onChange={e => setShopeeStart(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">訂單結束日 *</Label>
+                <Input
+                  type="date"
+                  value={shopeeEnd}
+                  onChange={e => setShopeeEnd(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">備注（選填）</Label>
+              <Textarea
+                value={shopeeNotes}
+                onChange={e => setShopeeNotes(e.target.value)}
+                placeholder="特殊交代事項…"
+                className="text-sm h-16 resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShopeeDialogOpen(false)}>取消</Button>
+            <Button
+              disabled={!shopeeFleet || !shopeeTitle || !shopeeStart || !shopeeEnd || shopeeCreating}
+              onClick={handleFromShopee}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {shopeeCreating
+                ? <><RefreshCw className="h-4 w-4 animate-spin mr-1" />建立中…</>
+                : <><ShoppingBag className="h-4 w-4 mr-1" />確認建立</>
               }
             </Button>
           </DialogFooter>
