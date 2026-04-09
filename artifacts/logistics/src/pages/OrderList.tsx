@@ -72,6 +72,7 @@ export default function OrderList() {
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [showShopee, setShowShopee] = useState(false);
   const [editOrder, setEditOrder] = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null);
 
@@ -106,18 +107,26 @@ export default function OrderList() {
     statusFilter !== "all" ? { status: statusFilter } : undefined
   );
 
+  const SHOPEE_PREFIXES = ["蝦皮電商配送", "蝦皮電商"];
+
   const filtered = useMemo(() => {
     if (!orders) return [];
+    let list = orders;
+    if (!showShopee) {
+      list = list.filter(o =>
+        !SHOPEE_PREFIXES.some(p => o.customerName?.startsWith(p))
+      );
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter(o =>
+    if (!q) return list;
+    return list.filter(o =>
       o.customerName?.toLowerCase().includes(q) ||
       o.customerPhone?.toLowerCase().includes(q) ||
       o.pickupAddress?.toLowerCase().includes(q) ||
       o.deliveryAddress?.toLowerCase().includes(q) ||
       String(o.id).includes(q)
     );
-  }, [orders, search]);
+  }, [orders, search, showShopee]);
 
   const handleDuplicate = async (order: any) => {
     try {
@@ -181,6 +190,16 @@ export default function OrderList() {
               <SelectItem value="cancelled">已取消</SelectItem>
             </SelectContent>
           </Select>
+          <button
+            onClick={() => setShowShopee(v => !v)}
+            className={`h-9 px-3 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5
+              ${showShopee
+                ? "bg-orange-50 border-orange-300 text-orange-700"
+                : "bg-card border-input text-muted-foreground hover:border-orange-300 hover:text-orange-700"}`}
+            title={showShopee ? "點擊隱藏蝦皮訂單" : "點擊顯示蝦皮訂單"}
+          >
+            🛒 蝦皮{showShopee ? "（顯示中）" : "（已隱藏）"}
+          </button>
           <Button
             size="sm"
             variant="outline"
