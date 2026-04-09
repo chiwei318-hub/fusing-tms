@@ -74,6 +74,89 @@ async function requireOrdersCreate(req: any, res: any, next: any) {
   next();
 }
 
+// ─── POST /v1/webhook/atoms-broadcast — 批次補發未派車訂單給 ATOMS ─────────────
+webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
+  try {
+    const statuses: string[] = req.body?.statuses ?? ["pending"];
+    const validStatuses = ["pending", "assigned", "in_transit"];
+    const safeStatuses = statuses.filter(s => validStatuses.includes(s));
+    if (!safeStatuses.length) {
+      return res.status(400).json({ error: "statuses 必須包含 pending / assigned / in_transit 之一" });
+    }
+
+    const statusList = sql.join(safeStatuses.map(s => sql`${s}`), sql`, `);
+    const rows = await db.execute(sql`
+      SELECT o.id, o.order_no, o.customer_name, o.customer_phone,
+             o.pickup_address, o.pickup_date, o.pickup_time,
+             o.delivery_address, o.delivery_date, o.delivery_time,
+             o.cargo_description, o.is_cold_chain, o.total_fee, o.notes, o.status,
+             d.id AS driver_id, d.name AS driver_name, d.phone AS driver_phone,
+             d.license_plate AS driver_license, d.vehicle_type AS driver_vehicle
+      FROM orders o
+      LEFT JOIN drivers d ON d.id = o.driver_id
+      WHERE o.status IN (${statusList})
+      ORDER BY o.id DESC
+      LIMIT 200
+    `);
+
+    const orders = rows.rows as any[];
+    const results: { order_id: number; ok: boolean; statusCode?: number; error?: string }[] = [];
+
+    for (const o of orders) {
+      const payload = {
+        order_id:         o.id,
+        order_no:         o.order_no,
+        status:           o.status,
+        customer_name:    o.customer_name,
+        customer_phone:   o.customer_phone,
+        pickup_address:   o.pickup_address,
+        pickup_date:      o.pickup_date,
+        pickup_time:      o.pickup_time,
+        delivery_address: o.delivery_address,
+        delivery_date:    o.delivery_date,
+        delivery_time:    o.delivery_time,
+        cargo_description: o.cargo_description,
+        is_cold_chain:    o.is_cold_chain,
+        total_fee:        o.total_fee,
+        notes:            o.notes,
+        driver_id:        o.driver_id ?? null,
+        driver_name:      o.driver_name ?? null,
+        driver_phone:     o.driver_phone ?? null,
+        driver_license:   o.driver_license ?? null,
+        driver_vehicle:   o.driver_vehicle ?? null,
+        broadcast_at:     new Date().toISOString(),
+      };
+
+      const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
+      if (!atomsUrl) {
+        results.push({ order_id: o.id, ok: false, error: "ATOMS_WEBHOOK_URL 未設定" });
+        continue;
+      }
+
+      try {
+        const r = await fetch(atomsUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "order.assigned", timestamp: new Date().toISOString(), data: payload }),
+          signal: AbortSignal.timeout(8000),
+        });
+        results.push({ order_id: o.id, ok: r.ok, statusCode: r.status });
+      } catch (err: any) {
+        results.push({ order_id: o.id, ok: false, error: err?.message ?? "timeout" });
+      }
+    }
+
+    const success = results.filter(r => r.ok).length;
+    const failed  = results.filter(r => !r.ok).length;
+
+    console.log(`[AtomsBroadcast] sent=${results.length} success=${success} failed=${failed}`);
+    res.json({ ok: true, total: results.length, success, failed, results });
+  } catch (err: any) {
+    console.error("[AtomsBroadcast] error:", err?.message ?? err);
+    res.status(500).json({ error: "批次補發失敗", detail: err?.message ?? "unknown" });
+  }
+});
+
 // ─── POST /v1/webhook/orders  (and alias /v1/webhook/receive-order) ──────────
 webhookOrdersRouter.post(
   ["/v1/webhook/orders", "/v1/webhook/receive-order"],
