@@ -100,50 +100,57 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
     `);
 
     const orders = rows.rows as any[];
+    const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
+    if (!atomsUrl) {
+      return res.status(503).json({ error: "ATOMS_WEBHOOK_URL 未設定" });
+    }
+
+    const now = new Date().toISOString();
+    const CONCURRENCY = 3;
     const results: { order_id: number; ok: boolean; statusCode?: number; error?: string }[] = [];
 
-    for (const o of orders) {
+    async function sendOne(o: any) {
       const payload = {
-        order_id:         o.id,
-        order_no:         o.order_no,
-        status:           o.status,
-        customer_name:    o.customer_name,
-        customer_phone:   o.customer_phone,
-        pickup_address:   o.pickup_address,
-        pickup_date:      o.pickup_date,
-        pickup_time:      o.pickup_time,
-        delivery_address: o.delivery_address,
-        delivery_date:    o.delivery_date,
-        delivery_time:    o.delivery_time,
+        order_id:          o.id,
+        order_no:          o.order_no,
+        status:            o.status,
+        customer_name:     o.customer_name,
+        customer_phone:    o.customer_phone,
+        pickup_address:    o.pickup_address,
+        pickup_date:       o.pickup_date,
+        pickup_time:       o.pickup_time,
+        delivery_address:  o.delivery_address,
+        delivery_date:     o.delivery_date,
+        delivery_time:     o.delivery_time,
         cargo_description: o.cargo_description,
-        is_cold_chain:    o.is_cold_chain,
-        total_fee:        o.total_fee,
-        notes:            o.notes,
-        driver_id:        o.driver_id ?? null,
-        driver_name:      o.driver_name ?? null,
-        driver_phone:     o.driver_phone ?? null,
-        driver_license:   o.driver_license ?? null,
-        driver_vehicle:   o.driver_vehicle ?? null,
-        broadcast_at:     new Date().toISOString(),
+        is_cold_chain:     o.is_cold_chain,
+        total_fee:         o.total_fee,
+        notes:             o.notes,
+        driver_id:         o.driver_id    ?? null,
+        driver_name:       o.driver_name  ?? null,
+        driver_phone:      o.driver_phone ?? null,
+        driver_license:    o.driver_license ?? null,
+        driver_vehicle:    o.driver_vehicle ?? null,
+        broadcast_at:      now,
       };
-
-      const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
-      if (!atomsUrl) {
-        results.push({ order_id: o.id, ok: false, error: "ATOMS_WEBHOOK_URL 未設定" });
-        continue;
-      }
-
       try {
         const r = await fetch(atomsUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: "order.assigned", timestamp: new Date().toISOString(), data: payload }),
-          signal: AbortSignal.timeout(8000),
+          body: JSON.stringify({ event: "order.assigned", timestamp: now, data: payload }),
+          signal: AbortSignal.timeout(10000),
         });
-        results.push({ order_id: o.id, ok: r.ok, statusCode: r.status });
+        return { order_id: o.id, ok: r.ok, statusCode: r.status };
       } catch (err: any) {
-        results.push({ order_id: o.id, ok: false, error: err?.message ?? "timeout" });
+        return { order_id: o.id, ok: false, error: err?.message ?? "error" };
       }
+    }
+
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < orders.length; i += CONCURRENCY) {
+      const batch = orders.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(sendOne));
+      results.push(...batchResults);
     }
 
     const success = results.filter(r => r.ok).length;

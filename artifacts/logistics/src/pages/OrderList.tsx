@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import {
   Filter, ChevronRight, InboxIcon, Truck, Search,
-  Calendar, Clock, Pencil, Trash2, Copy, Loader2, Plus
+  Calendar, Clock, Pencil, Trash2, Copy, Loader2, Plus, Send
 } from "lucide-react";
+import { getApiUrl } from "@/lib/api";
 import { useOrdersData, useDeleteOrderMutation, useDuplicateOrderMutation } from "@/hooks/use-orders";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
@@ -76,6 +77,30 @@ export default function OrderList() {
 
   const deleteOrder = useDeleteOrderMutation();
   const duplicateOrder = useDuplicateOrderMutation();
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  const handleAtomsBroadcast = async () => {
+    setIsBroadcasting(true);
+    try {
+      const res = await fetch(getApiUrl("/api/v1/webhook/atoms-broadcast"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statuses: ["pending", "assigned"] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "補發失敗");
+      toast({
+        title: `已補發 ${data.success} 筆給 ATOMS`,
+        description: data.failed > 0
+          ? `${data.failed} 筆發送失敗，請確認 ATOMS 端點是否正常`
+          : `共 ${data.total} 筆全部成功送出`,
+      });
+    } catch (err: any) {
+      toast({ title: "補發失敗", description: err?.message, variant: "destructive" });
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
 
   const { data: orders, isLoading } = useOrdersData(
     statusFilter !== "all" ? { status: statusFilter } : undefined
@@ -156,6 +181,18 @@ export default function OrderList() {
               <SelectItem value="cancelled">已取消</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 gap-1.5"
+            onClick={handleAtomsBroadcast}
+            disabled={isBroadcasting}
+          >
+            {isBroadcasting
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Send className="w-4 h-4" />}
+            補發 ATOMS
+          </Button>
           <Button asChild size="sm" className="h-9 gap-1.5">
             <Link href="/orders/new">
               <Plus className="w-4 h-4" />
