@@ -82,6 +82,7 @@ import { pricingEngineRoute } from "./pricingEngineRoute";
 import { mapsRouter } from "./mapsRoute";
 import { orderSettlementsRouter } from "./orderSettlements";
 import { jobsRouter } from "./jobs";
+import { webhookOrdersRouter } from "./webhookOrders";
 
 const router: IRouter = Router();
 
@@ -183,5 +184,6 @@ router.use("/pe", pricingEngineRoute);                        // 透明公式報
 router.use(mapsRouter);                                        // Google Maps 距離 API
 router.use("/order-settlements", orderSettlementsRouter);      // 訂單結算 & 利潤拆分
 router.use(jobsRouter);                                        // 司機任務 API
+router.use(webhookOrdersRouter);                               // 外部訂單接收 Webhook
 
 export default router;
