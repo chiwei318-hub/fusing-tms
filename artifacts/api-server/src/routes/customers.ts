@@ -30,6 +30,11 @@ router.post("/customers", async (req, res) => {
     if (!b.name || !b.phone) {
       return res.status(400).json({ error: "名稱與電話為必填" });
     }
+    // Validate and normalise prefix
+    let orderNoPrefix: string | null = null;
+    if (b.orderNoPrefix) {
+      orderNoPrefix = String(b.orderNoPrefix).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || null;
+    }
     const { rows } = await pool.query(
       `INSERT INTO customers (
         name, short_name, phone, username, password,
@@ -38,7 +43,8 @@ router.post("/customers", async (req, res) => {
         company_type, industry,
         payment_type, credit_limit, price_level, discount_pct,
         is_vip, monthly_statement_day, notes,
-        invoice_title, company_address, factory_address
+        invoice_title, company_address, factory_address,
+        order_no_prefix
       ) VALUES (
         $1,$2,$3,$4,$5,
         $6,$7,
@@ -46,7 +52,8 @@ router.post("/customers", async (req, res) => {
         $11,$12,
         $13,$14,$15,$16,
         $17,$18,$19,
-        $20,$21,$22
+        $20,$21,$22,
+        $23
       ) RETURNING *`,
       [
         String(b.name).trim(),
@@ -71,11 +78,15 @@ router.post("/customers", async (req, res) => {
         b.invoiceTitle ?? null,
         b.companyAddress ?? null,
         b.factoryAddress ?? null,
+        orderNoPrefix,
       ]
     );
     res.status(201).json(rows[0]);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Failed to create customer");
+    if (err?.code === "23505" && err?.constraint?.includes("order_no_prefix")) {
+      return res.status(400).json({ error: "此單號前綴已被其他客戶使用，請換一個" });
+    }
     res.status(400).json({ error: "Failed to create customer" });
   }
 });

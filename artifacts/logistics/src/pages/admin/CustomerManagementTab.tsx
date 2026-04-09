@@ -37,7 +37,7 @@ interface Customer {
   is_blacklisted: boolean; blacklist_reason: string | null;
   monthly_statement_day: number; notes: string | null; industry: string | null;
   invoice_title: string | null; company_address: string | null; factory_address: string | null;
-  credit_days: number | null;
+  credit_days: number | null; order_no_prefix: string | null;
   total_orders: number; total_revenue: number; outstanding_amount: number;
   last_order_at: string | null;
 }
@@ -110,6 +110,7 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
     companyAddress: customer?.company_address ?? "",
     factoryAddress: customer?.factory_address ?? "",
     creditDays: String(customer?.credit_days ?? ""),
+    orderNoPrefix: customer?.order_no_prefix ?? "",
   });
   const [loading, setLoading] = useState(false);
 
@@ -159,6 +160,26 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               <div>
                 <Label className="text-xs">電話 <span className="text-red-500">*</span></Label>
                 <Input className="mt-1" value={form.phone} onChange={e => f("phone", e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs flex items-center gap-1">
+                  訂單單號前綴
+                  <span className="text-muted-foreground font-normal">（英文+數字，最多10碼）</span>
+                </Label>
+                <div className="relative mt-1">
+                  <Input
+                    placeholder="如 SPX、ABC1（留空用預設 FY）"
+                    value={form.orderNoPrefix}
+                    maxLength={10}
+                    onChange={e => f("orderNoPrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                    className="pr-20 font-mono uppercase"
+                  />
+                  {form.orderNoPrefix && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                      {form.orderNoPrefix}20260409-0001
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
                 <Label className="text-xs">統一編號</Label>
@@ -1041,6 +1062,11 @@ export default function CustomerManagementTab() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
+                  {c.order_no_prefix && (
+                    <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded tracking-wider">
+                      {c.order_no_prefix}-
+                    </span>
+                  )}
                   <PayBadge type={c.payment_type} />
                   <LevelBadge level={c.price_level} />
                 </div>

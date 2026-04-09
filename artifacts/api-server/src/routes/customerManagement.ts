@@ -124,8 +124,19 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
       companyAddress: z.string().optional(),
       factoryAddress: z.string().optional(),
       creditDays: z.coerce.number().min(0).optional(),
+      orderNoPrefix: z.string().max(10).optional(),
     });
     const data = schema.parse(req.body);
+
+    // Validate prefix: uppercase letters & digits only
+    if (data.orderNoPrefix !== undefined && data.orderNoPrefix !== "") {
+      const clean = data.orderNoPrefix.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (clean !== data.orderNoPrefix.toUpperCase()) {
+        return res.status(400).json({ error: "單號前綴只能包含英文字母與數字" });
+      }
+      data.orderNoPrefix = clean;
+    }
+
     await db.execute(sql`
       UPDATE customers SET
         name = COALESCE(${data.name ?? null}, name),
@@ -148,12 +159,16 @@ customerManagementRouter.put("/customers/:id/profile", async (req, res) => {
         invoice_title = ${data.invoiceTitle !== undefined ? (data.invoiceTitle || null) : sql`invoice_title`},
         company_address = ${data.companyAddress !== undefined ? (data.companyAddress || null) : sql`company_address`},
         factory_address = ${data.factoryAddress !== undefined ? (data.factoryAddress || null) : sql`factory_address`},
-        credit_days = ${data.creditDays !== undefined ? data.creditDays : sql`credit_days`}
+        credit_days = ${data.creditDays !== undefined ? data.creditDays : sql`credit_days`},
+        order_no_prefix = ${data.orderNoPrefix !== undefined ? (data.orderNoPrefix || null) : sql`order_no_prefix`}
       WHERE id = ${id}
     `);
     const updated = (await db.execute(sql`SELECT * FROM customers WHERE id = ${id}`)).rows[0];
     return res.json(updated);
   } catch (e: any) {
+    if (e?.code === "23505" && e?.constraint?.includes("order_no_prefix")) {
+      return res.status(400).json({ error: "此單號前綴已被其他客戶使用，請換一個" });
+    }
     return res.status(400).json({ error: e.message });
   }
 });
