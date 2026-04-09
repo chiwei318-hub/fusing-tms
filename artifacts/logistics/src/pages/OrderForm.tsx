@@ -474,7 +474,7 @@ export default function OrderForm() {
 
                 {/* 特殊設備需求 */}
                 <div className="space-y-2">
-                  <FormLabel className="text-sm">特殊設備需求（可複選）</FormLabel>
+                  <p className="text-sm font-medium leading-none">特殊設備需求（可複選）</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <FormField control={form.control} name="needTailgate" render={({ field }) => (
                       <CheckToggle
