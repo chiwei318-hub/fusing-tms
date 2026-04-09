@@ -74,9 +74,9 @@ async function requireOrdersCreate(req: any, res: any, next: any) {
   next();
 }
 
-// ─── POST /v1/webhook/orders ───────────────────────────────────────────────
+// ─── POST /v1/webhook/orders  (and alias /v1/webhook/receive-order) ──────────
 webhookOrdersRouter.post(
-  "/v1/webhook/orders",
+  ["/v1/webhook/orders", "/v1/webhook/receive-order"],
   requireOrdersCreate,
   async (req, res) => {
     try {
