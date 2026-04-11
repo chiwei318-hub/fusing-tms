@@ -55,6 +55,14 @@ export default function FleetLogin() {
             <CardTitle className="text-lg text-center text-gray-700">車隊帳號登入</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 mb-4 flex items-start gap-2">
+              <span className="text-amber-500 text-sm mt-0.5">🔑</span>
+              <div className="text-xs text-amber-800 leading-relaxed">
+                <p className="font-bold mb-1">測試帳號</p>
+                <p>帳號：<span className="font-mono font-semibold">fleet01</span></p>
+                <p>密碼：<span className="font-mono font-semibold">test1234</span></p>
+              </div>
+            </div>
             <form onSubmit={handleSubmit} method="post" action="/api/auth/login/fleet" className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="username" className="text-sm">帳號</Label>

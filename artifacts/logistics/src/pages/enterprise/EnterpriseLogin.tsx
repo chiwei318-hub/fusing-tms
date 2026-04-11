@@ -77,25 +77,45 @@ export default function EnterpriseLogin({ onLogin }: Props) {
         </div>
 
         {tab === "main" ? (
-          <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-9 h-9 bg-[#0d2d6e] rounded-xl flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-white" />
+          <>
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 bg-[#0d2d6e] rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="font-black text-gray-900 text-base leading-none">企業帳號登入</h2>
+                <p className="text-gray-400 text-xs mt-0.5">請輸入公司帳號與密碼</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-black text-gray-900 text-base leading-none">企業帳號登入</h2>
-              <p className="text-gray-400 text-xs mt-0.5">請輸入公司帳號與密碼</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 mb-4 flex items-start gap-2">
+              <span className="text-amber-500 text-sm mt-0.5">🔑</span>
+              <div className="text-xs text-amber-800 leading-relaxed">
+                <p className="font-bold mb-1">測試帳號（公司）</p>
+                <p>帳號：<span className="font-mono font-semibold">FUSINGAO</span></p>
+                <p>密碼：<span className="font-mono font-semibold">fusingao2024</span></p>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center">
-              <UserCircle className="w-5 h-5 text-white" />
+          <>
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center">
+                <UserCircle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="font-black text-gray-900 text-base leading-none">員工帳號登入</h2>
+                <p className="text-gray-400 text-xs mt-0.5">請輸入子帳號代碼與密碼</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-black text-gray-900 text-base leading-none">員工帳號登入</h2>
-              <p className="text-gray-400 text-xs mt-0.5">請輸入子帳號代碼與密碼</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 mb-4 flex items-start gap-2">
+              <span className="text-amber-500 text-sm mt-0.5">🔑</span>
+              <div className="text-xs text-amber-800 leading-relaxed">
+                <p className="font-bold mb-1">測試帳號（員工）</p>
+                <p>帳號：<span className="font-mono font-semibold">FUSINGAO-TP</span></p>
+                <p>密碼：<span className="font-mono font-semibold">fusingao2024</span></p>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         <form onSubmit={submit} className="space-y-4">

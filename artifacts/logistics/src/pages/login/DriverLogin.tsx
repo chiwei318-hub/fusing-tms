@@ -60,6 +60,15 @@ export default function DriverLogin() {
           </div>
         </div>
 
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-3 flex items-start gap-2.5">
+          <span className="text-amber-500 text-base mt-0.5">🔑</span>
+          <div className="text-xs text-amber-800 leading-relaxed">
+            <p className="font-bold mb-1">測試帳號</p>
+            <p>帳號：<span className="font-mono font-semibold">driver01</span></p>
+            <p>密碼：<span className="font-mono font-semibold">driver123</span></p>
+          </div>
+        </div>
+
         <div className="bg-white rounded-3xl shadow-2xl p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

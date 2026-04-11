@@ -274,12 +274,28 @@ async function ensureFranchiseeAccounts() {
   }
 }
 
+async function ensureTestDriverAccount() {
+  try {
+    const FIXED_SALT = 'c3d5e7f9a1b2c4d6e8f0a2b4c6d8e0f2';
+    const hash = hashPassword('driver123', FIXED_SALT);
+    await db.execute(sql`
+      INSERT INTO drivers (name, phone, username, password, vehicle_type, license_plate, is_active)
+      SELECT '測試司機', '0900000001', 'driver01', ${hash}, 'truck', 'TEST-D001', true
+      WHERE NOT EXISTS (SELECT 1 FROM drivers WHERE username = 'driver01')
+    `);
+    console.log('[TestDriver] driver01 account ensured');
+  } catch (e) {
+    console.error('[TestDriver] error:', e);
+  }
+}
+
 seedDefaultData().catch(console.error);
 if (process.env.NODE_ENV !== 'production') {
   ensureTestAccounts().catch(console.error);
 }
 ensureFusingaoAccounts().catch(console.error);
 ensureFranchiseeAccounts().catch(console.error);
+ensureTestDriverAccount().catch(console.error);
 ensureShopeeSettlementTables().catch(console.error);
 ensureFleetSubAccountsTable().catch(console.error);
 
