@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import { db, auditLogs } from '@workspace/db';
+import { db } from '@workspace/db';
+import { sql } from 'drizzle-orm';
 
 const URL_MAP: { pattern: RegExp; resourceType: string; actionMap: Record<string, string> }[] = [
   { pattern: /^\/api\/orders(?:\/\d+)?$/, resourceType: 'order', actionMap: { POST: 'create', PATCH: 'update', DELETE: 'delete' } },
@@ -54,14 +55,16 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
       const resourceId = getResourceIdFromUrl(url);
       const label = getActionLabel(action, entry.resourceType);
 
-      db.insert(auditLogs).values({
-        operatorName, operatorRole,
-        action, resourceType: entry.resourceType,
-        resourceId,
-        resourceLabel: label,
-        description: `${operatorName} 執行：${label}${resourceId ? `（ID: ${resourceId}）` : ''}`,
-        ipAddress: ip,
-      }).catch(() => {});
+      db.execute(sql`
+        INSERT INTO audit_logs
+          (operator_name, operator_role, action, resource_type, resource_id, resource_label, description, ip_address)
+        VALUES
+          (${operatorName}, ${operatorRole}, ${action}, ${entry.resourceType},
+           ${resourceId}, ${label},
+           ${`${operatorName} 執行：${label}${resourceId ? `（ID: ${resourceId}）` : ''}`},
+           ${ip})
+        ON CONFLICT DO NOTHING
+      `).catch(() => {});
 
       break;
     }

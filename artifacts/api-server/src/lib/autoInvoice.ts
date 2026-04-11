@@ -150,10 +150,10 @@ export async function autoIssueInvoice(
     taxAmount,
     totalAmount,
     items: [{
-      description: itemDesc,
+      name:        itemDesc,
       qty:         1,
       unitPrice:   rawAmount,
-      total:       rawAmount,
+      amount:      rawAmount,
     }],
     remark: `訂單 ${orderLabel}（${triggeredBy}）`,
   });

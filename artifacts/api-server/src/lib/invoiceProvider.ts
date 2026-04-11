@@ -452,7 +452,7 @@ async function issueEcpay(p: IssueInvoiceParams): Promise<InvoiceResult> {
     // ── B2C 二聯式發票 ──────────────────────────────────────────────────────
     // CustomerIdentifier 固定空字串
     const hasDonation  = p.donation === "1" && !!p.loveCode;
-    const hasCarruer   = !!p.carruerType && p.carruerType !== "";
+    const hasCarruer   = !!p.carruerType;
     dataObj = {
       ...common,
       CustomerIdentifier: "",

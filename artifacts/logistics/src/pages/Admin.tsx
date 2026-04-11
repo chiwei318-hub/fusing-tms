@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImportDialog } from "@/components/ImportDialog";
 import { OnlineUsersPanel } from "@/components/OnlineUsersPanel";
@@ -18,61 +18,62 @@ import {
 } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
-import VehicleTypeTab from "./admin/VehicleTypeTab";
-import ReportCenter from "./admin/ReportCenter";
-import FinanceReportsTab from "./admin/FinanceReportsTab";
-import AdminHome from "./admin/AdminHome";
-import SmartDispatchTab from "./admin/SmartDispatchTab";
-import DispatchOptimizerTab from "./admin/DispatchOptimizerTab";
-import DriverApplicationsTab from "./admin/DriverApplicationsTab";
-import CustomerManagementTab from "./admin/CustomerManagementTab";
-import HeatMapTab from "./admin/HeatMapTab";
-import AIAnalyticsTab from "./admin/AIAnalyticsTab";
-import FleetMapTab from "./admin/FleetMapTab";
-import CarpoolTab from "./admin/CarpoolTab";
-import FleetManagementTab from "./admin/FleetManagementTab";
-import OutsourcingTab from "./admin/OutsourcingTab";
-import PaymentCenter from "./admin/PaymentCenter";
-import QuotationTab from "./admin/QuotationTab";
-import QuotesTab from "./admin/QuotesTab";
-import RoutePriceTab from "./admin/RoutePriceTab";
-import VehicleCostTab from "./admin/VehicleCostTab";
-import PermissionTab from "./admin/PermissionTab";
-import LineManagementTab from "./admin/LineManagementTab";
-import SystemSettingsTab from "./admin/SystemSettingsTab";
-import InvoiceManagementTab from "./admin/InvoiceManagementTab";
-import BiddingTab from "./admin/BiddingTab";
-import FleetRegistrationTab from "./admin/FleetRegistrationTab";
-import CommissionTab from "./admin/CommissionTab";
-import DriverCreditTab from "./admin/DriverCreditTab";
-import CommissionTiersTab from "./admin/CommissionTiersTab";
-import BackhaulAnalyticsTab from "./admin/BackhaulAnalyticsTab";
-import StrategicKPITab from "./admin/StrategicKPITab";
-import PricingEngineTab from "./admin/PricingEngineTab";
-import PerformanceAuditTab from "./admin/PerformanceAuditTab";
-import CarbonReportTab from "./admin/CarbonReportTab";
-import KPIDashboardTab from "./admin/KPIDashboardTab";
 import { SmartDatePicker } from "@/components/SmartDatePicker";
-import ApprovalCenterTab from "./admin/ApprovalCenterTab";
-import SettlementCenterTab from "./admin/SettlementCenterTab";
-import FranchiseSettlementTab from "./admin/FranchiseSettlementTab";
-import AuditLogTab from "./admin/AuditLogTab";
-import CostAnalysisTab from "./admin/CostAnalysisTab";
-import { DemandForecastTab } from "./admin/DemandForecastTab";
-import { ZoneManagementTab } from "./admin/ZoneManagementTab";
-import { DailyOpsTab } from "./admin/DailyOpsTab";
-import { AutoRoutingTab } from "./admin/AutoRoutingTab";
-import RouteImportTab from "./admin/RouteImportTab";
-import FormImportTab from "./admin/FormImportTab";
-import SheetSyncTab from "./admin/SheetSyncTab";
-import FranchiseeTab from "./admin/FranchiseeTab";
-import ShopeeBillingTab from "./admin/ShopeeBillingTab";
-import PnLTab from "./admin/PnLTab";
-import CashFlowTab from "./admin/CashFlowTab";
-import OpenApiTab from "./admin/OpenApiTab";
-import BillingFlowTab from "./admin/BillingFlowTab";
-import PricingPanel from "@/components/PricingPanel";
-import OrderSearchTab from "./admin/OrderSearchTab";
+import AdminHome from "./admin/AdminHome";
+
+const VehicleTypeTab       = lazy(() => import("./admin/VehicleTypeTab"));
+const ReportCenter         = lazy(() => import("./admin/ReportCenter"));
+const FinanceReportsTab    = lazy(() => import("./admin/FinanceReportsTab"));
+const SmartDispatchTab     = lazy(() => import("./admin/SmartDispatchTab"));
+const DispatchOptimizerTab = lazy(() => import("./admin/DispatchOptimizerTab"));
+const DriverApplicationsTab = lazy(() => import("./admin/DriverApplicationsTab"));
+const CustomerManagementTab = lazy(() => import("./admin/CustomerManagementTab"));
+const HeatMapTab           = lazy(() => import("./admin/HeatMapTab"));
+const AIAnalyticsTab       = lazy(() => import("./admin/AIAnalyticsTab"));
+const FleetMapTab          = lazy(() => import("./admin/FleetMapTab"));
+const CarpoolTab           = lazy(() => import("./admin/CarpoolTab"));
+const FleetManagementTab   = lazy(() => import("./admin/FleetManagementTab"));
+const OutsourcingTab       = lazy(() => import("./admin/OutsourcingTab"));
+const PaymentCenter        = lazy(() => import("./admin/PaymentCenter"));
+const QuotationTab         = lazy(() => import("./admin/QuotationTab"));
+const QuotesTab            = lazy(() => import("./admin/QuotesTab"));
+const RoutePriceTab        = lazy(() => import("./admin/RoutePriceTab"));
+const VehicleCostTab       = lazy(() => import("./admin/VehicleCostTab"));
+const PermissionTab        = lazy(() => import("./admin/PermissionTab"));
+const LineManagementTab    = lazy(() => import("./admin/LineManagementTab"));
+const SystemSettingsTab    = lazy(() => import("./admin/SystemSettingsTab"));
+const InvoiceManagementTab = lazy(() => import("./admin/InvoiceManagementTab"));
+const BiddingTab           = lazy(() => import("./admin/BiddingTab"));
+const FleetRegistrationTab = lazy(() => import("./admin/FleetRegistrationTab"));
+const CommissionTab        = lazy(() => import("./admin/CommissionTab"));
+const DriverCreditTab      = lazy(() => import("./admin/DriverCreditTab"));
+const CommissionTiersTab   = lazy(() => import("./admin/CommissionTiersTab"));
+const BackhaulAnalyticsTab = lazy(() => import("./admin/BackhaulAnalyticsTab"));
+const StrategicKPITab      = lazy(() => import("./admin/StrategicKPITab"));
+const PricingEngineTab     = lazy(() => import("./admin/PricingEngineTab"));
+const PerformanceAuditTab  = lazy(() => import("./admin/PerformanceAuditTab"));
+const CarbonReportTab      = lazy(() => import("./admin/CarbonReportTab"));
+const KPIDashboardTab      = lazy(() => import("./admin/KPIDashboardTab"));
+const ApprovalCenterTab    = lazy(() => import("./admin/ApprovalCenterTab"));
+const SettlementCenterTab  = lazy(() => import("./admin/SettlementCenterTab"));
+const FranchiseSettlementTab = lazy(() => import("./admin/FranchiseSettlementTab"));
+const AuditLogTab          = lazy(() => import("./admin/AuditLogTab"));
+const CostAnalysisTab      = lazy(() => import("./admin/CostAnalysisTab"));
+const DemandForecastTab    = lazy(() => import("./admin/DemandForecastTab").then(m => ({ default: m.DemandForecastTab })));
+const ZoneManagementTab    = lazy(() => import("./admin/ZoneManagementTab").then(m => ({ default: m.ZoneManagementTab })));
+const DailyOpsTab          = lazy(() => import("./admin/DailyOpsTab").then(m => ({ default: m.DailyOpsTab })));
+const AutoRoutingTab       = lazy(() => import("./admin/AutoRoutingTab").then(m => ({ default: m.AutoRoutingTab })));
+const RouteImportTab       = lazy(() => import("./admin/RouteImportTab"));
+const FormImportTab        = lazy(() => import("./admin/FormImportTab"));
+const SheetSyncTab         = lazy(() => import("./admin/SheetSyncTab"));
+const FranchiseeTab        = lazy(() => import("./admin/FranchiseeTab"));
+const ShopeeBillingTab     = lazy(() => import("./admin/ShopeeBillingTab"));
+const PnLTab               = lazy(() => import("./admin/PnLTab"));
+const CashFlowTab          = lazy(() => import("./admin/CashFlowTab"));
+const OpenApiTab           = lazy(() => import("./admin/OpenApiTab"));
+const BillingFlowTab       = lazy(() => import("./admin/BillingFlowTab"));
+const PricingPanel         = lazy(() => import("@/components/PricingPanel"));
+const OrderSearchTab       = lazy(() => import("./admin/OrderSearchTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1559,6 +1560,7 @@ export default function Admin() {
 
 
 
+      <Suspense fallback={<div className="py-16 text-center text-gray-400 text-sm">載入中…</div>}>
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); }} className="w-full">
         {/* ── 主要 5 大類 ── */}
         <TabsList className="flex h-auto gap-1 p-1 mb-1 w-full">
@@ -3988,6 +3990,7 @@ export default function Admin() {
           <StrategicKPITab />
         </TabsContent>
       </Tabs>
+      </Suspense>
 
       <ImportDialog
         open={importDialogOpen}

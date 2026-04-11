@@ -77,7 +77,7 @@ async function pushWeeklyReport() {
           contents: [{
             type: "text" as const,
             text: `⚠️ 毛利率 ${margin}% 低於警戒線 ${WARN_MARGIN}%！請檢查報價`,
-            color: "#c0392b", size: "xs", weight: "bold", wrap: true,
+            color: "#c0392b", size: "xs" as const, weight: "bold" as const, wrap: true,
           }],
         }] : []),
         row("本週訂單筆數", `${s.total_orders ?? 0} 筆`),

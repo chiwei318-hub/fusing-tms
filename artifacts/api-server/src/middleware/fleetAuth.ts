@@ -34,7 +34,7 @@ export function requireFleetOwner(req: Request, res: Response, next: NextFunctio
     return res.status(403).json({ error: "僅限車行管理員操作" });
   }
   req.fleet = payload;
-  next();
+  return next();
 }
 
 export function requireFleetDriver(req: Request, res: Response, next: NextFunction) {
@@ -46,7 +46,7 @@ export function requireFleetDriver(req: Request, res: Response, next: NextFuncti
     return res.status(403).json({ error: "僅限司機操作" });
   }
   req.fleet = payload;
-  next();
+  return next();
 }
 
 export function requireFleetMember(req: Request, res: Response, next: NextFunction) {
@@ -58,5 +58,5 @@ export function requireFleetMember(req: Request, res: Response, next: NextFuncti
     return res.status(403).json({ error: "無效的身份" });
   }
   req.fleet = payload;
-  next();
+  return next();
 }

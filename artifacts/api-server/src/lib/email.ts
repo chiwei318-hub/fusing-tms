@@ -168,7 +168,7 @@ function buildInvoiceEmailHtml(params: {
                 ["訂單編號", `#${params.orderId}`],
                 params.pickupAddress ? ["取貨地址", params.pickupAddress] : null,
                 params.deliveryAddress ? ["送達地址", params.deliveryAddress] : null,
-              ].filter(Boolean).map(([label, value]) => `
+              ].filter((x): x is string[] => x !== null).map(([label, value]) => `
               <tr>
                 <td style="padding:6px 0;color:#9ca3af;font-size:13px;width:90px;">${label}</td>
                 <td style="padding:6px 0;color:#374151;font-size:13px;">${value}</td>
