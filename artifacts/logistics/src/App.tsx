@@ -44,6 +44,7 @@ import QuotePage from "@/pages/QuotePage";
 import FusingaoPortal from "@/pages/FusingaoPortal";
 import FleetLogin from "@/pages/fleet/FleetLogin";
 import FusingaoFleetPortal from "@/pages/fleet/FusingaoFleetPortal";
+import PublicFleetReport from "@/pages/fleet/PublicFleetReport";
 import FranchiseFleetLogin from "@/pages/franchiseFleet/FranchiseFleetLogin";
 import FranchiseFleetPortal from "@/pages/franchiseFleet/FranchiseFleetPortal";
 
@@ -245,6 +246,9 @@ function AppRouter() {
   }
   if (location.startsWith("/franchise-fleet")) {
     return <FranchiseFleetRoute />;
+  }
+  if (location.startsWith("/fleet/report/")) {
+    return <PublicFleetReport />;
   }
   if (location.startsWith("/fleet")) {
     return <FleetPortal />;

@@ -4,6 +4,7 @@ import {
   DollarSign, ChevronDown, ChevronRight, Zap, Download,
   CheckSquare, Square, AlertCircle, UserPlus, User, Edit2, Save, X,
   TrendingUp, ArrowRight, ClipboardList, Send, Bell, Shield, Key, Trash2, UserCheck, Eye, EyeOff,
+  Link, Copy, Check, Fuel, Settings2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,14 @@ export default function FusingaoFleetPortal() {
   const [settlement, setSettlement]         = useState<SettlementSummary | null>(null);
   const [driverSettlements, setDriverSettlements] = useState<DriverSettlement[]>([]);
   const [settlementMonth, setSettlementMonth] = useState("");
+  const [adjustment, setAdjustment] = useState<{
+    extra_deduct_rate: number; fuel_amount: number; other_amount: number; other_label: string; note: string;
+  }>({ extra_deduct_rate: 0, fuel_amount: 0, other_amount: 0, other_label: "", note: "" });
+  const [adjSaving, setAdjSaving] = useState(false);
+  const [adjExpanded, setAdjExpanded] = useState(false);
+  const [shareLink, setShareLink] = useState("");
+  const [shareLinkLoading, setShareLinkLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // ── Dispatch orders state ──────────────────────────────────────────────────
   const [dispatchOrders, setDispatchOrders]   = useState<DispatchOrder[]>([]);
@@ -218,10 +227,67 @@ export default function FusingaoFleetPortal() {
     if (!fleetId) return;
     const params = settlementMonth ? `?month=${settlementMonth}` : "";
     const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/settlement${params}`)).then(x => x.json());
-    if (d.ok) { setSettlement(d.summary); setDriverSettlements(d.drivers ?? []); }
+    if (d.ok) {
+      setSettlement(d.summary);
+      setDriverSettlements(d.drivers ?? []);
+      if (d.adjustment) {
+        setAdjustment({
+          extra_deduct_rate: Number(d.adjustment.extra_deduct_rate ?? 0),
+          fuel_amount: Number(d.adjustment.fuel_amount ?? 0),
+          other_amount: Number(d.adjustment.other_amount ?? 0),
+          other_label: d.adjustment.other_label ?? "",
+          note: d.adjustment.note ?? "",
+        });
+      } else {
+        setAdjustment({ extra_deduct_rate: 0, fuel_amount: 0, other_amount: 0, other_label: "", note: "" });
+      }
+    }
+    setShareLink(""); // reset share link when month changes
   }, [fleetId, settlementMonth]); // eslint-disable-line
 
   useEffect(() => { if (tab === "settlement") loadSettlement(); }, [tab, settlementMonth]); // eslint-disable-line
+
+  const saveAdjustment = async () => {
+    if (!fleetId || !settlementMonth) return;
+    setAdjSaving(true);
+    try {
+      const r = await fetch(fapi(`/fusingao/fleets/${fleetId}/adjustments`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: settlementMonth, ...adjustment }),
+      });
+      const d = await r.json();
+      if (d.ok) toast({ title: "已儲存扣除設定" });
+      else throw new Error(d.error);
+    } catch (err: any) {
+      toast({ title: "儲存失敗", description: err.message, variant: "destructive" });
+    } finally { setAdjSaving(false); }
+  };
+
+  const generateShareLink = async () => {
+    if (!fleetId || !settlementMonth) return;
+    setShareLinkLoading(true);
+    try {
+      const r = await fetch(fapi(`/fusingao/fleets/${fleetId}/report-token`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: settlementMonth }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        const base = window.location.origin + (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+        setShareLink(`${base}/fleet/report/${d.token}`);
+      } else throw new Error(d.error);
+    } catch (err: any) {
+      toast({ title: "產生連結失敗", description: err.message, variant: "destructive" });
+    } finally { setShareLinkLoading(false); }
+  };
+
+  const copyShareLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
 
   // ── Dispatch orders handlers ───────────────────────────────────────────────
   const loadDispatchOrders = useCallback(async () => {
@@ -952,100 +1018,248 @@ export default function FusingaoFleetPortal() {
         )}
 
         {/* ─── Settlement analysis tab ─── */}
-        {tab === "settlement" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Select value={settlementMonth || "all"} onValueChange={v => setSettlementMonth(v === "all" ? "" : v)}>
-                <SelectTrigger className="h-8 w-36 text-sm"><SelectValue placeholder="全部期間" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部期間</SelectItem>
-                  {monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadSettlement}>
-                <RefreshCw className="h-3.5 w-3.5 mr-1" />重新整理
-              </Button>
-            </div>
+        {tab === "settlement" && (() => {
+          const shopeeIncome  = Number(settlement?.shopee_income ?? 0);
+          const fleetReceive  = Number(settlement?.fleet_receive ?? 0);
+          const commRate      = Number(settlement?.commission_rate ?? 15);
+          const commAmt       = shopeeIncome - fleetReceive;
+          const extraDeductAmt = fleetReceive * adjustment.extra_deduct_rate / 100;
+          const netPayout     = fleetReceive - extraDeductAmt - adjustment.fuel_amount - adjustment.other_amount;
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Select value={settlementMonth || "all"} onValueChange={v => { setSettlementMonth(v === "all" ? "" : v); setShareLink(""); }}>
+                  <SelectTrigger className="h-8 w-36 text-sm"><SelectValue placeholder="全部期間" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部期間</SelectItem>
+                    {monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadSettlement}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1" />重新整理
+                </Button>
+              </div>
 
-            {settlement && (
-              <>
-                {/* Flow chart */}
-                <Card>
-                  <CardHeader className="pb-1 pt-3 px-4">
-                    <CardTitle className="text-sm text-gray-700">結算鏈</CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-center min-w-[90px]">
-                        <p className="text-xs text-blue-500">Shopee 支付</p>
-                        <p className="font-bold text-blue-700 text-sm">{fmt(settlement.shopee_income)}</p>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400 shrink-0" />
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-center min-w-[90px]">
-                        <p className="text-xs text-orange-500">平台抽佣 {settlement.commission_rate}%</p>
-                        <p className="font-bold text-orange-700 text-sm">
-                          {fmt(Number(settlement.shopee_income) - Number(settlement.fleet_receive))}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400 shrink-0" />
-                      <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center min-w-[90px]">
-                        <p className="text-xs text-green-500">車隊應收</p>
-                        <p className="font-bold text-green-700 text-sm">{fmt(settlement.fleet_receive)}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Per-driver breakdown */}
-                {driverSettlements.length > 0 && (
-                  <Card>
+              {settlement && (
+                <>
+                  {/* Payout summary card */}
+                  <Card className="border-orange-200 overflow-hidden">
+                    <div className="h-1 bg-gradient-to-r from-orange-400 to-orange-600" />
                     <CardHeader className="pb-1 pt-3 px-4">
-                      <CardTitle className="text-sm text-gray-700 flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-orange-500" />司機業績分布
-                      </CardTitle>
+                      <CardTitle className="text-sm text-gray-700">實付金額明細</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-0">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b bg-gray-50 text-gray-500">
-                              <th className="text-left p-3">司機</th>
-                              <th className="text-right p-3">路線</th>
-                              <th className="text-right p-3">完成</th>
-                              <th className="text-right p-3">業績</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {driverSettlements.map((d, i) => (
-                              <tr key={i} className="border-b hover:bg-gray-50">
-                                <td className="p-3 font-medium">
-                                  {d.driver_name}
-                                  {d.vehicle_plate && <span className="text-gray-400 font-mono ml-1">({d.vehicle_plate})</span>}
-                                </td>
-                                <td className="p-3 text-right">{d.route_count}</td>
-                                <td className="p-3 text-right">{d.completed_count}</td>
-                                <td className="p-3 text-right font-mono text-orange-600 font-semibold">{fmt(d.earnings)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    <CardContent className="px-4 pb-3 space-y-2">
+                      {/* Line items */}
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between items-center py-1 border-b text-gray-700">
+                          <span className="text-gray-500">蝦皮運費總額</span>
+                          <span className="font-mono font-semibold text-blue-700">{fmt(shopeeIncome)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b text-orange-700">
+                          <span className="text-xs">− 平台服務費（{commRate}%）</span>
+                          <span className="font-mono text-xs">− {fmt(commAmt)}</span>
+                        </div>
+                        {adjustment.extra_deduct_rate > 0 && (
+                          <div className="flex justify-between items-center py-1 border-b text-red-600">
+                            <span className="text-xs">− 額外扣除（{adjustment.extra_deduct_rate}%）</span>
+                            <span className="font-mono text-xs">− {fmt(extraDeductAmt)}</span>
+                          </div>
+                        )}
+                        {adjustment.fuel_amount > 0 && (
+                          <div className="flex justify-between items-center py-1 border-b text-red-600">
+                            <span className="text-xs">− 油費代付</span>
+                            <span className="font-mono text-xs">− {fmt(adjustment.fuel_amount)}</span>
+                          </div>
+                        )}
+                        {adjustment.other_amount > 0 && (
+                          <div className="flex justify-between items-center py-1 border-b text-red-600">
+                            <span className="text-xs">− {adjustment.other_label || "其他代付"}</span>
+                            <span className="font-mono text-xs">− {fmt(adjustment.other_amount)}</span>
+                          </div>
+                        )}
+                      </div>
+                      {/* Net */}
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between mt-1">
+                        <div>
+                          <p className="text-xs text-green-600 font-semibold">實付給加盟主</p>
+                          {adjustment.note && <p className="text-[10px] text-green-500 mt-0.5">備注：{adjustment.note}</p>}
+                        </div>
+                        <p className="text-xl font-bold text-green-700 font-mono">{fmt(netPayout)}</p>
                       </div>
                     </CardContent>
                   </Card>
-                )}
-                {driverSettlements.length === 0 && (
-                  <div className="text-center py-6 text-gray-400 text-sm">尚無司機業績資料</div>
-                )}
-              </>
-            )}
-            {!settlement && (
-              <div className="text-center py-12 text-gray-400">
-                <DollarSign className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                尚無結算資料
-              </div>
-            )}
-          </div>
-        )}
+
+                  {/* ── Adjustment panel ── */}
+                  {settlementMonth && (
+                    <Card className="border-dashed border-gray-300">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 rounded-t-lg"
+                        onClick={() => setAdjExpanded(p => !p)}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-gray-400" />
+                          扣除項目設定
+                        </span>
+                        {adjExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                      {adjExpanded && (
+                        <CardContent className="px-4 pb-4 space-y-3 border-t">
+                          <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">額外扣除百分比（%）</p>
+                              <input
+                                type="number" min="0" max="100" step="0.5"
+                                className="w-full border rounded px-2 py-1.5 text-sm"
+                                value={adjustment.extra_deduct_rate}
+                                onChange={e => setAdjustment(p => ({ ...p, extra_deduct_rate: Number(e.target.value) }))}
+                                placeholder="例：5（表示5%）"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">油費代付（固定金額）</p>
+                              <input
+                                type="number" min="0" step="1"
+                                className="w-full border rounded px-2 py-1.5 text-sm"
+                                value={adjustment.fuel_amount}
+                                onChange={e => setAdjustment(p => ({ ...p, fuel_amount: Number(e.target.value) }))}
+                                placeholder="例：3000"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">其他代付（固定金額）</p>
+                              <input
+                                type="number" min="0" step="1"
+                                className="w-full border rounded px-2 py-1.5 text-sm"
+                                value={adjustment.other_amount}
+                                onChange={e => setAdjustment(p => ({ ...p, other_amount: Number(e.target.value) }))}
+                                placeholder="例：2000"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">其他代付說明</p>
+                              <input
+                                type="text"
+                                className="w-full border rounded px-2 py-1.5 text-sm"
+                                value={adjustment.other_label}
+                                onChange={e => setAdjustment(p => ({ ...p, other_label: e.target.value }))}
+                                placeholder="例：保費代付"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-xs text-gray-500 mb-1">備注說明</p>
+                              <input
+                                type="text"
+                                className="w-full border rounded px-2 py-1.5 text-sm"
+                                value={adjustment.note}
+                                onChange={e => setAdjustment(p => ({ ...p, note: e.target.value }))}
+                                placeholder="可選填"
+                              />
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                            onClick={saveAdjustment}
+                            disabled={adjSaving}
+                          >
+                            <Save className="h-3.5 w-3.5 mr-1" />{adjSaving ? "儲存中…" : "儲存扣除設定"}
+                          </Button>
+                        </CardContent>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* ── Share link ── */}
+                  {settlementMonth && (
+                    <Card className="border-blue-200 bg-blue-50/40">
+                      <CardContent className="px-4 py-3 space-y-2">
+                        <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+                          <Link className="h-3.5 w-3.5" />可分享報表連結（給加盟夥伴）
+                        </p>
+                        {!shareLink ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+                            onClick={generateShareLink}
+                            disabled={shareLinkLoading}
+                          >
+                            <Link className="h-3.5 w-3.5 mr-1" />{shareLinkLoading ? "產生中…" : "產生報表連結"}
+                          </Button>
+                        ) : (
+                          <div className="flex gap-2 items-center">
+                            <input
+                              readOnly
+                              className="flex-1 border border-blue-200 rounded px-2 py-1 text-xs font-mono bg-white text-blue-800 min-w-0"
+                              value={shareLink}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className={`h-7 text-xs shrink-0 ${shareCopied ? "border-green-400 text-green-600" : "border-blue-300 text-blue-700"}`}
+                              onClick={copyShareLink}
+                            >
+                              {shareCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-blue-500">連結有效期 90 天，收到者無需登入即可查看報表</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Per-driver breakdown */}
+                  {driverSettlements.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-1 pt-3 px-4">
+                        <CardTitle className="text-sm text-gray-700 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-orange-500" />司機業績分布
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b bg-gray-50 text-gray-500">
+                                <th className="text-left p-3">司機</th>
+                                <th className="text-right p-3">路線</th>
+                                <th className="text-right p-3">完成</th>
+                                <th className="text-right p-3">業績</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {driverSettlements.map((d, i) => (
+                                <tr key={i} className="border-b hover:bg-gray-50">
+                                  <td className="p-3 font-medium">
+                                    {d.driver_name}
+                                    {d.vehicle_plate && <span className="text-gray-400 font-mono ml-1">({d.vehicle_plate})</span>}
+                                  </td>
+                                  <td className="p-3 text-right">{d.route_count}</td>
+                                  <td className="p-3 text-right">{d.completed_count}</td>
+                                  <td className="p-3 text-right font-mono text-orange-600 font-semibold">{fmt(d.earnings)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {driverSettlements.length === 0 && (
+                    <div className="text-center py-6 text-gray-400 text-sm">尚無司機業績資料</div>
+                  )}
+                </>
+              )}
+              {!settlement && (
+                <div className="text-center py-12 text-gray-400">
+                  <DollarSign className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  尚無結算資料
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ─── Sub-accounts tab ─── */}
         {tab === "sub-accounts" && (

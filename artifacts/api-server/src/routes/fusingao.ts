@@ -19,10 +19,35 @@ async function ensureFusingaoFleetColumns() {
     sql`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS bank_account TEXT`,
   ];
   for (const stmt of alterStatements) {
-    try {
-      await db.execute(stmt);
-    } catch { /* ignore */ }
+    try { await db.execute(stmt); } catch { /* ignore */ }
   }
+  // Fleet settlement adjustments table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fusingao_fleet_adjustments (
+      id            SERIAL PRIMARY KEY,
+      fleet_id      INTEGER NOT NULL,
+      month         VARCHAR(7) NOT NULL,
+      extra_deduct_rate  NUMERIC(5,2) NOT NULL DEFAULT 0,
+      fuel_amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      other_amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
+      other_label        TEXT,
+      note               TEXT,
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(fleet_id, month)
+    )
+  `);
+  // Fleet report tokens table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fusingao_report_tokens (
+      id         SERIAL PRIMARY KEY,
+      fleet_id   INTEGER NOT NULL,
+      month      VARCHAR(7) NOT NULL,
+      token      VARCHAR(64) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ,
+      UNIQUE(fleet_id, month)
+    )
+  `);
 }
 ensureFusingaoFleetColumns().catch(console.error);
 
@@ -919,7 +944,146 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
       ORDER BY earnings DESC
     `);
 
-    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows });
+    // Adjustments (fuel, extra deduction, other) for this fleet+month
+    const m = month ?? "";
+    const [adj] = m
+      ? await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${m}`).then(r => r.rows as any[])
+      : [null];
+
+    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET/POST /fusingao/fleets/:id/adjustments?month=YYYY-MM — save fuel/deduction adjustments
+fusingaoRouter.get("/fleets/:id/adjustments", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query as Record<string, string>;
+    if (!month) return res.status(400).json({ ok: false, error: "month required" });
+    const [row] = (await db.execute(sql`
+      SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${month}
+    `)).rows as any[];
+    res.json({ ok: true, adjustment: row ?? null });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+fusingaoRouter.post("/fleets/:id/adjustments", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month, extra_deduct_rate = 0, fuel_amount = 0, other_amount = 0, other_label = "", note = "" } = req.body;
+    if (!month) return res.status(400).json({ ok: false, error: "month required" });
+    await db.execute(sql`
+      INSERT INTO fusingao_fleet_adjustments
+        (fleet_id, month, extra_deduct_rate, fuel_amount, other_amount, other_label, note, updated_at)
+      VALUES
+        (${Number(id)}, ${month}, ${Number(extra_deduct_rate)}, ${Number(fuel_amount)}, ${Number(other_amount)}, ${other_label}, ${note}, NOW())
+      ON CONFLICT (fleet_id, month) DO UPDATE SET
+        extra_deduct_rate = EXCLUDED.extra_deduct_rate,
+        fuel_amount       = EXCLUDED.fuel_amount,
+        other_amount      = EXCLUDED.other_amount,
+        other_label       = EXCLUDED.other_label,
+        note              = EXCLUDED.note,
+        updated_at        = NOW()
+    `);
+    const [row] = (await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${month}`)).rows as any[];
+    res.json({ ok: true, adjustment: row });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/report-token?month=YYYY-MM — generate/get shareable report link
+fusingaoRouter.post("/fleets/:id/report-token", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.body as { month: string };
+    if (!month) return res.status(400).json({ ok: false, error: "month required" });
+    // Upsert token
+    const token = randomBytes(24).toString("hex");
+    const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
+    await db.execute(sql`
+      INSERT INTO fusingao_report_tokens (fleet_id, month, token, expires_at)
+      VALUES (${Number(id)}, ${month}, ${token}, ${expires.toISOString()})
+      ON CONFLICT (fleet_id, month) DO UPDATE SET
+        token      = EXCLUDED.token,
+        expires_at = EXCLUDED.expires_at,
+        created_at = NOW()
+    `);
+    res.json({ ok: true, token, month });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/public-report/:token — public, no-auth settlement report
+fusingaoRouter.get("/public-report/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const [row] = (await db.execute(sql`
+      SELECT rt.fleet_id, rt.month, rt.expires_at, f.fleet_name, f.commission_rate
+      FROM fusingao_report_tokens rt
+      JOIN fusingao_fleets f ON f.id = rt.fleet_id
+      WHERE rt.token = ${token}
+    `)).rows as any[];
+    if (!row) return res.status(404).json({ ok: false, error: "無效或已過期的連結" });
+    if (row.expires_at && new Date(row.expires_at) < new Date()) return res.status(410).json({ ok: false, error: "此連結已過期" });
+
+    const { fleet_id, month } = row;
+    const monthFilter = sql`AND to_char(o.created_at,'YYYY-MM') = ${month}`;
+
+    const [summary] = (await db.execute(sql`
+      SELECT
+        COALESCE(SUM(pr.rate_per_trip),0) AS shopee_income,
+        COALESCE(SUM(COALESCE(fl.rate_override, pr.rate_per_trip * (1 - COALESCE(fl.commission_rate,15)/100.0))),0) AS fleet_receive,
+        COALESCE(MAX(fl.commission_rate), 15) AS commission_rate
+      FROM orders o
+      LEFT JOIN fusingao_fleets fl ON fl.id = ${fleet_id}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${fleet_id} ${monthFilter}
+    `)).rows as any[];
+
+    const drivers = (await db.execute(sql`
+      SELECT
+        COALESCE(fd.name,'未指派') AS driver_name, fd.vehicle_plate,
+        COUNT(o.id) AS route_count, COUNT(o.fleet_completed_at) AS completed_count,
+        COALESCE(SUM(COALESCE(fl2.rate_override, pr.rate_per_trip * (1 - COALESCE(fl2.commission_rate,15)/100.0))),0) AS earnings
+      FROM orders o
+      LEFT JOIN fusingao_fleets fl2 ON fl2.id = ${fleet_id}
+      LEFT JOIN fleet_drivers fd ON fd.id = o.fleet_driver_id
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${fleet_id} ${monthFilter}
+      GROUP BY fd.name, fd.vehicle_plate ORDER BY earnings DESC
+    `)).rows as any[];
+
+    const [adj] = (await db.execute(sql`
+      SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${fleet_id} AND month=${month}
+    `)).rows as any[];
+
+    // Route list
+    const routes = (await db.execute(sql`
+      SELECT o.route_id, o.route_prefix, o.station_count, o.fleet_completed_at,
+             pr.rate_per_trip AS shopee_rate, pr.service_type,
+             COALESCE(fl.rate_override, pr.rate_per_trip * (1 - COALESCE(fl.commission_rate,15)/100.0)) AS fleet_rate
+      FROM orders o
+      LEFT JOIN fusingao_fleets fl ON fl.id = ${fleet_id}
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${fleet_id} ${monthFilter}
+      ORDER BY o.created_at ASC
+    `)).rows as any[];
+
+    res.json({
+      ok: true,
+      fleet_name: row.fleet_name,
+      month,
+      summary: summary ?? {},
+      drivers,
+      adjustment: adj ?? null,
+      routes,
+    });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
