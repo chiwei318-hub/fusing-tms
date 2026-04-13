@@ -35,6 +35,7 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 ## Feature Specifications
 
 *   **Admin Panel:** Comprehensive dashboard with tabs for Order Dispatch, Driver/Customer Management, Reporting, Smart Scheduling, AI Analysis (forecasting, auto-dispatch, dynamic pricing), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, and Permission Management. All 40+ tab components are lazy-loaded via `React.lazy()` + `Suspense` for minimal initial bundle size.
+*   **Bundle Optimization:** `App.tsx` uses `React.lazy()` for all portal pages (Admin, FranchiseFleetPortal, FusingaoFleetPortal, EnterprisePortal, Landing, all sub-portal pages). Main bundle reduced from 3.3 MB → 893 KB (73% reduction). Each portal loads as a separate async chunk.
 *   **Permission Management:** Role-based access control with customizable permissions and audit logging, including zone-scoped permissions.
 *   **Order Management:** Supports multi-stop deliveries, full order editing by administrators, and a Quick Order mode for guest users. Includes auto-dispatch, a Dispatch Suggestion Engine, and an Auto-Routing Rules Engine.
 *   **Fleet & Driver Management:** Carpool panel, Outsourcing System for partner fleets, Fleet Onboarding System, Driver Rating System, Driver Income Dashboard, and GPS/Service Area/Capability Settings for drivers.

@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, lazy, Suspense, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,44 +9,51 @@ import { DriverLayout } from "@/components/DriverLayout";
 import { GlobalHeader } from "@/components/GlobalHeader";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import NotFound from "@/pages/not-found";
-import Landing from "@/pages/Landing";
+// ─── Static imports (always on the critical path) ───────────────────────────
 import OrderForm from "@/pages/OrderForm";
 import OrderList from "@/pages/OrderList";
 import OrderReport from "@/pages/OrderReport";
 import OrderDetail from "@/pages/OrderDetail";
-import Admin from "@/pages/Admin";
 import Fees from "@/pages/Fees";
-import CustomerHome from "@/pages/customer/CustomerHome";
-import CustomerTrack from "@/pages/customer/CustomerTrack";
-import CustomerOrder from "@/pages/customer/CustomerOrder";
-import CustomerNotificationsPage from "@/pages/customer/CustomerNotificationsPage";
-import DriverHome from "@/pages/driver/DriverHome";
-import DriverTasks from "@/pages/driver/DriverTasks";
-import DriverTaskDetail from "@/pages/driver/DriverTaskDetail";
-import DriverGrab from "@/pages/driver/DriverGrab";
-import DriverIncome from "@/pages/driver/DriverIncome";
-import EnterprisePortal from "@/pages/enterprise/EnterprisePortal";
 import LoginPortal from "@/pages/LoginPortal";
 import CustomerLogin from "@/pages/login/CustomerLogin";
 import DriverLogin from "@/pages/login/DriverLogin";
 import AdminLogin from "@/pages/login/AdminLogin";
-import LineCallback from "@/pages/login/LineCallback";
-import AIChat from "@/pages/AIChat";
-import DriverJoinPage from "@/pages/DriverJoinPage";
-import FleetJoinPage from "@/pages/FleetJoinPage";
-import QuickOrder from "@/pages/QuickOrder";
-import QuickTrack from "@/pages/QuickTrack";
-import CustomerRegister from "@/pages/register/CustomerRegister";
-import EnterpriseRegister from "@/pages/register/EnterpriseRegister";
-import DriverRegister from "@/pages/register/DriverRegister";
-import InvoicePrint from "@/pages/InvoicePrint";
-import QuotePage from "@/pages/QuotePage";
-import FusingaoPortal from "@/pages/FusingaoPortal";
 import FleetLogin from "@/pages/fleet/FleetLogin";
-import FusingaoFleetPortal from "@/pages/fleet/FusingaoFleetPortal";
-import PublicFleetReport from "@/pages/fleet/PublicFleetReport";
 import FranchiseFleetLogin from "@/pages/franchiseFleet/FranchiseFleetLogin";
-import FranchiseFleetPortal from "@/pages/franchiseFleet/FranchiseFleetPortal";
+import LineCallback from "@/pages/login/LineCallback";
+
+// ─── Lazy imports (code-split by portal) ─────────────────────────────────────
+const PageFallback = () => (
+  <div className="flex items-center justify-center h-dvh text-gray-400 text-sm">載入中…</div>
+);
+
+const Admin              = lazy(() => import("@/pages/Admin"));
+const EnterprisePortal   = lazy(() => import("@/pages/enterprise/EnterprisePortal"));
+const FusingaoPortal     = lazy(() => import("@/pages/FusingaoPortal"));
+const FusingaoFleetPortal= lazy(() => import("@/pages/fleet/FusingaoFleetPortal"));
+const PublicFleetReport  = lazy(() => import("@/pages/fleet/PublicFleetReport"));
+const FranchiseFleetPortal= lazy(() => import("@/pages/franchiseFleet/FranchiseFleetPortal"));
+const AIChat             = lazy(() => import("@/pages/AIChat"));
+const QuotePage          = lazy(() => import("@/pages/QuotePage"));
+const InvoicePrint       = lazy(() => import("@/pages/InvoicePrint"));
+const QuickOrder         = lazy(() => import("@/pages/QuickOrder"));
+const QuickTrack         = lazy(() => import("@/pages/QuickTrack"));
+const Landing            = lazy(() => import("@/pages/Landing"));
+const DriverJoinPage     = lazy(() => import("@/pages/DriverJoinPage"));
+const FleetJoinPage      = lazy(() => import("@/pages/FleetJoinPage"));
+const CustomerRegister   = lazy(() => import("@/pages/register/CustomerRegister"));
+const EnterpriseRegister = lazy(() => import("@/pages/register/EnterpriseRegister"));
+const DriverRegister     = lazy(() => import("@/pages/register/DriverRegister"));
+const CustomerHome       = lazy(() => import("@/pages/customer/CustomerHome"));
+const CustomerTrack      = lazy(() => import("@/pages/customer/CustomerTrack"));
+const CustomerOrder      = lazy(() => import("@/pages/customer/CustomerOrder"));
+const CustomerNotificationsPage = lazy(() => import("@/pages/customer/CustomerNotificationsPage"));
+const DriverHome         = lazy(() => import("@/pages/driver/DriverHome"));
+const DriverTasks        = lazy(() => import("@/pages/driver/DriverTasks"));
+const DriverTaskDetail   = lazy(() => import("@/pages/driver/DriverTaskDetail"));
+const DriverGrab         = lazy(() => import("@/pages/driver/DriverGrab"));
+const DriverIncome       = lazy(() => import("@/pages/driver/DriverIncome"));
 
 // ─── Global ErrorBoundary ────────────────────────────────────────────────────
 
@@ -270,7 +277,9 @@ function App() {
         <AuthProvider>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <AppRouter />
+              <Suspense fallback={<PageFallback />}>
+                <AppRouter />
+              </Suspense>
             </WouterRouter>
             <Toaster />
           </TooltipProvider>
