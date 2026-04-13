@@ -250,69 +250,99 @@ function normaliseDate(raw: string): string | null {
   return null;
 }
 
+/** RFC-4180 compliant CSV field splitter — handles quoted fields with commas and newlines. */
+function splitCsv(line: string): string[] {
+  const fields: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else { inQ = !inQ; }
+    } else if (ch === ',' && !inQ) {
+      fields.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur.trim());
+  return fields;
+}
+
 function parseSheetRoutes(text: string): SheetRoute[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
+  // Strip BOM if present
+  const clean = text.replace(/^\uFEFF/, "");
+  const allLines = clean.split(/\r?\n/);
 
-  const splitCsv = (line: string) =>
-    line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+  // Filter truly blank lines but keep index tracking; find first non-empty line as header
+  const nonEmpty = allLines.map((l, i) => ({ l, i })).filter(({ l }) => l.trim());
+  if (nonEmpty.length < 2) return [];
 
-  const headers = splitCsv(lines[0]);
+  // Try each candidate header row (up to first 5 non-empty lines) in case leading rows are titles
+  for (let hi = 0; hi < Math.min(5, nonEmpty.length - 1); hi++) {
+    const headers = splitCsv(nonEmpty[hi].l).map(h =>
+      h.replace(/\s+/g, "").toLowerCase()
+    );
+    const rawHeaders = splitCsv(nonEmpty[hi].l).map(h => h.trim());
+    const dataLines = nonEmpty.slice(hi + 1);
 
-  // ── Strategy 1: Horizontal (routes as rows, dates as column headers) ──
-  // Detect column headers that look like dates in any supported format
-  const dateColIndices: { idx: number; date: string }[] = [];
-  headers.forEach((h, i) => {
-    const d = normaliseDate(h);
-    if (d) dateColIndices.push({ idx: i, date: d });
-  });
+    // ── Strategy 1: Horizontal (route rows × date columns) ──
+    const dateColIndices: { idx: number; date: string }[] = [];
+    rawHeaders.forEach((h, i) => {
+      const d = normaliseDate(h);
+      if (d) dateColIndices.push({ idx: i, date: d });
+    });
 
-  const routeColIdx = headers.findIndex(h =>
-    /路線|編號|route|route_id|route_no/i.test(h)
-  );
+    const routeColIdx = headers.findIndex(h =>
+      /路線|路线|編號|编号|route/.test(h)
+    );
 
-  if (dateColIndices.length > 0 && routeColIdx >= 0) {
-    // Horizontal mode
-    const routes: SheetRoute[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = splitCsv(lines[i]);
-      const routeLabel = cols[routeColIdx]?.trim();
-      if (!routeLabel) continue;
-      const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
-      for (const { idx, date } of dateColIndices) {
-        const cell = cols[idx]?.trim();
-        if (!cell || cell === "0" || cell.toLowerCase() === "n" || cell === "-") continue;
+    if (dateColIndices.length > 0 && routeColIdx >= 0) {
+      const routes: SheetRoute[] = [];
+      for (const { l } of dataLines) {
+        const cols = splitCsv(l);
+        const routeLabel = cols[routeColIdx]?.trim();
+        if (!routeLabel) continue;
+        const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
+        for (const { idx, date } of dateColIndices) {
+          const cell = cols[idx]?.trim();
+          if (!cell || cell === "0" || /^[nN\-x×✗]$/.test(cell)) continue;
+          routes.push({ route_label: routeLabel, route_date: date, prefix });
+        }
+      }
+      if (routes.length > 0) return routes;
+    }
+
+    // ── Strategy 2: Vertical (one row per route per date) ──
+    const colIdx = (patterns: RegExp[]) => {
+      for (const pat of patterns) {
+        const i = headers.findIndex(h => pat.test(h));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+
+    const routeCol = colIdx([/路線|路线|路号|route/]);
+    const dateCol  = colIdx([/日期|date|出車|出车|trip/]);
+
+    if (routeCol >= 0 && dateCol >= 0) {
+      const routes: SheetRoute[] = [];
+      for (const { l } of dataLines) {
+        const cols = splitCsv(l);
+        const routeLabel = cols[routeCol]?.trim();
+        const dateRaw    = cols[dateCol]?.trim();
+        if (!routeLabel || !dateRaw) continue;
+        const date = normaliseDate(dateRaw) ?? dateRaw;
+        const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
         routes.push({ route_label: routeLabel, route_date: date, prefix });
       }
+      if (routes.length > 0) return routes;
     }
-    if (routes.length > 0) return routes;
   }
 
-  // ── Strategy 2: Vertical (one row per route per date) ──
-  const colIdx = (names: string[]) => {
-    for (const n of names) {
-      const i = headers.findIndex(h => h.toLowerCase().includes(n));
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-
-  const routeCol = colIdx(["路線號碼", "路線", "route", "route_id"]);
-  const dateCol  = colIdx(["日期", "出車日期", "date", "trip_date"]);
-
-  if (routeCol < 0 || dateCol < 0) return [];
-
-  const routes: SheetRoute[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = splitCsv(lines[i]);
-    const routeLabel = cols[routeCol]?.trim();
-    const dateRaw    = cols[dateCol]?.trim();
-    if (!routeLabel || !dateRaw) continue;
-    const date = normaliseDate(dateRaw) ?? dateRaw;
-    const prefix = routeLabel.match(/^([A-Z]{2})/)?.[1] ?? null;
-    routes.push({ route_label: routeLabel, route_date: date, prefix });
-  }
-  return routes;
+  return [];
 }
 
 dispatchOrdersRouter.post("/import-sheet", async (req, res) => {
