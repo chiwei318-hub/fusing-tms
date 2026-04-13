@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 
 const BASE_URL = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
@@ -2287,12 +2288,12 @@ export default function FranchiseFleetPortal() {
             ))}
           </TabsList>
 
-          <TabsContent value="dashboard"><DashboardTab /></TabsContent>
-          <TabsContent value="drivers"><DriversTab /></TabsContent>
-          <TabsContent value="pricing"><PricingTab /></TabsContent>
-          <TabsContent value="leaves"><LeavesTab /></TabsContent>
-          <TabsContent value="salary"><SalaryTab /></TabsContent>
-          <TabsContent value="info"><FleetInfoTab /></TabsContent>
+          <TabsContent value="dashboard"><TabErrorBoundary tabName="即時調度牆"><DashboardTab /></TabErrorBoundary></TabsContent>
+          <TabsContent value="drivers"><TabErrorBoundary tabName="司機管理"><DriversTab /></TabErrorBoundary></TabsContent>
+          <TabsContent value="pricing"><TabErrorBoundary tabName="計費規則"><PricingTab /></TabErrorBoundary></TabsContent>
+          <TabsContent value="leaves"><TabErrorBoundary tabName="請假管理"><LeavesTab /></TabErrorBoundary></TabsContent>
+          <TabsContent value="salary"><TabErrorBoundary tabName="薪資結算"><SalaryTab /></TabErrorBoundary></TabsContent>
+          <TabsContent value="info"><TabErrorBoundary tabName="車行資訊"><FleetInfoTab /></TabErrorBoundary></TabsContent>
         </Tabs>
       </div>
     </div>

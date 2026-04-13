@@ -153,31 +153,35 @@ export async function runFusingaoSheetSync(configId: number): Promise<{
   const rows = parseBillingCsv(text);
   let upserted = 0; let skipped = 0; let errors = 0;
 
-  for (const r of rows) {
-    try {
-      const driverId = r.driver_id || ''; // store '' not NULL for unique index
-      const result = await db.execute(sql`
-        INSERT INTO fusingao_billing_trips
-          (billing_month, billing_type, fleet_name, warehouse, area, route_no, vehicle_size,
-           driver_id, trip_date, amount, import_source, last_updated_at)
-        VALUES (
-          ${r.billing_month}, ${r.billing_type}, ${r.fleet_name||null}, ${r.warehouse||null},
-          ${r.area||null}, ${r.route_no}, ${r.vehicle_size||null}, ${driverId},
-          ${r.trip_date}, ${r.amount}, 'sheet', NOW()
-        )
-        ON CONFLICT (billing_month, billing_type, route_no, driver_id, trip_date)
-        DO UPDATE SET
-          amount = EXCLUDED.amount,
-          fleet_name = EXCLUDED.fleet_name,
-          vehicle_size = EXCLUDED.vehicle_size,
-          import_source = 'sheet',
-          last_updated_at = NOW()
-        RETURNING id
-      `);
-      if ((result.rows as any[]).length > 0) upserted++;
-      else skipped++;
-    } catch (e: any) {
-      console.warn("[FusingaoSheetSync] row error:", e.message);
+  // Parallel upserts — all rows sent concurrently instead of sequentially
+  const settled = await Promise.allSettled(rows.map(async (r) => {
+    const driverId = r.driver_id || ''; // store '' not NULL for unique index
+    const result = await db.execute(sql`
+      INSERT INTO fusingao_billing_trips
+        (billing_month, billing_type, fleet_name, warehouse, area, route_no, vehicle_size,
+         driver_id, trip_date, amount, import_source, last_updated_at)
+      VALUES (
+        ${r.billing_month}, ${r.billing_type}, ${r.fleet_name||null}, ${r.warehouse||null},
+        ${r.area||null}, ${r.route_no}, ${r.vehicle_size||null}, ${driverId},
+        ${r.trip_date}, ${r.amount}, 'sheet', NOW()
+      )
+      ON CONFLICT (billing_month, billing_type, route_no, driver_id, trip_date)
+      DO UPDATE SET
+        amount = EXCLUDED.amount,
+        fleet_name = EXCLUDED.fleet_name,
+        vehicle_size = EXCLUDED.vehicle_size,
+        import_source = 'sheet',
+        last_updated_at = NOW()
+      RETURNING id
+    `);
+    return (result.rows as any[]).length > 0 ? 'upserted' : 'skipped';
+  }));
+
+  for (const s of settled) {
+    if (s.status === 'fulfilled') {
+      if (s.value === 'upserted') upserted++; else skipped++;
+    } else {
+      console.warn("[FusingaoSheetSync] row error:", s.reason?.message);
       errors++;
     }
   }

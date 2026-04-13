@@ -766,38 +766,42 @@ router.post("/enterprise/:id/orders/bulk-import", upload.single("file"), async (
       return res.json({ total: rows.length, valid: validCount, errors: errorCount, rows: results });
     }
 
-    // Commit valid rows
-    let inserted = 0;
+    // Commit valid rows — single batch INSERT for performance
     const now = new Date();
-    for (const r of results) {
-      if (!r.valid) continue;
-      const p = r.preview;
-      const pickupDt = p.pickup_date
-        ? new Date(`${p.pickup_date}T${p.pickup_time || "09:00"}:00`)
-        : new Date(now.getTime() + 86400000);
-      const deliveryDt = p.delivery_date
-        ? new Date(`${p.delivery_date}T${p.delivery_time || "18:00"}:00`)
-        : new Date(pickupDt.getTime() + 28800000);
+    const insertValues = results
+      .filter(r => r.valid)
+      .map(r => {
+        const p = r.preview;
+        const pickupDt = p.pickup_date
+          ? new Date(`${p.pickup_date}T${p.pickup_time || "09:00"}:00`)
+          : new Date(now.getTime() + 86400000);
+        const deliveryDt = p.delivery_date
+          ? new Date(`${p.delivery_date}T${p.delivery_time || "18:00"}:00`)
+          : new Date(pickupDt.getTime() + 28800000);
+        return {
+          customerName: acc.companyName,
+          customerPhone: acc.phone ?? "",
+          pickupAddress: p.pickup_address,
+          deliveryAddress: p.delivery_address,
+          cargoDescription: p.cargo_description || null,
+          pickupTime: pickupDt,
+          deliveryTime: deliveryDt,
+          requiredVehicleType: p.vehicle_type || null,
+          notes: [
+            p.receiver_name ? `收件人：${p.receiver_name}` : "",
+            p.receiver_phone ? `電話：${p.receiver_phone}` : "",
+            p.notes,
+          ].filter(Boolean).join("；") || null,
+          status: "pending" as const,
+          source: "enterprise",
+          enterpriseId,
+        };
+      });
 
-      await db.insert(ordersTable).values({
-        customerName: acc.companyName,
-        customerPhone: acc.phone ?? "",
-        pickupAddress: p.pickup_address,
-        deliveryAddress: p.delivery_address,
-        cargoDescription: p.cargo_description || null,
-        pickupTime: pickupDt,
-        deliveryTime: deliveryDt,
-        requiredVehicleType: p.vehicle_type || null,
-        notes: [
-          p.receiver_name ? `收件人：${p.receiver_name}` : "",
-          p.receiver_phone ? `電話：${p.receiver_phone}` : "",
-          p.notes,
-        ].filter(Boolean).join("；") || null,
-        status: "pending",
-        source: "enterprise",
-        enterpriseId,
-      } as any);
-      inserted++;
+    let inserted = 0;
+    if (insertValues.length > 0) {
+      await db.insert(ordersTable).values(insertValues as any);
+      inserted = insertValues.length;
     }
 
     await createNotification(enterpriseId, null, "import", "批量匯入完成",

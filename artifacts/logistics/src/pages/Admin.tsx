@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect, lazy, Suspense } from "react";
+import { TabErrorBoundary } from "@/components/TabErrorBoundary";
 import { useQueryClient } from "@tanstack/react-query";
 import { ImportDialog } from "@/components/ImportDialog";
 import { OnlineUsersPanel } from "@/components/OnlineUsersPanel";
@@ -1560,6 +1561,7 @@ export default function Admin() {
 
 
 
+      <TabErrorBoundary tabName="後台功能">
       <Suspense fallback={<div className="py-16 text-center text-gray-400 text-sm">載入中…</div>}>
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); }} className="w-full">
         {/* ── 主要 5 大類 ── */}
@@ -3991,6 +3993,7 @@ export default function Admin() {
         </TabsContent>
       </Tabs>
       </Suspense>
+      </TabErrorBoundary>
 
       <ImportDialog
         open={importDialogOpen}
