@@ -289,6 +289,21 @@ async function ensureTestDriverAccount() {
   }
 }
 
+async function ensureFusingaoFleetTestAccount() {
+  try {
+    const FIXED_SALT = 'd2e4f6a8b0c1d3e5f7a9b1c3d5e7f9a1';
+    const hash = hashPassword('test1234', FIXED_SALT);
+    await db.execute(sql`
+      INSERT INTO fusingao_fleets (fleet_name, username, password, is_active)
+      VALUES ('台北測試車隊', 'fleet01', ${hash}, true)
+      ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password, is_active = true
+    `);
+    console.log('[FusingaoFleet] fleet01 account ensured');
+  } catch (e) {
+    console.error('[FusingaoFleet] error:', e);
+  }
+}
+
 seedDefaultData().catch(console.error);
 if (process.env.NODE_ENV !== 'production') {
   ensureTestAccounts().catch(console.error);
@@ -296,6 +311,7 @@ if (process.env.NODE_ENV !== 'production') {
 ensureFusingaoAccounts().catch(console.error);
 ensureFranchiseeAccounts().catch(console.error);
 ensureTestDriverAccount().catch(console.error);
+ensureFusingaoFleetTestAccount().catch(console.error);
 ensureShopeeSettlementTables().catch(console.error);
 ensureFleetSubAccountsTable().catch(console.error);
 
