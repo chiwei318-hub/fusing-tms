@@ -209,7 +209,7 @@ async function syncRoutes(
       if (route.stops.length === 0) continue;
 
       const dup = await pool.query(
-        `SELECT id FROM orders WHERE route_id = $1 LIMIT 1`,
+        `SELECT id FROM orders WHERE route_id = $1 AND created_at >= NOW() - INTERVAL '7 days' LIMIT 1`,
         [route.routeId]
       );
       if (dup.rows.length > 0) {
