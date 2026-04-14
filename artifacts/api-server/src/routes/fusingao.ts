@@ -102,20 +102,24 @@ fusingaoRouter.get("/summary", async (req, res) => {
         COUNT(CASE WHEN date_trunc('month', created_at)=date_trunc('month', NOW()) THEN 1 END) AS this_month_routes,
         -- last month
         COUNT(CASE WHEN date_trunc('month', created_at)=date_trunc('month', NOW()-interval '1 month') THEN 1 END) AS last_month_routes,
-        -- total Shopee income (all time)
+        -- total Shopee income (all time) — from billing_trips if available, fallback to prefix_rates
         COALESCE((
-          SELECT SUM(pr.rate_per_trip)
-          FROM orders o2
-          JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix
-          WHERE o2.route_id IS NOT NULL
+          SELECT COALESCE(
+            NULLIF((SELECT SUM(amount::numeric) FROM fusingao_billing_trips WHERE billing_month ~ '^\d{4}-(0[1-9]|1[0-2])$'), 0),
+            (SELECT SUM(pr.rate_per_trip) FROM orders o2 JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix WHERE o2.route_id IS NOT NULL)
+          )
         ),0) AS total_shopee_income,
-        -- this month income
+        -- this month income — from billing_trips if available, fallback to prefix_rates
         COALESCE((
-          SELECT SUM(pr.rate_per_trip)
-          FROM orders o2
-          JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix
-          WHERE o2.route_id IS NOT NULL
-            AND date_trunc('month',o2.created_at)=date_trunc('month',NOW())
+          SELECT COALESCE(
+            NULLIF((
+              SELECT SUM(amount::numeric) FROM fusingao_billing_trips
+              WHERE billing_month = to_char(NOW(),'YYYY-MM')
+            ), 0),
+            (SELECT SUM(pr.rate_per_trip) FROM orders o2
+             JOIN route_prefix_rates pr ON pr.prefix=o2.route_prefix
+             WHERE o2.route_id IS NOT NULL AND date_trunc('month',o2.created_at)=date_trunc('month',NOW()))
+          )
         ),0) AS this_month_income
       FROM orders
       WHERE route_id IS NOT NULL
@@ -842,14 +846,131 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
 //  SETTLEMENT CHAIN: 福興高 → Platform (抽成) → Fleet → Fleet Driver
 // ════════════════════════════════════════════════════════════════════════════
 
+// GET /fusingao/billing-months — months available in fusingao_billing_trips
+fusingaoRouter.get("/billing-months", async (req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        billing_month                          AS month,
+        billing_month                          AS month_label,
+        COUNT(DISTINCT route_no)               AS route_count,
+        COALESCE(SUM(amount::numeric), 0)      AS total_income
+      FROM fusingao_billing_trips
+      WHERE billing_month ~ '^\d{4}-\d{2}$'
+      GROUP BY billing_month
+      ORDER BY billing_month DESC
+    `);
+    res.json({ ok: true, months: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/settlement?month=YYYY-MM  — admin view of full settlement chain
+// Income source: fusingao_billing_trips (actual billed amounts from Google Sheets)
 fusingaoRouter.get("/settlement", async (req, res) => {
   try {
     const { month } = req.query as Record<string, string>;
-    const monthFilter    = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
-    const monthFilterWh  = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
 
-    // Top-level summary (all route orders regardless of fleet assignment)
+    // Check if billing data exists for this month
+    const [billingCheck] = await db.execute(sql`
+      SELECT COUNT(*) AS cnt FROM fusingao_billing_trips
+      WHERE billing_month = ${month ?? ""}
+    `).then(r => r.rows as any[]);
+    const hasBillingData = Number(billingCheck?.cnt ?? 0) > 0;
+
+    if (hasBillingData && month) {
+      // ── Billing-trips-based calculation ──────────────────────────────────
+      // Top-level summary
+      const [summary] = await db.execute(sql`
+        WITH billing AS (
+          SELECT route_no, COALESCE(SUM(amount::numeric), 0) AS income
+          FROM fusingao_billing_trips
+          WHERE billing_month = ${month}
+          GROUP BY route_no
+        ),
+        route_fleet AS (
+          SELECT DISTINCT ON (route_id) route_id, fusingao_fleet_id
+          FROM orders WHERE route_id IS NOT NULL
+          ORDER BY route_id, created_at DESC
+        )
+        SELECT
+          COUNT(DISTINCT b.route_no)                                                              AS total_routes,
+          COALESCE(SUM(b.income), 0)                                                             AS platform_income,
+          COALESCE(SUM(b.income * (1 - COALESCE(f.commission_rate, 15)::numeric / 100.0)), 0)   AS fleet_payout,
+          COALESCE(SUM(b.income * COALESCE(f.commission_rate, 15)::numeric / 100.0), 0)         AS platform_commission
+        FROM billing b
+        LEFT JOIN route_fleet rf ON rf.route_id = b.route_no
+        LEFT JOIN fusingao_fleets f ON f.id = rf.fusingao_fleet_id
+      `).then(r => r.rows as any[]);
+
+      // Per-fleet breakdown
+      const fleetsRows = await db.execute(sql`
+        WITH billing AS (
+          SELECT route_no, COALESCE(SUM(amount::numeric), 0) AS income
+          FROM fusingao_billing_trips
+          WHERE billing_month = ${month}
+          GROUP BY route_no
+        ),
+        route_fleet AS (
+          SELECT DISTINCT ON (route_id) route_id, fusingao_fleet_id
+          FROM orders WHERE route_id IS NOT NULL
+          ORDER BY route_id, created_at DESC
+        ),
+        fleet_billing AS (
+          SELECT rf.fusingao_fleet_id AS fleet_id, b.route_no, b.income
+          FROM billing b
+          LEFT JOIN route_fleet rf ON rf.route_id = b.route_no
+        )
+        SELECT
+          f.id, f.fleet_name, f.commission_rate,
+          COUNT(DISTINCT fb.route_no)                                                              AS route_count,
+          COALESCE(SUM(fb.income), 0)                                                            AS shopee_income,
+          COALESCE(SUM(fb.income * (1 - COALESCE(f.commission_rate, 15)::numeric / 100.0)), 0)  AS fleet_payout,
+          COALESCE(SUM(fb.income * COALESCE(f.commission_rate, 15)::numeric / 100.0), 0)        AS commission_earned,
+          0 AS billed_count,
+          0 AS completed_count
+        FROM fusingao_fleets f
+        LEFT JOIN fleet_billing fb ON fb.fleet_id = f.id
+        GROUP BY f.id, f.fleet_name, f.commission_rate
+        ORDER BY shopee_income DESC
+      `);
+
+      // Unassigned routes (billing trips with no fleet assignment in orders)
+      const [unassigned] = await db.execute(sql`
+        WITH billing AS (
+          SELECT route_no, COALESCE(SUM(amount::numeric), 0) AS income
+          FROM fusingao_billing_trips
+          WHERE billing_month = ${month}
+          GROUP BY route_no
+        ),
+        route_fleet AS (
+          SELECT DISTINCT ON (route_id) route_id, fusingao_fleet_id
+          FROM orders WHERE route_id IS NOT NULL
+          ORDER BY route_id, created_at DESC
+        )
+        SELECT
+          COUNT(DISTINCT b.route_no)  AS route_count,
+          COALESCE(SUM(b.income), 0)  AS shopee_income,
+          COALESCE(SUM(b.income), 0)  AS fleet_payout,
+          0                           AS commission_earned,
+          0 AS billed_count, 0 AS completed_count
+        FROM billing b
+        LEFT JOIN route_fleet rf ON rf.route_id = b.route_no
+        WHERE rf.fusingao_fleet_id IS NULL
+      `).then(r => r.rows as any[]);
+
+      const fleets = [...fleetsRows.rows] as any[];
+      if (Number(unassigned?.route_count ?? 0) > 0) {
+        fleets.push({ id: -1, fleet_name: "（未指派車隊）", commission_rate: "0", ...unassigned });
+      }
+      return res.json({ ok: true, summary: summary ?? {}, fleets, source: "billing_trips" });
+    }
+
+    // ── Fallback: route_prefix_rates based (for months with no billing data) ──
+    const monthFilter   = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+    const monthFilterWh = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
+
     const [summary] = await db.execute(sql`
       SELECT
         COUNT(o.id)                              AS total_routes,
@@ -862,7 +983,6 @@ fusingaoRouter.get("/settlement", async (req, res) => {
       WHERE o.route_id IS NOT NULL ${monthFilterWh}
     `).then(r => r.rows as any[]);
 
-    // Per-fleet breakdown (orders assigned to a fleet)
     const fleetsRows = await db.execute(sql`
       SELECT
         f.id, f.fleet_name, f.commission_rate,
@@ -879,7 +999,6 @@ fusingaoRouter.get("/settlement", async (req, res) => {
       ORDER BY shopee_income DESC
     `);
 
-    // Unassigned routes (no fusingao_fleet_id) — show as a special row if any exist
     const [unassigned] = await db.execute(sql`
       SELECT
         COUNT(o.id)                       AS route_count,
@@ -895,40 +1014,112 @@ fusingaoRouter.get("/settlement", async (req, res) => {
 
     const fleets = [...fleetsRows.rows] as any[];
     if (Number(unassigned?.route_count ?? 0) > 0) {
-      fleets.push({
-        id: -1,
-        fleet_name: "（未指派車隊）",
-        commission_rate: "0",
-        ...unassigned,
-      });
+      fleets.push({ id: -1, fleet_name: "（未指派車隊）", commission_rate: "0", ...unassigned });
     }
-
-    res.json({ ok: true, summary: summary ?? {}, fleets });
+    res.json({ ok: true, summary: summary ?? {}, fleets, source: "prefix_rates" });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
 // GET /fusingao/fleets/:id/settlement?month=YYYY-MM — fleet-level settlement (for fleet portal)
+// Income source: fusingao_billing_trips when available, fallback to route_prefix_rates
 fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
   try {
     const { id } = req.params;
     const { month } = req.query as Record<string, string>;
+
+    // Check if billing data exists for this fleet+month
+    const [billingCheck] = await db.execute(sql`
+      SELECT COUNT(*) AS cnt
+      FROM fusingao_billing_trips bt
+      JOIN (
+        SELECT DISTINCT ON (route_id) route_id
+        FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id = ${Number(id)}
+        ORDER BY route_id, created_at DESC
+      ) o ON o.route_id = bt.route_no
+      WHERE bt.billing_month = ${month ?? ""}
+    `).then(r => r.rows as any[]);
+    const hasBillingData = Number(billingCheck?.cnt ?? 0) > 0;
+
+    if (hasBillingData && month) {
+      // ── Billing-trips-based ───────────────────────────────────────────────
+      const [fleetInfo] = await db.execute(sql`SELECT commission_rate FROM fusingao_fleets WHERE id = ${Number(id)}`).then(r => r.rows as any[]);
+      const commRate = Number(fleetInfo?.commission_rate ?? 15);
+
+      const [summary] = await db.execute(sql`
+        WITH billing AS (
+          SELECT bt.route_no, COALESCE(SUM(bt.amount::numeric), 0) AS income
+          FROM fusingao_billing_trips bt
+          JOIN (
+            SELECT DISTINCT ON (route_id) route_id
+            FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id = ${Number(id)}
+            ORDER BY route_id, created_at DESC
+          ) o ON o.route_id = bt.route_no
+          WHERE bt.billing_month = ${month}
+          GROUP BY bt.route_no
+        )
+        SELECT
+          COALESCE(SUM(income), 0)                               AS shopee_income,
+          COALESCE(SUM(income * (1 - ${commRate}::numeric / 100.0)), 0) AS fleet_receive,
+          ${commRate}                                            AS commission_rate
+        FROM billing
+      `).then(r => r.rows as any[]);
+
+      // Per-driver breakdown via orders (for driver assignment) joined with billing
+      const drivers = await db.execute(sql`
+        WITH route_drivers AS (
+          SELECT DISTINCT ON (route_id) route_id, fleet_driver_id
+          FROM orders
+          WHERE route_id IS NOT NULL AND fusingao_fleet_id = ${Number(id)}
+          ORDER BY route_id, created_at DESC
+        ),
+        billing AS (
+          SELECT bt.route_no, COALESCE(SUM(bt.amount::numeric), 0) AS income
+          FROM fusingao_billing_trips bt
+          JOIN route_drivers rd ON rd.route_id = bt.route_no
+          WHERE bt.billing_month = ${month}
+          GROUP BY bt.route_no, rd.fleet_driver_id
+        ),
+        driver_billing AS (
+          SELECT rd.fleet_driver_id, SUM(b.income) AS total_income, COUNT(DISTINCT rd.route_id) AS route_count
+          FROM route_drivers rd
+          LEFT JOIN billing b ON b.route_no = rd.route_id
+          GROUP BY rd.fleet_driver_id
+        )
+        SELECT
+          COALESCE(fd.name, '未指派') AS driver_name,
+          fd.vehicle_plate,
+          COALESCE(db2.route_count, 0)                                              AS route_count,
+          0                                                                          AS completed_count,
+          COALESCE(db2.total_income * (1 - ${commRate}::numeric / 100.0), 0)       AS earnings
+        FROM driver_billing db2
+        LEFT JOIN fleet_drivers fd ON fd.id = db2.fleet_driver_id
+        ORDER BY earnings DESC
+      `);
+
+      const m = month ?? "";
+      const [adj] = m
+        ? await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${m}`).then(r => r.rows as any[])
+        : [null];
+
+      return res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "billing_trips" });
+    }
+
+    // ── Fallback: route_prefix_rates ─────────────────────────────────────────
     const monthFilter = month ? sql`AND to_char(o.created_at,'YYYY-MM') = ${month}` : sql``;
 
-    // Summary
     const [summary] = await db.execute(sql`
       SELECT
         COALESCE(SUM(pr.rate_per_trip),0)  AS shopee_income,
         COALESCE(SUM(COALESCE(fl.rate_override, pr.rate_per_trip * (1 - COALESCE(fl.commission_rate,15)/100.0))),0) AS fleet_receive,
-        COALESCE(MAX(fl.commission_rate), 15)    AS commission_rate
+        COALESCE(MAX(fl.commission_rate), 15) AS commission_rate
       FROM orders o
       LEFT JOIN fusingao_fleets fl ON fl.id = ${Number(id)}
       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
       WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id = ${Number(id)} ${monthFilter}
     `).then(r => r.rows as any[]);
 
-    // Per-driver breakdown
     const drivers = await db.execute(sql`
       SELECT
         COALESCE(fd.name,'未指派') AS driver_name,
@@ -945,13 +1136,12 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
       ORDER BY earnings DESC
     `);
 
-    // Adjustments (fuel, extra deduction, other) for this fleet+month
     const m = month ?? "";
     const [adj] = m
       ? await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${m}`).then(r => r.rows as any[])
       : [null];
 
-    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null });
+    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "prefix_rates" });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

@@ -40,6 +40,7 @@ interface SettlementData {
   ok: boolean;
   summary: Summary;
   fleets: FleetRow[];
+  source?: "billing_trips" | "prefix_rates";
 }
 
 interface FleetDetail {
@@ -292,15 +293,54 @@ export default function SettlementChainTab({
   const [data, setData] = useState<SettlementData | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Self-load month list from /fusingao/monthly
+  // Self-load month list: merge order months (/fusingao/monthly) + billing months (/fusingao/billing-months)
   useEffect(() => {
-    fetch(apiUrl("/fusingao/monthly")).then(r => r.json()).then(d => {
-      if (d.ok && Array.isArray(d.months)) {
-        const list = d.months.map((m: any) => ({ month: m.month, month_label: m.month_label ?? m.month }));
-        setMonths(list);
-        // If current month not in list but list is non-empty, do NOT reset — keep current month
+    const fetchOrderMonths = fetch(apiUrl("/fusingao/monthly"))
+      .then(r => r.json())
+      .then(d => (d.ok && Array.isArray(d.months) ? d.months : []) as any[])
+      .catch(() => [] as any[]);
+
+    const fetchBillingMonths = fetch(apiUrl("/fusingao/billing-months"))
+      .then(r => r.json())
+      .then(d => (d.ok && Array.isArray(d.months) ? d.months : []) as any[])
+      .catch(() => [] as any[]);
+
+    Promise.all([fetchOrderMonths, fetchBillingMonths]).then(([orderMonths, billingMonths]) => {
+      const seen = new Set<string>();
+      const merged: { month: string; month_label: string; hasBilling?: boolean }[] = [];
+
+      // Build label map from billing months
+      const billingMonthSet = new Set<string>(billingMonths.map((m: any) => m.month as string));
+
+      // Add order months first
+      for (const m of orderMonths) {
+        if (!seen.has(m.month)) {
+          seen.add(m.month);
+          merged.push({
+            month: m.month,
+            month_label: (m.month_label ?? m.month) + (billingMonthSet.has(m.month) ? " ✓帳" : ""),
+            hasBilling: billingMonthSet.has(m.month),
+          });
+        }
       }
-    }).catch(() => {});
+
+      // Add billing-only months (months with billing data but no order imports)
+      for (const m of billingMonths) {
+        if (!seen.has(m.month)) {
+          seen.add(m.month);
+          const [y, mo] = (m.month as string).split("-");
+          merged.push({
+            month: m.month,
+            month_label: `${y}年${mo}月 ✓帳`,
+            hasBilling: true,
+          });
+        }
+      }
+
+      // Sort descending
+      merged.sort((a, b) => b.month.localeCompare(a.month));
+      setMonths(merged);
+    });
   }, []);
 
   // Also absorb parent prop if self-load yields nothing
@@ -359,6 +399,16 @@ export default function SettlementChainTab({
           <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
           重新整理
         </Button>
+        {data?.source === "billing_trips" && (
+          <span className="text-[11px] bg-green-100 text-green-700 border border-green-200 rounded px-2 py-0.5 font-medium">
+            ✓ 試算帳務同步
+          </span>
+        )}
+        {data?.source === "prefix_rates" && platformIncome === 0 && month && (
+          <span className="text-[11px] bg-amber-100 text-amber-700 border border-amber-200 rounded px-2 py-0.5 font-medium">
+            ⚠ 此月尚無帳務資料
+          </span>
+        )}
         {totalRoutes > 0 && (
           <span className="ml-auto text-xs text-gray-400">共 {totalRoutes} 條路線</span>
         )}
@@ -370,6 +420,9 @@ export default function SettlementChainTab({
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
             <span className="w-1 h-3 bg-orange-400 rounded-full inline-block" />
             結算流程鏈（{month || "全期間"}）
+            {data?.source === "billing_trips" && (
+              <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded font-normal normal-case">來自試算帳務</span>
+            )}
           </p>
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             <ChainNode
