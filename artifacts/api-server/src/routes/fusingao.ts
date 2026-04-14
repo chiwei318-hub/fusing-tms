@@ -742,13 +742,13 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
         AND created_at >= NOW() - INTERVAL '30 days'
     `).then(r => r.rows[0] as any);
 
-    // ── Exception routes: overdue + recently created but unassigned ───────────
+    // ── Exception routes: overdue + unassigned (30-day window to match KPI) ────
     const exceptions = await db.execute(sql`
       SELECT
         o.id,
         o.route_id              AS route_id,
-        o.station_count                AS stations,
-        o.route_prefix                  AS prefix,
+        o.station_count         AS stations,
+        o.route_prefix          AS prefix,
         o.fusingao_fleet_id,
         f.fleet_name,
         o.created_at,
@@ -764,7 +764,7 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
       FROM orders o
       LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
       WHERE o.route_id IS NOT NULL
-        AND o.created_at >= NOW() - INTERVAL '7 days'
+        AND o.created_at >= NOW() - INTERVAL '30 days'
         AND (
           o.fusingao_fleet_id IS NULL
           OR (o.fleet_completed_at IS NULL AND o.completed_at IS NULL AND o.created_at < NOW() - INTERVAL '20 hours')
@@ -776,7 +776,7 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
           ELSE 3
         END,
         o.created_at ASC
-      LIMIT 50
+      LIMIT 100
     `).then(r => r.rows as any[]);
 
     // ── Fleet performance ranking ─────────────────────────────────────────────
@@ -805,24 +805,25 @@ fusingaoRouter.get("/control-tower", async (req, res) => {
       ORDER BY completion_rate DESC NULLS LAST, total_routes DESC
     `).then(r => r.rows as any[]);
 
-    // ── Available routes for grab (unassigned) ───────────────────────────────
+    // ── Available routes for grab (unassigned, 30-day window to match KPI) ─────
     const unassigned = await db.execute(sql`
       SELECT
         o.id,
-        o.route_id  AS route_id,
+        o.route_id        AS route_id,
         o.station_count   AS stations,
-        o.route_prefix     AS prefix,
+        o.route_prefix    AS prefix,
+        o.service_type,
         o.created_at,
-        pr.rate_per_trip                                    AS shopee_rate
+        pr.rate_per_trip  AS shopee_rate
       FROM orders o
       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
       WHERE o.route_id IS NOT NULL
         AND o.fusingao_fleet_id IS NULL
         AND o.fleet_completed_at IS NULL
         AND o.completed_at IS NULL
-        AND o.created_at >= NOW() - INTERVAL '7 days'
+        AND o.created_at >= NOW() - INTERVAL '30 days'
       ORDER BY o.created_at ASC
-      LIMIT 20
+      LIMIT 50
     `).then(r => r.rows as any[]);
 
     res.json({

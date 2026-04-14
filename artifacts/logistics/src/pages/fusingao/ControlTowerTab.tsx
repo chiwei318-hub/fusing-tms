@@ -104,7 +104,7 @@ export default function ControlTowerTab() {
   };
 
   const completionPct = kpi ? Math.round(Number(kpi.completed) / Math.max(Number(kpi.total), 1) * 100) : 0;
-  const exceptionCount = Number(kpi?.overdue ?? 0) + Number(kpi?.unassigned ?? 0);
+  const exceptionCount = exceptions.filter(e => e.status !== "done").length;
 
   return (
     <div className="space-y-5">

@@ -549,7 +549,32 @@ export default function DispatchTab({
             <tbody>
               {filteredRoutes.length === 0 && (
                 <tr>
-                  <td colSpan={data.dates.length + 1} className="text-center py-10 text-gray-400">本週無路線資料</td>
+                  <td colSpan={data.dates.length + 1} className="py-0">
+                    <div className="text-center py-8 px-6">
+                      <p className="text-gray-400 text-sm mb-1">
+                        {weekOffset === 0 ? "本週" : "該週"}無路線資料
+                      </p>
+                      <p className="text-gray-300 text-xs mb-4">
+                        路線依匯入日期分週顯示，請切換至含有資料的週次
+                      </p>
+                      {weekOffset === 0 && (
+                        <div className="flex justify-center gap-2 flex-wrap">
+                          {[-1, -2, -3].map(o => {
+                            const w = weekStart(o);
+                            return (
+                              <button
+                                key={o}
+                                onClick={() => setWeekOffset(o)}
+                                className="text-xs px-3 py-1.5 rounded-full border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors"
+                              >
+                                {w.start.slice(5).replace("-", "/")} – {w.end.slice(5).replace("-", "/")}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               )}
               {filteredRoutes.map(route => (
