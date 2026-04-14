@@ -727,6 +727,137 @@ fusingaoRouter.put("/routes/:id/assign-fleet", async (req, res) => {
   }
 });
 
+// PUT /fusingao/routes/batch-assign — assign multiple routes to a fleet at once
+fusingaoRouter.put("/routes/batch-assign", async (req, res) => {
+  try {
+    const { order_ids, fleet_id } = req.body as { order_ids: number[]; fleet_id: number | null };
+    if (!Array.isArray(order_ids) || order_ids.length === 0) {
+      return res.status(400).json({ ok: false, error: "order_ids 必須為非空陣列" });
+    }
+    const ids = order_ids.map(Number).filter(n => !isNaN(n));
+    const fleetVal = fleet_id != null ? String(Number(fleet_id)) : "NULL";
+    const idList = ids.join(",");
+    await db.execute(sql.raw(`
+      UPDATE orders
+      SET fusingao_fleet_id = ${fleetVal}
+      WHERE id IN (${idList}) AND route_id IS NOT NULL
+    `));
+    res.json({ ok: true, updated: ids.length });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/accounting-package?month=YYYY-MM — all-in-one accounting export data
+// Returns: routes, billing trips, fleet payouts, tax data for the month
+fusingaoRouter.get("/accounting-package", async (req, res) => {
+  try {
+    const { month } = req.query as Record<string, string>;
+    if (!month) return res.status(400).json({ ok: false, error: "month 必填" });
+
+    // 1. Route-level data from orders
+    const routeRows = await db.execute(sql`
+      SELECT
+        o.id, o.route_id, o.route_prefix,
+        o.station_count, o.status, o.completed_at, o.fleet_completed_at,
+        o.driver_payment_status, o.created_at,
+        pr.rate_per_trip AS shopee_rate, pr.service_type,
+        f.fleet_name, f.commission_rate,
+        COALESCE(f.rate_override, pr.rate_per_trip * (1 - COALESCE(f.commission_rate,15)/100.0)) AS fleet_payout,
+        sd.name AS driver_name, sd.vehicle_plate
+      FROM orders o
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      LEFT JOIN shopee_drivers sd ON sd.shopee_id = o.shopee_driver_id
+      WHERE o.route_id IS NOT NULL
+        AND to_char(o.created_at, 'YYYY-MM') = ${month}
+      ORDER BY o.created_at ASC
+    `);
+
+    // 2. Billing trips for the month (actual billed data from Shopee sheets)
+    const billingRows = await db.execute(sql`
+      SELECT
+        billing_month, billing_type, route_no, vehicle_size,
+        driver_id, trip_date, amount
+      FROM fusingao_billing_trips
+      WHERE billing_month = ${month}
+      ORDER BY trip_date ASC, billing_type ASC
+    `);
+
+    // 3. Fleet settlement summary
+    const fleetSummary = await db.execute(sql`
+      WITH billing AS (
+        SELECT route_no, COALESCE(SUM(amount::numeric), 0) AS income
+        FROM fusingao_billing_trips
+        WHERE billing_month = ${month}
+        GROUP BY route_no
+      ),
+      route_fleet AS (
+        SELECT DISTINCT ON (route_id) route_id, fusingao_fleet_id
+        FROM orders WHERE route_id IS NOT NULL
+        ORDER BY route_id, created_at DESC
+      )
+      SELECT
+        f.id AS fleet_id, f.fleet_name, f.commission_rate,
+        f.bank_name, f.bank_account, f.contact_name, f.contact_phone,
+        COALESCE(SUM(b.income), 0)                                                           AS shopee_income,
+        COALESCE(SUM(b.income * (1 - COALESCE(f.commission_rate,15)::numeric / 100.0)), 0)  AS fleet_payout,
+        COALESCE(SUM(b.income * COALESCE(f.commission_rate,15)::numeric / 100.0), 0)        AS commission,
+        COUNT(DISTINCT b.route_no)                                                           AS route_count
+      FROM billing b
+      LEFT JOIN route_fleet rf ON rf.route_id = b.route_no
+      LEFT JOIN fusingao_fleets f ON f.id = rf.fusingao_fleet_id
+      WHERE f.id IS NOT NULL
+      GROUP BY f.id, f.fleet_name, f.commission_rate, f.bank_name, f.bank_account, f.contact_name, f.contact_phone
+      ORDER BY fleet_payout DESC
+    `);
+
+    // 4. Shopee penalties for this month
+    const penalties = await db.execute(sql`
+      SELECT incident_date, store_name, violation_type, fine_amount
+      FROM shopee_penalties
+      WHERE LEFT(incident_date, 7) = ${month} AND fine_amount > 0
+      ORDER BY incident_date ASC
+    `);
+
+    // 5. Tax computation (Taiwan 5% business tax)
+    const totalBilling = (billingRows.rows as any[]).reduce((s, r) => s + Number(r.amount ?? 0), 0);
+    const totalPrefixRate = (routeRows.rows as any[]).reduce((s, r) => s + Number(r.shopee_rate ?? 0), 0);
+    const totalIncome = totalBilling > 0 ? totalBilling : totalPrefixRate;
+    const totalPenalty = (penalties.rows as any[]).reduce((s, r) => s + Number(r.fine_amount ?? 0), 0);
+    const netIncome = totalIncome - totalPenalty;
+    const taxBase = netIncome;        // 含稅銷售額
+    const salesTax = Math.round(taxBase * 5 / 105);    // 內含 5% 營業稅
+    const netBeforeTax = taxBase - salesTax;            // 未稅收入
+
+    // Taiwan bi-monthly filing: odd months = report period (1,3,5,7,9,11)
+    const [yr, mo] = month.split("-").map(Number);
+    const filingMo = mo % 2 === 0 ? mo - 1 : mo;
+    const filingPeriod = `${yr}年${filingMo}-${filingMo + 1}月`;
+
+    res.json({
+      ok: true,
+      month,
+      income_source: totalBilling > 0 ? "billing_trips" : "prefix_rates",
+      routes: routeRows.rows,
+      billing_trips: billingRows.rows,
+      fleet_summary: fleetSummary.rows,
+      penalties: penalties.rows,
+      tax_info: {
+        total_with_tax: totalIncome,
+        penalty_deduction: totalPenalty,
+        net_income: netIncome,
+        sales_tax: salesTax,
+        net_before_tax: netBeforeTax,
+        filing_period: filingPeriod,
+        note: "台灣營業稅 5%（內含），每兩個月（單月）申報一次",
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/control-tower  — real-time dispatch control dashboard
 fusingaoRouter.get("/control-tower", async (req, res) => {
   try {

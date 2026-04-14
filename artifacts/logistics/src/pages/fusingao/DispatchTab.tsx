@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ChevronLeft, ChevronRight, RefreshCw,
-  Send, CheckCircle, Clock, Trash2, CalendarDays, Link2, FileSpreadsheet, ShoppingBag,
+  ChevronLeft, ChevronRight, ChevronDown, RefreshCw,
+  Send, CheckCircle, Clock, Trash2, CalendarDays, Link2, FileSpreadsheet, ShoppingBag, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +171,66 @@ function FleetCell({
   );
 }
 
+// ─── Batch assign bar ─────────────────────────────────────────────────────────
+function BatchAssignBar({
+  selectedIds, fleets, onAssign, onClear,
+}: {
+  selectedIds: Set<number>;
+  fleets: Fleet[];
+  onAssign: (fleetId: number | null) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  if (selectedIds.size === 0) return null;
+
+  return (
+    <div className="sticky top-0 z-30 flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg shadow-lg flex-wrap">
+      <span className="text-sm font-bold">已選 {selectedIds.size} 條路線</span>
+      <div className="relative ml-2" ref={ref}>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1.5 bg-white text-blue-700 font-semibold text-sm px-3 py-1.5 rounded-md hover:bg-blue-50 transition-colors"
+        >
+          <Send className="h-3.5 w-3.5" />
+          批次指派車隊
+          <ChevronDown className="h-3 w-3" />
+        </button>
+        {open && (
+          <div className="absolute top-full left-0 mt-1 bg-white border shadow-xl rounded-lg min-w-[160px] py-1 z-50">
+            <button
+              onClick={() => { onAssign(null); setOpen(false); }}
+              className="block w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 text-left"
+            >— 清除車隊 —</button>
+            <div className="border-t my-0.5" />
+            {fleets.map(f => (
+              <button
+                key={f.id}
+                onClick={() => { onAssign(f.id); setOpen(false); }}
+                className="block w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50 text-left truncate"
+              >{f.fleet_name}</button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={onClear}
+        className="ml-auto text-blue-200 hover:text-white text-xs flex items-center gap-1"
+      >
+        <X className="h-3.5 w-3.5" />取消選取
+      </button>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function DispatchTab({
   onViewSchedule,
@@ -182,6 +242,9 @@ export default function DispatchTab({
   const [data, setData] = useState<DispatchData | null>(null);
   const [loading, setLoading] = useState(false);
   const [prefixFilter, setPrefixFilter] = useState<string>("all");
+  const [selectedRouteIds, setSelectedRouteIds] = useState<Set<string>>(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set());
+  const [batchAssigning, setBatchAssigning] = useState(false);
 
   // ── Send dispatch order state ─────────────────────────────────────────────
   const [fleets, setFleets] = useState<Fleet[]>([]);
@@ -297,6 +360,65 @@ export default function DispatchTab({
     } else {
       toast({ title: "指派失敗", description: r.error, variant: "destructive" });
     }
+  }
+
+  // ── Batch fleet assign ────────────────────────────────────────────────────
+  async function handleBatchAssign(fleetId: number | null) {
+    if (selectedOrderIds.size === 0) return;
+    setBatchAssigning(true);
+    const fleet = fleets.find(f => f.id === fleetId) ?? null;
+    try {
+      const r = await fetch(apiUrl("/fusingao/routes/batch-assign"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_ids: [...selectedOrderIds], fleet_id: fleetId }),
+      }).then(x => x.json());
+      if (r.ok) {
+        toast({ title: `✅ 批次指派完成`, description: `${r.updated} 筆已指派給 ${fleet?.fleet_name ?? "（清除）"}` });
+        setSelectedRouteIds(new Set());
+        setSelectedOrderIds(new Set());
+        await load(weekOffset);
+      } else {
+        toast({ title: "批次指派失敗", description: r.error, variant: "destructive" });
+      }
+    } finally {
+      setBatchAssigning(false);
+    }
+  }
+
+  function toggleRouteSelect(routeId: string, orderIds: number[]) {
+    setSelectedRouteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(routeId)) {
+        next.delete(routeId);
+        setSelectedOrderIds(prevOids => {
+          const n = new Set(prevOids);
+          orderIds.forEach(id => n.delete(id));
+          return n;
+        });
+      } else {
+        next.add(routeId);
+        setSelectedOrderIds(prevOids => {
+          const n = new Set(prevOids);
+          orderIds.forEach(id => n.add(id));
+          return n;
+        });
+      }
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    const newRouteIds = new Set(filteredRoutes.map(r => r.route_id));
+    const newOrderIds = new Set<number>();
+    filteredRoutes.forEach(r => Object.values(r.dates).forEach(e => newOrderIds.add(e.order_id)));
+    setSelectedRouteIds(newRouteIds);
+    setSelectedOrderIds(newOrderIds);
+  }
+
+  function clearSelection() {
+    setSelectedRouteIds(new Set());
+    setSelectedOrderIds(new Set());
   }
 
   // ── Send dispatch order ───────────────────────────────────────────────────
@@ -504,9 +626,15 @@ export default function DispatchTab({
         </div>
       </div>
 
-      {/* ── Prefix filter ── */}
+      {/* ── Batch assign bar ── */}
+      {batchAssigning
+        ? <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-blue-700 text-sm"><RefreshCw className="h-4 w-4 animate-spin" />批次指派中…</div>
+        : <BatchAssignBar selectedIds={selectedOrderIds} fleets={fleets} onAssign={handleBatchAssign} onClear={clearSelection} />
+      }
+
+      {/* ── Prefix filter + select all ── */}
       {prefixes.length > 0 && (
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1 flex-wrap items-center">
           <button onClick={() => setPrefixFilter("all")}
             className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors ${prefixFilter === "all" ? "bg-gray-800 text-white border-gray-800" : "border-gray-300 text-gray-600 hover:border-gray-500"}`}>
             全部
@@ -517,6 +645,12 @@ export default function DispatchTab({
               {p}
             </button>
           ))}
+          <span className="ml-auto" />
+          {filteredRoutes.length > 0 && (
+            selectedRouteIds.size === filteredRoutes.length
+              ? <button onClick={clearSelection} className="text-xs text-blue-600 hover:underline">取消全選</button>
+              : <button onClick={selectAllVisible} className="text-xs text-blue-600 hover:underline">全選 {filteredRoutes.length} 條</button>
+          )}
         </div>
       )}
 
@@ -524,7 +658,8 @@ export default function DispatchTab({
       <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
         <span><span className="inline-block w-3 h-3 rounded bg-blue-100 mr-1" />已指派車隊</span>
         <span><span className="inline-block w-3 h-3 rounded bg-green-100 mr-1" />已完成</span>
-        <span className="text-gray-400">點擊格子選擇車隊，點 <CalendarDays className="inline w-3 h-3" /> 查看班表</span>
+        <span><span className="inline-block w-3 h-3 rounded border border-blue-400 bg-blue-50 mr-1" />已勾選</span>
+        <span className="text-gray-400">勾選路線可批次指派，點格子選車隊，點 <CalendarDays className="inline w-3 h-3" /> 查看班表</span>
       </div>
 
       {/* ── Grid ── */}
@@ -534,7 +669,17 @@ export default function DispatchTab({
           <table className="text-sm border-collapse w-full">
             <thead>
               <tr className="bg-gray-50">
-                <th className="border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap sticky left-0 bg-gray-50 z-10 min-w-[130px]">路線</th>
+                <th className="border border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap sticky left-0 bg-gray-50 z-10 min-w-[140px]">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 rounded accent-blue-600"
+                      checked={filteredRoutes.length > 0 && selectedRouteIds.size === filteredRoutes.length}
+                      onChange={e => e.target.checked ? selectAllVisible() : clearSelection()}
+                    />
+                    路線
+                  </div>
+                </th>
                 {data.dates.map(d => (
                   <th key={d}
                     className={`border border-gray-200 px-2 py-2 text-center text-xs font-semibold whitespace-nowrap min-w-[80px] ${isToday(d) ? "bg-orange-50 text-orange-700" : "text-gray-600"}`}>
@@ -577,31 +722,41 @@ export default function DispatchTab({
                   </td>
                 </tr>
               )}
-              {filteredRoutes.map(route => (
-                <tr key={route.route_id} className="hover:bg-gray-50/50">
-                  <td className="border border-gray-100 px-2 py-1.5 sticky left-0 bg-white z-10">
-                    <div className="flex items-center gap-1.5">
-                      <Badge className={`text-[10px] px-1.5 py-0 ${prefixColor(route.prefix)}`}>{route.prefix ?? "?"}</Badge>
-                      <span className="text-xs font-medium text-gray-800 truncate max-w-[70px]" title={route.route_id}>
-                        {route.route_id.replace(route.prefix + "-", "")}
-                      </span>
-                      {route.stations && <span className="text-[10px] text-gray-400">{route.stations}站</span>}
-                      {onViewSchedule && (
-                        <button
-                          onClick={() => onViewSchedule(route.route_id)}
-                          className="text-gray-300 hover:text-blue-500 transition-colors shrink-0"
-                          title="查看班表"
-                        >
-                          <CalendarDays className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  {data.dates.map(d => (
-                    <FleetCell key={d} entry={route.dates[d]} fleets={fleets} onAssign={handleFleetAssign} />
-                  ))}
-                </tr>
-              ))}
+              {filteredRoutes.map(route => {
+                const isSelected = selectedRouteIds.has(route.route_id);
+                const routeOrderIds = Object.values(route.dates).map(e => e.order_id);
+                return (
+                  <tr key={route.route_id} className={`hover:bg-gray-50/50 ${isSelected ? "bg-blue-50" : ""}`}>
+                    <td className={`border border-gray-100 px-2 py-1.5 sticky left-0 z-10 ${isSelected ? "bg-blue-50" : "bg-white"}`}>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded accent-blue-600 shrink-0"
+                          checked={isSelected}
+                          onChange={() => toggleRouteSelect(route.route_id, routeOrderIds)}
+                        />
+                        <Badge className={`text-[10px] px-1.5 py-0 ${prefixColor(route.prefix)}`}>{route.prefix ?? "?"}</Badge>
+                        <span className="text-xs font-medium text-gray-800 truncate max-w-[60px]" title={route.route_id}>
+                          {route.route_id.replace(route.prefix + "-", "")}
+                        </span>
+                        {route.stations && <span className="text-[10px] text-gray-400">{route.stations}站</span>}
+                        {onViewSchedule && (
+                          <button
+                            onClick={() => onViewSchedule(route.route_id)}
+                            className="text-gray-300 hover:text-blue-500 transition-colors shrink-0"
+                            title="查看班表"
+                          >
+                            <CalendarDays className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    {data.dates.map(d => (
+                      <FleetCell key={d} entry={route.dates[d]} fleets={fleets} onAssign={handleFleetAssign} />
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

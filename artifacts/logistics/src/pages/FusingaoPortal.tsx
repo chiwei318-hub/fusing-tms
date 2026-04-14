@@ -194,18 +194,102 @@ export default function FusingaoPortal() {
     loadFleets();
   };
 
-  const exportMonthCSV = (m: MonthRow) => {
-    const lines = [
-      "路線編號,服務模式,日期,站點數,司機,車號,蝦皮費率,完成狀態,對帳狀態",
-      ...m.routes.map(r =>
-        `${r.routeId},${r.service_type ?? ""},${new Date(r.created_at).toLocaleDateString("zh-TW")},${r.stations},${r.driver_name ?? r.driverId ?? ""},${r.vehicle_plate ?? ""},${r.shopee_rate ?? ""},${r.status === "completed" || r.completed_at ? "已完成" : "進行中"},${r.driver_payment_status === "paid" ? "已對帳" : "未對帳"}`
-      ),
-      `,,,,,,合計 NT$${Math.round(Number(m.shopee_income)).toLocaleString()},${m.completed_count}/${m.route_count} 完成,${m.billed_count}/${m.route_count} 對帳`,
-    ];
-    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `福興高對帳_${m.month}.csv`; a.click();
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const exportMonthCSV = async (m: MonthRow) => {
+    setExporting(m.month);
+    try {
+      const pkg = await fetch(apiUrl(`/fusingao/accounting-package?month=${m.month}`)).then(r => r.json());
+      if (!pkg.ok) throw new Error(pkg.error ?? "匯出失敗");
+
+      const {
+        routes: pkgRoutes = [],
+        billing_trips = [],
+        fleet_summary = [],
+        penalties = [],
+        tax_info,
+        month,
+      } = pkg;
+
+      const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+      const n = (v: unknown) => v != null ? String(v) : "";
+
+      const sections: string[][] = [];
+
+      sections.push(
+        [`=== 福興高 ${month} 月度帳務明細 ===`],
+        [],
+        ["【路線列表】"],
+        ["路線編號", "前綴", "服務模式", "站點數", "蝦皮費率", "完成狀態", "對帳狀態", "完成日期"],
+        ...pkgRoutes.map((r: RouteItem) => [
+          q(r.routeId), q(r.prefix), q(r.service_type), n(r.stations),
+          n(r.shopee_rate),
+          r.status === "completed" || r.completed_at ? "已完成" : "進行中",
+          r.driver_payment_status === "paid" ? "已對帳" : "未對帳",
+          r.completed_at ? new Date(r.completed_at).toLocaleDateString("zh-TW") : "",
+        ]),
+        [],
+      );
+
+      if (billing_trips.length > 0) {
+        sections.push(
+          ["【帳務趟次明細（Google Sheets 同步）】"],
+          ["趟次日期", "路線編號", "金額", "帳務類型"],
+          ...billing_trips.map((t: { trip_date: string; route_no: string; amount: number; billing_type: string }) => [
+            q(t.trip_date), q(t.route_no), n(t.amount), q(t.billing_type),
+          ]),
+          [],
+        );
+      }
+
+      if (fleet_summary.length > 0) {
+        sections.push(
+          ["【車隊彙總】"],
+          ["車隊", "趟次", "金額 (NT$)"],
+          ...fleet_summary.map((f: { fleet_name: string; trip_count: number; total_amount: number }) => [
+            q(f.fleet_name), n(f.trip_count), n(Math.round(f.total_amount)),
+          ]),
+          [],
+        );
+      }
+
+      if (penalties.length > 0) {
+        sections.push(
+          ["【罰款扣款】"],
+          ["路線", "金額", "說明"],
+          ...penalties.map((p: { route_id: string; amount: number; reason: string }) => [
+            q(p.route_id), n(p.amount), q(p.reason),
+          ]),
+          [],
+        );
+      }
+
+      if (tax_info) {
+        sections.push(
+          ["【稅務試算（台灣 VAT 5% 內含）】"],
+          ["含稅總收入 (NT$)", "稅額 (NT$)", "未稅金額 (NT$)", "申報月份"],
+          [
+            n(Math.round(tax_info.total_with_tax)),
+            n(Math.round(tax_info.sales_tax)),
+            n(Math.round(tax_info.net_before_tax)),
+            q(tax_info.filing_period),
+          ],
+          [],
+        );
+      }
+
+      const csvLines = sections.map(row => row.join(","));
+      const blob = new Blob(["\uFEFF" + csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `福興高帳務包_${m.month}.csv`; a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "✅ 帳務包匯出完成", description: `${m.month} 完整帳務已下載` });
+    } catch (e: unknown) {
+      toast({ title: "匯出失敗", description: e instanceof Error ? e.message : "未知錯誤", variant: "destructive" });
+    } finally {
+      setExporting(null);
+    }
   };
 
   // ── Available month options (from data)
@@ -535,9 +619,13 @@ export default function FusingaoPortal() {
                             <CheckSquare className="h-3.5 w-3.5 mr-1" />整月全部確認對帳
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                          onClick={() => exportMonthCSV(m)}>
-                          <Download className="h-3.5 w-3.5 mr-1" />匯出 CSV
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                          onClick={() => exportMonthCSV(m)}
+                          disabled={exporting === m.month}>
+                          {exporting === m.month
+                            ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            : <Download className="h-3.5 w-3.5" />}
+                          {exporting === m.month ? "匯出中…" : "匯出完整帳務包"}
                         </Button>
                         <span className="text-xs text-gray-400 self-center ml-auto">
                           {m.route_count} 趟 ・ 應收 {fmt(m.shopee_income)}
