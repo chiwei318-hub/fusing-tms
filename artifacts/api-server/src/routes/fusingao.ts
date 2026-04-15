@@ -48,6 +48,48 @@ async function ensureFusingaoFleetColumns() {
       UNIQUE(fleet_id, month)
     )
   `);
+  // Order events timeline table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fusingao_order_events (
+      id          SERIAL PRIMARY KEY,
+      order_id    INTEGER NOT NULL,
+      event_type  TEXT NOT NULL DEFAULT 'note',
+      note        TEXT,
+      created_by  TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_order_events_order_id ON fusingao_order_events(order_id)
+  `);
+  // Backfill: create 'created' event for orders that have none
+  await db.execute(sql`
+    INSERT INTO fusingao_order_events (order_id, event_type, note, created_by, created_at)
+    SELECT o.id, 'created',
+      CASE WHEN o.customer_name IS NOT NULL THEN '訂單建立：' || o.customer_name ELSE '訂單建立' END,
+      COALESCE(o.operator_name, '系統'),
+      COALESCE(o.created_at, NOW())
+    FROM orders o
+    WHERE NOT EXISTS (
+      SELECT 1 FROM fusingao_order_events e WHERE e.order_id = o.id
+    )
+  `);
+  // Manual orders: extra columns for TMS-style management
+  const orderExtraCols = [
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_contact_name  TEXT",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_contact_phone TEXT",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_contact_name  TEXT",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_contact_phone TEXT",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cargo_name   TEXT",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cargo_qty    INTEGER",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cargo_weight NUMERIC(10,2)",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cargo_volume NUMERIC(10,3)",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS scheduled_date DATE",
+    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS operator_name TEXT",
+  ];
+  for (const s of orderExtraCols) {
+    try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
+  }
 }
 ensureFusingaoFleetColumns().catch(console.error);
 
@@ -1781,6 +1823,220 @@ fusingaoRouter.get("/sub-account-routes", async (req, res) => {
       LIMIT 200
     `);
     res.json({ ok: true, routes: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ORDER MANAGE — 訂單維護查詢（Glory Platform style TMS）
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Helper: generate order number like FY20260415-0001
+async function genOrderNo(): Promise<string> {
+  const today = new Date();
+  const ymd = today.toISOString().slice(0,10).replace(/-/g,"");
+  const prefix = `FY${ymd}-`;
+  const res = await db.execute(sql.raw(`
+    SELECT COUNT(*) AS cnt FROM orders
+    WHERE order_no LIKE '${prefix}%'
+  `));
+  const cnt = Number((res.rows[0] as any)?.cnt ?? 0) + 1;
+  return `${prefix}${String(cnt).padStart(4,"0")}`;
+}
+
+// GET /fusingao/order-manage — list orders (TMS-style)
+fusingaoRouter.get("/order-manage", async (req, res) => {
+  try {
+    const { status, month, keyword, fleet_id, limit: lim = "100", offset: off = "0" } = req.query as Record<string, string>;
+    const conds: string[] = ["o.route_id IS NULL OR o.route_id IS NOT NULL"]; // always true base
+    const filterParts: string[] = [];
+
+    if (status && status !== "all") filterParts.push(`o.status = '${status.replace(/'/g,"")}'`);
+    if (month) filterParts.push(`to_char(o.created_at,'YYYY-MM') = '${month.replace(/'/g,"")}'`);
+    if (fleet_id) filterParts.push(`o.fusingao_fleet_id = ${Number(fleet_id)}`);
+    if (keyword) {
+      const kw = keyword.replace(/'/g,"''");
+      filterParts.push(`(
+        o.order_no ILIKE '%${kw}%' OR
+        o.customer_name ILIKE '%${kw}%' OR
+        o.customer_phone ILIKE '%${kw}%' OR
+        o.pickup_address ILIKE '%${kw}%' OR
+        o.delivery_address ILIKE '%${kw}%' OR
+        o.cargo_name ILIKE '%${kw}%' OR
+        o.route_id ILIKE '%${kw}%' OR
+        o.notes ILIKE '%${kw}%'
+      )`);
+    }
+
+    const where = filterParts.length ? "WHERE " + filterParts.join(" AND ") : "";
+    const rows = await db.execute(sql.raw(`
+      SELECT
+        o.id, o.order_no, o.status, o.created_at, o.scheduled_date,
+        o.customer_name, o.customer_phone,
+        o.pickup_address, o.pickup_contact_name, o.pickup_contact_phone,
+        o.delivery_address, o.delivery_contact_name, o.delivery_contact_phone,
+        o.cargo_name, o.cargo_qty, o.cargo_weight, o.cargo_volume,
+        o.required_vehicle_type,
+        o.route_id, o.route_prefix,
+        o.base_price, o.total_fee, o.driver_payment_status,
+        o.notes, o.operator_name,
+        f.fleet_name,
+        (SELECT COUNT(*) FROM fusingao_order_events e WHERE e.order_id = o.id) AS event_count
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      ${where}
+      ORDER BY o.created_at DESC
+      LIMIT ${Number(lim)} OFFSET ${Number(off)}
+    `));
+    const total = await db.execute(sql.raw(`
+      SELECT COUNT(*) AS cnt FROM orders o ${where}
+    `));
+    res.json({ ok: true, orders: rows.rows, total: Number((total.rows[0] as any)?.cnt ?? 0) });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/order-manage — create order manually
+fusingaoRouter.post("/order-manage", async (req, res) => {
+  try {
+    const b = req.body as Record<string, any>;
+    const orderNo = await genOrderNo();
+    const q = (v: unknown) => v != null && String(v).trim() !== "" ? `'${String(v).replace(/'/g,"''")}'` : "NULL";
+    const row = await db.execute(sql.raw(`
+      INSERT INTO orders (
+        order_no, status, customer_name, customer_phone,
+        pickup_address, pickup_contact_name, pickup_contact_phone,
+        delivery_address, delivery_contact_name, delivery_contact_phone,
+        cargo_name, cargo_qty, cargo_weight, cargo_volume,
+        required_vehicle_type, base_price, total_fee,
+        scheduled_date, notes, operator_name,
+        created_at, updated_at
+      ) VALUES (
+        '${orderNo}', '${(b.status ?? "pending").replace(/'/g,"")}',
+        ${q(b.customer_name)}, ${q(b.customer_phone)},
+        ${q(b.pickup_address)}, ${q(b.pickup_contact_name)}, ${q(b.pickup_contact_phone)},
+        ${q(b.delivery_address)}, ${q(b.delivery_contact_name)}, ${q(b.delivery_contact_phone)},
+        ${q(b.cargo_name)},
+        ${b.cargo_qty != null && b.cargo_qty !== "" ? Number(b.cargo_qty) : "NULL"},
+        ${b.cargo_weight != null && b.cargo_weight !== "" ? Number(b.cargo_weight) : "NULL"},
+        ${b.cargo_volume != null && b.cargo_volume !== "" ? Number(b.cargo_volume) : "NULL"},
+        ${q(b.required_vehicle_type)},
+        ${b.base_price != null && b.base_price !== "" ? Number(b.base_price) : "NULL"},
+        ${b.total_fee != null && b.total_fee !== "" ? Number(b.total_fee) : "NULL"},
+        ${q(b.scheduled_date)}, ${q(b.notes)}, ${q(b.operator_name ?? "系統")},
+        NOW(), NOW()
+      ) RETURNING id
+    `));
+    const newId = (row.rows[0] as any)?.id;
+    await db.execute(sql`
+      INSERT INTO fusingao_order_events (order_id, event_type, note, created_by)
+      VALUES (${newId}, 'created', ${`訂單建立：${b.customer_name ?? ""} → ${b.delivery_address ?? ""}`}, ${b.operator_name ?? "系統"})
+    `);
+    res.json({ ok: true, id: newId, order_no: orderNo });
+  } catch (err: any) {
+    const detail = err?.cause?.message ?? err?.message ?? String(err);
+    res.status(500).json({ ok: false, error: detail, raw: err?.message });
+  }
+});
+
+// GET /fusingao/order-manage/:id — single order detail
+fusingaoRouter.get("/order-manage/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const row = await db.execute(sql`
+      SELECT o.*,
+        f.fleet_name,
+        (SELECT json_agg(e ORDER BY e.created_at ASC)
+          FROM fusingao_order_events e WHERE e.order_id = o.id) AS events
+      FROM orders o
+      LEFT JOIN fusingao_fleets f ON f.id = o.fusingao_fleet_id
+      WHERE o.id = ${id}
+    `);
+    if (!row.rows.length) return res.status(404).json({ ok: false, error: "訂單不存在" });
+    res.json({ ok: true, order: row.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/order-manage/:id — update order
+fusingaoRouter.put("/order-manage/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const b = req.body as Record<string, any>;
+    await db.execute(sql.raw(`
+      UPDATE orders SET
+        status               = COALESCE('${(b.status ?? "").replace(/'/g,"''")}', status),
+        customer_name        = ${b.customer_name != null ? `'${String(b.customer_name).replace(/'/g,"''")}'` : "customer_name"},
+        customer_phone       = ${b.customer_phone != null ? `'${String(b.customer_phone).replace(/'/g,"''")}'` : "customer_phone"},
+        pickup_address       = ${b.pickup_address != null ? `'${String(b.pickup_address).replace(/'/g,"''")}'` : "pickup_address"},
+        pickup_contact_name  = ${b.pickup_contact_name != null ? `'${String(b.pickup_contact_name).replace(/'/g,"''")}'` : "pickup_contact_name"},
+        pickup_contact_phone = ${b.pickup_contact_phone != null ? `'${String(b.pickup_contact_phone).replace(/'/g,"''")}'` : "pickup_contact_phone"},
+        delivery_address     = ${b.delivery_address != null ? `'${String(b.delivery_address).replace(/'/g,"''")}'` : "delivery_address"},
+        delivery_contact_name  = ${b.delivery_contact_name != null ? `'${String(b.delivery_contact_name).replace(/'/g,"''")}'` : "delivery_contact_name"},
+        delivery_contact_phone = ${b.delivery_contact_phone != null ? `'${String(b.delivery_contact_phone).replace(/'/g,"''")}'` : "delivery_contact_phone"},
+        cargo_name           = ${b.cargo_name != null ? `'${String(b.cargo_name).replace(/'/g,"''")}'` : "cargo_name"},
+        cargo_qty            = ${b.cargo_qty != null ? Number(b.cargo_qty) : "cargo_qty"},
+        cargo_weight         = ${b.cargo_weight != null ? Number(b.cargo_weight) : "cargo_weight"},
+        cargo_volume         = ${b.cargo_volume != null ? Number(b.cargo_volume) : "cargo_volume"},
+        required_vehicle_type= ${b.required_vehicle_type != null ? `'${String(b.required_vehicle_type).replace(/'/g,"''")}'` : "required_vehicle_type"},
+        base_price           = ${b.base_price != null ? Number(b.base_price) : "base_price"},
+        total_fee            = ${b.total_fee != null ? Number(b.total_fee) : "total_fee"},
+        scheduled_date       = ${b.scheduled_date != null ? `'${String(b.scheduled_date).replace(/'/g,"''")}'` : "scheduled_date"},
+        notes                = ${b.notes != null ? `'${String(b.notes).replace(/'/g,"''")}'` : "notes"},
+        operator_name        = ${b.operator_name != null ? `'${String(b.operator_name).replace(/'/g,"''")}'` : "operator_name"},
+        updated_at           = NOW()
+      WHERE id = ${id}
+    `));
+    // Log status change event if status changed
+    if (b.status && b._prev_status && b.status !== b._prev_status) {
+      const statusLabel: Record<string, string> = {
+        pending:"待出發", assigned:"已派車", in_transit:"運送中", delivered:"已送達", cancelled:"已取消"
+      };
+      await db.execute(sql`
+        INSERT INTO fusingao_order_events (order_id, event_type, note, created_by)
+        VALUES (${id}, 'status_change',
+          ${`狀態變更：${statusLabel[b._prev_status] ?? b._prev_status} → ${statusLabel[b.status] ?? b.status}`},
+          ${b.operator_name ?? "系統"})
+      `);
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/order-manage/:id/timeline — order events
+fusingaoRouter.get("/order-manage/:id/timeline", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rows = await db.execute(sql`
+      SELECT id, event_type, note, created_by, created_at
+      FROM fusingao_order_events
+      WHERE order_id = ${id}
+      ORDER BY created_at ASC
+    `);
+    res.json({ ok: true, events: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/order-manage/:id/events — add event to timeline
+fusingaoRouter.post("/order-manage/:id/events", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { event_type = "note", note, created_by = "系統" } = req.body as Record<string, string>;
+    if (!note?.trim()) return res.status(400).json({ ok: false, error: "note 必填" });
+    const evRow = await db.execute(sql`
+      INSERT INTO fusingao_order_events (order_id, event_type, note, created_by)
+      VALUES (${id}, ${event_type}, ${note.trim()}, ${created_by})
+      RETURNING id
+    `);
+    const evId = (evRow.rows[0] as any)?.id;
+    res.json({ ok: true, id: evId });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

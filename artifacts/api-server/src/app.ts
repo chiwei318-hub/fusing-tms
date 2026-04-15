@@ -140,6 +140,15 @@ async function runOrdersColumnMigration() {
     `);
   } catch (e) { console.warn("[OrderMigration] order_status backfill:", String(e).slice(0, 120)); }
 
+  // 7. 移除舊 NOT NULL 限制（允許建立不完整訂單）
+  const dropNotNull = [
+    "ALTER TABLE orders ALTER COLUMN customer_phone DROP NOT NULL",
+    "ALTER TABLE orders ALTER COLUMN cargo_description DROP NOT NULL",
+  ];
+  for (const q of dropNotNull) {
+    try { await _migPool.query(q); } catch (_) { /* 已是 nullable，忽略 */ }
+  }
+
   console.log("[OrderMigration] orders column migration complete");
 }
 

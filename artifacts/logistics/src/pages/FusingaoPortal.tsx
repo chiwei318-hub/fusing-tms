@@ -21,6 +21,7 @@ import SettlementChainTab from "./fusingao/SettlementChainTab";
 import FusingaoScheduleTab from "./fusingao/FusingaoScheduleTab";
 import FusingaoBillingDetailTab from "./fusingao/FusingaoBillingDetailTab";
 import FusingaoSheetSyncTab from "./fusingao/FusingaoSheetSyncTab";
+import OrderManageTab from "./fusingao/OrderManageTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +52,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -349,6 +350,7 @@ export default function FusingaoPortal() {
           <div className="flex flex-wrap gap-x-0.5 gap-y-0">
             {([
               { id:"control",     label:"🗼 控制中心",    group:1 },
+              { id:"ordermanage", label:"📦 訂單維護",    group:1 },
               { id:"dispatch",    label:"📅 派車管理",    group:1 },
               { id:"invoice",     label:"🧾 請款單",      group:1 },
               { id:"notify",      label:"🔔 完成通知",    group:1 },
@@ -388,6 +390,9 @@ export default function FusingaoPortal() {
 
         {/* ═══════════════ 調度控制中心 ══════════════════════════════════════ */}
         {tab === "control" && <ControlTowerTab />}
+
+        {/* ═══════════════ 訂單維護查詢 ════════════════════════════════════ */}
+        {tab === "ordermanage" && <OrderManageTab />}
 
         {/* ═══════════════ 派車管理 ════════════════════════════════════════ */}
         {tab === "dispatch" && (
