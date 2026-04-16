@@ -120,6 +120,12 @@ const GLORY_LINKS = [
         icon: "🔍",
       },
       {
+        label: "運費請款單",
+        url: `${BASE}/createInvoiceQuery.action`,
+        desc: "運費請款單建立與查詢",
+        icon: "🧾",
+      },
+      {
         label: "訂單查詢",
         url: `${BASE}/jobOrderQuery.action`,
         desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
