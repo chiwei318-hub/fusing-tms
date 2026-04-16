@@ -133,6 +133,12 @@ const GLORY_LINKS = [
         desc: "每月油耗統計報表",
         icon: "⛽",
       },
+      {
+        label: "客戶日業績表",
+        url: `${BASE}/CustomerPerformancePerDayQuery.action`,
+        desc: "客戶每日業績統計報表",
+        icon: "👤",
+      },
     ],
   },
 ];
