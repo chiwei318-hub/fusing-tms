@@ -395,6 +395,7 @@ export default function FusingaoPortal() {
             ))}
             <div className="border-r border-gray-200 mx-1 my-1" />
             {([
+              { id:"glory",         label:"🖥️ 後台管理中心" },
               { id:"contractquote", label:"📝 合約報價" },
               { id:"supplier",      label:"🏭 供應商" },
               { id:"loan",          label:"🏦 貸款管理" },
@@ -837,6 +838,13 @@ export default function FusingaoPortal() {
         {tab === "supplier" && (
           <div className="p-4">
             <SupplierTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 後台管理中心 (Glory) ═══════════════════════════ */}
+        {tab === "glory" && (
+          <div className="p-4">
+            <GloryPortalTab onNavigate={(id) => setTab(id as PortalTab)} />
           </div>
         )}
 
