@@ -87,6 +87,12 @@ const GLORY_LINKS: GloryGroup[] = [
         desc: "車輛加油紀錄與油料報表查詢",
         icon: "🛢️",
       },
+      {
+        label: "司機獎金查詢",
+        url: `${BASE}/driverBonusQuery.action`,
+        desc: "司機獎金明細與查詢",
+        icon: "💰",
+      },
     ],
   },
 ];
