@@ -575,4 +575,58 @@ _migPool.query(`
   }
 })();
 
+// ── 貸款管理資料表 ─────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS loan_accounts (
+        id              SERIAL PRIMARY KEY,
+        loan_name       VARCHAR(100) NOT NULL,
+        loan_type       VARCHAR(30)  NOT NULL DEFAULT '車輛貸款',
+        bank_name       VARCHAR(50),
+        bank_branch     VARCHAR(50),
+        account_no      VARCHAR(50),
+        vehicle_id      INTEGER REFERENCES vehicles(id) ON DELETE SET NULL,
+        plate_no        VARCHAR(20),
+        principal       NUMERIC(14,2) NOT NULL DEFAULT 0,
+        interest_rate   NUMERIC(6,4)  NOT NULL DEFAULT 0,
+        start_date      DATE NOT NULL,
+        end_date        DATE NOT NULL,
+        total_periods   INTEGER NOT NULL DEFAULT 1,
+        monthly_payment NUMERIC(12,2) NOT NULL DEFAULT 0,
+        payment_day     INTEGER DEFAULT 1,
+        status          VARCHAR(20) NOT NULL DEFAULT 'active',
+        contact_person  VARCHAR(30),
+        contact_phone   VARCHAR(20),
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS loan_payments (
+        id              SERIAL PRIMARY KEY,
+        loan_id         INTEGER NOT NULL REFERENCES loan_accounts(id) ON DELETE CASCADE,
+        period_no       INTEGER NOT NULL,
+        due_date        DATE NOT NULL,
+        principal_amt   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        interest_amt    NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_amt       NUMERIC(12,2) NOT NULL DEFAULT 0,
+        remaining_bal   NUMERIC(14,2) NOT NULL DEFAULT 0,
+        paid_date       DATE,
+        paid_amount     NUMERIC(12,2),
+        status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+        receipt_no      VARCHAR(50),
+        notes           VARCHAR(200),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id)`);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_loan_payments_due_date ON loan_payments(due_date)`);
+    console.log("[LoanMgmt] tables ensured");
+  } catch (e) {
+    console.warn("[LoanMgmt] table ensure failed:", String(e).slice(0, 200));
+  }
+})();
+
 export default app;

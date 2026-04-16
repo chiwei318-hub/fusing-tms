@@ -29,6 +29,7 @@ import VehicleTab from "./fusingao/VehicleTab";
 import FuelTab from "./fusingao/FuelTab";
 import DriverBonusTab from "./fusingao/DriverBonusTab";
 import TownshipTab from "./fusingao/TownshipTab";
+import LoanTab from "./fusingao/LoanTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +60,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "loan";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -396,6 +397,7 @@ export default function FusingaoPortal() {
             {([
               { id:"contractquote", label:"📝 合約報價" },
               { id:"supplier",      label:"🏭 供應商" },
+              { id:"loan",          label:"🏦 貸款管理" },
               { id:"vehicles",      label:"🚛 車輛管理" },
               { id:"fuel",          label:"⛽ 油料管理" },
               { id:"driverbonus",   label:"💰 司機獎金" },
@@ -835,6 +837,17 @@ export default function FusingaoPortal() {
         {tab === "supplier" && (
           <div className="p-4">
             <SupplierTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 貸款管理 ════════════════════════════════════════ */}
+        {tab === "loan" && (
+          <div className="p-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">🏦 貸款管理</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">車輛貸款、還款事件（未發生/已發生）、貸款統計分析</p>
+            </div>
+            <LoanTab />
           </div>
         )}
 
