@@ -16,9 +16,9 @@ const GLORY_LINKS = [
     color: "border-blue-200 bg-blue-50",
     links: [
       {
-        label: "客戶基本資料（泰立）",
+        label: "客戶基本資料（自填）",
         url: `${BASE}/customerBasicDataSetQueryTA.action`,
-        desc: "泰立分公司所有客戶資料查詢、匯出 Excel",
+        desc: "自填分公司所有客戶資料查詢、匯出 Excel",
         icon: "👤",
       },
       {
@@ -98,7 +98,7 @@ const GLORY_LINKS = [
       {
         label: "訂單維護",
         url: `${BASE}/OrderMaintainQueryTA.action`,
-        desc: "訂單新增、編輯、維護管理（泰立）",
+        desc: "訂單新增、編輯、維護管理（自填）",
         icon: "✏️",
       },
       {
