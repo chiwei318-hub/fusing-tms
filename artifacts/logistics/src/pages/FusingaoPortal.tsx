@@ -24,7 +24,6 @@ import FusingaoSheetSyncTab from "./fusingao/FusingaoSheetSyncTab";
 import OrderManageTab from "./fusingao/OrderManageTab";
 import ContractQuoteTab from "./fusingao/ContractQuoteTab";
 import SupplierTab from "./fusingao/SupplierTab";
-import GloryPortalTab from "./fusingao/GloryPortalTab";
 import VehicleTab from "./fusingao/VehicleTab";
 import FuelTab from "./fusingao/FuelTab";
 import DriverBonusTab from "./fusingao/DriverBonusTab";
@@ -93,7 +92,7 @@ const prefixColor: Record<string, string> = {
 export default function FusingaoPortal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [tab, setTab]           = useState<PortalTab>("glory");
+  const [tab, setTab]           = useState<PortalTab>("loan");
   const [loading, setLoading]   = useState(false);
   const [summary, setSummary]   = useState<Summary | null>(null);
   const [routes, setRoutes]     = useState<RouteItem[]>([]);
@@ -395,7 +394,6 @@ export default function FusingaoPortal() {
             ))}
             <div className="border-r border-gray-200 mx-1 my-1" />
             {([
-              { id:"glory", label:"🖥️ 後台管理中心" },
               { id:"loan",  label:"🏦 貸款管理" },
             ] as { id: PortalTab; label: string }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -834,9 +832,6 @@ export default function FusingaoPortal() {
             <SupplierTab />
           </div>
         )}
-
-        {/* ═══════════════ 後台管理中心 ═══════════════════════════════════ */}
-        {tab === "glory" && <GloryPortalTab />}
 
         {/* ═══════════════ 貸款管理 ════════════════════════════════════════ */}
         {tab === "loan" && (

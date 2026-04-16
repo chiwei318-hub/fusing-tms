@@ -75,6 +75,7 @@ const OpenApiTab           = lazy(() => import("./admin/OpenApiTab"));
 const BillingFlowTab       = lazy(() => import("./admin/BillingFlowTab"));
 const PricingPanel         = lazy(() => import("@/components/PricingPanel"));
 const OrderSearchTab       = lazy(() => import("./admin/OrderSearchTab"));
+const GloryPortalTab       = lazy(() => import("./fusingao/GloryPortalTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1716,6 +1717,7 @@ export default function Admin() {
                     { value: "drivercredit", icon: <span className="text-sm leading-none">⭐</span>,                 label: "信用積分" },
                     { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
+                    { value: "glory",       icon: <span className="text-sm leading-none">🖥️</span>,                  label: "後台管理中心" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -3990,6 +3992,11 @@ export default function Admin() {
         {/* ===== 戰略 KPI TAB ===== */}
         <TabsContent value="strategickpi" className="outline-none">
           <StrategicKPITab />
+        </TabsContent>
+
+        {/* ===== 後台管理中心 TAB ===== */}
+        <TabsContent value="glory" className="outline-none">
+          <GloryPortalTab />
         </TabsContent>
       </Tabs>
       </Suspense>
