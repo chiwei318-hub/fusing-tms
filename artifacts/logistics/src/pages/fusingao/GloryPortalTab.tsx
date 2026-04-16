@@ -109,6 +109,12 @@ const GLORY_LINKS = [
         icon: "📋",
       },
       {
+        label: "貨況追蹤",
+        url: `${BASE}/CargoTraceQuery.action`,
+        desc: "貨物即時狀態追蹤查詢",
+        icon: "📍",
+      },
+      {
         label: "派遣收據查詢",
         url: `${BASE}/jobReceiptQuery.action`,
         desc: "派遣收據單號、日期、車輛、司機查詢",
