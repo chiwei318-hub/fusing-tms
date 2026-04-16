@@ -127,6 +127,12 @@ const GLORY_LINKS = [
         desc: "車輛每月業績彙總統計報表",
         icon: "📅",
       },
+      {
+        label: "油耗統計表",
+        url: `${BASE}/FuelPerformancePerMonthQuery.action`,
+        desc: "每月油耗統計報表",
+        icon: "⛽",
+      },
     ],
   },
 ];
