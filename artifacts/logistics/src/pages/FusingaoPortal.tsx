@@ -24,6 +24,7 @@ import FusingaoSheetSyncTab from "./fusingao/FusingaoSheetSyncTab";
 import OrderManageTab from "./fusingao/OrderManageTab";
 import ContractQuoteTab from "./fusingao/ContractQuoteTab";
 import SupplierTab from "./fusingao/SupplierTab";
+import GloryPortalTab from "./fusingao/GloryPortalTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -391,6 +392,7 @@ export default function FusingaoPortal() {
             {([
               { id:"contractquote", label:"📝 合約報價", group:3 },
               { id:"supplier",      label:"🏭 供應商",   group:3 },
+              { id:"glory",         label:"🔗 Glory入口", group:3 },
             ] as { id: PortalTab; label: string; group: number }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -826,6 +828,13 @@ export default function FusingaoPortal() {
         {tab === "supplier" && (
           <div className="p-4">
             <SupplierTab />
+          </div>
+        )}
+
+        {/* ═══════════════ Glory 平台快捷入口 ════════════════════════════════ */}
+        {tab === "glory" && (
+          <div className="p-4">
+            <GloryPortalTab />
           </div>
         )}
       </div>
