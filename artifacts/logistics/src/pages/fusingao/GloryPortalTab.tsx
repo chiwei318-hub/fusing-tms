@@ -103,6 +103,12 @@ const GLORY_LINKS = [
     color: "border-orange-200 bg-orange-50",
     links: [
       {
+        label: "訂單派遣",
+        url: `${BASE}/orderDispatchQuery.action`,
+        desc: "訂單派遣查詢與管理",
+        icon: "📋",
+      },
+      {
         label: "派遣收據查詢",
         url: `${BASE}/jobReceiptQuery.action`,
         desc: "派遣收據單號、日期、車輛、司機查詢",
