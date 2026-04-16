@@ -139,6 +139,12 @@ const GLORY_LINKS = [
         desc: "客戶每日業績統計報表",
         icon: "👤",
       },
+      {
+        label: "客戶月業績表",
+        url: `${BASE}/CustomerPerformancePerMonthQuery.action`,
+        desc: "客戶每月業績彙總統計報表",
+        icon: "📆",
+      },
     ],
   },
 ];
