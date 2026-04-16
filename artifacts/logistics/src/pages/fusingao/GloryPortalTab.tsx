@@ -96,6 +96,12 @@ const GLORY_LINKS = [
         icon: "✏️",
       },
       {
+        label: "回單批價",
+        url: `${BASE}/jobReceiptQuery.action`,
+        desc: "回單批價作業查詢與管理",
+        icon: "💲",
+      },
+      {
         label: "訂單查詢",
         url: `${BASE}/jobOrderQuery.action`,
         desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
