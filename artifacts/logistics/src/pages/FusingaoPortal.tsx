@@ -93,7 +93,7 @@ const prefixColor: Record<string, string> = {
 export default function FusingaoPortal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [tab, setTab]           = useState<PortalTab>("control");
+  const [tab, setTab]           = useState<PortalTab>("glory");
   const [loading, setLoading]   = useState(false);
   const [summary, setSummary]   = useState<Summary | null>(null);
   const [routes, setRoutes]     = useState<RouteItem[]>([]);
@@ -395,14 +395,8 @@ export default function FusingaoPortal() {
             ))}
             <div className="border-r border-gray-200 mx-1 my-1" />
             {([
-              { id:"glory",         label:"🖥️ 後台管理中心" },
-              { id:"contractquote", label:"📝 合約報價" },
-              { id:"supplier",      label:"🏭 供應商" },
-              { id:"loan",          label:"🏦 貸款管理" },
-              { id:"vehicles",      label:"🚛 車輛管理" },
-              { id:"fuel",          label:"⛽ 油料管理" },
-              { id:"driverbonus",   label:"💰 司機獎金" },
-              { id:"township",      label:"🗺️ 鄉鎮市區" },
+              { id:"glory", label:"🖥️ 後台管理中心" },
+              { id:"loan",  label:"🏦 貸款管理" },
             ] as { id: PortalTab; label: string }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -841,12 +835,8 @@ export default function FusingaoPortal() {
           </div>
         )}
 
-        {/* ═══════════════ 後台管理中心 (Glory) ═══════════════════════════ */}
-        {tab === "glory" && (
-          <div className="p-4">
-            <GloryPortalTab onNavigate={(id) => setTab(id as PortalTab)} />
-          </div>
-        )}
+        {/* ═══════════════ 後台管理中心 ═══════════════════════════════════ */}
+        {tab === "glory" && <GloryPortalTab />}
 
         {/* ═══════════════ 貸款管理 ════════════════════════════════════════ */}
         {tab === "loan" && (
