@@ -206,6 +206,22 @@ router.delete("/customers/:id", async (req, res) => {
     if (!existing.length) {
       return res.status(404).json({ error: "Customer not found" });
     }
+    // Check if customer has any orders (linked by phone or enterprise_id)
+    const customer = existing[0] as any;
+    const orderCheck = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM orders o
+       WHERE o.customer_phone = $1 OR o.enterprise_id = $2`,
+      [customer.phone, id]
+    );
+    const orderCount = Number(orderCheck.rows[0]?.cnt ?? 0);
+    if (orderCount > 0) {
+      return res.status(409).json({
+        error: `此客戶有 ${orderCount} 筆訂單記錄，無法直接刪除。請改用「加入黑名單」功能停用此客戶。`
+      });
+    }
+    // Delete related records before deleting customer
+    await pool.query(`DELETE FROM customer_addresses WHERE customer_id = $1`, [id]);
+    await pool.query(`DELETE FROM customer_blacklist WHERE customer_id = $1`, [id]);
     await db.delete(customersTable).where(eq(customersTable.id, id));
     res.status(204).send();
   } catch (err) {

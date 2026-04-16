@@ -904,6 +904,9 @@ export default function CustomerManagementTab() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -940,6 +943,23 @@ export default function CustomerManagementTab() {
   function exportAll() {
     const url = `${API}/customers/statement/all/export?startDate=${startDate}&endDate=${endDate}`;
     window.open(url, "_blank");
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/customers/${deleteTarget.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "刪除失敗");
+      toast({ title: `已刪除客戶「${deleteTarget.name}」` });
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ["customers-extended"] });
+    } catch (e: any) {
+      toast({ title: "刪除失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -1040,9 +1060,26 @@ export default function CustomerManagementTab() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {filtered.map(c => (
-            <div key={c.id} onClick={() => setSelectedCustomer(c)}
-              className={`border rounded-lg p-3 cursor-pointer hover:shadow-md transition-all group
-                ${c.is_blacklisted ? "border-red-200 bg-red-50/20" : c.is_vip ? "border-amber-200 bg-amber-50/10" : "bg-card hover:border-primary/30"}`}>
+            <div key={c.id}
+              className={`border rounded-lg p-3 cursor-pointer hover:shadow-md transition-all group relative
+                ${c.is_blacklisted ? "border-red-200 bg-red-50/20" : c.is_vip ? "border-amber-200 bg-amber-50/10" : "bg-card hover:border-primary/30"}`}
+              onClick={() => setSelectedCustomer(c)}>
+              {/* Quick action buttons (show on hover) */}
+              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                onClick={e => e.stopPropagation()}>
+                <button
+                  title="編輯"
+                  onClick={() => setEditingCustomer(c)}
+                  className="w-6 h-6 flex items-center justify-center rounded bg-white border shadow-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                  <Edit className="w-3 h-3" />
+                </button>
+                <button
+                  title="刪除"
+                  onClick={() => setDeleteTarget(c)}
+                  className="w-6 h-6 flex items-center justify-center rounded bg-white border shadow-sm text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1061,7 +1098,7 @@ export default function CustomerManagementTab() {
                     {c.email && ` · ${c.email}`}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className="flex flex-col items-end gap-1 shrink-0 pr-7">
                   {c.order_no_prefix && (
                     <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded tracking-wider">
                       {c.order_no_prefix}-
@@ -1088,6 +1125,10 @@ export default function CustomerManagementTab() {
         <CustomerFormDialog customer={null} onClose={() => setShowNewForm(false)}
           onSave={() => { setShowNewForm(false); qc.invalidateQueries({ queryKey: ["customers-extended"] }); }} />
       )}
+      {editingCustomer && (
+        <CustomerFormDialog customer={editingCustomer} onClose={() => setEditingCustomer(null)}
+          onSave={() => { setEditingCustomer(null); qc.invalidateQueries({ queryKey: ["customers-extended"] }); }} />
+      )}
       {selectedCustomer && (
         <CustomerDetailDialog customer={selectedCustomer} onClose={() => setSelectedCustomer(null)}
           onUpdate={() => qc.invalidateQueries({ queryKey: ["customers-extended"] })} />
@@ -1097,6 +1138,32 @@ export default function CustomerManagementTab() {
         onClose={() => setShowImport(false)}
         onSuccess={() => qc.invalidateQueries({ queryKey: ["customers-extended"] })}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" /> 確認刪除客戶
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3 space-y-3">
+            <p className="text-sm">確定要永久刪除客戶「<span className="font-semibold">{deleteTarget?.name}</span>」嗎？</p>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-xs text-red-700 space-y-1">
+              <p className="font-semibold">⚠️ 此操作無法復原，將刪除：</p>
+              <p>· 客戶基本資料與聯絡資訊</p>
+              <p>· 所有常用地址</p>
+              <p className="mt-1 text-[11px]">注意：若此客戶有訂單記錄，系統會拒絕刪除，請改用「加入黑名單」。</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>取消</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? "刪除中..." : "確認刪除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
