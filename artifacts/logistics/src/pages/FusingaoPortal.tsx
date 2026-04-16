@@ -25,6 +25,10 @@ import OrderManageTab from "./fusingao/OrderManageTab";
 import ContractQuoteTab from "./fusingao/ContractQuoteTab";
 import SupplierTab from "./fusingao/SupplierTab";
 import GloryPortalTab from "./fusingao/GloryPortalTab";
+import VehicleTab from "./fusingao/VehicleTab";
+import FuelTab from "./fusingao/FuelTab";
+import DriverBonusTab from "./fusingao/DriverBonusTab";
+import TownshipTab from "./fusingao/TownshipTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +59,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -390,10 +394,13 @@ export default function FusingaoPortal() {
             ))}
             <div className="border-r border-gray-200 mx-1 my-1" />
             {([
-              { id:"contractquote", label:"📝 合約報價", group:3 },
-              { id:"supplier",      label:"🏭 供應商",   group:3 },
-              { id:"glory",         label:"🔗 Glory入口", group:3 },
-            ] as { id: PortalTab; label: string; group: number }[]).map(t => (
+              { id:"contractquote", label:"📝 合約報價" },
+              { id:"supplier",      label:"🏭 供應商" },
+              { id:"vehicles",      label:"🚛 車輛管理" },
+              { id:"fuel",          label:"⛽ 油料管理" },
+              { id:"driverbonus",   label:"💰 司機獎金" },
+              { id:"township",      label:"🗺️ 鄉鎮市區" },
+            ] as { id: PortalTab; label: string }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
                   t.id===tab ? "border-purple-500 text-purple-600 bg-purple-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
@@ -831,10 +838,47 @@ export default function FusingaoPortal() {
           </div>
         )}
 
-        {/* ═══════════════ Glory 平台快捷入口 ════════════════════════════════ */}
-        {tab === "glory" && (
+        {/* ═══════════════ 車輛管理 ════════════════════════════════════════ */}
+        {tab === "vehicles" && (
           <div className="p-4">
-            <GloryPortalTab />
+            <div className="mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">🚛 車輛基本資料管理</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">車輛資料、稅務、保險、eTag 維護查詢</p>
+            </div>
+            <VehicleTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 油料管理 ════════════════════════════════════════ */}
+        {tab === "fuel" && (
+          <div className="p-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">⛽ 油料管理</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">加油記錄、油料比較報表、油耗統計分析</p>
+            </div>
+            <FuelTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 司機獎金 ════════════════════════════════════════ */}
+        {tab === "driverbonus" && (
+          <div className="p-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">💰 司機獎金管理</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">司機獎金明細查詢與管理</p>
+            </div>
+            <DriverBonusTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 鄉鎮市區 ════════════════════════════════════════ */}
+        {tab === "township" && (
+          <div className="p-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">🗺️ 鄉鎮市區資料</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">台灣行政區域資料維護（已預載全台資料）</p>
+            </div>
+            <TownshipTab />
           </div>
         )}
       </div>
