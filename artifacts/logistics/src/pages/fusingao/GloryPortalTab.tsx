@@ -75,6 +75,12 @@ const GLORY_LINKS: GloryGroup[] = [
         desc: "車輛油耗比較分析報表",
         icon: "⛽",
       },
+      {
+        label: "油料報表查詢",
+        url: `${BASE}/fuelReportQuery.action`,
+        desc: "車輛加油紀錄與油料報表查詢",
+        icon: "🛢️",
+      },
     ],
   },
 ];
