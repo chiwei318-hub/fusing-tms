@@ -56,22 +56,26 @@ const DRIVER_HEADERS = ["姓名", "電話", "車型", "車牌號碼", "司機類
 
 // ── 欄位別名對應表（將 Glory Platform / 其他系統的欄位名稱轉換為統一格式）──
 const CUSTOMER_ALIASES: Record<string, string> = {
-  // 姓名
-  "客戶名稱": "姓名", "名稱": "姓名", "公司名稱": "姓名", "企業名稱": "姓名",
-  "買家": "姓名", "收件人": "姓名", "姓　名": "姓名", "客戶": "姓名",
+  // 姓名 ── Glory Platform: 客戶全名（最優先）
+  "客戶全名": "姓名", "客戶名稱": "姓名", "名稱": "姓名", "公司名稱": "姓名",
+  "企業名稱": "姓名", "買家": "姓名", "收件人": "姓名", "姓　名": "姓名",
   "customerName": "姓名", "name": "姓名",
-  // 電話
+  // 簡稱 ── Glory Platform: 客戶簡稱
+  "客戶簡稱": "簡稱", "簡稱": "簡稱", "shortName": "簡稱",
+  // 客戶編號 ── Glory Platform: 客戶編號（A01 / C00001 等，存入帳號欄位）
+  "客戶編號": "帳號",
+  // 電話（選填）
   "客戶電話": "電話", "聯絡電話": "電話", "手機": "電話", "電話號碼": "電話",
   "行動電話": "電話", "連絡電話": "電話", "手機號碼": "電話", "電　話": "電話",
   "customerPhone": "電話", "phone": "電話", "mobile": "電話",
-  // 地址
+  // 地址 ── Glory Platform: 客戶地址
   "客戶地址": "地址", "送貨地址": "地址", "收件地址": "地址", "通訊地址": "地址",
   "公司地址": "地址", "地　址": "地址", "address": "地址",
   // 聯絡人
   "聯絡人姓名": "聯絡人", "聯絡人員": "聯絡人", "contactPerson": "聯絡人",
-  // 統一編號
-  "統編": "統一編號", "公司統編": "統一編號", "統一編": "統一編號", "taxId": "統一編號",
-  "統一編號(選填)": "統一編號",
+  // 統一編號 ── Glory Platform: 統編
+  "統編": "統一編號", "公司統編": "統一編號", "統一編": "統一編號",
+  "taxId": "統一編號", "統一編號(選填)": "統一編號",
   // 帳號
   "使用者帳號": "帳號", "登入帳號": "帳號", "user": "帳號", "username": "帳號",
   "account": "帳號",
@@ -79,14 +83,24 @@ const CUSTOMER_ALIASES: Record<string, string> = {
   "登入密碼": "密碼", "password": "密碼", "pass": "密碼",
 };
 
+/** Glory Platform 中不需要匯入的系統欄位 */
+const GLORY_SKIP_FIELDS = new Set(["客戶分類", "提送貨型態", "提送貨型態說明"]);
+
 /** 將 Excel 原始 row 的欄位名稱正規化，支援別名對應 */
 function normalizeCustomerRow(raw: Record<string, any>): Record<string, any> {
-  const out: Record<string, any> = { ...raw };
-  for (const [src, target] of Object.entries(CUSTOMER_ALIASES)) {
-    if (src in raw && !(target in out)) {
-      out[target] = raw[src];
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const mapped = CUSTOMER_ALIASES[k];
+    if (mapped) {
+      // 若目標欄位已有值（優先保留先出現的），跳過
+      if (!(mapped in out)) out[mapped] = v;
+    } else if (!GLORY_SKIP_FIELDS.has(k)) {
+      // 原始欄位名稱原樣保留（如已是 姓名/電話 等標準名稱）
+      if (!(k in out)) out[k] = v;
     }
   }
+  // 若沒有 姓名 但有 客戶簡稱 對應後的 簡稱，用簡稱補姓名
+  if (!out["姓名"] && out["簡稱"]) out["姓名"] = out["簡稱"];
   return out;
 }
 
@@ -187,14 +201,17 @@ function parseExcel(file: File): Promise<AnyRow[]> {
 }
 
 function mapCustomerRow(r: CustomerRow) {
+  const ra = r as any;
   return {
-    name: String(r["姓名"] ?? "").trim(),
-    phone: String(r["電話"] ?? "").trim(),
-    address: String(r["地址"] ?? "").trim() || undefined,
-    contactPerson: String(r["聯絡人"] ?? "").trim() || undefined,
-    taxId: String(r["統一編號"] ?? "").trim() || undefined,
-    username: String(r["帳號"] ?? "").trim() || undefined,
-    password: String(r["密碼"] ?? "").trim() || undefined,
+    name: String(ra["姓名"] ?? "").trim(),
+    shortName: String(ra["簡稱"] ?? "").trim() || undefined,
+    phone: String(ra["電話"] ?? "").trim() || undefined,
+    address: String(ra["地址"] ?? "").trim() || undefined,
+    contactPerson: String(ra["聯絡人"] ?? "").trim() || undefined,
+    taxId: String(ra["統一編號"] ?? "").trim() || undefined,
+    username: String(ra["帳號"] ?? "").trim() || undefined,
+    password: String(ra["密碼"] ?? "").trim() || undefined,
+    externalCode: String(ra["帳號"] ?? "").trim() || undefined,
   };
 }
 
@@ -257,7 +274,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
   const validRows = rows.filter(r => {
     if (type === "customers") {
       const m = mapCustomerRow(r as CustomerRow);
-      return m.name && m.phone;
+      return !!m.name;  // 電話為選填
     }
     const m = mapDriverRow(r as DriverRow);
     return m.name && m.phone && m.licensePlate;
@@ -306,7 +323,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {type === "customers"
-            ? "必填欄位：姓名、電話。選填：地址、聯絡人、統一編號、帳號、密碼"
+            ? "必填欄位：姓名（或客戶全名）。選填：電話、地址、統一編號、聯絡人、帳號。支援 Glory Platform 匯出格式。"
             : "必填欄位：姓名、電話、車牌號碼。選填：車型、司機類型、帳號、密碼"}
         </p>
         <Button variant="outline" size="sm" onClick={() => downloadTemplate(type)}>
@@ -393,7 +410,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
               <TableBody>
                 {rows.map((row, i) => {
                   const valid = type === "customers"
-                    ? !!(mapCustomerRow(row as CustomerRow).name && mapCustomerRow(row as CustomerRow).phone)
+                    ? !!(mapCustomerRow(row as CustomerRow).name)
                     : !!(mapDriverRow(row as DriverRow).name && mapDriverRow(row as DriverRow).phone && mapDriverRow(row as DriverRow).licensePlate);
                   return (
                     <TableRow key={i} className={valid ? "" : "bg-red-50 text-muted-foreground"}>

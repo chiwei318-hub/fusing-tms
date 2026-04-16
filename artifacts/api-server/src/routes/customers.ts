@@ -171,22 +171,23 @@ router.post("/customers/login", async (req, res) => {
 
 router.post("/customers/bulk", async (req, res) => {
   try {
-    const { rows } = req.body as { rows: { name: string; phone: string; address?: string; contactPerson?: string; taxId?: string; username?: string; password?: string }[] };
+    const { rows } = req.body as { rows: { name: string; shortName?: string; phone?: string; address?: string; contactPerson?: string; taxId?: string; username?: string; password?: string; externalCode?: string }[] };
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: "No rows provided" });
     }
     const values = rows.map(r => ({
       name: String(r.name ?? "").trim(),
-      phone: String(r.phone ?? "").trim(),
+      short_name: r.shortName ? String(r.shortName).trim() : null,
+      phone: r.phone ? String(r.phone).trim() : null,
       address: r.address ? String(r.address).trim() : null,
       contactPerson: r.contactPerson ? String(r.contactPerson).trim() : null,
       taxId: r.taxId ? String(r.taxId).trim() : null,
-      username: r.username ? String(r.username).trim() : null,
+      username: r.username ? String(r.username).trim() : r.externalCode ? String(r.externalCode).trim() : null,
       password: r.password ? String(r.password).trim() : null,
-    })).filter(r => r.name && r.phone);
+    })).filter(r => r.name);
 
     if (values.length === 0) {
-      return res.status(400).json({ error: "No valid rows (name and phone required)" });
+      return res.status(400).json({ error: "No valid rows (name required)" });
     }
     const inserted = await db.insert(customersTable).values(values).returning();
     return res.status(201).json({ inserted: inserted.length, rows: inserted });
