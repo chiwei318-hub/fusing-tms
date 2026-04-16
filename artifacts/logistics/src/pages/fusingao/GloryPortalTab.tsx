@@ -109,6 +109,12 @@ const GLORY_LINKS = [
         icon: "📋",
       },
       {
+        label: "車輛總覽",
+        url: `${BASE}/VehicleOverviewQuery.action`,
+        desc: "車輛即時狀態總覽",
+        icon: "🚛",
+      },
+      {
         label: "貨況追蹤",
         url: `${BASE}/CargoTraceQuery.action`,
         desc: "貨物即時狀態追蹤查詢",
