@@ -56,6 +56,22 @@ startWeeklyReportScheduler();
 
 // ── 訂單資料結構正規化遷移（冪等，只補空值）────────────────────────────
 async function runOrdersColumnMigration() {
+  // 0. 確保福興高派車相關欄位存在
+  const fusingaoOrderCols = [
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS route_id TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS route_prefix TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS station_count INTEGER`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_dock TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS shopee_driver_id TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fusingao_fleet_id INTEGER`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_grabbed_at TIMESTAMPTZ`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_completed_at TIMESTAMPTZ`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_type TEXT`,
+  ];
+  for (const s of fusingaoOrderCols) {
+    try { await _migPool.query(s); } catch { /* already exists */ }
+  }
+
   // 1. 補 vehicle_type 欄位（若不存在）
   await _migPool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS vehicle_type TEXT`);
 

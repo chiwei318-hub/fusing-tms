@@ -271,15 +271,15 @@ export default function LoanTab() {
   const today = new Date().toISOString().slice(0,10);
 
   const { data: stats, isLoading: statsLoading } = useQuery<LoanStats>({
-    queryKey:["loan-stats"], queryFn:()=>fetch(`${API}/loans/stats`).then(r=>r.json()), refetchInterval:120000,
+    queryKey:["loan-stats"], queryFn:()=>fetch(`${API}/loans/stats`).then(r=>r.json()).catch(()=>null), refetchInterval:120000,
   });
   const { data: loans=[] } = useQuery<LoanAccount[]>({
-    queryKey:["loans",search], queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); return fetch(`${API}/loans?${p}`).then(r=>r.json()); }, enabled: view==="loans",
+    queryKey:["loans",search], queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); return fetch(`${API}/loans?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]); }, enabled: view==="loans",
   });
   const { data: payments=[] } = useQuery<LoanPayment[]>({
-    queryKey:["loan-payments",evtFilter], queryFn:()=>{ const p=new URLSearchParams(); if(evtFilter!=="all")p.set("status",evtFilter); return fetch(`${API}/loan-payments?${p}`).then(r=>r.json()); }, enabled: view==="events",
+    queryKey:["loan-payments",evtFilter], queryFn:()=>{ const p=new URLSearchParams(); if(evtFilter!=="all")p.set("status",evtFilter); return fetch(`${API}/loan-payments?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]); }, enabled: view==="events",
   });
-  const { data: vehicles=[] } = useQuery<any[]>({ queryKey:["vehicles-simple"], queryFn:()=>fetch(`${API}/vehicles`).then(r=>r.json()), staleTime:60000 });
+  const { data: vehicles=[] } = useQuery<any[]>({ queryKey:["vehicles-simple"], queryFn:()=>fetch(`${API}/vehicles`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]), staleTime:60000 });
 
   async function handleDelete() {
     if (!deleteTarget)return;

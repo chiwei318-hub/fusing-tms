@@ -10,11 +10,11 @@ export const gloryModulesRouter = Router();
 gloryModulesRouter.get("/vehicles", async (req, res) => {
   try {
     const { search, status } = req.query as Record<string, string>;
-    let q = `SELECT v.*, f.fleet_name FROM vehicles v LEFT JOIN platform_fleets f ON f.id = v.fleet_id WHERE 1=1`;
+    let q = `SELECT * FROM vehicles WHERE 1=1`;
     const p: any[] = [];
-    if (search) { p.push(`%${search}%`); q += ` AND (v.plate_no ILIKE $${p.length} OR v.brand ILIKE $${p.length} OR v.owner_name ILIKE $${p.length} OR v.assigned_driver ILIKE $${p.length})`; }
-    if (status) { p.push(status); q += ` AND v.status = $${p.length}`; }
-    q += ` ORDER BY v.plate_no`;
+    if (search) { p.push(`%${search}%`); q += ` AND (plate_no ILIKE $${p.length} OR brand ILIKE $${p.length} OR owner_name ILIKE $${p.length} OR assigned_driver ILIKE $${p.length})`; }
+    if (status) { p.push(status); q += ` AND status = $${p.length}`; }
+    q += ` ORDER BY plate_no`;
     const r = await pool.query(q, p);
     res.json(r.rows);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -22,7 +22,7 @@ gloryModulesRouter.get("/vehicles", async (req, res) => {
 
 gloryModulesRouter.get("/vehicles/:id", async (req, res) => {
   try {
-    const r = await pool.query(`SELECT v.*, f.fleet_name FROM vehicles v LEFT JOIN platform_fleets f ON f.id = v.fleet_id WHERE v.id=$1`, [req.params.id]);
+    const r = await pool.query(`SELECT * FROM vehicles WHERE id=$1`, [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: "Not found" });
     const [tax, ins, etag] = await Promise.all([
       pool.query(`SELECT * FROM vehicle_tax WHERE vehicle_id=$1 ORDER BY tax_year DESC, tax_type`, [req.params.id]),

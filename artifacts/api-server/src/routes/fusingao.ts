@@ -21,6 +21,26 @@ async function ensureFusingaoFleetColumns() {
   for (const stmt of alterStatements) {
     try { await db.execute(stmt); } catch { /* ignore */ }
   }
+  // Route prefix rates table (route → rate per trip)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS route_prefix_rates (
+      id          SERIAL PRIMARY KEY,
+      prefix      TEXT NOT NULL UNIQUE,
+      rate_per_trip NUMERIC(10,2) NOT NULL DEFAULT 0,
+      note        TEXT,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Ensure fusingao fleet columns on orders (fleet grab/complete tracking)
+  const fleetOrderCols = [
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fusingao_fleet_id INTEGER`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_grabbed_at TIMESTAMPTZ`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_completed_at TIMESTAMPTZ`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_type TEXT`,
+  ];
+  for (const s of fleetOrderCols) {
+    try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
+  }
   // Fleet settlement adjustments table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS fusingao_fleet_adjustments (

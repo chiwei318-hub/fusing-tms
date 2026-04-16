@@ -219,7 +219,7 @@ export default function VehicleTab() {
   const [detailId, setDetailId] = useState<number|null>(null); const [deleteTarget, setDeleteTarget] = useState<Vehicle|null>(null);
   const { data: vehicles=[], isLoading } = useQuery<Vehicle[]>({
     queryKey:["vehicles",search,filterStatus],
-    queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); if(filterStatus!=="all")p.set("status",filterStatus); return fetch(`${API}/vehicles?${p}`).then(r=>r.json()); },
+    queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); if(filterStatus!=="all")p.set("status",filterStatus); return fetch(`${API}/vehicles?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]); },
     refetchInterval:60000,
   });
   async function handleDelete() {

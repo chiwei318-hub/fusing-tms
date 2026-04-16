@@ -87,7 +87,7 @@ export default function DriverBonusTab() {
 
   const { data:bonuses=[], isLoading } = useQuery<DriverBonus[]>({
     queryKey:["driver-bonus",search,filterStatus,dateFrom,dateTo],
-    queryFn:()=>{const p=new URLSearchParams();if(search)p.set("search",search);if(filterStatus!=="all")p.set("status",filterStatus);if(dateFrom)p.set("dateFrom",dateFrom);if(dateTo)p.set("dateTo",dateTo);return fetch(`${API}/driver-bonus?${p}`).then(r=>r.json());},
+    queryFn:()=>{const p=new URLSearchParams();if(search)p.set("search",search);if(filterStatus!=="all")p.set("status",filterStatus);if(dateFrom)p.set("dateFrom",dateFrom);if(dateTo)p.set("dateTo",dateTo);return fetch(`${API}/driver-bonus?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]);},
   });
 
   const stats = useMemo(()=>({

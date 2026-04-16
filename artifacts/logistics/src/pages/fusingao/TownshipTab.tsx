@@ -64,7 +64,7 @@ export default function TownshipTab() {
 
   const { data:townships=[], isLoading } = useQuery<Township[]>({
     queryKey:["townships",search,filterCounty],
-    queryFn:()=>{const p=new URLSearchParams();if(search)p.set("search",search);if(filterCounty!=="all")p.set("county",filterCounty);return fetch(`${API}/townships?${p}`).then(r=>r.json());},
+    queryFn:()=>{const p=new URLSearchParams();if(search)p.set("search",search);if(filterCounty!=="all")p.set("county",filterCounty);return fetch(`${API}/townships?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]);},
     staleTime:60000,
   });
 

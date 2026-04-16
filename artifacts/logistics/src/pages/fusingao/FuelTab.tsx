@@ -94,9 +94,9 @@ export default function FuelTab() {
 
   const { data: records=[], isLoading } = useQuery<FuelRecord[]>({
     queryKey:["fuel-records",search,dateFrom,dateTo],
-    queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); if(dateFrom)p.set("dateFrom",dateFrom); if(dateTo)p.set("dateTo",dateTo); return fetch(`${API}/fuel-records?${p}`).then(r=>r.json()); },
+    queryFn:()=>{ const p=new URLSearchParams(); if(search)p.set("search",search); if(dateFrom)p.set("dateFrom",dateFrom); if(dateTo)p.set("dateTo",dateTo); return fetch(`${API}/fuel-records?${p}`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]); },
   });
-  const { data: vehicles=[] } = useQuery<any[]>({ queryKey:["vehicles-simple"], queryFn:()=>fetch(`${API}/vehicles`).then(r=>r.json()), staleTime:60000 });
+  const { data: vehicles=[] } = useQuery<any[]>({ queryKey:["vehicles-simple"], queryFn:()=>fetch(`${API}/vehicles`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]), staleTime:60000 });
 
   // Comparison stats
   const stats = useMemo(()=>{
