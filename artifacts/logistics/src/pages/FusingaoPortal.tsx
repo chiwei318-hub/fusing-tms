@@ -22,6 +22,8 @@ import FusingaoScheduleTab from "./fusingao/FusingaoScheduleTab";
 import FusingaoBillingDetailTab from "./fusingao/FusingaoBillingDetailTab";
 import FusingaoSheetSyncTab from "./fusingao/FusingaoSheetSyncTab";
 import OrderManageTab from "./fusingao/OrderManageTab";
+import ContractQuoteTab from "./fusingao/ContractQuoteTab";
+import SupplierTab from "./fusingao/SupplierTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +54,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -381,6 +383,18 @@ export default function FusingaoPortal() {
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
                   t.id===tab ? "border-blue-500 text-blue-600 bg-blue-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}>
+                {t.label}
+              </button>
+            ))}
+            <div className="border-r border-gray-200 mx-1 my-1" />
+            {([
+              { id:"contractquote", label:"📝 合約報價", group:3 },
+              { id:"supplier",      label:"🏭 供應商",   group:3 },
+            ] as { id: PortalTab; label: string; group: number }[]).map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  t.id===tab ? "border-purple-500 text-purple-600 bg-purple-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 }`}>
                 {t.label}
               </button>
@@ -800,6 +814,20 @@ export default function FusingaoPortal() {
 
         {/* ═══════════════ DB同步設定 ══════════════════════════════════════════ */}
         {tab === "dbsync" && <FusingaoSheetSyncTab />}
+
+        {/* ═══════════════ 合約報價維護 ════════════════════════════════════════ */}
+        {tab === "contractquote" && (
+          <div className="p-4">
+            <ContractQuoteTab />
+          </div>
+        )}
+
+        {/* ═══════════════ 供應商管理 ══════════════════════════════════════════ */}
+        {tab === "supplier" && (
+          <div className="p-4">
+            <SupplierTab />
+          </div>
+        )}
       </div>
     </div>
   );

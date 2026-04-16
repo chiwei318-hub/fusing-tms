@@ -252,4 +252,68 @@ _migPool.query(`
   }
 })();
 
+// ── 建立報價單維護資料表 ──────────────────────────────────────────────────────
+(async () => {
+  try {
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS customer_contract_quotes (
+        id             SERIAL PRIMARY KEY,
+        quote_no       VARCHAR(30) UNIQUE NOT NULL,
+        customer_id    INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        customer_name  VARCHAR(100),
+        title          VARCHAR(200) NOT NULL,
+        status         VARCHAR(20) NOT NULL DEFAULT 'draft',
+        valid_from     DATE,
+        valid_to       DATE,
+        contact_person VARCHAR(50),
+        contact_phone  VARCHAR(30),
+        notes          TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS customer_contract_quote_items (
+        id           SERIAL PRIMARY KEY,
+        quote_id     INTEGER NOT NULL REFERENCES customer_contract_quotes(id) ON DELETE CASCADE,
+        route_from   VARCHAR(100),
+        route_to     VARCHAR(100),
+        vehicle_type VARCHAR(50),
+        cargo_type   VARCHAR(100),
+        unit         VARCHAR(20) NOT NULL DEFAULT 'per_trip',
+        unit_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        min_charge   NUMERIC(12,2) NOT NULL DEFAULT 0,
+        notes        VARCHAR(200),
+        sort_order   INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id              SERIAL PRIMARY KEY,
+        name            VARCHAR(100) NOT NULL,
+        short_name      VARCHAR(30),
+        tax_id          VARCHAR(20),
+        contact_person  VARCHAR(50),
+        contact_phone   VARCHAR(30),
+        contact_email   VARCHAR(100),
+        address         VARCHAR(200),
+        vehicle_types   VARCHAR(200),
+        service_regions VARCHAR(200),
+        payment_terms   VARCHAR(100),
+        bank_name       VARCHAR(50),
+        bank_account    VARCHAR(30),
+        status          VARCHAR(20) NOT NULL DEFAULT 'active',
+        category        VARCHAR(50),
+        commission_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    console.log("[ContractQuotes] tables ensured");
+  } catch (e) {
+    console.warn("[ContractQuotes] table ensure failed:", String(e).slice(0, 200));
+  }
+})();
+
 export default app;
