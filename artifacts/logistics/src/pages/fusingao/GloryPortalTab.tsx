@@ -121,6 +121,12 @@ const GLORY_LINKS = [
         desc: "每日車輛出勤績效、行駛距離、趟次統計",
         icon: "📊",
       },
+      {
+        label: "車輛月業績表",
+        url: `${BASE}/VehiclePerformancePerMonthQuery.action`,
+        desc: "車輛每月業績彙總統計報表",
+        icon: "📅",
+      },
     ],
   },
 ];
