@@ -65,6 +65,12 @@ const GLORY_LINKS = [
     color: "border-amber-200 bg-amber-50",
     links: [
       {
+        label: "報價單維護",
+        url: `${BASE}/quoteMaintainQuery.action`,
+        desc: "報價單新增、編輯、維護管理",
+        icon: "✏️",
+      },
+      {
         label: "報價基準區",
         url: `${BASE}/jobReceiptQuery.action`,
         desc: "報價單號、客戶編號、報價日期、生效日期區間查詢",
