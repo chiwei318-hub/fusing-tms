@@ -340,6 +340,27 @@ router.put("/suppliers/:id", async (req, res) => {
   }
 });
 
+router.post("/suppliers/bulk", async (req, res) => {
+  const { rows } = req.body as { rows: any[] };
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ error: "rows required" });
+  let inserted = 0;
+  const errors: string[] = [];
+  for (const r of rows) {
+    if (!r.name) { errors.push(`略過空名稱列`); continue; }
+    try {
+      await pool.query(
+        `INSERT INTO suppliers (name,short_name,tax_id,contact_person,contact_phone,address,status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [r.name, r.shortName||null, r.taxId||null, r.contactPerson||null,
+         r.contactPhone||null, r.address||null, "active"]
+      );
+      inserted++;
+    } catch (e: any) { errors.push(`${r.name}: ${e.message}`); }
+  }
+  res.json({ inserted, errors });
+});
+
 router.delete("/suppliers/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);

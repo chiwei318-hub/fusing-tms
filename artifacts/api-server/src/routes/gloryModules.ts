@@ -300,3 +300,51 @@ gloryModulesRouter.delete("/townships/:id", async (req, res) => {
   try { await pool.query(`DELETE FROM townships WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e: any) { res.status(500).json({ error: e.message }); }
 });
+
+// ══════════════════════════════════════════════════════════
+// Glory 批量匯入
+// ══════════════════════════════════════════════════════════
+
+gloryModulesRouter.post("/vehicles/bulk", async (req, res) => {
+  const { rows } = req.body as { rows: any[] };
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ error: "rows required" });
+  let inserted = 0;
+  const errors: string[] = [];
+  for (const r of rows) {
+    if (!r.plateNo) { errors.push(`略過空車牌列`); continue; }
+    try {
+      await pool.query(
+        `INSERT INTO vehicles (plate_no,vehicle_type,brand,model,year,color,vin,engine_no,gross_weight,owner_name,owner_id,assigned_driver,status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT DO NOTHING`,
+        [r.plateNo, r.vehicleType||null, r.brand||null, r.model||null,
+         r.year ? parseInt(String(r.year)) : null,
+         r.color||null, r.vin||null, r.engineNo||null,
+         r.grossWeight ? parseFloat(String(r.grossWeight)) : null,
+         r.ownerName||null, r.ownerId||null, r.assignedDriver||null, r.status||"active"]
+      );
+      inserted++;
+    } catch (e: any) { errors.push(`${r.plateNo}: ${e.message}`); }
+  }
+  res.json({ inserted, errors });
+});
+
+gloryModulesRouter.post("/townships/bulk", async (req, res) => {
+  const { rows } = req.body as { rows: any[] };
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ error: "rows required" });
+  let inserted = 0;
+  const errors: string[] = [];
+  for (const r of rows) {
+    if (!r.county || !r.district) { errors.push(`略過空縣市或鄉鎮列`); continue; }
+    try {
+      await pool.query(
+        `INSERT INTO townships (county,district,zip_code) VALUES ($1,$2,$3) ON CONFLICT (county,district) DO NOTHING`,
+        [r.county, r.district, r.zipCode||null]
+      );
+      inserted++;
+    } catch (e: any) { errors.push(`${r.county}${r.district}: ${e.message}`); }
+  }
+  res.json({ inserted, errors });
+});

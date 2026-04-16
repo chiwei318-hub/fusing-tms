@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ExternalLink, Search, X } from "lucide-react";
+import { ExternalLink, Search, X, Upload } from "lucide-react";
+import { ImportDialog } from "@/components/ImportDialog";
 import VehicleTab    from "./VehicleTab";
 import FuelTab       from "./FuelTab";
 import DriverBonusTab from "./DriverBonusTab";
@@ -275,6 +276,7 @@ interface Props {
 export default function GloryPortalTab({ initialSub = "vehicles" }: Props) {
   const [sub, setSub] = useState<SubTab>(initialSub);
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   const t = TITLES[sub];
 
@@ -289,6 +291,13 @@ export default function GloryPortalTab({ initialSub = "vehicles" }: Props) {
       <div className="w-40 shrink-0 border-r bg-muted/20 flex flex-col py-2 gap-0.5">
         <div className="px-3 pb-2 pt-1">
           <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">後台管理中心</div>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="mt-2 w-full flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors font-medium"
+          >
+            <Upload className="w-3 h-3 shrink-0" />
+            Glory 資料匯入
+          </button>
         </div>
         {SUB_TABS.map(s => (
           <button
@@ -378,6 +387,13 @@ export default function GloryPortalTab({ initialSub = "vehicles" }: Props) {
           )}
         </div>
       </div>
+
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        defaultTab="suppliers"
+        onSuccess={() => setImportOpen(false)}
+      />
     </div>
   );
 }

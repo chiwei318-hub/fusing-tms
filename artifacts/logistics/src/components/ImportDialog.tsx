@@ -22,7 +22,7 @@ import { Upload, Download, CheckCircle2, XCircle, AlertCircle, FileSpreadsheet }
 
 const API_BASE = import.meta.env.BASE_URL + "api";
 
-type ImportType = "customers" | "drivers" | "orders";
+type ImportType = "customers" | "drivers" | "orders" | "suppliers" | "vehicles" | "townships";
 
 interface CustomerRow {
   姓名: string;
@@ -104,6 +104,167 @@ function normalizeCustomerRow(raw: Record<string, any>): Record<string, any> {
   return out;
 }
 
+// ── 廠商欄位別名 ───────────────────────────────────────────────────────────
+const SUPPLIER_ALIASES: Record<string, string> = {
+  "廠商名稱": "名稱", "公司名稱": "名稱", "供應商名稱": "名稱", "name": "名稱",
+  "廠商簡稱": "簡稱", "簡稱": "簡稱", "shortName": "簡稱",
+  "統編": "統一編號", "統一編": "統一編號", "公司統編": "統一編號", "taxId": "統一編號",
+  "聯絡人姓名": "聯絡人", "聯絡人員": "聯絡人", "contactPerson": "聯絡人",
+  "廠商電話": "電話", "聯絡電話": "電話", "電話號碼": "電話", "contactPhone": "電話",
+  "廠商地址": "地址", "公司地址": "地址", "通訊地址": "地址", "address": "地址",
+};
+const SUPPLIER_HEADERS = ["名稱", "簡稱", "統一編號", "聯絡人", "電話", "地址"];
+function normalizeSupplierRow(raw: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const mapped = SUPPLIER_ALIASES[k];
+    if (mapped) { if (!(mapped in out)) out[mapped] = v; }
+    else { if (!(k in out)) out[k] = v; }
+  }
+  return out;
+}
+function mapSupplierRow(r: Record<string, any>) {
+  return {
+    name: String(r["名稱"] ?? "").trim(),
+    shortName: String(r["簡稱"] ?? "").trim() || undefined,
+    taxId: String(r["統一編號"] ?? "").trim() || undefined,
+    contactPerson: String(r["聯絡人"] ?? "").trim() || undefined,
+    contactPhone: String(r["電話"] ?? "").trim() || undefined,
+    address: String(r["地址"] ?? "").trim() || undefined,
+  };
+}
+
+// ── 車輛欄位別名 ───────────────────────────────────────────────────────────
+const VEHICLE_ALIASES: Record<string, string> = {
+  "車號": "車牌", "車牌號碼": "車牌", "牌照號碼": "車牌", "plateNo": "車牌",
+  "車型代碼": "車型", "車種": "車型", "vehicleType": "車型",
+  "廠牌": "廠牌", "卡車廠牌": "廠牌", "車廠": "廠牌", "brand": "廠牌",
+  "出廠年月": "年份", "出廠年份": "年份", "製造年份": "年份", "year": "年份",
+  "最大載重": "總重量(公噸)", "總重": "總重量(公噸)", "總重(公噸)": "總重量(公噸)", "grossWeight": "總重量(公噸)",
+  "車色": "顏色", "color": "顏色",
+  "引擎號碼": "引擎號碼", "引擎號": "引擎號碼", "engineNo": "引擎號碼",
+  "車身號碼": "VIN", "車身號": "VIN", "vin": "VIN",
+  "所有人": "車主", "車主姓名": "車主", "ownerName": "車主",
+  "指派司機": "指派司機", "assignedDriver": "指派司機",
+};
+const VEHICLE_HEADERS = ["車牌", "車型", "廠牌", "年份", "總重量(公噸)", "顏色", "引擎號碼", "VIN", "車主", "指派司機"];
+function normalizeVehicleRow(raw: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const mapped = VEHICLE_ALIASES[k];
+    if (mapped) { if (!(mapped in out)) out[mapped] = v; }
+    else { if (!(k in out)) out[k] = v; }
+  }
+  return out;
+}
+function mapVehicleRow(r: Record<string, any>) {
+  return {
+    plateNo: String(r["車牌"] ?? "").trim(),
+    vehicleType: String(r["車型"] ?? "").trim() || undefined,
+    brand: String(r["廠牌"] ?? "").trim() || undefined,
+    year: String(r["年份"] ?? "").trim() || undefined,
+    grossWeight: String(r["總重量(公噸)"] ?? "").trim() || undefined,
+    color: String(r["顏色"] ?? "").trim() || undefined,
+    engineNo: String(r["引擎號碼"] ?? "").trim() || undefined,
+    vin: String(r["VIN"] ?? "").trim() || undefined,
+    ownerName: String(r["車主"] ?? "").trim() || undefined,
+    assignedDriver: String(r["指派司機"] ?? "").trim() || undefined,
+  };
+}
+
+// ── 鄉鎮欄位別名 ───────────────────────────────────────────────────────────
+const TOWNSHIP_ALIASES: Record<string, string> = {
+  "縣市名稱": "縣市", "所屬縣市": "縣市", "縣市代碼": "縣市", "county": "縣市",
+  "鄉鎮名稱": "鄉鎮", "鄉鎮市區": "鄉鎮", "市區": "鄉鎮", "district": "鄉鎮",
+  "鄉鎮代碼": "郵遞區號", "郵遞區號": "郵遞區號", "zipCode": "郵遞區號", "zip": "郵遞區號",
+};
+const TOWNSHIP_HEADERS = ["縣市", "鄉鎮", "郵遞區號"];
+function normalizeTownshipRow(raw: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const mapped = TOWNSHIP_ALIASES[k];
+    if (mapped) { if (!(mapped in out)) out[mapped] = v; }
+    else { if (!(k in out)) out[k] = v; }
+  }
+  return out;
+}
+function mapTownshipRow(r: Record<string, any>) {
+  return {
+    county: String(r["縣市"] ?? "").trim(),
+    district: String(r["鄉鎮"] ?? "").trim(),
+    zipCode: String(r["郵遞區號"] ?? "").trim() || undefined,
+  };
+}
+
+// ── 各類型設定 ────────────────────────────────────────────────────────────
+function getTypeHeaders(type: ImportType): string[] {
+  if (type === "suppliers") return SUPPLIER_HEADERS;
+  if (type === "vehicles")  return VEHICLE_HEADERS;
+  if (type === "townships") return TOWNSHIP_HEADERS;
+  if (type === "customers") return CUSTOMER_HEADERS;
+  return DRIVER_HEADERS;
+}
+function getTypeAliases(type: ImportType): Record<string, string> {
+  if (type === "suppliers") return SUPPLIER_ALIASES;
+  if (type === "vehicles")  return VEHICLE_ALIASES;
+  if (type === "townships") return TOWNSHIP_ALIASES;
+  if (type === "customers") return CUSTOMER_ALIASES;
+  return {};
+}
+function normalizeRow(type: ImportType, raw: Record<string, any>): Record<string, any> {
+  if (type === "customers") return normalizeCustomerRow(raw);
+  if (type === "suppliers") return normalizeSupplierRow(raw);
+  if (type === "vehicles")  return normalizeVehicleRow(raw);
+  if (type === "townships") return normalizeTownshipRow(raw);
+  return raw;
+}
+function isValidRow(type: ImportType, row: Record<string, any>): boolean {
+  if (type === "customers") return !!mapCustomerRow(row as CustomerRow).name;
+  if (type === "drivers")   return !!(mapDriverRow(row as DriverRow).name && mapDriverRow(row as DriverRow).phone && mapDriverRow(row as DriverRow).licensePlate);
+  if (type === "suppliers") return !!mapSupplierRow(row).name;
+  if (type === "vehicles")  return !!mapVehicleRow(row).plateNo;
+  if (type === "townships") return !!(mapTownshipRow(row).county && mapTownshipRow(row).district);
+  return true;
+}
+function mapRow(type: ImportType, row: Record<string, any>) {
+  if (type === "customers") return mapCustomerRow(row as CustomerRow);
+  if (type === "drivers")   return mapDriverRow(row as DriverRow);
+  if (type === "suppliers") return mapSupplierRow(row);
+  if (type === "vehicles")  return mapVehicleRow(row);
+  if (type === "townships") return mapTownshipRow(row);
+  return row;
+}
+function getEndpoint(type: ImportType): string {
+  if (type === "customers") return "/customers/bulk";
+  if (type === "drivers")   return "/drivers/bulk";
+  if (type === "suppliers") return "/suppliers/bulk";
+  if (type === "vehicles")  return "/vehicles/bulk";
+  if (type === "townships") return "/townships/bulk";
+  return "";
+}
+function getTypeHint(type: ImportType): string {
+  if (type === "customers") return "必填：姓名（或客戶全名）。選填：電話、地址、統一編號、聯絡人、帳號。支援 Glory Platform 匯出格式。";
+  if (type === "drivers")   return "必填：姓名、電話、車牌號碼。選填：車型、司機類型、帳號、密碼";
+  if (type === "suppliers") return "必填：名稱（或廠商名稱）。選填：簡稱、統一編號、聯絡人、電話、地址。支援 Glory 廠商基本資料匯出。";
+  if (type === "vehicles")  return "必填：車牌（或車號）。選填：車型、廠牌、年份、總重量、車主、指派司機。支援 Glory 車輛基本資料匯出。";
+  if (type === "townships") return "必填：縣市、鄉鎮（或鄉鎮名稱、所屬縣市）。選填：郵遞區號。支援 Glory 鄉鎮基本資料匯出。";
+  return "";
+}
+function getTemplateName(type: ImportType): string {
+  const names: Record<string, string> = {
+    customers: "客戶匯入範本.xlsx", drivers: "司機匯入範本.xlsx",
+    suppliers: "廠商匯入範本.xlsx", vehicles: "車輛匯入範本.xlsx", townships: "鄉鎮匯入範本.xlsx",
+  };
+  return names[type] ?? "匯入範本.xlsx";
+}
+function getSheetName(type: ImportType): string {
+  const names: Record<string, string> = {
+    customers: "客戶資料", drivers: "司機資料",
+    suppliers: "廠商資料", vehicles: "車輛資料", townships: "鄉鎮資料",
+  };
+  return names[type] ?? "資料";
+}
+
 const CUSTOMER_SAMPLE: CustomerRow[] = [
   { 姓名: "王大明", 電話: "0912345678", 地址: "台北市信義區信義路5段7號", 聯絡人: "王小姐", 統一編號: "12345678", 帳號: "wang001", 密碼: "123456" },
   { 姓名: "陳美華", 電話: "0923456789", 地址: "台中市西屯區台灣大道3段99號", 聯絡人: "", 統一編號: "", 帳號: "", 密碼: "" },
@@ -115,13 +276,13 @@ const DRIVER_SAMPLE: DriverRow[] = [
 ];
 
 async function downloadTemplate(type: ImportType) {
-  const headers = type === "customers" ? CUSTOMER_HEADERS : DRIVER_HEADERS;
-  const sample = type === "customers" ? CUSTOMER_SAMPLE : DRIVER_SAMPLE;
+  const headers = getTypeHeaders(type);
+  const sample = type === "customers" ? CUSTOMER_SAMPLE : type === "drivers" ? DRIVER_SAMPLE : [];
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(type === "customers" ? "客戶資料" : "司機資料");
+  const ws = wb.addWorksheet(getSheetName(type));
   ws.addRow(headers);
-  sample.forEach(row => ws.addRow(headers.map(h => String((row as any)[h] ?? ""))));
+  sample.forEach((row: any) => ws.addRow(headers.map(h => String(row[h] ?? ""))));
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
@@ -130,7 +291,7 @@ async function downloadTemplate(type: ImportType) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = type === "customers" ? "客戶匯入範本.xlsx" : "司機匯入範本.xlsx";
+  a.download = getTemplateName(type);
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -242,7 +403,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
   const [parseError, setParseError] = useState("");
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
 
-  const headers = type === "customers" ? CUSTOMER_HEADERS : DRIVER_HEADERS;
+  const headers = getTypeHeaders(type);
 
   const handleFile = async (file: File) => {
     setParseError("");
@@ -255,10 +416,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
       if (parsed.length > 0) {
         setRawHeaders(Object.keys(parsed[0]));
       }
-      // 若為客戶資料，對每一列套用欄位別名正規化
-      const normalized = type === "customers"
-        ? parsed.map(r => normalizeCustomerRow(r as Record<string, any>) as AnyRow)
-        : parsed;
+      const normalized = parsed.map(r => normalizeRow(type, r as Record<string, any>) as AnyRow);
       setRows(normalized);
     } catch (e: any) {
       setParseError(e.message ?? "解析失敗");
@@ -271,26 +429,15 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
     if (file) handleFile(file);
   };
 
-  const validRows = rows.filter(r => {
-    if (type === "customers") {
-      const m = mapCustomerRow(r as CustomerRow);
-      return !!m.name;  // 電話為選填
-    }
-    const m = mapDriverRow(r as DriverRow);
-    return m.name && m.phone && m.licensePlate;
-  });
-
+  const validRows = rows.filter(r => isValidRow(type, r as Record<string, any>));
   const invalidCount = rows.length - validRows.length;
 
   const handleImport = async () => {
     if (validRows.length === 0) return;
     setLoading(true);
     try {
-      const mapped = type === "customers"
-        ? validRows.map(r => mapCustomerRow(r as CustomerRow))
-        : validRows.map(r => mapDriverRow(r as DriverRow));
-
-      const endpoint = type === "customers" ? "/customers/bulk" : "/drivers/bulk";
+      const mapped = validRows.map(r => mapRow(type, r as Record<string, any>));
+      const endpoint = getEndpoint(type);
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -321,11 +468,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {type === "customers"
-            ? "必填欄位：姓名（或客戶全名）。選填：電話、地址、統一編號、聯絡人、帳號。支援 Glory Platform 匯出格式。"
-            : "必填欄位：姓名、電話、車牌號碼。選填：車型、司機類型、帳號、密碼"}
-        </p>
+        <p className="text-sm text-muted-foreground">{getTypeHint(type)}</p>
         <Button variant="outline" size="sm" onClick={() => downloadTemplate(type)}>
           <Download className="w-4 h-4 mr-1" />
           下載範本
@@ -377,15 +520,17 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
           </div>
 
           {/* 欄位對應提示 */}
-          {type === "customers" && rawHeaders.length > 0 && (
+          {rawHeaders.length > 0 && type !== "drivers" && (
             (() => {
-              const mapped = rawHeaders.filter(h => CUSTOMER_ALIASES[h]);
-              const unrecognized = rawHeaders.filter(h => !CUSTOMER_HEADERS.includes(h) && !CUSTOMER_ALIASES[h]);
+              const aliases = getTypeAliases(type);
+              const typeHeaders = getTypeHeaders(type);
+              const mapped = rawHeaders.filter(h => aliases[h]);
+              const unrecognized = rawHeaders.filter(h => !typeHeaders.includes(h) && !aliases[h]);
               return (mapped.length > 0 || unrecognized.length > 0) ? (
                 <div className="text-xs rounded-md border bg-blue-50 border-blue-200 px-3 py-2 space-y-1">
                   {mapped.length > 0 && (
                     <p className="text-blue-700">
-                      🔄 已自動對應欄位：{mapped.map(h => `「${h}」→「${CUSTOMER_ALIASES[h]}」`).join("、")}
+                      🔄 已自動對應欄位：{mapped.map(h => `「${h}」→「${aliases[h]}」`).join("、")}
                     </p>
                   )}
                   {unrecognized.length > 0 && (
@@ -409,9 +554,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
               </TableHeader>
               <TableBody>
                 {rows.map((row, i) => {
-                  const valid = type === "customers"
-                    ? !!(mapCustomerRow(row as CustomerRow).name)
-                    : !!(mapDriverRow(row as DriverRow).name && mapDriverRow(row as DriverRow).phone && mapDriverRow(row as DriverRow).licensePlate);
+                  const valid = isValidRow(type, row as Record<string, any>);
                   return (
                     <TableRow key={i} className={valid ? "" : "bg-red-50 text-muted-foreground"}>
                       <TableCell>{i + 1}</TableCell>
@@ -708,10 +851,13 @@ export function ImportDialog({ open, onClose, defaultTab = "customers", onSucces
         </DialogHeader>
 
         <Tabs defaultValue={defaultTab}>
-          <TabsList className="w-full">
-            <TabsTrigger value="customers" className="flex-1">客戶資料</TabsTrigger>
-            <TabsTrigger value="drivers" className="flex-1">司機資料</TabsTrigger>
-            <TabsTrigger value="orders" className="flex-1">訂單批量匯入</TabsTrigger>
+          <TabsList className="w-full flex-wrap h-auto gap-0.5 p-1">
+            <TabsTrigger value="customers" className="flex-1 text-xs">客戶資料</TabsTrigger>
+            <TabsTrigger value="drivers" className="flex-1 text-xs">司機資料</TabsTrigger>
+            <TabsTrigger value="orders" className="flex-1 text-xs">訂單匯入</TabsTrigger>
+            <TabsTrigger value="suppliers" className="flex-1 text-xs">🏭 廠商</TabsTrigger>
+            <TabsTrigger value="vehicles" className="flex-1 text-xs">🚛 車輛</TabsTrigger>
+            <TabsTrigger value="townships" className="flex-1 text-xs">🗺️ 鄉鎮</TabsTrigger>
           </TabsList>
           <TabsContent value="customers" className="mt-4">
             <ImportTabPanel type="customers" onSuccess={() => onSuccess?.()} />
@@ -721,6 +867,15 @@ export function ImportDialog({ open, onClose, defaultTab = "customers", onSucces
           </TabsContent>
           <TabsContent value="orders" className="mt-4">
             <OrdersImportPanel onSuccess={() => onSuccess?.()} />
+          </TabsContent>
+          <TabsContent value="suppliers" className="mt-4">
+            <ImportTabPanel type="suppliers" onSuccess={() => onSuccess?.()} />
+          </TabsContent>
+          <TabsContent value="vehicles" className="mt-4">
+            <ImportTabPanel type="vehicles" onSuccess={() => onSuccess?.()} />
+          </TabsContent>
+          <TabsContent value="townships" className="mt-4">
+            <ImportTabPanel type="townships" onSuccess={() => onSuccess?.()} />
           </TabsContent>
         </Tabs>
       </DialogContent>
