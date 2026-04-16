@@ -127,6 +127,12 @@ const GLORY_LINKS = [
         desc: "車輛稅費查詢與管理",
         icon: "🧾",
       },
+      {
+        label: "車輛保險",
+        url: `${BASE}/vehicleInsuranceQuery.action`,
+        desc: "車輛保險查詢與管理",
+        icon: "🛡️",
+      },
     ],
   },
   // ── 6. 報表 ───────────────────────────────────────────────────────────────
