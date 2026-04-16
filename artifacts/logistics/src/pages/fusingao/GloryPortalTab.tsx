@@ -116,7 +116,7 @@ const GLORY_LINKS = [
     color: "border-purple-200 bg-purple-50",
     links: [
       {
-        label: "每日車輛績效",
+        label: "車輛日業績表",
         url: `${BASE}/VehiclePerformancePerDayQuery.action`,
         desc: "每日車輛出勤績效、行駛距離、趟次統計",
         icon: "📊",
