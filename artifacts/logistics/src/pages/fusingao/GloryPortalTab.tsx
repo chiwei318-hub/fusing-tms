@@ -90,6 +90,12 @@ const GLORY_LINKS = [
     color: "border-green-200 bg-green-50",
     links: [
       {
+        label: "訂單維護",
+        url: `${BASE}/OrderMaintainQueryTA.action`,
+        desc: "訂單新增、編輯、維護管理（泰立）",
+        icon: "✏️",
+      },
+      {
         label: "訂單查詢",
         url: `${BASE}/jobOrderQuery.action`,
         desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
