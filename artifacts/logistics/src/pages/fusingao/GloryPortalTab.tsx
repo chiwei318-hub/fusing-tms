@@ -52,33 +52,43 @@ const INTERNAL_MODULES = [
     id: "vehicles",
     icon: "🚛",
     label: "車輛管理",
-    desc: "車輛 CRUD、稅務 / 保險 / eTag 明細",
+    desc: "車輛 CRUD、稅務 / 保險 / eTag 明細、狀態追蹤",
     color: "border-orange-200 bg-orange-50 hover:border-orange-400",
-    badge: "取代外部連結",
   },
   {
     id: "fuel",
     icon: "⛽",
     label: "油料管理",
-    desc: "加油記錄 + 油料比較報表（各車油耗佔比）",
+    desc: "加油記錄、各車油耗比較報表、總金額統計",
     color: "border-amber-200 bg-amber-50 hover:border-amber-400",
-    badge: "取代外部連結",
   },
   {
     id: "driverbonus",
     icon: "💰",
     label: "司機獎金",
-    desc: "獎金明細、一鍵標記已發放、統計待發金額",
+    desc: "獎金明細、一鍵標記已發放、待發金額彙總",
     color: "border-emerald-200 bg-emerald-50 hover:border-emerald-400",
-    badge: "取代外部連結",
   },
   {
     id: "township",
     icon: "🗺️",
     label: "鄉鎮市區",
-    desc: "依縣市分組顯示、可新增 / 修改 / 刪除",
+    desc: "台灣 22 縣市行政區資料、可新增 / 修改 / 刪除",
     color: "border-sky-200 bg-sky-50 hover:border-sky-400",
-    badge: "取代外部連結",
+  },
+  {
+    id: "supplier",
+    icon: "🏭",
+    label: "供應商管理",
+    desc: "供應商資料、聯絡人、服務區域、傭金率、銀行帳號",
+    color: "border-purple-200 bg-purple-50 hover:border-purple-400",
+  },
+  {
+    id: "contractquote",
+    icon: "📝",
+    label: "合約報價",
+    desc: "報價單建立與管理、路線費率、草稿 / 確認 / 過期狀態",
+    color: "border-indigo-200 bg-indigo-50 hover:border-indigo-400",
   },
 ];
 
@@ -109,7 +119,7 @@ export default function GloryPortalTab({ onNavigate }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {INTERNAL_MODULES.map(m => (
             <button
               key={m.id}
@@ -120,10 +130,7 @@ export default function GloryPortalTab({ onNavigate }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-sm text-gray-800">{m.label}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">{m.badge}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-700 transition-colors" />
-                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-700 transition-colors shrink-0" />
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{m.desc}</p>
               </div>

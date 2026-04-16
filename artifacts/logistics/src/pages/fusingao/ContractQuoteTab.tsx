@@ -94,7 +94,7 @@ function QuoteFormDialog({ quote, onClose, onSave }: {
   const isNew = !quote;
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["customers-list-for-quote"],
-    queryFn: () => fetch(`${API}/customers`).then(r => r.json()),
+    queryFn: () => fetch(`${API}/customers`).then(r => r.json()).then(d => Array.isArray(d) ? d : []),
     staleTime: 60000,
   });
 
@@ -413,7 +413,7 @@ export default function ContractQuoteTab() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (filterStatus !== "all") params.set("status", filterStatus);
-      return fetch(`${API}/contract-quotes?${params}`).then(r => r.json());
+      return fetch(`${API}/contract-quotes?${params}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []);
     },
     refetchInterval: 60000,
   });

@@ -247,7 +247,7 @@ export default function SupplierTab() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (filterStatus !== "all") params.set("status", filterStatus);
-      return fetch(`${API}/suppliers?${params}`).then(r => r.json());
+      return fetch(`${API}/suppliers?${params}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []);
     },
     refetchInterval: 60000,
   });
