@@ -102,6 +102,12 @@ const GLORY_LINKS = [
         icon: "💲",
       },
       {
+        label: "外包運費",
+        url: `${BASE}/exteriorVehiclePricingQuery.action`,
+        desc: "外包車輛運費查詢與管理",
+        icon: "🚐",
+      },
+      {
         label: "訂單查詢",
         url: `${BASE}/jobOrderQuery.action`,
         desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
