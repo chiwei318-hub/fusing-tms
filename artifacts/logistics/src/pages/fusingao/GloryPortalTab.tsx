@@ -108,6 +108,12 @@ const GLORY_LINKS = [
         icon: "🚐",
       },
       {
+        label: "代墊款",
+        url: `${BASE}/advanceQuery.action`,
+        desc: "代墊款查詢與管理",
+        icon: "💴",
+      },
+      {
         label: "訂單查詢",
         url: `${BASE}/jobOrderQuery.action`,
         desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
