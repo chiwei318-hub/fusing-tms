@@ -69,7 +69,7 @@ export default function QuotesTab() {
     queryKey: ["quotes"],
     queryFn: async () => {
       const token = localStorage.getItem("auth-jwt");
-      const res = await fetch(getApiUrl("quotes"), {
+      const res = await fetch(getApiUrl("/api/quotes"), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const d = await res.json();

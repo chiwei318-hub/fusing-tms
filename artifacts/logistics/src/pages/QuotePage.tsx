@@ -105,7 +105,7 @@ export default function QuotePage() {
   const estimate = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(getApiUrl("quotes/estimate"), {
+      const res = await fetch(getApiUrl("/api/quotes/estimate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -139,7 +139,7 @@ export default function QuotePage() {
     if (!breakdown) return;
     setSaving(true);
     try {
-      const res = await fetch(getApiUrl("quotes"), {
+      const res = await fetch(getApiUrl("/api/quotes"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

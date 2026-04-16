@@ -128,8 +128,8 @@ export default function FranchiseeTab() {
     setLoading(true);
     try {
       const [listRes, statsRes] = await Promise.all([
-        fetch(getApiUrl("franchisees"), { headers: authHeaders() }),
-        fetch(getApiUrl("franchisees/stats/overview"), { headers: authHeaders() }),
+        fetch(getApiUrl("/api/franchisees"), { headers: authHeaders() }),
+        fetch(getApiUrl("/api/franchisees/stats/overview"), { headers: authHeaders() }),
       ]);
       setFranchisees(await listRes.json());
       setStats(await statsRes.json());
@@ -144,7 +144,7 @@ export default function FranchiseeTab() {
 
   const fetchSettlements = async (id: number) => {
     try {
-      const res = await fetch(getApiUrl(`franchisees/${id}/settlements`), { headers: authHeaders() });
+      const res = await fetch(getApiUrl(`/api/franchisees/${id}/settlements`), { headers: authHeaders() });
       const data = await res.json();
       setSettlements(prev => ({ ...prev, [id]: data }));
     } catch { /* ignore */ }
@@ -181,7 +181,7 @@ export default function FranchiseeTab() {
     }
     setSaving(true);
     try {
-      const url    = editId ? getApiUrl(`franchisees/${editId}`) : getApiUrl("franchisees");
+      const url    = editId ? getApiUrl(`/api/franchisees/${editId}`) : getApiUrl("/api/franchisees");
       const method = editId ? "PATCH" : "POST";
       const res    = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(formData) });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -197,7 +197,7 @@ export default function FranchiseeTab() {
 
   const handleTerminate = async (f: Franchisee) => {
     if (!confirm(`確定要終止「${f.name}」的加盟合約？`)) return;
-    await fetch(getApiUrl(`franchisees/${f.id}`), { method: "DELETE", headers: authHeaders() });
+    await fetch(getApiUrl(`/api/franchisees/${f.id}`), { method: "DELETE", headers: authHeaders() });
     toast({ title: "已終止合約", description: f.name });
     fetchAll();
   };
@@ -208,7 +208,7 @@ export default function FranchiseeTab() {
       const body: Record<string, unknown> = { year: genYear, month: genMonth };
       if (genOrderCount) body.order_count   = Number(genOrderCount);
       if (genRevenue)    body.gross_revenue = Number(genRevenue.replace(/,/g, ""));
-      const res = await fetch(getApiUrl(`franchisees/${id}/settlements/generate`), {
+      const res = await fetch(getApiUrl(`/api/franchisees/${id}/settlements/generate`), {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
       });
       const data = await res.json();

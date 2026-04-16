@@ -268,12 +268,12 @@ export default function OpenApiTab() {
   const [newWH,  setNewWH]    = useState({ name: "", url: "", note: "", events: ["order.created","order.status_changed","order.delivered"] as string[] });
 
   const fetchKeys = useCallback(async () => {
-    const r = await fetch(getApiUrl("api-keys"), { headers: authHdr() });
+    const r = await fetch(getApiUrl("/api/api-keys"), { headers: authHdr() });
     setApiKeys(await r.json());
   }, []);
 
   const fetchWH = useCallback(async () => {
-    const r = await fetch(getApiUrl("webhooks"), { headers: authHdr() });
+    const r = await fetch(getApiUrl("/api/webhooks"), { headers: authHdr() });
     setWebhooks(await r.json());
   }, []);
 
@@ -287,7 +287,7 @@ export default function OpenApiTab() {
 
   const createKey = async () => {
     if (!newKey.name) return;
-    const r = await fetch(getApiUrl("api-keys"), {
+    const r = await fetch(getApiUrl("/api/api-keys"), {
       method: "POST", headers: authHdr(),
       body: JSON.stringify(newKey),
     });
@@ -298,7 +298,7 @@ export default function OpenApiTab() {
 
   const createWH = async () => {
     if (!newWH.name || !newWH.url) return;
-    await fetch(getApiUrl("webhooks"), {
+    await fetch(getApiUrl("/api/webhooks"), {
       method: "POST", headers: authHdr(),
       body: JSON.stringify(newWH),
     });

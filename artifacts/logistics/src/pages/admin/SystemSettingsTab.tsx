@@ -91,7 +91,7 @@ export default function SystemSettingsTab() {
     setLoading(true);
     try {
       const token = localStorage.getItem("auth-jwt");
-      const res = await fetch(getApiUrl("system-config"), {
+      const res = await fetch(getApiUrl("/api/system-config"), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -129,7 +129,7 @@ export default function SystemSettingsTab() {
     setSaving(true);
     try {
       const token = localStorage.getItem("auth-jwt");
-      await fetch(getApiUrl("system-config"), {
+      await fetch(getApiUrl("/api/system-config"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(edits),
@@ -147,7 +147,7 @@ export default function SystemSettingsTab() {
     setSmtpSaving(true);
     try {
       const token = localStorage.getItem("auth-jwt");
-      const res = await fetch(getApiUrl("invoices/smtp-config"), {
+      const res = await fetch(getApiUrl("/api/invoices/smtp-config"), {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(smtpEdits),
@@ -172,7 +172,7 @@ export default function SystemSettingsTab() {
     setTestResult(null);
     try {
       const token = localStorage.getItem("auth-jwt");
-      const res = await fetch(getApiUrl("invoices/smtp-test"), {
+      const res = await fetch(getApiUrl("/api/invoices/smtp-test"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ to: testEmail }),
