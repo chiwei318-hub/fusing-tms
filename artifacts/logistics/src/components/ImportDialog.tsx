@@ -54,6 +54,42 @@ interface ImportResult {
 const CUSTOMER_HEADERS = ["姓名", "電話", "地址", "聯絡人", "統一編號", "帳號", "密碼"];
 const DRIVER_HEADERS = ["姓名", "電話", "車型", "車牌號碼", "司機類型", "帳號", "密碼"];
 
+// ── 欄位別名對應表（將 Glory Platform / 其他系統的欄位名稱轉換為統一格式）──
+const CUSTOMER_ALIASES: Record<string, string> = {
+  // 姓名
+  "客戶名稱": "姓名", "名稱": "姓名", "公司名稱": "姓名", "企業名稱": "姓名",
+  "買家": "姓名", "收件人": "姓名", "姓　名": "姓名", "客戶": "姓名",
+  "customerName": "姓名", "name": "姓名",
+  // 電話
+  "客戶電話": "電話", "聯絡電話": "電話", "手機": "電話", "電話號碼": "電話",
+  "行動電話": "電話", "連絡電話": "電話", "手機號碼": "電話", "電　話": "電話",
+  "customerPhone": "電話", "phone": "電話", "mobile": "電話",
+  // 地址
+  "客戶地址": "地址", "送貨地址": "地址", "收件地址": "地址", "通訊地址": "地址",
+  "公司地址": "地址", "地　址": "地址", "address": "地址",
+  // 聯絡人
+  "聯絡人姓名": "聯絡人", "聯絡人員": "聯絡人", "contactPerson": "聯絡人",
+  // 統一編號
+  "統編": "統一編號", "公司統編": "統一編號", "統一編": "統一編號", "taxId": "統一編號",
+  "統一編號(選填)": "統一編號",
+  // 帳號
+  "使用者帳號": "帳號", "登入帳號": "帳號", "user": "帳號", "username": "帳號",
+  "account": "帳號",
+  // 密碼
+  "登入密碼": "密碼", "password": "密碼", "pass": "密碼",
+};
+
+/** 將 Excel 原始 row 的欄位名稱正規化，支援別名對應 */
+function normalizeCustomerRow(raw: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...raw };
+  for (const [src, target] of Object.entries(CUSTOMER_ALIASES)) {
+    if (src in raw && !(target in out)) {
+      out[target] = raw[src];
+    }
+  }
+  return out;
+}
+
 const CUSTOMER_SAMPLE: CustomerRow[] = [
   { 姓名: "王大明", 電話: "0912345678", 地址: "台北市信義區信義路5段7號", 聯絡人: "王小姐", 統一編號: "12345678", 帳號: "wang001", 密碼: "123456" },
   { 姓名: "陳美華", 電話: "0923456789", 地址: "台中市西屯區台灣大道3段99號", 聯絡人: "", 統一編號: "", 帳號: "", 密碼: "" },
@@ -187,6 +223,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [parseError, setParseError] = useState("");
+  const [rawHeaders, setRawHeaders] = useState<string[]>([]);
 
   const headers = type === "customers" ? CUSTOMER_HEADERS : DRIVER_HEADERS;
 
@@ -194,10 +231,18 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
     setParseError("");
     setResult(null);
     setRows([]);
+    setRawHeaders([]);
     setFileName(file.name);
     try {
       const parsed = await parseExcel(file);
-      setRows(parsed);
+      if (parsed.length > 0) {
+        setRawHeaders(Object.keys(parsed[0]));
+      }
+      // 若為客戶資料，對每一列套用欄位別名正規化
+      const normalized = type === "customers"
+        ? parsed.map(r => normalizeCustomerRow(r as Record<string, any>) as AnyRow)
+        : parsed;
+      setRows(normalized);
     } catch (e: any) {
       setParseError(e.message ?? "解析失敗");
     }
@@ -252,6 +297,7 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
     setFileName("");
     setResult(null);
     setParseError("");
+    setRawHeaders([]);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -299,17 +345,41 @@ function ImportTabPanel({ type, onSuccess }: TabPanelProps) {
 
       {rows.length > 0 && !result && (
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-sm">
               <FileSpreadsheet className="w-4 h-4 text-green-600" />
               <span className="font-medium">{fileName}</span>
             </div>
             <Badge variant="secondary">{rows.length} 列</Badge>
-            {invalidCount > 0 && (
+            {invalidCount > 0 ? (
               <Badge variant="destructive">{invalidCount} 列缺少必填欄位（將略過）</Badge>
+            ) : (
+              <Badge className="bg-green-100 text-green-700 border-green-300">全部 {rows.length} 列有效</Badge>
             )}
             <Button variant="ghost" size="sm" className="ml-auto" onClick={reset}>重新上傳</Button>
           </div>
+
+          {/* 欄位對應提示 */}
+          {type === "customers" && rawHeaders.length > 0 && (
+            (() => {
+              const mapped = rawHeaders.filter(h => CUSTOMER_ALIASES[h]);
+              const unrecognized = rawHeaders.filter(h => !CUSTOMER_HEADERS.includes(h) && !CUSTOMER_ALIASES[h]);
+              return (mapped.length > 0 || unrecognized.length > 0) ? (
+                <div className="text-xs rounded-md border bg-blue-50 border-blue-200 px-3 py-2 space-y-1">
+                  {mapped.length > 0 && (
+                    <p className="text-blue-700">
+                      🔄 已自動對應欄位：{mapped.map(h => `「${h}」→「${CUSTOMER_ALIASES[h]}」`).join("、")}
+                    </p>
+                  )}
+                  {unrecognized.length > 0 && (
+                    <p className="text-gray-500">
+                      ℹ️ 未使用欄位（已略過）：{unrecognized.map(h => `「${h}」`).join("、")}
+                    </p>
+                  )}
+                </div>
+              ) : null;
+            })()
+          )}
 
           <div className="border rounded-lg overflow-auto max-h-64">
             <Table>
