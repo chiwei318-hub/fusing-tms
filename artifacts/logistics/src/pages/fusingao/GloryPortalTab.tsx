@@ -10,18 +10,117 @@ import ContractQuoteTab from "./ContractQuoteTab";
 const BASE = "https://taylih.gloryplatform.com/e-order";
 
 const GLORY_LINKS = [
+  // ── 1. 基本資料 ──────────────────────────────────────────────────────────
   {
-    group: "客戶資料",
+    group: "1. 基本資料",
     color: "border-blue-200 bg-blue-50",
     links: [
-      { label:"客戶資料（泰立）", url:`${BASE}/customerBasicDataSetQueryTA.action`, desc:"泰立分公司客戶基本資料查詢", icon:"👤" },
+      {
+        label: "客戶基本資料（泰立）",
+        url: `${BASE}/customerBasicDataSetQueryTA.action`,
+        desc: "泰立分公司所有客戶資料查詢、匯出 Excel",
+        icon: "👤",
+      },
+      {
+        label: "廠商基本資料",
+        url: `${BASE}/supplierBasicDataSetQuery.action`,
+        desc: "廠商編號、廠商名稱、聯絡人、電話、統編、地址",
+        icon: "🏭",
+      },
+      {
+        label: "車輛基本資料",
+        url: `${BASE}/VehicleBasicDataSetQuery.action`,
+        desc: "車號、車牌、車型、出廠年月、最大載重、卡車廠牌",
+        icon: "🚛",
+      },
+      {
+        label: "縣市基本資料",
+        url: `${BASE}/cityBasicDataSetQuery.action`,
+        desc: "縣市代碼、縣市名稱、是否顯示（KLUNG / YILAN / TPE1…）",
+        icon: "🏙️",
+      },
+      {
+        label: "鄉鎮基本資料",
+        url: `${BASE}/townshipBasicDataSetQuery.action`,
+        desc: "鄉鎮代碼、鄉鎮名稱、所屬縣市（100臺北市中正區…）",
+        icon: "🗺️",
+      },
+      {
+        label: "報價車型設定",
+        url: `${BASE}/jobVehicleTypeSetQuery.action`,
+        desc: "車輛類型代碼：0.6T / 1.5T / 3.5T … 43T",
+        icon: "🚚",
+      },
+      {
+        label: "配眼客戶",
+        url: `${BASE}/matchJobCustomerQuery.action`,
+        desc: "起點地址 ↔ 終點地址，預測行駛距離 / 時數對應",
+        icon: "📍",
+      },
     ],
   },
+  // ── 2. 報價作業 ───────────────────────────────────────────────────────────
   {
-    group: "績效與報表",
+    group: "2. 報價作業",
+    color: "border-amber-200 bg-amber-50",
+    links: [
+      {
+        label: "報價基準區",
+        url: `${BASE}/jobReceiptQuery.action`,
+        desc: "報價單號、客戶編號、報價日期、生效日期區間查詢",
+        icon: "📋",
+      },
+      {
+        label: "報價主管理",
+        url: `${BASE}/jobQuery.action`,
+        desc: "報價單主清單：報價單號、客戶、生效日期、現場日期",
+        icon: "📝",
+      },
+      {
+        label: "範例結算緣線",
+        url: `${BASE}/jobExampleSettlementQuery.action`,
+        desc: "報價緣線結算範例條件說明",
+        icon: "📐",
+      },
+    ],
+  },
+  // ── 3. 訂單作業 ───────────────────────────────────────────────────────────
+  {
+    group: "3. 訂單作業",
     color: "border-green-200 bg-green-50",
     links: [
-      { label:"每日車輛績效", url:`${BASE}/VehiclePerformancePerDayQuery.action`, desc:"每日車輛出勤績效查詢", icon:"📊" },
+      {
+        label: "訂單查詢",
+        url: `${BASE}/jobOrderQuery.action`,
+        desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",
+        icon: "📦",
+      },
+    ],
+  },
+  // ── 4. 派遣作業 ───────────────────────────────────────────────────────────
+  {
+    group: "4. 派遣作業",
+    color: "border-orange-200 bg-orange-50",
+    links: [
+      {
+        label: "派遣收據查詢",
+        url: `${BASE}/jobReceiptQuery.action`,
+        desc: "派遣收據單號、日期、車輛、司機查詢",
+        icon: "🧾",
+      },
+    ],
+  },
+  // ── 6. 報表 ───────────────────────────────────────────────────────────────
+  {
+    group: "6. 報表",
+    color: "border-purple-200 bg-purple-50",
+    links: [
+      {
+        label: "每日車輛績效",
+        url: `${BASE}/VehiclePerformancePerDayQuery.action`,
+        desc: "每日車輛出勤績效、行駛距離、趟次統計",
+        icon: "📊",
+      },
     ],
   },
 ];
