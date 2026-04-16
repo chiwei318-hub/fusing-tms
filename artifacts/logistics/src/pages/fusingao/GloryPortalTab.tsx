@@ -57,6 +57,12 @@ const GLORY_LINKS: GloryGroup[] = [
         desc: "車輛保險到期日與保費管理",
         icon: "🛡️",
       },
+      {
+        label: "eTag 維護查詢",
+        url: `${BASE}/eTagMaintainQuery.action`,
+        desc: "車輛 eTag（ETC 電子標籤）維護查詢",
+        icon: "🏷️",
+      },
     ],
   },
   {
