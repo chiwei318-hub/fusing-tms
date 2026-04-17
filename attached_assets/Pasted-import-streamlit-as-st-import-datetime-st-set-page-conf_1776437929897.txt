@@ -1,0 +1,66 @@
+import streamlit as st
+import datetime
+
+# 設定頁面風格
+st.set_page_config(page_title="富詠運輸-客戶詢價系統", layout="centered")
+
+st.title("🚛 富詠運輸：即時運費詢價與預約")
+st.markdown("---")
+
+# --- 第一步：客戶與路線資訊 ---
+st.subheader("📍 第一步：填寫運送資訊")
+col1, col2 = st.columns(2)
+
+with col1:
+    origin = st.selectbox("起運地點", ["基隆市", "台北市", "新北市", "桃園市", "新竹縣市", "苗栗縣", "台中市", "彰化縣", "雲林縣", "嘉義縣市", "台南市", "高雄市", "屏東縣", "宜蘭縣", "花蓮縣", "台東縣"])
+    destination = st.selectbox("抵達地點", ["台北市", "基隆市", "新北市", "桃園市", "新竹縣市", "苗栗縣", "台中市", "彰化縣", "雲林縣", "嘉義縣市", "台南市", "高雄市", "屏東縣", "宜蘭縣", "花蓮縣", "台東縣"])
+
+with col2:
+    truck_type = st.selectbox("所需車型", ["3.5噸(一般貨物/堅達)", "11噸(中型貨車)", "26噸(大型/鷗翼)", "冷鏈低溫車(3.5噸)"])
+    shipment_date = st.date_input("預計出貨日期", datetime.date.today() + datetime.timedelta(days=1))
+
+# --- 第二步：系統自動估價 (邏輯封裝) ---
+# 這裡預設一個簡單的區域里程矩陣 (實際可對接 Google Maps API)
+# 為了演示，我們使用區域加權計算
+base_fare = {"3.5噸(一般貨物/堅達)": 2500, "11噸(中型貨車)": 4500, "26噸(大型/鷗翼)": 8000, "冷鏈低溫車(3.5噸)": 3500}
+
+# 簡單區域距離權重 (示意)
+region_dist = 1.0
+if origin != destination:
+    region_dist = 2.5 # 跨縣市基本加成
+
+total_estimate = base_fare[truck_type] * region_dist
+
+# --- 第三步：報價展示與轉換 ---
+st.markdown("---")
+st.subheader("💰 系統即時估價")
+
+# 加入精美的報價顯示
+st.info(f"根據您的選擇：從 **{origin}** 到 **{destination}**")
+st.markdown(f"<h2 style='text-align: center; color: #1E88E5;'>預估運費：NT$ {int(total_estimate):,} 起</h2>", unsafe_allow_html=True)
+st.caption("*註：此為系統預估價，實際報價以專員回覆為準。特殊時段或偏遠地區另計。")
+
+# --- 第四步：留資料預約 ---
+st.markdown("---")
+st.subheader("📞 我要預約/聯繫專員")
+with st.form("customer_order"):
+    c1, c2 = st.columns(2)
+    with c1:
+        cust_name = st.text_input("聯絡人姓名*")
+        cust_phone = st.text_input("聯絡電話*")
+    with c2:
+        cust_email = st.text_input("Email (選填)")
+        notes = st.text_area("備註 (如：需助手、特殊上下貨條件)")
+    
+    submit_button = st.form_submit_button("提交預約申請")
+
+if submit_button:
+    if cust_name and cust_phone:
+        st.success("✅ 申請已送出！富詠專員將於 30 分鐘內與您聯繫。")
+        # 這裡可以加入發送到老闆 Telegram 的邏輯
+        # send_telegram_msg(f"新單報價：{cust_name} 從 {origin} 到 {destination}，金額約 {total_estimate}")
+    else:
+        st.error("❌ 請填寫必填欄位。")
+
+st.markdown("---")
+st.caption("富詠運輸：穩定獲利、專業可靠、自動化管理。")
