@@ -1717,7 +1717,7 @@ export default function Admin() {
                     { value: "drivercredit", icon: <span className="text-sm leading-none">⭐</span>,                 label: "信用積分" },
                     { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
-                    { value: "glory",       icon: <span className="text-sm leading-none">🖥️</span>,                  label: "後台管理中心" },
+                    { value: "glory",       icon: <span className="text-sm leading-none">🖥️</span>,                  label: "Glory 模組" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
