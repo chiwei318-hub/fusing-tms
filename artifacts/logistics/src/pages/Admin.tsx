@@ -3996,7 +3996,7 @@ export default function Admin() {
 
         {/* ===== 後台管理中心 TAB ===== */}
         <TabsContent value="glory" className="outline-none">
-          <GloryPortalTab />
+          <GloryPortalTab onNavigateAdmin={handleTabChange} />
         </TabsContent>
       </Tabs>
       </Suspense>
