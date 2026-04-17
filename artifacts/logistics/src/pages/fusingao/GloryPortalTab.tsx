@@ -1,19 +1,19 @@
 import { useState } from "react";
 import { Search, X, Upload, ArrowRight, ExternalLink } from "lucide-react";
 import { ImportDialog } from "@/components/ImportDialog";
-import VehicleTab    from "./VehicleTab";
-import FuelTab       from "./FuelTab";
+import VehicleTab from "./VehicleTab";
+import FuelTab from "./FuelTab";
 import DriverBonusTab from "./DriverBonusTab";
-import TownshipTab   from "./TownshipTab";
-import SupplierTab   from "./SupplierTab";
+import TownshipTab from "./TownshipTab";
+import SupplierTab from "./SupplierTab";
 import ContractQuoteTab from "./ContractQuoteTab";
 
 type SubTab = "vehicles" | "fuel" | "driverbonus" | "township" | "supplier" | "contractquote" | "glory_links";
 
 interface GloryLink {
   label: string;
-  sub?: SubTab;       // 本模組內部跳頁
-  adminTab?: string;  // 跳到主後台的分頁
+  sub?: SubTab;
+  adminTab?: string;
   desc: string;
   icon: string;
 }
@@ -25,100 +25,96 @@ interface GloryGroup {
 }
 
 const GLORY_LINKS: GloryGroup[] = [
-  // ── 1. 基本資料 ──────────────────────────────────────────────────────────
   {
     group: "1. 基本資料",
     color: "border-blue-200 bg-blue-50 hover:bg-blue-100",
     links: [
-      { label: "客戶基本資料",   sub: undefined,        adminTab: "customers",    desc: "所有客戶資料查詢、匯出 Excel",                         icon: "👤" },
-      { label: "廠商基本資料",   sub: "supplier",       adminTab: undefined,      desc: "廠商編號、廠商名稱、聯絡人、電話、統編、地址",         icon: "🏭" },
-      { label: "車輛基本資料",   sub: "vehicles",       adminTab: undefined,      desc: "車號、車牌、車型、出廠年月、最大載重、卡車廠牌",       icon: "🚛" },
-      { label: "縣市基本資料",   sub: "township",       adminTab: undefined,      desc: "縣市代碼、縣市名稱（KLUNG / YILAN / TPE1…）",         icon: "🏙️" },
-      { label: "鄉鎮基本資料",   sub: "township",       adminTab: undefined,      desc: "鄉鎮代碼、鄉鎮名稱、所屬縣市",                       icon: "🗺️" },
-      { label: "報價車型設定",   sub: "contractquote",  adminTab: undefined,      desc: "車輛類型代碼：0.6T / 1.5T / 3.5T … 43T",             icon: "🚚" },
-      { label: "配眼客戶",       sub: undefined,        adminTab: "smart",        desc: "起點地址 ↔ 終點地址，預測行駛距離 / 時數對應",        icon: "📍" },
+      { label: "客戶基本資料", sub: undefined, adminTab: "customers", desc: "所有客戶資料查詢、匯出 Excel", icon: "👤" },
+      { label: "廠商基本資料", sub: "supplier", adminTab: undefined, desc: "廠商編號、廠商名稱、聯絡人、電話、統編、地址", icon: "🏭" },
+      { label: "車輛基本資料", sub: "vehicles", adminTab: undefined, desc: "車號、車牌、車型、出廠年月、最大載重、卡車廠牌", icon: "🚛" },
+      { label: "縣市基本資料", sub: "township", adminTab: undefined, desc: "縣市代碼、縣市名稱（KLUNG / YILAN / TPE1…）", icon: "🏙️" },
+      { label: "鄉鎮基本資料", sub: "township", adminTab: undefined, desc: "鄉鎮代碼、鄉鎮名稱、所屬縣市", icon: "🗺️" },
+      { label: "報價車型設定", sub: "contractquote", adminTab: undefined, desc: "車輛類型代碼：0.6T / 1.5T / 3.5T … 43T", icon: "🚚" },
+      { label: "配眼客戶", sub: undefined, adminTab: "smart", desc: "起點地址 ↔ 終點地址，預測行駛距離 / 時數對應", icon: "📍" },
+      { label: "自動化客服", sub: undefined, adminTab: "line", desc: "RAG 結合營運規則處理加盟司機與客戶 FAQ", icon: "🤖" },
     ],
   },
-  // ── 2. 報價作業 ───────────────────────────────────────────────────────────
   {
     group: "2. 報價作業",
     color: "border-amber-200 bg-amber-50 hover:bg-amber-100",
     links: [
-      { label: "報價單維護",     sub: "contractquote",  adminTab: undefined,      desc: "報價單新增、編輯、維護管理",                           icon: "✏️" },
-      { label: "報價基準區",     sub: "contractquote",  adminTab: undefined,      desc: "報價單號、客戶編號、報價日期、生效日期區間查詢",       icon: "📋" },
-      { label: "報價主管理",     sub: undefined,        adminTab: "quotes",       desc: "報價單主清單：報價單號、客戶、生效日期、現場日期",     icon: "📝" },
-      { label: "範例結算緣線",   sub: "contractquote",  adminTab: undefined,      desc: "報價緣線結算範例條件說明",                             icon: "📐" },
+      { label: "報價單維護", sub: "contractquote", adminTab: undefined, desc: "報價單新增、編輯、維護管理", icon: "✏️" },
+      { label: "報價基準區", sub: "contractquote", adminTab: undefined, desc: "報價單號、客戶編號、報價日期、生效日期區間查詢", icon: "📋" },
+      { label: "報價主管理", sub: undefined, adminTab: "quotes", desc: "報價單主清單：報價單號、客戶、生效日期、現場日期", icon: "📝" },
+      { label: "範例結算緣線", sub: "contractquote", adminTab: undefined, desc: "報價緣線結算範例條件說明", icon: "📐" },
     ],
   },
-  // ── 3. 訂單作業 ───────────────────────────────────────────────────────────
   {
     group: "3. 訂單作業",
     color: "border-green-200 bg-green-50 hover:bg-green-100",
     links: [
-      { label: "訂單維護",       sub: undefined,        adminTab: "orders",       desc: "訂單新增、編輯、維護管理",                             icon: "✏️" },
-      { label: "回單批價",       sub: undefined,        adminTab: "settlement",   desc: "回單批價作業查詢與管理",                               icon: "💲" },
-      { label: "外包運費",       sub: undefined,        adminTab: "outsourcing",  desc: "外包車輛運費查詢與管理",                               icon: "🚐" },
-      { label: "代墊款",         sub: undefined,        adminTab: "invoice",      desc: "代墊款查詢與管理",                                     icon: "💴" },
-      { label: "運費校對單",     sub: undefined,        adminTab: "settlement",   desc: "運費校對單查詢與管理",                                 icon: "🔍" },
-      { label: "運費請款單",     sub: undefined,        adminTab: "invoice",      desc: "運費請款單建立與查詢",                                 icon: "🧾" },
-      { label: "訂單查詢",       sub: undefined,        adminTab: "order-search", desc: "訂單編號、客戶編號、日期區間、車型、路線查詢",         icon: "📦" },
+      { label: "訂單維護", sub: undefined, adminTab: "orders", desc: "訂單新增、編輯、維護管理", icon: "✏️" },
+      { label: "回單批價", sub: undefined, adminTab: "settlement", desc: "回單批價作業查詢與管理", icon: "💲" },
+      { label: "外包運費", sub: undefined, adminTab: "outsourcing", desc: "外包車輛運費查詢與管理", icon: "🚐" },
+      { label: "代墊款", sub: undefined, adminTab: "invoice", desc: "代墊款查詢與管理", icon: "💴" },
+      { label: "運費校對單", sub: undefined, adminTab: "settlement", desc: "運費校對單查詢與管理", icon: "🔍" },
+      { label: "運費請款單", sub: undefined, adminTab: "invoice", desc: "運費請款單建立與查詢", icon: "🧾" },
+      { label: "訂單查詢", sub: undefined, adminTab: "order-search", desc: "訂單編號、客戶編號、日期區間、車型、路線查詢", icon: "📦" },
     ],
   },
-  // ── 4. 派遣作業 ───────────────────────────────────────────────────────────
   {
     group: "4. 派遣作業",
     color: "border-orange-200 bg-orange-50 hover:bg-orange-100",
     links: [
-      { label: "訂單派遣",       sub: undefined,        adminTab: "dispatch",     desc: "訂單派遣查詢與管理",                                   icon: "📋" },
-      { label: "車輛總覽",       sub: "vehicles",       adminTab: undefined,      desc: "車輛即時狀態總覽",                                     icon: "🚛" },
-      { label: "貨況追蹤",       sub: undefined,        adminTab: "smart",        desc: "貨物即時狀態追蹤查詢",                                 icon: "📍" },
-      { label: "派遣收據查詢",   sub: undefined,        adminTab: "orders",       desc: "派遣收據單號、日期、車輛、司機查詢",                   icon: "🧾" },
+      { label: "訂單派遣", sub: undefined, adminTab: "dispatch", desc: "訂單派遣查詢與管理", icon: "📋" },
+      { label: "車輛總覽", sub: "vehicles", adminTab: undefined, desc: "車輛即時狀態總覽", icon: "🚛" },
+      { label: "貨況追蹤", sub: undefined, adminTab: "smart", desc: "貨物即時狀態追蹤查詢", icon: "📍" },
+      { label: "派遣收據查詢", sub: undefined, adminTab: "orders", desc: "派遣收據單號、日期、車輛、司機查詢", icon: "🧾" },
+      { label: "動態排程優化", sub: undefined, adminTab: "smart", desc: "AI 分析交通狀況與派單邏輯，提升穩定獲利", icon: "🧠" },
     ],
   },
-  // ── 5. 管理作業 ───────────────────────────────────────────────────────────
   {
     group: "5. 管理作業",
     color: "border-rose-200 bg-rose-50 hover:bg-rose-100",
     links: [
-      { label: "司機日報表",     sub: "driverbonus",    adminTab: undefined,      desc: "司機每日出勤與業績日報表",                             icon: "🧑‍✈️" },
-      { label: "車輛稅費",       sub: "vehicles",       adminTab: undefined,      desc: "車輛稅費查詢與管理",                                   icon: "🧾" },
-      { label: "車輛保險",       sub: "vehicles",       adminTab: undefined,      desc: "車輛保險查詢與管理",                                   icon: "🛡️" },
-      { label: "維修保養",       sub: "vehicles",       adminTab: undefined,      desc: "車輛維修保養記錄查詢與管理",                           icon: "🔧" },
-      { label: "加油資料",       sub: "fuel",           adminTab: undefined,      desc: "車輛加油記錄查詢與管理",                               icon: "⛽" },
+      { label: "司機日報表", sub: "driverbonus", adminTab: undefined, desc: "司機每日出勤與業績日報表", icon: "🧑‍✈️" },
+      { label: "車輛稅費", sub: "vehicles", adminTab: undefined, desc: "車輛稅費查詢與管理", icon: "🧾" },
+      { label: "車輛保險", sub: "vehicles", adminTab: undefined, desc: "車輛保險查詢與管理", icon: "🛡️" },
+      { label: "維修保養", sub: "vehicles", adminTab: undefined, desc: "車輛維修保養記錄查詢與管理", icon: "🔧" },
+      { label: "加油資料", sub: "fuel", adminTab: undefined, desc: "車輛加油記錄查詢與管理", icon: "⛽" },
     ],
   },
-  // ── 6. 報表 ───────────────────────────────────────────────────────────────
   {
     group: "6. 報表",
     color: "border-purple-200 bg-purple-50 hover:bg-purple-100",
     links: [
-      { label: "車輛日業績表",   sub: "vehicles",       adminTab: undefined,      desc: "每日車輛出勤績效、行駛距離、趟次統計",                 icon: "📊" },
-      { label: "車輛月業績表",   sub: "vehicles",       adminTab: undefined,      desc: "車輛每月業績彙總統計報表",                             icon: "📅" },
-      { label: "油耗統計表",     sub: "fuel",           adminTab: undefined,      desc: "每月油耗統計報表",                                     icon: "⛽" },
-      { label: "客戶日業績表",   sub: undefined,        adminTab: "report",       desc: "客戶每日業績統計報表",                                 icon: "👤" },
-      { label: "客戶月業績表",   sub: undefined,        adminTab: "report",       desc: "客戶每月業績彙總統計報表",                             icon: "📆" },
+      { label: "車輛日業績表", sub: "vehicles", adminTab: undefined, desc: "每日車輛出勤績效、行駛距離、趟次統計", icon: "📊" },
+      { label: "車輛月業績表", sub: "vehicles", adminTab: undefined, desc: "車輛每月業績彙總統計報表", icon: "📅" },
+      { label: "油耗統計表", sub: "fuel", adminTab: undefined, desc: "每月油耗統計報表", icon: "⛽" },
+      { label: "客戶日業績表", sub: undefined, adminTab: "report", desc: "客戶每日業績統計報表", icon: "👤" },
+      { label: "客戶月業績表", sub: undefined, adminTab: "report", desc: "客戶每月業績彙總統計報表", icon: "📆" },
     ],
   },
 ];
 
 const SUB_TABS: { id: SubTab; icon: string; label: string; desc: string; color: string }[] = [
-  { id:"vehicles",      icon:"🚛", label:"車輛管理",   desc:"車輛 CRUD、稅務 / 保險 / eTag", color:"text-orange-600 border-orange-500" },
-  { id:"fuel",          icon:"⛽", label:"油料管理",   desc:"加油記錄 + 比較報表",            color:"text-amber-600 border-amber-500"  },
-  { id:"driverbonus",   icon:"💰", label:"司機獎金",   desc:"獎金明細、標記發放",             color:"text-emerald-600 border-emerald-500" },
-  { id:"township",      icon:"🗺️", label:"鄉鎮市區",   desc:"22 縣市行政區資料",              color:"text-sky-600 border-sky-500"     },
-  { id:"supplier",      icon:"🏭", label:"供應商管理", desc:"供應商 CRUD、銀行 / 傭金",        color:"text-purple-600 border-purple-500" },
-  { id:"contractquote", icon:"📝", label:"合約報價",   desc:"報價單管理、路線費率",            color:"text-indigo-600 border-indigo-500" },
-  { id:"glory_links",   icon:"🗂️", label:"功能總覽",   desc:"所有模組快速導覽入口",            color:"text-gray-600 border-gray-500"   },
+  { id: "vehicles", icon: "🚛", label: "車輛管理", desc: "車輛 CRUD、稅務 / 保險 / eTag", color: "text-orange-600 border-orange-500" },
+  { id: "fuel", icon: "⛽", label: "油料管理", desc: "加油記錄 + 比較報表", color: "text-amber-600 border-amber-500" },
+  { id: "driverbonus", icon: "💰", label: "司機獎金", desc: "獎金明細、標記發放", color: "text-emerald-600 border-emerald-500" },
+  { id: "township", icon: "🗺️", label: "鄉鎮市區", desc: "22 縣市行政區資料", color: "text-sky-600 border-sky-500" },
+  { id: "supplier", icon: "🏭", label: "供應商管理", desc: "供應商 CRUD、銀行 / 傭金", color: "text-purple-600 border-purple-500" },
+  { id: "contractquote", icon: "📝", label: "合約報價", desc: "報價單管理、路線費率", color: "text-indigo-600 border-indigo-500" },
+  { id: "glory_links", icon: "🗂️", label: "功能總覽", desc: "所有模組快速導覽入口", color: "text-gray-600 border-gray-500" },
 ];
 
-const TITLES: Record<SubTab,{title:string;subtitle:string}> = {
-  vehicles:      { title:"🚛 車輛基本資料管理", subtitle:"車輛資料、稅務、保險、eTag 維護查詢" },
-  fuel:          { title:"⛽ 油料管理",          subtitle:"加油記錄、油料比較報表、油耗統計分析" },
-  driverbonus:   { title:"💰 司機獎金管理",     subtitle:"司機獎金明細查詢與管理" },
-  township:      { title:"🗺️ 鄉鎮市區資料",     subtitle:"台灣行政區域資料維護（已預載全台資料）" },
-  supplier:      { title:"🏭 供應商管理",        subtitle:"供應商資料、聯絡人、服務區域、傭金率" },
-  contractquote: { title:"📝 合約報價管理",      subtitle:"報價單建立與管理、路線費率、合約狀態" },
-  glory_links:   { title:"🗂️ 功能總覽",          subtitle:"點任一卡片可直接跳到對應管理頁面" },
+const TITLES: Record<SubTab, { title: string; subtitle: string }> = {
+  vehicles: { title: "🚛 車輛基本資料管理", subtitle: "車輛資料、稅務、保險、eTag 維護查詢" },
+  fuel: { title: "⛽ 油料管理", subtitle: "加油記錄、油料比較報表、油耗統計分析" },
+  driverbonus: { title: "💰 司機獎金管理", subtitle: "司機獎金明細查詢與管理" },
+  township: { title: "🗺️ 鄉鎮市區資料", subtitle: "台灣行政區域資料維護（已預載全台資料）" },
+  supplier: { title: "🏭 供應商管理", subtitle: "供應商資料、聯絡人、服務區域、傭金率" },
+  contractquote: { title: "📝 合約報價管理", subtitle: "報價單建立與管理、路線費率、合約狀態" },
+  glory_links: { title: "🗂️ 功能總覽", subtitle: "點任一卡片可直接跳到對應管理頁面" },
 };
 
 interface Props {
@@ -135,25 +131,12 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
 
   const filteredLinks = GLORY_LINKS.map(g => ({
     ...g,
-    links: g.links.filter(l =>
-      !search ||
-      l.label.includes(search) ||
-      l.desc.includes(search) ||
-      g.group.includes(search)
-    ),
+    links: g.links.filter(l => !search || l.label.includes(search) || l.desc.includes(search) || g.group.includes(search)),
   })).filter(g => g.links.length > 0);
 
-  // 決定卡片點擊行為
   function handleCardClick(link: GloryLink) {
-    if (link.sub) {
-      setSub(link.sub);
-    } else if (link.adminTab && onNavigateAdmin) {
-      onNavigateAdmin(link.adminTab);
-    }
-  }
-
-  function isClickable(link: GloryLink) {
-    return !!link.sub || (!!link.adminTab && !!onNavigateAdmin);
+    if (link.sub) setSub(link.sub);
+    else if (link.adminTab && onNavigateAdmin) onNavigateAdmin(link.adminTab);
   }
 
   function cardTarget(link: GloryLink): "local" | "admin" | "none" {
@@ -164,7 +147,6 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
 
   return (
     <div className="flex gap-0 h-full min-h-0">
-      {/* ── 左側子頁籤 ───────────────────────────────────────────────── */}
       <div className="w-40 shrink-0 border-r bg-muted/20 flex flex-col py-2 gap-0.5">
         <div className="px-3 pb-2 pt-1">
           <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">後台管理中心</div>
@@ -180,11 +162,7 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
           <button
             key={s.id}
             onClick={() => setSub(s.id)}
-            className={`w-full text-left px-3 py-2.5 flex items-start gap-2 transition-all rounded-none border-l-2 hover:bg-muted/40 ${
-              sub === s.id
-                ? `bg-white ${s.color} border-l-[3px] shadow-sm`
-                : "border-l-transparent text-gray-600"
-            }`}
+            className={`w-full text-left px-3 py-2.5 flex items-start gap-2 transition-all rounded-none border-l-2 hover:bg-muted/40 ${sub === s.id ? `bg-white ${s.color} border-l-[3px] shadow-sm` : "border-l-transparent text-gray-600"}`}
           >
             <span className="text-base shrink-0 leading-tight">{s.icon}</span>
             <div className="min-w-0">
@@ -195,7 +173,6 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
         ))}
       </div>
 
-      {/* ── 右側內容區 ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 overflow-auto">
         <div className="p-4">
           <div className="mb-4">
@@ -203,11 +180,11 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
             <p className="text-xs text-muted-foreground mt-0.5">{t.subtitle}</p>
           </div>
 
-          {sub === "vehicles"      && <VehicleTab />}
-          {sub === "fuel"          && <FuelTab />}
-          {sub === "driverbonus"   && <DriverBonusTab />}
-          {sub === "township"      && <TownshipTab />}
-          {sub === "supplier"      && <SupplierTab />}
+          {sub === "vehicles" && <VehicleTab />}
+          {sub === "fuel" && <FuelTab />}
+          {sub === "driverbonus" && <DriverBonusTab />}
+          {sub === "township" && <TownshipTab />}
+          {sub === "supplier" && <SupplierTab />}
           {sub === "contractquote" && <ContractQuoteTab />}
 
           {sub === "glory_links" && (
@@ -237,8 +214,7 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {group.links.map(link => {
                           const target = cardTarget(link);
-                          if (target === "none") return null; // 全部都有對應，不再顯示建置中
-
+                          if (target === "none") return null;
                           const isAdmin = target === "admin";
                           return (
                             <button
@@ -250,13 +226,8 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-semibold text-sm truncate">{link.label}</span>
-                                  {isAdmin
-                                    ? <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
-                                    : <ArrowRight   className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                                  }
-                                  {isAdmin && (
-                                    <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium shrink-0 ml-auto">跳至後台</span>
-                                  )}
+                                  {isAdmin ? <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" /> : <ArrowRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />}
+                                  {isAdmin && <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium shrink-0 ml-auto">跳至後台</span>}
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{link.desc}</div>
                               </div>
@@ -273,12 +244,7 @@ export default function GloryPortalTab({ initialSub = "vehicles", onNavigateAdmi
         </div>
       </div>
 
-      <ImportDialog
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        defaultTab="suppliers"
-        onSuccess={() => setImportOpen(false)}
-      />
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} defaultTab="suppliers" onSuccess={() => setImportOpen(false)} />
     </div>
   );
 }
