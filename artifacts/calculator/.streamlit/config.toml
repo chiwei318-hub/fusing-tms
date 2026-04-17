@@ -1,0 +1,11 @@
+[server]
+headless = true
+port = 5000
+baseUrlPath = "calculator"
+
+[theme]
+primaryColor = "#e8a020"
+backgroundColor = "#f8f9fb"
+secondaryBackgroundColor = "#e0e8f4"
+textColor = "#1a3a5c"
+font = "sans serif"
