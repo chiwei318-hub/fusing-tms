@@ -23,11 +23,14 @@ const CreateQuoteSchema = z.object({
   customerName:  z.string().optional().default(""),
   title:         z.string().min(1),
   status:        z.enum(["draft","confirmed","expired","cancelled"]).default("draft"),
+  quoteDate:     z.string().optional(),
   validFrom:     z.string().optional(),
   validTo:       z.string().optional(),
   contactPerson: z.string().optional().default(""),
   contactPhone:  z.string().optional().default(""),
   notes:         z.string().optional().default(""),
+  createdBy:     z.string().optional().default(""),
+  updatedBy:     z.string().optional().default(""),
   items:         z.array(QuoteLineSchema).default([]),
 });
 
@@ -110,12 +113,13 @@ router.post("/contract-quotes", async (req, res) => {
       await client.query("BEGIN");
       const r = await client.query(
         `INSERT INTO customer_contract_quotes
-           (quote_no, customer_id, customer_name, title, status, valid_from, valid_to,
-            contact_person, contact_phone, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+           (quote_no, customer_id, customer_name, title, status, quote_date, valid_from, valid_to,
+            contact_person, contact_phone, notes, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [quoteNo, data.customerId || null, data.customerName || null, data.title,
-         data.status, data.validFrom || null, data.validTo || null,
-         data.contactPerson || null, data.contactPhone || null, data.notes || null]
+         data.status, data.quoteDate || null, data.validFrom || null, data.validTo || null,
+         data.contactPerson || null, data.contactPhone || null, data.notes || null,
+         data.createdBy || null, data.updatedBy || null]
       );
       const quote = r.rows[0];
       for (const item of data.items) {
@@ -151,12 +155,14 @@ router.put("/contract-quotes/:id", async (req, res) => {
       await client.query("BEGIN");
       const r = await client.query(
         `UPDATE customer_contract_quotes SET
-           customer_id=$1, customer_name=$2, title=$3, status=$4, valid_from=$5, valid_to=$6,
-           contact_person=$7, contact_phone=$8, notes=$9, updated_at=NOW()
-         WHERE id=$10 RETURNING *`,
+           customer_id=$1, customer_name=$2, title=$3, status=$4, quote_date=$5,
+           valid_from=$6, valid_to=$7, contact_person=$8, contact_phone=$9,
+           notes=$10, updated_by=$11, updated_at=NOW()
+         WHERE id=$12 RETURNING *`,
         [data.customerId || null, data.customerName || null, data.title, data.status,
-         data.validFrom || null, data.validTo || null, data.contactPerson || null,
-         data.contactPhone || null, data.notes || null, id]
+         data.quoteDate || null, data.validFrom || null, data.validTo || null,
+         data.contactPerson || null, data.contactPhone || null,
+         data.notes || null, data.updatedBy || null, id]
       );
       if (!r.rows.length) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Not found" }); }
       // Replace all items
@@ -188,10 +194,16 @@ router.put("/contract-quotes/:id", async (req, res) => {
 router.patch("/contract-quotes/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { status } = z.object({ status: z.enum(["draft","confirmed","expired","cancelled"]) }).parse(req.body);
+    const { status, confirmedBy } = z.object({
+      status: z.enum(["draft","confirmed","expired","cancelled"]),
+      confirmedBy: z.string().optional(),
+    }).parse(req.body);
+    const isConfirming = status === "confirmed";
     const r = await pool.query(
-      `UPDATE customer_contract_quotes SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING *`,
-      [status, id]
+      `UPDATE customer_contract_quotes SET status=$1, updated_at=NOW()
+        ${isConfirming ? ", confirmed_by=COALESCE($3,confirmed_by), confirmed_at=NOW()" : ""}
+       WHERE id=$2 RETURNING *`,
+      isConfirming ? [status, id, confirmedBy || null] : [status, id]
     );
     if (!r.rows.length) return res.status(404).json({ error: "Not found" });
     return res.json(r.rows[0]);

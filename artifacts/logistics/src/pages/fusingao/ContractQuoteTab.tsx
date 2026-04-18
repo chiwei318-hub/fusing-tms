@@ -40,13 +40,19 @@ interface ContractQuote {
   customer_short_name?: string;
   title: string;
   status: string;
+  quote_date?: string;
   valid_from?: string;
   valid_to?: string;
   contact_person?: string;
   contact_phone?: string;
   notes?: string;
   item_count?: number;
+  confirmed_by?: string;
+  confirmed_at?: string;
+  created_by?: string;
+  updated_by?: string;
   created_at: string;
+  updated_at?: string;
   items?: QuoteItem[];
 }
 
@@ -103,11 +109,14 @@ function QuoteFormDialog({ quote, onClose, onSave }: {
     customerName:  quote?.customer_name ?? "",
     title:         quote?.title ?? "",
     status:        quote?.status ?? "draft",
-    validFrom:     quote?.valid_from ?? "",
-    validTo:       quote?.valid_to ?? "",
+    quoteDate:     quote?.quote_date?.slice(0,10) ?? "",
+    validFrom:     quote?.valid_from?.slice(0,10) ?? "",
+    validTo:       quote?.valid_to?.slice(0,10) ?? "",
     contactPerson: quote?.contact_person ?? "",
     contactPhone:  quote?.contact_phone ?? "",
     notes:         quote?.notes ?? "",
+    createdBy:     quote?.created_by ?? "",
+    updatedBy:     quote?.updated_by ?? "",
   });
   const [items, setItems] = useState<QuoteItem[]>(quote?.items?.map(i => ({
     routeFrom:   i.routeFrom ?? (i as any).route_from ?? "",
@@ -206,12 +215,24 @@ function QuoteFormDialog({ quote, onClose, onSave }: {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>有效期起</Label>
+              <Label>報價日期</Label>
+              <Input type="date" value={form.quoteDate} onChange={e => f("quoteDate", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>生效日期前起</Label>
               <Input type="date" value={form.validFrom} onChange={e => f("validFrom", e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>有效期迄</Label>
+              <Label>生效日期前迄</Label>
               <Input type="date" value={form.validTo} onChange={e => f("validTo", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>新增人員</Label>
+              <Input value={form.createdBy} onChange={e => f("createdBy", e.target.value)} placeholder="建立者姓名" />
+            </div>
+            <div className="space-y-1">
+              <Label>最後人員</Label>
+              <Input value={form.updatedBy} onChange={e => f("updatedBy", e.target.value)} placeholder="最後修改者" />
             </div>
             <div className="space-y-1">
               <Label>聯絡人</Label>
@@ -397,22 +418,44 @@ function QuoteDetailDialog({ quoteId, onClose, onEdit }: { quoteId: number; onCl
 
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
+function fmtDT(s?: string | null) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s.slice(0,10);
+  const ymd = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
+  const hm  = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return `${ymd} ${hm}`;
+}
+function fmtDate(s?: string | null) {
+  if (!s) return "";
+  return s.slice(0,10).replace(/-/g,"/");
+}
+
 export default function ContractQuoteTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingQuote, setEditingQuote] = useState<ContractQuote | null>(null);
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContractQuote | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const { data: customers = [] } = useQuery<Customer[]>({
+    queryKey: ["customers-for-quote-filter"],
+    queryFn: () => fetch(`${API}/customers`).then(r=>r.json()).then(d=>Array.isArray(d)?d:[]),
+    staleTime: 120000,
+  });
 
   const { data: quotes = [], isLoading } = useQuery<ContractQuote[]>({
-    queryKey: ["contract-quotes", search, filterStatus],
+    queryKey: ["contract-quotes", search, filterStatus, filterCustomer],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (filterStatus !== "all") params.set("status", filterStatus);
+      if (filterCustomer !== "all") params.set("customerId", filterCustomer);
       return fetch(`${API}/contract-quotes?${params}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []);
     },
     refetchInterval: 60000,
@@ -489,36 +532,61 @@ export default function ContractQuoteTab() {
         ))}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋報價單號、客戶、名稱..."
-            className="h-9 pl-9 pr-8 text-sm bg-card border rounded-md outline-none w-56 focus:ring-2 focus:ring-primary/30 transition" />
-          {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>}
+      {/* ── Glory 風格搜尋列 ── */}
+      <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">我報單號</span>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              className="h-8 pl-7 pr-6 text-xs bg-white border rounded outline-none w-40 focus:ring-1 focus:ring-blue-400"
+              placeholder="報價單號..." />
+            {search && <button onClick={() => setSearch("")} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"><X className="w-3 h-3" /></button>}
+          </div>
+          <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">客戶簡稱</span>
+          <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+            <SelectTrigger className="h-8 w-36 text-xs bg-white"><SelectValue placeholder="全部客戶" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.short_name ?? c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-8 px-3 text-xs gap-1 bg-blue-600 hover:bg-blue-700"
+            onClick={() => qc.invalidateQueries({ queryKey: ["contract-quotes"] })}>
+            <Search className="w-3 h-3" /> 查詢
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1">
+            <RefreshCw className="w-3 h-3" /> 顯示期限
+          </Button>
+          <div className="flex-1" />
+          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => setShowForm(true)}>
+            <Plus className="w-3 h-3" /> 新增
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+            <FileText className="w-3 h-3" /> 輸出Excel
+          </Button>
         </div>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="h-9 w-28 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部狀態</SelectItem>
-            <SelectItem value="draft">草稿</SelectItem>
-            <SelectItem value="confirmed">已確認</SelectItem>
-            <SelectItem value="expired">已過期</SelectItem>
-            <SelectItem value="cancelled">已取消</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex-1" />
-        <Button size="sm" variant="outline" className="h-9 w-9 p-0" onClick={() => qc.invalidateQueries({ queryKey: ["contract-quotes"] })}>
-          <RefreshCw className="w-3.5 h-3.5" />
-        </Button>
-        <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={() => setShowForm(true)}>
-          <Plus className="w-3.5 h-3.5" /> 新增報價單
-        </Button>
+        <div className="flex gap-2 items-center">
+          <span className="text-xs font-medium text-muted-foreground w-16 shrink-0">狀態篩選</span>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="h-7 w-28 text-xs bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部狀態</SelectItem>
+              <SelectItem value="draft">草稿</SelectItem>
+              <SelectItem value="confirmed">已確認</SelectItem>
+              <SelectItem value="expired">已過期</SelectItem>
+              <SelectItem value="cancelled">已取消</SelectItem>
+            </SelectContent>
+          </Select>
+          {selectedIds.size > 0 && (
+            <span className="text-xs text-blue-600 font-medium ml-2">已選取 {selectedIds.size} 筆</span>
+          )}
+        </div>
       </div>
 
-      {/* Quote list */}
+      {/* ── Glory 風格列表 ── */}
       {isLoading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted/60 rounded-lg animate-pulse" />)}</div>
+        <div className="space-y-1">{[1,2,3].map(i => <div key={i} className="h-8 bg-muted/60 rounded animate-pulse" />)}</div>
       ) : quotes.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground border rounded-lg">
           <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -526,65 +594,77 @@ export default function ContractQuoteTab() {
           <Button size="sm" className="mt-3 gap-1" onClick={() => setShowForm(true)}><Plus className="w-3.5 h-3.5" />建立第一份報價單</Button>
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/60 text-muted-foreground text-xs">
+        <div className="border rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full text-xs min-w-[1100px]">
+            <thead className="bg-[#cce5f6] text-gray-700 font-semibold">
               <tr>
-                <th className="p-3 text-left">報價單號</th>
-                <th className="p-3 text-left">客戶 / 名稱</th>
-                <th className="p-3 text-center">狀態</th>
-                <th className="p-3 text-left">有效期間</th>
-                <th className="p-3 text-center">明細數</th>
-                <th className="p-3 text-left">建立時間</th>
-                <th className="p-3 text-center">操作</th>
+                <th className="p-2 w-8 text-center">
+                  <input type="checkbox" className="w-3.5 h-3.5"
+                    checked={selectedIds.size === quotes.length && quotes.length > 0}
+                    onChange={e => setSelectedIds(e.target.checked ? new Set(quotes.map(q=>q.id)) : new Set())} />
+                </th>
+                <th className="p-2 text-left whitespace-nowrap">我報單號</th>
+                <th className="p-2 text-left whitespace-nowrap">客戶簡稱</th>
+                <th className="p-2 text-left whitespace-nowrap">報價日期</th>
+                <th className="p-2 text-left whitespace-nowrap">生效日期前起</th>
+                <th className="p-2 text-left whitespace-nowrap">生效日期前迄</th>
+                <th className="p-2 text-left whitespace-nowrap">確認人員</th>
+                <th className="p-2 text-left whitespace-nowrap">確認日期</th>
+                <th className="p-2 text-left whitespace-nowrap">新增人員</th>
+                <th className="p-2 text-left whitespace-nowrap">新增日期</th>
+                <th className="p-2 text-left whitespace-nowrap">最後人員</th>
+                <th className="p-2 text-left whitespace-nowrap">最後日期</th>
+                <th className="p-2 text-center whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {quotes.map(q => {
+              {quotes.map((q, idx) => {
                 const expired = isExpired(q);
+                const isSelected = selectedIds.has(q.id);
                 return (
-                  <tr key={q.id} className={`hover:bg-muted/20 transition-colors ${expired && q.status==="confirmed" ? "opacity-60" : ""}`}>
-                    <td className="p-3">
-                      <button onClick={() => setViewingId(q.id)} className="font-mono text-blue-600 hover:underline font-semibold">{q.quote_no}</button>
+                  <tr key={q.id}
+                    className={`transition-colors cursor-pointer
+                      ${isSelected ? "bg-blue-50" : idx%2===0 ? "bg-white" : "bg-gray-50"}
+                      hover:bg-blue-50`}
+                    onClick={() => setSelectedIds(prev => { const n=new Set(prev); n.has(q.id)?n.delete(q.id):n.add(q.id); return n; })}>
+                    <td className="p-2 text-center" onClick={e=>e.stopPropagation()}>
+                      <input type="checkbox" className="w-3.5 h-3.5"
+                        checked={isSelected}
+                        onChange={e => setSelectedIds(prev => { const n=new Set(prev); e.target.checked?n.add(q.id):n.delete(q.id); return n; })} />
                     </td>
-                    <td className="p-3">
-                      <div className="font-medium">{q.customer_name_resolved ?? q.customer_name ?? "─"}</div>
-                      <div className="text-xs text-muted-foreground truncate max-w-48">{q.title}</div>
+                    <td className="p-2" onClick={e=>e.stopPropagation()}>
+                      <button onClick={() => setViewingId(q.id)} className="text-blue-600 hover:underline font-medium">{q.quote_no}</button>
+                      {(expired && q.status==="confirmed") && <span className="ml-1 text-[10px] text-orange-500">[過期]</span>}
                     </td>
-                    <td className="p-3 text-center">
-                      <StatusBadge status={expired && q.status==="confirmed" ? "expired" : q.status} />
-                    </td>
-                    <td className="p-3 text-xs">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Calendar className="w-3 h-3" />
-                        {q.valid_from ? q.valid_from.slice(0,10) : "─"} ~ {q.valid_to ? q.valid_to.slice(0,10) : "長期"}
-                      </div>
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className="inline-flex items-center gap-1 text-muted-foreground">
-                        <DollarSign className="w-3 h-3" />{q.item_count ?? 0} 項
-                      </span>
-                    </td>
-                    <td className="p-3 text-xs text-muted-foreground">{q.created_at?.slice(0,10)}</td>
-                    <td className="p-3">
+                    <td className="p-2">{q.customer_short_name ?? q.customer_name_resolved ?? q.customer_name ?? "─"}</td>
+                    <td className="p-2">{fmtDate(q.quote_date)}</td>
+                    <td className="p-2">{fmtDate(q.valid_from)}</td>
+                    <td className="p-2">{fmtDate(q.valid_to)}</td>
+                    <td className="p-2">{q.confirmed_by ?? ""}</td>
+                    <td className="p-2 text-muted-foreground">{fmtDT(q.confirmed_at)}</td>
+                    <td className="p-2">{q.created_by ?? ""}</td>
+                    <td className="p-2 text-muted-foreground">{fmtDT(q.created_at)}</td>
+                    <td className="p-2">{q.updated_by ?? ""}</td>
+                    <td className="p-2 text-muted-foreground">{fmtDT(q.updated_at)}</td>
+                    <td className="p-2" onClick={e=>e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-center">
                         <button title="編輯" onClick={() => openEdit(q)}
-                          className="w-7 h-7 flex items-center justify-center rounded border hover:bg-blue-50 text-blue-600 transition-colors">
-                          <Edit className="w-3.5 h-3.5" />
+                          className="w-6 h-6 flex items-center justify-center rounded border hover:bg-blue-50 text-blue-600 transition-colors">
+                          <Edit className="w-3 h-3" />
                         </button>
                         <button title="複製" onClick={() => handleClone(q)}
-                          className="w-7 h-7 flex items-center justify-center rounded border hover:bg-gray-50 text-gray-600 transition-colors">
-                          <Copy className="w-3.5 h-3.5" />
+                          className="w-6 h-6 flex items-center justify-center rounded border hover:bg-gray-50 text-gray-600 transition-colors">
+                          <Copy className="w-3 h-3" />
                         </button>
                         {q.status === "draft" && (
                           <button title="確認報價" onClick={() => handleStatusChange(q, "confirmed")}
-                            className="w-7 h-7 flex items-center justify-center rounded border hover:bg-green-50 text-green-600 transition-colors">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            className="w-6 h-6 flex items-center justify-center rounded border hover:bg-green-50 text-green-600 transition-colors">
+                            <CheckCircle2 className="w-3 h-3" />
                           </button>
                         )}
                         <button title="刪除" onClick={() => setDeleteTarget(q)}
-                          className="w-7 h-7 flex items-center justify-center rounded border hover:bg-red-50 text-red-500 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
+                          className="w-6 h-6 flex items-center justify-center rounded border hover:bg-red-50 text-red-500 transition-colors">
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
@@ -593,6 +673,9 @@ export default function ContractQuoteTab() {
               })}
             </tbody>
           </table>
+          <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/20 border-t">
+            共 {quotes.length} 筆 {selectedIds.size > 0 && `· 已選 ${selectedIds.size} 筆`}
+          </div>
         </div>
       )}
 

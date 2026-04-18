@@ -288,6 +288,16 @@ _migPool.query(`
         updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // ── 報價單欄位擴充 (Glory 對齊) ─────────────────────────────────────────
+    for (const col of [
+      "ADD COLUMN IF NOT EXISTS quote_date DATE",
+      "ADD COLUMN IF NOT EXISTS confirmed_by VARCHAR(50)",
+      "ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ",
+      "ADD COLUMN IF NOT EXISTS created_by VARCHAR(50)",
+      "ADD COLUMN IF NOT EXISTS updated_by VARCHAR(50)",
+    ]) {
+      await _migPool.query(`ALTER TABLE customer_contract_quotes ${col}`).catch(() => {});
+    }
     await _migPool.query(`
       CREATE TABLE IF NOT EXISTS customer_contract_quote_items (
         id           SERIAL PRIMARY KEY,
