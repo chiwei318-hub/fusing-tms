@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   RefreshCw, Plus, Pencil, Trash2, Search,
-  User, Truck, Download, Phone, MapPin, CreditCard, Calendar,
+  User, Truck, Download, Phone, MapPin, CreditCard, Calendar, Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,15 @@ const EMPTY_FORM = {
   is_own_driver: true,
 };
 
+interface ImportResult {
+  ok: boolean;
+  inserted: number;
+  updated: number;
+  errors: number;
+  total: number;
+  error?: string;
+}
+
 export default function ShopeeDriversTab() {
   const { toast } = useToast();
   const [drivers, setDrivers] = useState<ShopeeDriver[]>([]);
@@ -58,6 +67,10 @@ export default function ShopeeDriversTab() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,6 +167,32 @@ export default function ShopeeDriversTab() {
     }
   }
 
+  async function importExcel(file?: File) {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      if (file) formData.append("file", file);
+      const r = await fetch(apiUrl("/shopee-drivers/import-excel"), {
+        method: "POST",
+        body: formData,
+      });
+      const d: ImportResult = await r.json();
+      setImportResult(d);
+      if (d.ok) {
+        toast({ title: `匯入完成！新增 ${d.inserted}、更新 ${d.updated} 筆` });
+        load();
+      } else {
+        toast({ title: "匯入失敗", description: d.error, variant: "destructive" });
+      }
+    } catch (e: unknown) {
+      toast({ title: "匯入失敗", description: String(e), variant: "destructive" });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   function exportCsv() {
     const header = ["工號", "姓名", "身分證", "生日", "手機", "戶籍地址", "車牌", "車型", "車隊", "備注", "身份"];
     const rows = displayed.map(d => [
@@ -198,6 +237,33 @@ export default function ShopeeDriversTab() {
         ))}
       </div>
 
+      {/* ── 匯入結果提示 ── */}
+      {importResult && (
+        <div
+          className="rounded-lg px-4 py-3 flex items-center justify-between text-sm"
+          style={{
+            background: importResult.ok ? "#f0fdf4" : "#fef2f2",
+            border: `1px solid ${importResult.ok ? "#86efac" : "#fca5a5"}`,
+            color: importResult.ok ? "#166534" : "#991b1b",
+          }}
+        >
+          {importResult.ok ? (
+            <span>
+              ✅ 匯入完成：共 <strong>{importResult.total}</strong> 筆，
+              新增 <strong>{importResult.inserted}</strong> 筆，
+              更新 <strong>{importResult.updated}</strong> 筆
+              {importResult.errors > 0 && <>，跳過 <strong>{importResult.errors}</strong> 筆錯誤</>}
+            </span>
+          ) : (
+            <span>❌ 匯入失敗：{importResult.error}</span>
+          )}
+          <button
+            onClick={() => setImportResult(null)}
+            className="ml-4 text-xs opacity-60 hover:opacity-100"
+          >✕</button>
+        </div>
+      )}
+
       {/* ── 工具列 ── */}
       <Card>
         <CardHeader className="pb-3">
@@ -237,6 +303,28 @@ export default function ShopeeDriversTab() {
               </Button>
               <Button variant="outline" size="sm" className="h-8" onClick={exportCsv} disabled={!displayed.length}>
                 <Download className="w-3.5 h-3.5 mr-1" />匯出 CSV
+              </Button>
+              {/* 隱藏 file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: "none" }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) importExcel(f);
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                style={{ borderColor: "#16a34a", color: "#16a34a" }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+              >
+                <Upload className="w-3.5 h-3.5 mr-1" />
+                {importing ? "匯入中…" : "匯入 Excel"}
               </Button>
               <Button size="sm" className="h-8" onClick={openCreate}>
                 <Plus className="w-3.5 h-3.5 mr-1" />新增司機

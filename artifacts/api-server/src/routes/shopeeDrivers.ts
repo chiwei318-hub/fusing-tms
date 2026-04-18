@@ -11,6 +11,9 @@
 
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 export const shopeeDriversRouter = Router();
 
@@ -142,6 +145,88 @@ shopeeDriversRouter.post("/shopee-drivers/bulk", async (req, res) => {
   }
   res.json({ ok: true, inserted, updated, errors, total: drivers.length });
 });
+
+// ── POST /api/shopee-drivers/import-excel ───────────────────────────────────
+// 支援上傳 .xlsx 或讀取預設 attached_assets 路徑（不帶檔案時）
+shopeeDriversRouter.post(
+  "/shopee-drivers/import-excel",
+  upload.single("file"),
+  async (req: any, res) => {
+    let xlsx: any;
+    try { xlsx = require("xlsx"); } catch { return res.status(500).json({ error: "xlsx 模組未安裝" }); }
+
+    let wb: any;
+    try {
+      if (req.file?.buffer) {
+        // 瀏覽器上傳檔案
+        wb = xlsx.read(req.file.buffer, { type: "buffer" });
+      } else {
+        // 讀取預設附件
+        const path = require("path");
+        const p = path.resolve(process.cwd(), "../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
+        wb = xlsx.readFile(p);
+      }
+    } catch (e: any) {
+      return res.status(400).json({ error: `無法開啟 Excel: ${e.message}` });
+    }
+
+    // ── 解析「蝦皮小楊司機聯絡資料」工作表 ──
+    const driverSheet = wb.Sheets["蝦皮小楊司機聯絡資料"];
+    if (!driverSheet) return res.status(400).json({ error: "找不到工作表：蝦皮小楊司機聯絡資料" });
+
+    const rows: any[][] = xlsx.utils.sheet_to_json(driverSheet, { header: 1, defval: "" });
+    // Row 0 = 標題列, Row 1 = 欄位名稱, Row 2+ = 資料
+    // 欄位：[項次, 蝦皮工號, 司機姓名, 車號, 身分證字號, 生日, 戶籍地址, 手機, 備註]
+
+    const drivers: any[] = [];
+    for (let i = 2; i < rows.length; i++) {
+      const r = rows[i];
+      const shopee_id = String(r[1] ?? "").trim();
+      if (!shopee_id || shopee_id === "0") continue;
+
+      const notesRaw = String(r[8] ?? "").trim();
+      const is_own_driver = !notesRaw.includes("外車") && !notesRaw.includes("外包");
+
+      drivers.push({
+        shopee_id,
+        name:          String(r[2] ?? "").trim() || null,
+        vehicle_plate: String(r[3] ?? "").trim() || null,
+        id_number:     String(r[4] ?? "").trim() || null,
+        birthday:      String(r[5] ?? "").trim() || null,
+        address:       String(r[6] ?? "").trim() || null,
+        phone:         String(r[7] ?? "").replace(/\s/g, "") || null,
+        notes:         notesRaw || null,
+        fleet_name:    "蝦皮小楊",
+        is_own_driver,
+      });
+    }
+
+    let inserted = 0, updated = 0, errors = 0;
+    for (const d of drivers) {
+      try {
+        const result = await pool.query(
+          `INSERT INTO shopee_drivers
+             (shopee_id, name, vehicle_plate, fleet_name, notes, is_own_driver,
+              id_number, birthday, address, phone)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (shopee_id) DO UPDATE SET
+             name=EXCLUDED.name, vehicle_plate=EXCLUDED.vehicle_plate,
+             fleet_name=EXCLUDED.fleet_name, notes=EXCLUDED.notes,
+             is_own_driver=EXCLUDED.is_own_driver,
+             id_number=EXCLUDED.id_number, birthday=EXCLUDED.birthday,
+             address=EXCLUDED.address, phone=EXCLUDED.phone,
+             updated_at=NOW()
+           RETURNING (xmax = 0) AS was_inserted`,
+          [d.shopee_id, d.name, d.vehicle_plate, d.fleet_name, d.notes,
+           d.is_own_driver, d.id_number, d.birthday, d.address, d.phone]
+        );
+        if (result.rows[0]?.was_inserted) inserted++; else updated++;
+      } catch { errors++; }
+    }
+
+    res.json({ ok: true, inserted, updated, errors, total: drivers.length, drivers });
+  }
+);
 
 // ── PATCH /api/shopee-drivers/:id ──────────────────────────────────────────
 shopeeDriversRouter.patch("/shopee-drivers/:id", async (req, res) => {
