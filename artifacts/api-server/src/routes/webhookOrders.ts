@@ -15,6 +15,7 @@ import { broadcastWebhook } from "./webhooks.js";
 import { getOrderNotifyReceivers } from "../lib/line.js";
 import { enqueueNotification } from "../lib/notificationQueue.js";
 import * as line from "@line/bot-sdk";
+import { calculateSettlement } from "../lib/settlementEngine.js";
 
 export const webhookOrdersRouter = Router();
 
@@ -127,6 +128,82 @@ async function sendAtomsAcceptedAlert(params: {
     }
   } catch (e) {
     console.warn("[AtomsAcceptAlert] LINE push failed:", String(e).slice(0, 200));
+  }
+}
+
+// ─── LINE：Atoms 完成派送通知加盟主 ────────────────────────────────────────
+async function sendFranchiseeCompletionAlert(params: {
+  orderId: number;
+  orderNo: string | null;
+  franchiseeName: string;
+  franchiseeLineId: string;
+  driverName: string;
+  pickupAddress: string;
+  deliveryAddress: string;
+  totalFreight: number;
+  franchiseePayout: number;
+}) {
+  try {
+    const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+    if (!channelAccessToken || !params.franchiseeLineId) return;
+
+    const NT = (n: number) => `NT$ ${n.toLocaleString()}`;
+    const client = new line.messagingApi.MessagingApiClient({ channelAccessToken });
+
+    const bubble: line.messagingApi.FlexBubble = {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical",
+        backgroundColor: "#16a34a", paddingAll: "md",
+        contents: [
+          { type: "text", text: "✅ 訂單完成 — 運費已結算", weight: "bold", color: "#ffffff", size: "lg" },
+          { type: "text", text: `訂單 ${params.orderNo ?? `#${params.orderId}`}`, color: "#bbf7d0", size: "sm", margin: "xs" },
+        ],
+      },
+      body: {
+        type: "box", layout: "vertical", paddingAll: "md", spacing: "sm",
+        contents: [
+          { type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "text", text: "司機", size: "sm", color: "#64748b", flex: 3 },
+              { type: "text", text: params.driverName, size: "sm", color: "#1e293b", weight: "bold", flex: 7 },
+            ] },
+          { type: "separator", margin: "md" },
+          { type: "box", layout: "horizontal", spacing: "sm", margin: "md",
+            contents: [
+              { type: "text", text: "取貨", size: "sm", color: "#64748b", flex: 3 },
+              { type: "text", text: params.pickupAddress, size: "sm", color: "#1e293b", flex: 7, wrap: true },
+            ] },
+          { type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "text", text: "送達", size: "sm", color: "#64748b", flex: 3 },
+              { type: "text", text: params.deliveryAddress, size: "sm", color: "#1e293b", flex: 7, wrap: true },
+            ] },
+          { type: "separator", margin: "md" },
+          { type: "box", layout: "vertical", backgroundColor: "#f0fdf4", cornerRadius: "md", paddingAll: "md", margin: "md",
+            contents: [
+              { type: "box", layout: "horizontal", spacing: "sm",
+                contents: [
+                  { type: "text", text: "總運費", size: "sm", color: "#64748b", flex: 4 },
+                  { type: "text", text: NT(params.totalFreight), size: "sm", color: "#1e293b", flex: 6, align: "end" },
+                ] },
+              { type: "box", layout: "horizontal", spacing: "sm", margin: "sm",
+                contents: [
+                  { type: "text", text: "您的分潤", size: "md", color: "#16a34a", weight: "bold", flex: 4 },
+                  { type: "text", text: NT(params.franchiseePayout), size: "md", color: "#16a34a", weight: "bold", flex: 6, align: "end" },
+                ] },
+            ] },
+        ],
+      },
+    };
+
+    const altText = `【訂單完成】${params.orderNo ?? `#${params.orderId}`} 您的分潤 ${NT(params.franchiseePayout)}`;
+    enqueueNotification(
+      () => client.pushMessage({ to: params.franchiseeLineId, messages: [{ type: "flex", altText, contents: bubble }] }),
+      `atomsComplete#${params.orderId}`,
+    );
+  } catch (e) {
+    console.warn("[FranchiseeCompletionAlert] LINE push failed:", String(e).slice(0, 200));
   }
 }
 
@@ -318,10 +395,14 @@ webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
     const atomsDriverId    = String(raw.atoms_driver_id ?? raw.atomsDriverId ?? raw.driver_id ?? "").trim() || null;
     const acceptedAt       = raw.accepted_at ?? raw.acceptedAt ?? null;
 
+    // ── 判斷事件類型 ──
+    const isCompletion = /complet|finish|done|deliver/i.test(event);
+    const isAccepted   = /accept|assign/i.test(event);
+
     // ── 查詢訂單 ──
     const orderRows = await db.execute(sql`
       SELECT id, status, pickup_address, delivery_address, customer_name,
-             driver_id, atoms_accepted_at
+             driver_id, total_fee, order_no, atoms_accepted_at
       FROM orders WHERE id = ${orderId} LIMIT 1
     `);
     if (!orderRows.rows.length) {
@@ -329,31 +410,160 @@ webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
     }
     const order = orderRows.rows[0] as any;
 
-    // ── 更新 atoms_accepted_at（冪等：已有就不覆蓋，除非明確 force=true）──
+    // ── 更新 atoms 欄位（冪等：已有就不覆蓋，除非 force=true）──
     const force = body.force === true;
-    if (!order.atoms_accepted_at || force) {
+    if (!order.atoms_accepted_at || force || isCompletion) {
       await db.execute(sql`
         UPDATE orders
-        SET atoms_accepted_at  = ${acceptedAt ? new Date(acceptedAt) : sql`NOW()`},
-            atoms_driver_name  = ${atomsDriverName},
-            atoms_driver_phone = ${atomsDriverPhone},
-            atoms_driver_id    = ${atomsDriverId},
+        SET atoms_accepted_at  = COALESCE(atoms_accepted_at, ${acceptedAt ? new Date(acceptedAt) : sql`NOW()`}),
+            atoms_driver_name  = COALESCE(atoms_driver_name, ${atomsDriverName}),
+            atoms_driver_phone = COALESCE(atoms_driver_phone, ${atomsDriverPhone}),
+            atoms_driver_id    = COALESCE(atoms_driver_id, ${atomsDriverId}),
             atoms_synced_at    = COALESCE(atoms_synced_at, NOW()),
             updated_at         = NOW()
         WHERE id = ${orderId}
       `);
 
-      // ── 若訂單仍是 pending，自動切換為 assigned ──
-      if (order.status === "pending" && /accept|assign/i.test(event)) {
+      // ── 若訂單仍是 pending 且是接單事件，切換為 assigned ──
+      if (order.status === "pending" && isAccepted && !isCompletion) {
         await db.execute(sql`
           UPDATE orders SET status = 'assigned', updated_at = NOW()
           WHERE id = ${orderId} AND status = 'pending'
         `);
       }
 
-      console.log(`[AtomsAccept] 訂單 #${orderId} Atoms 司機 ${atomsDriverName ?? "—"} 接單成功（event: ${event}）`);
+      // ── 完成事件：標記 delivered + 自動結算 ──────────────────────────
+      if (isCompletion) {
+        // 1. 標記訂單為已完成
+        await db.execute(sql`
+          UPDATE orders
+          SET status = 'delivered', completed_at = NOW(), updated_at = NOW()
+          WHERE id = ${orderId} AND status != 'delivered'
+        `);
 
-      // ── LINE 通知管理者 ──
+        // 2. 找對應的平台司機（先用 atoms_driver_id 匹配 username，次用 driver_id）
+        let driverId: number | null = order.driver_id ?? null;
+        let franchiseeId: number | null = null;
+        let franchiseeName: string | null = null;
+        let franchiseeLineId: string | null = null;
+        let driverName: string | null = atomsDriverName;
+
+        if (atomsDriverId) {
+          const driverMatch = await db.execute(sql`
+            SELECT d.id, d.name, d.franchisee_id,
+                   f.name AS franchisee_name, f.line_user_id AS franchisee_line_id
+            FROM drivers d
+            LEFT JOIN franchisees f ON f.id = d.franchisee_id
+            WHERE d.username = ${atomsDriverId}
+            LIMIT 1
+          `);
+          if (driverMatch.rows.length) {
+            const dr = driverMatch.rows[0] as any;
+            driverId      = dr.id;
+            franchiseeId  = dr.franchisee_id ?? null;
+            franchiseeName = dr.franchisee_name ?? null;
+            franchiseeLineId = dr.franchisee_line_id ?? null;
+            if (!driverName) driverName = dr.name;
+          }
+        }
+
+        // fallback：用 order.driver_id 查加盟主
+        if (driverId && !franchiseeId) {
+          const drRows = await db.execute(sql`
+            SELECT d.franchisee_id, f.name AS franchisee_name, f.line_user_id AS franchisee_line_id
+            FROM drivers d
+            LEFT JOIN franchisees f ON f.id = d.franchisee_id
+            WHERE d.id = ${driverId}
+            LIMIT 1
+          `);
+          if (drRows.rows.length) {
+            const dr = drRows.rows[0] as any;
+            franchiseeId   = dr.franchisee_id ?? null;
+            franchiseeName = dr.franchisee_name ?? null;
+            franchiseeLineId = dr.franchisee_line_id ?? null;
+          }
+        }
+
+        // 3. 若找到司機 id，更新 order.driver_id
+        if (driverId && !order.driver_id) {
+          await db.execute(sql`
+            UPDATE orders SET driver_id = ${driverId}, updated_at = NOW()
+            WHERE id = ${orderId}
+          `);
+        }
+
+        // 4. 計算結算金額並 upsert order_settlements
+        const totalFreight = parseFloat(order.total_fee ?? "0");
+        let settlementResult: any = null;
+        if (totalFreight > 0) {
+          // 讀費率設定
+          const rateRows = await db.execute(sql`
+            SELECT key, value FROM pricing_config
+            WHERE key IN ('default_commission_rate','insurance_rate','other_fee_rate','other_fee_fixed')
+          `);
+          const rateMap: Record<string, number> = {};
+          for (const r of rateRows.rows as any[]) rateMap[r.key] = parseFloat(r.value) || 0;
+          const commissionRate = rateMap["default_commission_rate"] ?? 15;
+          const insuranceRate  = rateMap["insurance_rate"]          ?? 1;
+          const otherFeeRate   = rateMap["other_fee_rate"]          ?? 0.5;
+          const otherFeeFixed  = rateMap["other_fee_fixed"]         ?? 0;
+
+          settlementResult = calculateSettlement({ totalFreight, commissionRate, insuranceRate, otherFeeRate, otherFeeFixed });
+
+          await db.execute(sql`
+            INSERT INTO order_settlements (
+              order_id, order_no, driver_id,
+              total_amount, commission_rate,
+              insurance_rate, insurance_fee,
+              other_fee_rate, other_handling_fee,
+              franchisee_id, franchisee_payout,
+              franchisee_payment_status,
+              payment_status, created_at, updated_at
+            ) VALUES (
+              ${orderId}, ${order.order_no ?? null}, ${driverId ?? null},
+              ${settlementResult.totalFreight}, ${commissionRate},
+              ${insuranceRate}, ${settlementResult.insuranceFee},
+              ${otherFeeRate}, ${settlementResult.otherHandlingFee},
+              ${franchiseeId ?? null}, ${settlementResult.franchiseePayout},
+              'unpaid',
+              'unpaid', NOW(), NOW()
+            )
+            ON CONFLICT (order_id) DO UPDATE SET
+              total_amount           = EXCLUDED.total_amount,
+              commission_rate        = EXCLUDED.commission_rate,
+              insurance_rate         = EXCLUDED.insurance_rate,
+              insurance_fee          = EXCLUDED.insurance_fee,
+              other_fee_rate         = EXCLUDED.other_fee_rate,
+              other_handling_fee     = EXCLUDED.other_handling_fee,
+              franchisee_id          = EXCLUDED.franchisee_id,
+              franchisee_payout      = EXCLUDED.franchisee_payout,
+              updated_at             = NOW()
+          `).catch(e => console.warn("[AtomsAccept] settlement upsert warn:", e?.message));
+
+          console.log(`[AtomsAccept] 訂單 #${orderId} 完成結算：運費 ${totalFreight}，加盟主分潤 ${settlementResult.franchiseePayout}（${franchiseeName ?? "未綁定"}）`);
+        }
+
+        // 5. LINE 通知加盟主（若有 line_user_id）
+        if (franchiseeLineId) {
+          sendFranchiseeCompletionAlert({
+            orderId,
+            orderNo: order.order_no,
+            franchiseeName: franchiseeName ?? "加盟主",
+            franchiseeLineId,
+            driverName: driverName ?? atomsDriverName ?? "Atoms 司機",
+            pickupAddress:   order.pickup_address   ?? "—",
+            deliveryAddress: order.delivery_address ?? "—",
+            totalFreight,
+            franchiseePayout: settlementResult?.franchiseePayout ?? 0,
+          }).catch(() => {});
+        }
+
+        console.log(`[AtomsAccept] 訂單 #${orderId} Atoms 完成派送（event: ${event}）`);
+      } else {
+        console.log(`[AtomsAccept] 訂單 #${orderId} Atoms 司機 ${atomsDriverName ?? "—"} 接單成功（event: ${event}）`);
+      }
+
+      // ── LINE 通知管理者（接單與完成都通知）──
       sendAtomsAcceptedAlert({
         orderId,
         driverName:     atomsDriverName  ?? "Atoms 司機",
@@ -371,7 +581,8 @@ webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
       order_id: orderId,
       atoms_driver_name: atomsDriverName,
       atoms_accepted_at: order.atoms_accepted_at ?? new Date().toISOString(),
-      message: "接單回傳已處理",
+      completed: isCompletion,
+      message: isCompletion ? "訂單完成回傳已處理，結算記錄已建立" : "接單回傳已處理",
     });
   } catch (err: any) {
     console.error("[AtomsAccept] error:", err?.message ?? err);

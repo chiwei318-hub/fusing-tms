@@ -36,6 +36,7 @@ interface Franchisee {
   has_password: boolean;
   last_login_at: string | null;
   affiliation_type: "affiliated" | "independent";
+  line_user_id: string | null;
   settlement_count: string;
   total_gross_revenue: string;
   total_net_payout: string;
@@ -94,6 +95,28 @@ interface Settlement {
   created_at: string;
 }
 
+interface OrderSettlement {
+  id: number;
+  order_id: number;
+  order_no: string | null;
+  driver_name: string | null;
+  driver_username: string | null;
+  atoms_driver_name: string | null;
+  customer_name: string | null;
+  pickup_address: string | null;
+  delivery_address: string | null;
+  completed_at: string | null;
+  order_created_at: string;
+  total_amount: string;
+  commission_rate: string;
+  insurance_rate: string;
+  insurance_fee: string;
+  other_handling_fee: string;
+  franchisee_payout: string;
+  franchisee_payment_status: "unpaid" | "paid";
+  created_at: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const NT = (v: string | number) =>
   `NT$ ${Number(v).toLocaleString()}`;
@@ -133,7 +156,7 @@ const EMPTY: FranchiseeForm = {
   name: "", owner_name: "", phone: "", email: "", address: "", zone_name: "",
   contract_type: "revenue_share", commission_rate: "70", monthly_fee: "0",
   status: "active", notes: "", joined_at: "", contract_end_at: "",
-  username: "", password: "", affiliation_type: "affiliated",
+  username: "", password: "", affiliation_type: "affiliated", line_user_id: "",
 };
 
 function authHeaders() {
@@ -165,6 +188,9 @@ export default function FranchiseeTab() {
   const [filterStatus, setFilterStatus]       = useState("all");
   const [filterAffiliation, setFilterAffiliation] = useState("all");
   const [search, setSearch]               = useState("");
+
+  // ─── Order settlements state ──────────────────────────────────────────
+  const [orderSettlements, setOrderSettlements] = useState<Record<number, OrderSettlement[]>>({});
 
   // ─── Driver management state ──────────────────────────────────────────
   const [franchiseeDrivers, setFranchiseeDrivers] = useState<Record<number, FranchiseeDriver[]>>({});
@@ -200,6 +226,14 @@ export default function FranchiseeTab() {
     } catch { /* ignore */ }
   };
 
+  const fetchOrderSettlements = async (id: number) => {
+    try {
+      const res = await fetch(getApiUrl(`/api/franchisees/${id}/order-settlements`), { headers: authHeaders() });
+      const data = await res.json();
+      setOrderSettlements(prev => ({ ...prev, [id]: data.data ?? [] }));
+    } catch { /* ignore */ }
+  };
+
   const toggleExpand = (id: number) => {
     if (expandedId === id) {
       setExpandedId(null);
@@ -207,6 +241,7 @@ export default function FranchiseeTab() {
       setExpandedId(id);
       if (!settlements[id]) fetchSettlements(id);
       if (!franchiseeDrivers[id]) fetchFranchiseeDrivers(id);
+      if (!orderSettlements[id]) fetchOrderSettlements(id);
     }
   };
 
@@ -685,6 +720,81 @@ export default function FranchiseeTab() {
                       {/* ── Settlement sub-tab ── */}
                       {(expandedSubTab[f.id] ?? "settlement") === "settlement" && (
                       <div className="space-y-4">
+
+                      {/* ── Atoms 逐筆完成訂單 ── */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Truck className="w-3.5 h-3.5 text-blue-500" /> Atoms 完成訂單（逐筆結算）
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-6 text-xs"
+                            onClick={() => fetchOrderSettlements(f.id)}>
+                            <RefreshCw className="w-3 h-3 mr-1" />更新
+                          </Button>
+                        </div>
+                        {!orderSettlements[f.id] ? (
+                          <p className="text-xs text-muted-foreground">載入中...</p>
+                        ) : orderSettlements[f.id].length === 0 ? (
+                          <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-xs text-blue-600">
+                            尚無 Atoms 完成訂單結算記錄。當司機在 Atoms APP 完成派送並回傳後，資料將自動出現。
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border">
+                            <table className="w-full text-xs">
+                              <thead className="bg-muted/50">
+                                <tr>
+                                  {["日期","訂單號","司機","路線","運費","您的分潤","扣費明細","狀態"].map(h => (
+                                    <th key={h} className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {orderSettlements[f.id].map(s => {
+                                  const driverDisplay = s.atoms_driver_name || s.driver_name || s.driver_username || "—";
+                                  const deductions = Number(s.insurance_fee) + Number(s.other_handling_fee);
+                                  const commAmt = (Number(s.total_amount) * Number(s.commission_rate) / 100).toFixed(0);
+                                  const completedDate = s.completed_at
+                                    ? new Date(s.completed_at).toLocaleDateString("zh-TW", { month: "2-digit", day: "2-digit" })
+                                    : new Date(s.created_at).toLocaleDateString("zh-TW", { month: "2-digit", day: "2-digit" });
+                                  return (
+                                    <tr key={s.id} className="hover:bg-muted/20">
+                                      <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">{completedDate}</td>
+                                      <td className="px-2 py-1.5 font-mono text-blue-600">{s.order_no ?? `#${s.order_id}`}</td>
+                                      <td className="px-2 py-1.5 font-medium">{driverDisplay}</td>
+                                      <td className="px-2 py-1.5 max-w-[120px] truncate text-muted-foreground" title={`${s.pickup_address ?? ""} → ${s.delivery_address ?? ""}`}>
+                                        {(s.pickup_address ?? "").substring(0, 8)}…→…{(s.delivery_address ?? "").substring(0, 8)}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-right whitespace-nowrap">{NT(s.total_amount)}</td>
+                                      <td className="px-2 py-1.5 text-right whitespace-nowrap font-bold text-green-700">{NT(s.franchisee_payout)}</td>
+                                      <td className="px-2 py-1.5 text-right whitespace-nowrap text-muted-foreground">
+                                        抽{s.commission_rate}%（{NT(commAmt)}）＋其他 {NT(deductions)}
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        {s.franchisee_payment_status === "paid"
+                                          ? <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" />已撥款</span>
+                                          : <span className="text-amber-500 flex items-center gap-0.5"><Clock className="w-3 h-3" />待撥款</span>}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot className="bg-muted/30">
+                                <tr>
+                                  <td colSpan={4} className="px-2 py-1.5 text-xs font-semibold text-right">合計</td>
+                                  <td className="px-2 py-1.5 text-right text-xs font-bold">
+                                    {NT(orderSettlements[f.id].reduce((a, s) => a + Number(s.total_amount), 0))}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right text-xs font-bold text-green-700">
+                                    {NT(orderSettlements[f.id].reduce((a, s) => a + Number(s.franchisee_payout), 0))}
+                                  </td>
+                                  <td colSpan={2} className="px-2 py-1.5"></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Generate settlement */}
                       <div className="flex flex-wrap gap-2 items-center bg-gray-50 rounded-xl p-3 border">
                         <span className="text-xs font-semibold w-full mb-1">產出月結帳單</span>
@@ -889,6 +999,15 @@ export default function FranchiseeTab() {
                 placeholder="英數字，如 fleet_taipei"
                 value={formData.username ?? ""}
                 onChange={e => setFormData(p => ({ ...p, username: e.target.value }))}
+                className="h-8 text-sm font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">LINE User ID（用於訂單完成通知）</Label>
+              <Input
+                placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                value={formData.line_user_id ?? ""}
+                onChange={e => setFormData(p => ({ ...p, line_user_id: e.target.value }))}
                 className="h-8 text-sm font-mono"
               />
             </div>

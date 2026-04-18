@@ -20,9 +20,10 @@ export const franchiseesRouter = Router();
   try {
     await db.execute(sql`
       ALTER TABLE franchisees
-        ADD COLUMN IF NOT EXISTS affiliation_type TEXT NOT NULL DEFAULT 'affiliated'
+        ADD COLUMN IF NOT EXISTS affiliation_type TEXT NOT NULL DEFAULT 'affiliated',
+        ADD COLUMN IF NOT EXISTS line_user_id     TEXT
     `);
-    console.log("[Franchisees] affiliation_type 欄位已確認");
+    console.log("[Franchisees] affiliation_type / line_user_id 欄位已確認");
   } catch (e) { console.error("[Franchisees] migration error", e); }
 })();
 
@@ -135,7 +136,7 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
     name, owner_name, phone, email, address, zone_name,
     contract_type, commission_rate, monthly_fee,
     status, notes, joined_at, contract_end_at,
-    username, password, affiliation_type,
+    username, password, affiliation_type, line_user_id,
   } = req.body;
 
   const pwHash = password ? hashPassword(password) : undefined;
@@ -158,6 +159,7 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
       username         = COALESCE(${username ?? null}, username),
       password_hash    = COALESCE(${pwHash ?? null}, password_hash),
       affiliation_type = COALESCE(${affiliation_type ?? null}, affiliation_type),
+      line_user_id     = COALESCE(${line_user_id ?? null}, line_user_id),
       updated_at       = NOW()
     WHERE id = ${id}
   `);
@@ -165,7 +167,7 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
     SELECT id, code, name, owner_name, phone, email, address, zone_name,
            contract_type, commission_rate, monthly_fee, status, notes,
            joined_at, contract_end_at, username, last_login_at,
-           affiliation_type, created_at, updated_at
+           affiliation_type, line_user_id, created_at, updated_at
     FROM franchisees WHERE id = ${id} LIMIT 1
   `);
   return res.json(rows.rows[0]);
@@ -178,7 +180,7 @@ franchiseesRouter.delete("/franchisees/:id", async (req, res) => {
   return res.json({ ok: true });
 });
 
-// ─── SETTLEMENTS: LIST ────────────────────────────────────────────────
+// ─── SETTLEMENTS: LIST (monthly aggregated) ──────────────────────────
 franchiseesRouter.get("/franchisees/:id/settlements", async (req, res) => {
   const { id } = req.params;
   const rows = await db.execute(sql`
@@ -187,6 +189,44 @@ franchiseesRouter.get("/franchisees/:id/settlements", async (req, res) => {
     ORDER BY period_year DESC, period_month DESC
   `);
   res.json(rows.rows);
+});
+
+// ─── ORDER SETTLEMENTS: LIST per-order detail ─────────────────────────
+franchiseesRouter.get("/franchisees/:id/order-settlements", async (req, res) => {
+  const { id } = req.params;
+  const { limit = "100", offset = "0", payment_status } = req.query as Record<string, string>;
+  const statusCond = payment_status ? sql`AND s.franchisee_payment_status = ${payment_status}` : sql``;
+  const rows = await db.execute(sql`
+    SELECT
+      s.id, s.order_id, s.order_no,
+      s.driver_id, d.name AS driver_name, d.username AS driver_username,
+      o.pickup_address, o.delivery_address, o.customer_name,
+      o.completed_at, o.atoms_driver_name, o.atoms_driver_id,
+      o.created_at AS order_created_at,
+      s.total_amount::numeric       AS total_amount,
+      s.commission_rate::numeric    AS commission_rate,
+      s.insurance_rate::numeric     AS insurance_rate,
+      s.other_fee_rate::numeric     AS other_fee_rate,
+      s.insurance_fee::numeric      AS insurance_fee,
+      s.other_handling_fee::numeric AS other_handling_fee,
+      s.franchisee_payout::numeric  AS franchisee_payout,
+      s.franchisee_payment_status,
+      s.payment_status,
+      s.paid_at,
+      s.created_at
+    FROM order_settlements s
+    LEFT JOIN drivers d ON d.id = s.driver_id
+    LEFT JOIN orders  o ON o.id = s.order_id
+    WHERE s.franchisee_id = ${Number(id)}
+      ${statusCond}
+    ORDER BY s.created_at DESC
+    LIMIT  ${Number(limit)}
+    OFFSET ${Number(offset)}
+  `);
+  const total = await db.execute(sql`
+    SELECT COUNT(*)::int AS cnt FROM order_settlements WHERE franchisee_id = ${Number(id)}
+  `);
+  res.json({ data: rows.rows, total: (total.rows[0] as any)?.cnt ?? 0 });
 });
 
 // ─── SETTLEMENTS: GENERATE monthly ───────────────────────────────────
