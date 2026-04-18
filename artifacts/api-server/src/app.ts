@@ -21,6 +21,7 @@ import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
 import { ensureVehicleProfitTables } from "./routes/vehicleProfit";
 import { ensureLaborPensionTables } from "./routes/laborPension";
+import { ensurePayrollCostTables } from "./routes/payrollCost";
 import { pool as _migPool, db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -187,6 +188,7 @@ ensureRateTables()
 ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
 ensureVehicleProfitTables().catch((e) => console.error("[VehicleProfit] table setup failed:", e));
 ensureLaborPensionTables().catch((e) => console.error("[LaborPension] table setup failed:", e));
+ensurePayrollCostTables().catch((e) => console.error("[PayrollCost] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {
     const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
