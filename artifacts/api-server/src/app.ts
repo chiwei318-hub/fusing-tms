@@ -11,6 +11,7 @@ import { ensurePenaltySyncTables, startPenaltySyncScheduler } from "./routes/pen
 import { startRateSyncScheduler } from "./lib/rateSyncScheduler";
 import { ensureRateTables } from "./routes/rateSync";
 import { ensureShopeeDriversTable } from "./routes/shopeeDrivers";
+import { ensureShopeeScheduleTables, importShopeeScheduleFromExcel } from "./routes/shopeeSchedules";
 import { ensureDispatchOrdersTable } from "./routes/dispatchOrders";
 import { ensureScheduleTables } from "./routes/fusingaoScheduleImport";
 import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport";
@@ -182,6 +183,15 @@ ensureRateTables()
   .then(() => startRateSyncScheduler())
   .catch((e) => console.error("[RateSync] table setup failed:", e));
 ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
+ensureShopeeScheduleTables()
+  .then(async () => {
+    const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
+    if (Number(rows[0].count) === 0) {
+      const excelPath = require("path").resolve(process.cwd(), "../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
+      await importShopeeScheduleFromExcel(excelPath).catch((e) => console.error("[ShopeeSchedule] 首次匯入失敗:", e));
+    }
+  })
+  .catch((e) => console.error("[ShopeeSchedule] table setup failed:", e));
 ensureDispatchOrdersTable().catch((e) => console.error("[DispatchOrders] table setup failed:", e));
 ensureScheduleTables().catch((e) => console.error("[ScheduleTables] setup failed:", e));
 ensureBillingDetailTables().catch((e) => console.error("[BillingDetailTables] setup failed:", e));

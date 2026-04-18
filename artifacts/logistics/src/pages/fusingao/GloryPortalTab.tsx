@@ -8,8 +8,9 @@ import TownshipTab from "./TownshipTab";
 import SupplierTab from "./SupplierTab";
 import ContractQuoteTab from "./ContractQuoteTab";
 import ShopeeDriversTab from "./ShopeeDriversTab";
+import ShopeeScheduleTab from "./ShopeeScheduleTab";
 
-type SubTab = "vehicles" | "fuel" | "driverbonus" | "township" | "supplier" | "contractquote" | "glory_links" | "shopeedrivers";
+type SubTab = "vehicles" | "fuel" | "driverbonus" | "township" | "supplier" | "contractquote" | "glory_links" | "shopeedrivers" | "shopeeschedule";
 
 interface GloryLink {
   label: string;
@@ -99,6 +100,7 @@ const GLORY_LINKS: GloryGroup[] = [
 const SUB_TABS: { id: SubTab; icon: string; label: string; accent: string }[] = [
   { id: "glory_links",    icon: "🗂️", label: "功能總覽",   accent: "#4b5563" },
   { id: "shopeedrivers",  icon: "🧑‍✈️", label: "蝦皮司機名單", accent: "#0284c7" },
+  { id: "shopeeschedule", icon: "📅", label: "蝦皮班表",    accent: "#7c3aed" },
   { id: "contractquote",  icon: "📝", label: "合約報價",   accent: "#4f46e5" },
   { id: "vehicles",       icon: "🚛", label: "車輛管理",   accent: "#ea580c" },
   { id: "fuel",           icon: "⛽", label: "油料管理",   accent: "#d97706" },
@@ -108,8 +110,9 @@ const SUB_TABS: { id: SubTab; icon: string; label: string; accent: string }[] = 
 ];
 
 const TITLES: Record<SubTab, { title: string; subtitle: string }> = {
-  glory_links:    { title: "🗂️ 功能總覽",          subtitle: "所有模組快速導覽，點擊直接進入對應功能" },
-  shopeedrivers:  { title: "🧑‍✈️ 蝦皮司機名單",     subtitle: "蝦皮小楊車隊司機聯絡資料、身分證、車籍管理" },
+  glory_links:      { title: "🗂️ 功能總覽",          subtitle: "所有模組快速導覽，點擊直接進入對應功能" },
+  shopeedrivers:    { title: "🧑‍✈️ 蝦皮司機名單",     subtitle: "蝦皮小楊車隊司機聯絡資料、身分證、車籍管理" },
+  shopeeschedule:   { title: "📅 蝦皮北倉班表",        subtitle: "路線派車班表：WH NDD / 快速到貨 / 流水線，即時刷新" },
   contractquote:  { title: "📝 合約報價管理",       subtitle: "報價單建立、管理、路線費率、合約狀態" },
   vehicles:       { title: "🚛 車輛管理",           subtitle: "車輛資料、稅務、保險、維修、eTag 維護查詢" },
   fuel:           { title: "⛽ 油料管理",            subtitle: "加油記錄、油耗比較報表、月統計分析" },
@@ -195,7 +198,8 @@ export default function GloryPortalTab({ initialSub = "glory_links", onNavigateA
           </div>
 
           {/* ── 各頁面內容 ── */}
-          {sub === "shopeedrivers" && <ShopeeDriversTab />}
+          {sub === "shopeedrivers"  && <ShopeeDriversTab />}
+          {sub === "shopeeschedule" && <ShopeeScheduleTab />}
           {sub === "contractquote" && <ContractQuoteTab />}
           {sub === "vehicles"      && <VehicleTab />}
           {sub === "fuel"          && <FuelTab />}
