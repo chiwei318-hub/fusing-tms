@@ -7,8 +7,9 @@ import DriverBonusTab from "./DriverBonusTab";
 import TownshipTab from "./TownshipTab";
 import SupplierTab from "./SupplierTab";
 import ContractQuoteTab from "./ContractQuoteTab";
+import ShopeeDriversTab from "./ShopeeDriversTab";
 
-type SubTab = "vehicles" | "fuel" | "driverbonus" | "township" | "supplier" | "contractquote" | "glory_links";
+type SubTab = "vehicles" | "fuel" | "driverbonus" | "township" | "supplier" | "contractquote" | "glory_links" | "shopeedrivers";
 
 interface GloryLink {
   label: string;
@@ -36,12 +37,13 @@ const GLORY_LINKS: GloryGroup[] = [
     border: "#bfdbfe",
     labelStyle: { background: "#dbeafe", color: "#1d4ed8" },
     links: [
-      { label: "客戶資料",   adminTab: "customers", desc: "客戶查詢、匯出 Excel",          icon: "👤" },
-      { label: "廠商資料",   sub: "supplier",        desc: "廠商編號、聯絡人、統編、地址", icon: "🏭" },
-      { label: "車輛資料",   sub: "vehicles",        desc: "車號、車型、出廠年月、載重",   icon: "🚛" },
-      { label: "縣市鄉鎮",  sub: "township",         desc: "縣市代碼與鄉鎮行政區維護",    icon: "🗺️" },
-      { label: "供應商",    sub: "supplier",          desc: "供應商 CRUD、銀行傭金",        icon: "🏗️" },
-      { label: "自動化客服", adminTab: "line",        desc: "RAG 處理司機與客戶 FAQ",      icon: "🤖" },
+      { label: "客戶資料",    adminTab: "customers",  desc: "客戶查詢、匯出 Excel",          icon: "👤" },
+      { label: "廠商資料",   sub: "supplier",         desc: "廠商編號、聯絡人、統編、地址", icon: "🏭" },
+      { label: "車輛資料",   sub: "vehicles",         desc: "車號、車型、出廠年月、載重",   icon: "🚛" },
+      { label: "縣市鄉鎮",  sub: "township",          desc: "縣市代碼與鄉鎮行政區維護",    icon: "🗺️" },
+      { label: "供應商",    sub: "supplier",           desc: "供應商 CRUD、銀行傭金",        icon: "🏗️" },
+      { label: "蝦皮司機",  sub: "shopeedrivers",     desc: "蝦皮小楊車隊司機名單、聯絡資料", icon: "🧑‍✈️" },
+      { label: "自動化客服", adminTab: "line",         desc: "RAG 處理司機與客戶 FAQ",      icon: "🤖" },
     ],
   },
   {
@@ -95,23 +97,25 @@ const GLORY_LINKS: GloryGroup[] = [
 
 // ── 左側導覽 subtabs ──────────────────────────────────────────────────────────
 const SUB_TABS: { id: SubTab; icon: string; label: string; accent: string }[] = [
-  { id: "glory_links",   icon: "🗂️", label: "功能總覽",  accent: "#4b5563" },
-  { id: "contractquote", icon: "📝", label: "合約報價",  accent: "#4f46e5" },
-  { id: "vehicles",      icon: "🚛", label: "車輛管理",  accent: "#ea580c" },
-  { id: "fuel",          icon: "⛽", label: "油料管理",  accent: "#d97706" },
-  { id: "driverbonus",   icon: "💰", label: "司機獎金",  accent: "#059669" },
-  { id: "township",      icon: "🗺️", label: "縣市鄉鎮",  accent: "#0284c7" },
-  { id: "supplier",      icon: "🏭", label: "供應商",    accent: "#7c3aed" },
+  { id: "glory_links",    icon: "🗂️", label: "功能總覽",   accent: "#4b5563" },
+  { id: "shopeedrivers",  icon: "🧑‍✈️", label: "蝦皮司機名單", accent: "#0284c7" },
+  { id: "contractquote",  icon: "📝", label: "合約報價",   accent: "#4f46e5" },
+  { id: "vehicles",       icon: "🚛", label: "車輛管理",   accent: "#ea580c" },
+  { id: "fuel",           icon: "⛽", label: "油料管理",   accent: "#d97706" },
+  { id: "driverbonus",    icon: "💰", label: "司機獎金",   accent: "#059669" },
+  { id: "township",       icon: "🗺️", label: "縣市鄉鎮",  accent: "#0ea5e9" },
+  { id: "supplier",       icon: "🏭", label: "供應商",     accent: "#7c3aed" },
 ];
 
 const TITLES: Record<SubTab, { title: string; subtitle: string }> = {
-  glory_links:   { title: "🗂️ 功能總覽",        subtitle: "所有模組快速導覽，點擊直接進入對應功能" },
-  contractquote: { title: "📝 合約報價管理",     subtitle: "報價單建立、管理、路線費率、合約狀態" },
-  vehicles:      { title: "🚛 車輛管理",         subtitle: "車輛資料、稅務、保險、維修、eTag 維護查詢" },
-  fuel:          { title: "⛽ 油料管理",          subtitle: "加油記錄、油耗比較報表、月統計分析" },
-  driverbonus:   { title: "💰 司機獎金管理",     subtitle: "司機獎金明細查詢與發放管理" },
-  township:      { title: "🗺️ 縣市鄉鎮資料",    subtitle: "台灣行政區域資料維護（已預載全台資料）" },
-  supplier:      { title: "🏭 供應商管理",       subtitle: "供應商資料、聯絡人、服務區域、傭金率" },
+  glory_links:    { title: "🗂️ 功能總覽",          subtitle: "所有模組快速導覽，點擊直接進入對應功能" },
+  shopeedrivers:  { title: "🧑‍✈️ 蝦皮司機名單",     subtitle: "蝦皮小楊車隊司機聯絡資料、身分證、車籍管理" },
+  contractquote:  { title: "📝 合約報價管理",       subtitle: "報價單建立、管理、路線費率、合約狀態" },
+  vehicles:       { title: "🚛 車輛管理",           subtitle: "車輛資料、稅務、保險、維修、eTag 維護查詢" },
+  fuel:           { title: "⛽ 油料管理",            subtitle: "加油記錄、油耗比較報表、月統計分析" },
+  driverbonus:    { title: "💰 司機獎金管理",       subtitle: "司機獎金明細查詢與發放管理" },
+  township:       { title: "🗺️ 縣市鄉鎮資料",      subtitle: "台灣行政區域資料維護（已預載全台資料）" },
+  supplier:       { title: "🏭 供應商管理",         subtitle: "供應商資料、聯絡人、服務區域、傭金率" },
 };
 
 interface Props {
@@ -191,6 +195,7 @@ export default function GloryPortalTab({ initialSub = "glory_links", onNavigateA
           </div>
 
           {/* ── 各頁面內容 ── */}
+          {sub === "shopeedrivers" && <ShopeeDriversTab />}
           {sub === "contractquote" && <ContractQuoteTab />}
           {sub === "vehicles"      && <VehicleTab />}
           {sub === "fuel"          && <FuelTab />}

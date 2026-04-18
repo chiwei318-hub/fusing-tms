@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  RefreshCw, Plus, Pencil, Trash2, Search, CheckCircle2,
-  User, Truck, X, Upload, Download,
+  RefreshCw, Plus, Pencil, Trash2, Search,
+  User, Truck, Download, Phone, MapPin, CreditCard, Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
 
@@ -25,20 +22,26 @@ interface ShopeeDriver {
   vehicle_plate: string | null;
   vehicle_type: string | null;
   fleet_name: string | null;
+  id_number: string | null;
+  birthday: string | null;
+  address: string | null;
+  phone: string | null;
   notes: string | null;
   is_own_driver: boolean;
   created_at: string;
   updated_at: string;
 }
 
-const VEHICLE_TYPES = ["6.2T", "8.5T", "11T", "17T", "26T", "35T", "46T"];
-
 const EMPTY_FORM = {
   shopee_id: "",
   name: "",
   vehicle_plate: "",
-  vehicle_type: "6.2T",
+  vehicle_type: "",
   fleet_name: "",
+  id_number: "",
+  birthday: "",
+  address: "",
+  phone: "",
   notes: "",
   is_own_driver: true,
 };
@@ -48,18 +51,13 @@ export default function ShopeeDriversTab() {
   const [drivers, setDrivers] = useState<ShopeeDriver[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterOwn, setFilterOwn] = useState<"all" | "own" | "outsource">("all");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
-
   const [deletingId, setDeletingId] = useState<number | null>(null);
-
-  // Bulk import state
-  const [bulkText, setBulkText] = useState("");
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
-  const [bulkParsed, setBulkParsed] = useState<typeof EMPTY_FORM[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +65,7 @@ export default function ShopeeDriversTab() {
       const r = await fetch(apiUrl(`/shopee-drivers${search ? `?q=${encodeURIComponent(search)}` : ""}`));
       const d = await r.json();
       if (d.ok) setDrivers(d.drivers);
-    } catch (e) {
+    } catch {
       toast({ title: "載入失敗", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -75,6 +73,12 @@ export default function ShopeeDriversTab() {
   }, [search, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const displayed = drivers.filter(d => {
+    if (filterOwn === "own" && !d.is_own_driver) return false;
+    if (filterOwn === "outsource" && d.is_own_driver) return false;
+    return true;
+  });
 
   function openCreate() {
     setEditingId(null);
@@ -88,8 +92,12 @@ export default function ShopeeDriversTab() {
       shopee_id: d.shopee_id,
       name: d.name ?? "",
       vehicle_plate: d.vehicle_plate ?? "",
-      vehicle_type: d.vehicle_type ?? "6.2T",
+      vehicle_type: d.vehicle_type ?? "",
       fleet_name: d.fleet_name ?? "",
+      id_number: d.id_number ?? "",
+      birthday: d.birthday ?? "",
+      address: d.address ?? "",
+      phone: d.phone ?? "",
       notes: d.notes ?? "",
       is_own_driver: d.is_own_driver,
     });
@@ -112,8 +120,12 @@ export default function ShopeeDriversTab() {
           shopee_id: form.shopee_id.trim(),
           name: form.name.trim() || null,
           vehicle_plate: form.vehicle_plate.trim() || null,
-          vehicle_type: form.vehicle_type || null,
+          vehicle_type: form.vehicle_type.trim() || null,
           fleet_name: form.fleet_name.trim() || null,
+          id_number: form.id_number.trim() || null,
+          birthday: form.birthday.trim() || null,
+          address: form.address.trim() || null,
+          phone: form.phone.trim() || null,
           notes: form.notes.trim() || null,
           is_own_driver: form.is_own_driver,
         }),
@@ -142,128 +154,80 @@ export default function ShopeeDriversTab() {
     }
   }
 
-  // ── Bulk import ────────────────────────────────────────────────────────────
-  function parseBulk() {
-    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
-    const parsed: typeof EMPTY_FORM[] = [];
-    for (const line of lines) {
-      const parts = line.split(/[\t,，、\s]+/).filter(Boolean);
-      if (!parts[0]) continue;
-      parsed.push({
-        shopee_id: parts[0],
-        name: parts[1] ?? "",
-        vehicle_plate: parts[2] ?? "",
-        vehicle_type: parts[3] ?? "6.2T",
-        fleet_name: parts[4] ?? "",
-        notes: parts[5] ?? "",
-        is_own_driver: true,
-      });
-    }
-    setBulkParsed(parsed);
-  }
-
-  async function saveBulk() {
-    if (!bulkParsed.length) return;
-    setSaving(true);
-    let ok = 0; let fail = 0;
-    for (const row of bulkParsed) {
-      try {
-        const r = await fetch(apiUrl("/shopee-drivers"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            shopee_id: row.shopee_id,
-            name: row.name || null,
-            vehicle_plate: row.vehicle_plate || null,
-            vehicle_type: row.vehicle_type || null,
-            fleet_name: row.fleet_name || null,
-            notes: row.notes || null,
-            is_own_driver: row.is_own_driver,
-          }),
-        });
-        const d = await r.json();
-        if (d.ok) ok++;
-        else fail++;
-      } catch { fail++; }
-    }
-    toast({ title: `批次匯入完成`, description: `成功 ${ok} 筆，失敗 ${fail} 筆` });
-    setBulkDialogOpen(false);
-    setBulkText("");
-    setBulkParsed([]);
-    setSaving(false);
-    load();
-  }
-
-  // ── Export CSV ─────────────────────────────────────────────────────────────
   function exportCsv() {
-    const header = ["工號", "姓名", "車牌", "車型", "車隊", "備注", "自有司機"];
-    const rows = drivers.map(d => [
-      d.shopee_id, d.name ?? "", d.vehicle_plate ?? "", d.vehicle_type ?? "",
-      d.fleet_name ?? "", d.notes ?? "", d.is_own_driver ? "是" : "否",
+    const header = ["工號", "姓名", "身分證", "生日", "手機", "戶籍地址", "車牌", "車型", "車隊", "備注", "身份"];
+    const rows = displayed.map(d => [
+      d.shopee_id, d.name ?? "", d.id_number ?? "", d.birthday ?? "",
+      d.phone ?? "", d.address ?? "",
+      d.vehicle_plate ?? "", d.vehicle_type ?? "",
+      d.fleet_name ?? "", d.notes ?? "",
+      d.is_own_driver ? "自有" : "外包",
     ]);
     const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `shopee_drivers_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `司機名單_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   }
 
   const ownCount = drivers.filter(d => d.is_own_driver).length;
+  const outCount = drivers.length - ownCount;
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4 text-blue-500" />
-              <div>
-                <p className="text-xl font-bold">{drivers.length}</p>
-                <p className="text-xs text-muted-foreground">工號總數</p>
-              </div>
+
+      {/* ── 統計卡片 ── */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { icon: <User className="w-4 h-4" style={{ color: "#2563eb" }} />, val: drivers.length, label: "司機總數",    color: "#2563eb", bg: "#eff6ff" },
+          { icon: <Truck className="w-4 h-4" style={{ color: "#059669" }} />, val: ownCount,        label: "自有司機",   color: "#059669", bg: "#f0fdf4" },
+          { icon: <Truck className="w-4 h-4" style={{ color: "#d97706" }} />, val: outCount,        label: "外包司機",   color: "#d97706", bg: "#fffbeb" },
+          { icon: <Phone className="w-4 h-4" style={{ color: "#7c3aed" }} />, val: drivers.filter(d => d.phone).length, label: "已填手機", color: "#7c3aed", bg: "#faf5ff" },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl p-4 flex items-center gap-3"
+            style={{ background: s.bg, border: `1px solid ${s.color}22` }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: `${s.color}18` }}>
+              {s.icon}
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <div>
-                <p className="text-xl font-bold">{drivers.filter(d => d.name).length}</p>
-                <p className="text-xs text-muted-foreground">已填姓名</p>
-              </div>
+            <div>
+              <div className="text-xl font-bold" style={{ color: s.color }}>{s.val}</div>
+              <div className="text-xs" style={{ color: "#6b7280" }}>{s.label}</div>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Truck className="w-4 h-4 text-orange-500" />
-              <div>
-                <p className="text-xl font-bold">{ownCount}</p>
-                <p className="text-xs text-muted-foreground">自有司機</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        ))}
       </div>
 
-      {/* Toolbar */}
+      {/* ── 工具列 ── */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-base flex items-center gap-2">
               <User className="w-4 h-4 text-blue-500" />
-              蝦皮司機工號管理
+              蝦皮車隊司機名單
+              <span className="text-xs font-normal text-gray-400">（蝦皮小楊）</span>
             </CardTitle>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* 篩選 */}
+              <div className="flex rounded-lg overflow-hidden border text-xs">
+                {(["all", "own", "outsource"] as const).map(v => (
+                  <button key={v}
+                    onClick={() => setFilterOwn(v)}
+                    className="px-3 py-1.5 transition-colors font-medium"
+                    style={{
+                      background: filterOwn === v ? "#2563eb" : "#fff",
+                      color: filterOwn === v ? "#fff" : "#374151",
+                    }}
+                  >
+                    {v === "all" ? "全部" : v === "own" ? "自有" : "外包"}
+                  </button>
+                ))}
+              </div>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-gray-400" />
                 <Input
                   className="pl-7 h-8 text-sm w-44"
-                  placeholder="搜尋工號/姓名/車隊..."
+                  placeholder="搜尋工號/姓名/手機..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
@@ -271,10 +235,7 @@ export default function ShopeeDriversTab() {
               <Button variant="outline" size="sm" className="h-8" onClick={load} disabled={loading}>
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               </Button>
-              <Button variant="outline" size="sm" className="h-8" onClick={() => setBulkDialogOpen(true)}>
-                <Upload className="w-3.5 h-3.5 mr-1" />批次匯入
-              </Button>
-              <Button variant="outline" size="sm" className="h-8" onClick={exportCsv} disabled={!drivers.length}>
+              <Button variant="outline" size="sm" className="h-8" onClick={exportCsv} disabled={!displayed.length}>
                 <Download className="w-3.5 h-3.5 mr-1" />匯出 CSV
               </Button>
               <Button size="sm" className="h-8" onClick={openCreate}>
@@ -285,73 +246,62 @@ export default function ShopeeDriversTab() {
         </CardHeader>
 
         <CardContent className="p-0">
-          {drivers.length === 0 && !loading ? (
+          {loading ? (
+            <div className="py-12 text-center text-sm text-gray-400">載入中…</div>
+          ) : displayed.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
               <User className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">尚無司機資料</p>
-              <p className="text-xs mt-1">點擊「新增司機」或「批次匯入」</p>
+              <p className="text-sm">尚無符合條件的司機資料</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50 text-xs text-gray-500">
-                    <th className="text-left px-4 py-2 font-medium">工號</th>
-                    <th className="text-left px-4 py-2 font-medium">姓名</th>
-                    <th className="text-left px-4 py-2 font-medium">車牌</th>
-                    <th className="text-left px-4 py-2 font-medium">車型</th>
-                    <th className="text-left px-4 py-2 font-medium">車隊</th>
-                    <th className="text-left px-4 py-2 font-medium">身份</th>
-                    <th className="text-left px-4 py-2 font-medium">備注</th>
-                    <th className="text-right px-4 py-2 font-medium">操作</th>
+                  <tr style={{ background: "linear-gradient(90deg,#1e40af,#2563eb)", color: "#fff" }}>
+                    {["工號", "姓名", "身份", "手機", "身分證", "生日", "車牌", "車隊", "戶籍地址", "備注", ""].map(h => (
+                      <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold whitespace-nowrap">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {drivers.map((d, idx) => (
-                    <tr key={d.id} className={`border-b hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}>
-                      <td className="px-4 py-2">
-                        <span className="font-mono font-semibold text-blue-700">{d.shopee_id}</span>
+                  {displayed.map((d, idx) => (
+                    <tr key={d.id}
+                      className="border-b hover:bg-blue-50 transition-colors"
+                      style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc" }}
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="font-mono font-bold text-blue-700">{d.shopee_id}</span>
                       </td>
-                      <td className="px-4 py-2">
-                        {d.name
-                          ? <span className="font-medium">{d.name}</span>
-                          : <span className="text-gray-300 text-xs">未填</span>
-                        }
-                      </td>
-                      <td className="px-4 py-2">
-                        {d.vehicle_plate
-                          ? <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{d.vehicle_plate}</span>
-                          : <span className="text-gray-300 text-xs">—</span>
-                        }
-                      </td>
-                      <td className="px-4 py-2">
-                        {d.vehicle_type
-                          ? <Badge variant="outline" className="text-xs">{d.vehicle_type}</Badge>
-                          : <span className="text-gray-300 text-xs">—</span>
-                        }
-                      </td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{d.fleet_name ?? "—"}</td>
-                      <td className="px-4 py-2">
-                        <Badge className={d.is_own_driver ? "bg-green-100 text-green-800 text-[10px]" : "bg-gray-100 text-gray-600 text-[10px]"}>
+                      <td className="px-3 py-2 whitespace-nowrap font-medium">{d.name ?? <span className="text-gray-300 text-xs">未填</span>}</td>
+                      <td className="px-3 py-2">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                          style={d.is_own_driver
+                            ? { background: "#dcfce7", color: "#065f46" }
+                            : { background: "#ffedd5", color: "#9a3412" }}>
                           {d.is_own_driver ? "自有" : "外包"}
-                        </Badge>
+                        </span>
                       </td>
-                      <td className="px-4 py-2 text-xs text-gray-500 max-w-32 truncate">{d.notes ?? ""}</td>
-                      <td className="px-4 py-2 text-right">
-                        <div className="flex gap-1 justify-end">
-                          <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
-                            onClick={() => openEdit(d)}
-                          >
+                      <td className="px-3 py-2 whitespace-nowrap text-xs font-mono">{d.phone ?? "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs font-mono text-gray-600">{d.id_number ?? "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">{d.birthday ?? "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {d.vehicle_plate
+                          ? <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: "#f3f4f6" }}>{d.vehicle_plate}</span>
+                          : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{d.fleet_name ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500 max-w-48 truncate" title={d.address ?? ""}>{d.address ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-gray-400">{d.notes ?? ""}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={() => openEdit(d)}
+                            className="p-1 rounded hover:bg-blue-100 text-blue-500 transition-colors">
                             <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                            onClick={() => del(d)}
-                            disabled={deletingId === d.id}
-                          >
+                          </button>
+                          <button onClick={() => del(d)} disabled={deletingId === d.id}
+                            className="p-1 rounded hover:bg-red-100 text-red-400 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -360,161 +310,97 @@ export default function ShopeeDriversTab() {
               </table>
             </div>
           )}
+          <div className="px-4 py-2 text-xs text-gray-400 border-t">
+            顯示 {displayed.length} / {drivers.length} 筆
+          </div>
         </CardContent>
       </Card>
 
-      {/* Add/Edit Dialog */}
+      {/* ── 新增/編輯 Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingId ? "編輯司機" : "新增司機"}</DialogTitle>
+            <DialogTitle>{editingId ? "編輯司機資料" : "新增司機"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-1">
+
+            {/* 基本 */}
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">基本資料</div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>工號 *</Label>
-                <Input
-                  placeholder="例：14681"
-                  value={form.shopee_id}
+                <Label className="text-xs">蝦皮工號 *</Label>
+                <Input placeholder="例：14681" value={form.shopee_id}
                   onChange={e => setForm(f => ({ ...f, shopee_id: e.target.value }))}
-                  disabled={!!editingId}
-                  className={editingId ? "bg-gray-100" : ""}
-                />
+                  disabled={!!editingId} className={editingId ? "bg-gray-100" : ""} />
               </div>
               <div className="space-y-1.5">
-                <Label>姓名</Label>
-                <Input
-                  placeholder="司機真實姓名"
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                />
+                <Label className="text-xs">姓名</Label>
+                <Input placeholder="司機真實姓名" value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>車牌</Label>
-                <Input
-                  placeholder="例：ABC-1234"
-                  value={form.vehicle_plate}
-                  onChange={e => setForm(f => ({ ...f, vehicle_plate: e.target.value }))}
-                />
+                <Label className="text-xs flex items-center gap-1"><CreditCard className="w-3 h-3" />身分證字號</Label>
+                <Input placeholder="A123456789" value={form.id_number}
+                  onChange={e => setForm(f => ({ ...f, id_number: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>車型</Label>
-                <Select value={form.vehicle_type} onValueChange={v => setForm(f => ({ ...f, vehicle_type: v }))}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VEHICLE_TYPES.map(v => (
-                      <SelectItem key={v} value={v}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs flex items-center gap-1"><Calendar className="w-3 h-3" />生日（民國）</Label>
+                <Input placeholder="85.04.10" value={form.birthday}
+                  onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><Phone className="w-3 h-3" />手機</Label>
+                <Input placeholder="0935-448144" value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">車隊名稱</Label>
+                <Input placeholder="蝦皮小楊" value={form.fleet_name}
+                  onChange={e => setForm(f => ({ ...f, fleet_name: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>車隊名稱</Label>
-              <Input
-                placeholder="例：富詠運輸"
-                value={form.fleet_name}
-                onChange={e => setForm(f => ({ ...f, fleet_name: e.target.value }))}
-              />
+              <Label className="text-xs flex items-center gap-1"><MapPin className="w-3 h-3" />戶籍地址</Label>
+              <Input placeholder="桃園市平鎮區…" value={form.address}
+                onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
             </div>
+
+            {/* 車輛 */}
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-2">車輛資料</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">車牌號碼</Label>
+                <Input placeholder="ABC-1234" value={form.vehicle_plate}
+                  onChange={e => setForm(f => ({ ...f, vehicle_plate: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">車型</Label>
+                <Input placeholder="例：1.5T" value={form.vehicle_type}
+                  onChange={e => setForm(f => ({ ...f, vehicle_type: e.target.value }))} />
+              </div>
+            </div>
+
+            {/* 其他 */}
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-2">其他</div>
             <div className="space-y-1.5">
-              <Label>備注</Label>
-              <Input
-                placeholder="其他備注"
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              />
+              <Label className="text-xs">備注</Label>
+              <Input placeholder="外車 / 其他備注" value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
             <div className="flex items-center gap-2">
-              <Switch
-                checked={form.is_own_driver}
-                onCheckedChange={v => setForm(f => ({ ...f, is_own_driver: v }))}
-              />
-              <Label>自有司機</Label>
+              <Switch checked={form.is_own_driver}
+                onCheckedChange={v => setForm(f => ({ ...f, is_own_driver: v }))} />
+              <Label className="text-sm">{form.is_own_driver ? "🟢 自有司機" : "🟡 外包司機"}</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
             <Button onClick={save} disabled={saving || !form.shopee_id.trim()}>
               {saving ? "儲存中…" : "儲存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Import Dialog */}
-      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>批次匯入工號司機</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700 space-y-1">
-              <p className="font-semibold">格式說明（每行一筆，欄位以 Tab/逗號/空格分隔）：</p>
-              <p className="font-mono">工號　姓名　車牌　車型　車隊名稱　備注</p>
-              <p>例：<span className="font-mono">14681	王小明	ABC-1234	6.2T	富詠運輸</span></p>
-              <p>僅「工號」為必填；若工號已存在則自動更新。</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>貼上資料</Label>
-              <textarea
-                className="w-full h-40 border rounded p-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-                placeholder={"14681\t王小明\tABC-1234\t6.2T\t富詠運輸\n14774\t張大華\tXYZ-5678\t6.2T\t富詠運輸"}
-                value={bulkText}
-                onChange={e => { setBulkText(e.target.value); setBulkParsed([]); }}
-              />
-            </div>
-            {bulkText.trim() && (
-              <Button variant="outline" size="sm" onClick={parseBulk}>
-                解析預覽
-              </Button>
-            )}
-            {bulkParsed.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-green-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" />
-                  解析 {bulkParsed.length} 筆
-                </p>
-                <div className="overflow-x-auto max-h-48 overflow-y-auto border rounded text-xs">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 sticky top-0">
-                      <tr>
-                        <th className="text-left px-2 py-1.5">工號</th>
-                        <th className="text-left px-2 py-1.5">姓名</th>
-                        <th className="text-left px-2 py-1.5">車牌</th>
-                        <th className="text-left px-2 py-1.5">車型</th>
-                        <th className="text-left px-2 py-1.5">車隊</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bulkParsed.map((r, i) => (
-                        <tr key={i} className="border-t">
-                          <td className="px-2 py-1 font-mono font-semibold text-blue-700">{r.shopee_id}</td>
-                          <td className="px-2 py-1">{r.name || "—"}</td>
-                          <td className="px-2 py-1 font-mono">{r.vehicle_plate || "—"}</td>
-                          <td className="px-2 py-1">{r.vehicle_type || "—"}</td>
-                          <td className="px-2 py-1">{r.fleet_name || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBulkDialogOpen(false); setBulkText(""); setBulkParsed([]); }}>
-              取消
-            </Button>
-            <Button
-              onClick={saveBulk}
-              disabled={saving || bulkParsed.length === 0}
-            >
-              {saving ? "匯入中…" : `匯入 ${bulkParsed.length} 筆`}
             </Button>
           </DialogFooter>
         </DialogContent>
