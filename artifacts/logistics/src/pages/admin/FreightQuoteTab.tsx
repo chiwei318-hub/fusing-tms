@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, "").replace("/logistics", "") + "/api-server/api";
+const API = import.meta.env.BASE_URL?.replace(/\/$/, "") + "/api";
 
 // ─── 型別 ────────────────────────────────────────────────────────────────────
 interface RateConfig { id: number; car_type: string; label: string; base_price: number; km_rate: number; car_multiplier: number; platform_pct: number; driver_pct: number; active: boolean; }
@@ -224,7 +224,7 @@ export default function FreightQuoteTab() {
   const surcharges = config?.surcharges ?? [];
 
   return (
-    <div style={{ padding: "24px", maxWidth: 960 }}>
+    <div style={{ padding: "24px", maxWidth: 960, fontSize: 15 }}>
       {/* ── 標題 ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <span style={{ fontSize: 28 }}>🚚</span>
@@ -289,7 +289,7 @@ export default function FreightQuoteTab() {
               </div>
 
               {/* 合約客戶選擇 */}
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 🤝 合約客戶
                 <select value={selectedPartnerId} onChange={e => setSelectedPartnerId(e.target.value)}
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff" }}>
@@ -309,7 +309,7 @@ export default function FreightQuoteTab() {
                 return (
                   <div style={{ background: ts.bg, border: `1px solid ${ts.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                      <span style={{ background: ts.border, color: ts.text, padding: "2px 8px", borderRadius: 12, fontWeight: 700, fontSize: 11 }}>{p.tier}</span>
+                      <span style={{ background: ts.border, color: ts.text, padding: "2px 8px", borderRadius: 12, fontWeight: 700, fontSize: 13 }}>{p.tier}</span>
                       <span style={{ fontWeight: 600, color: ts.text }}>{p.partner_name}</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", color: "#374151" }}>
@@ -326,22 +326,22 @@ export default function FreightQuoteTab() {
                 );
               })()}
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📦 出發地（origin）
                 <input value={partnerOrigin} onChange={e => setPartnerOrigin(e.target.value)}
                   placeholder="例：台北市內湖區瑞光路 100 號"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📍 目的地（destination）
                 <input value={partnerDest} onChange={e => setPartnerDest(e.target.value)}
                   placeholder="例：新竹市科學園區工業東一路（自動偵測加成）"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>含「科學園區」或山區關鍵字時，以該客戶合約費率自動加成</span>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>含「科學園區」或山區關鍵字時，以該客戶合約費率自動加成</span>
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 🚛 車型
                 <select value={partnerCarType} onChange={e => setPartnerCarType(e.target.value)}
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff" }}>
@@ -377,7 +377,7 @@ export default function FreightQuoteTab() {
                       <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>合約報價</div>
                       <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(total)}</div>
                       {b.duration_min && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>預估車程約 {Math.round(b.duration_min)} 分鐘</div>}
-                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source} · {partnerResult.distance}</div>
+                      <div style={{ fontSize: 13, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source} · {partnerResult.distance}</div>
                     </div>
 
                     {/* 費用明細 */}
@@ -404,10 +404,10 @@ export default function FreightQuoteTab() {
                     {/* 平台利潤區塊 — 對應 Python: platform_profit = total_quote * profit_margin */}
                     <div style={{ background: "linear-gradient(135deg, #1e3a5f, #1d4ed8)", borderRadius: 12, padding: "14px 18px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
-                        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>💰 平台利潤（{((b.profit_margin ?? 0.15) * 100).toFixed(0)}%）</div>
+                        <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 2 }}>💰 平台利潤（{((b.profit_margin ?? 0.15) * 100).toFixed(0)}%）</div>
                         <div style={{ fontSize: 24, fontWeight: 800 }}>{money(profit)}</div>
                       </div>
-                      <div style={{ textAlign: "right", fontSize: 11, opacity: 0.7 }}>
+                      <div style={{ textAlign: "right", fontSize: 13, opacity: 0.7 }}>
                         <div>客戶付款</div>
                         <div style={{ fontSize: 18, fontWeight: 700, opacity: 1 }}>{money(total)}</div>
                         <div style={{ marginTop: 4 }}>司機分潤</div>
@@ -462,27 +462,27 @@ export default function FreightQuoteTab() {
                 <div style={{ color: "#f38ba8" }}>  is_holiday → ×1.2</div>
               </div>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📦 出發地（origin）
                 <input value={fuyongOrigin} onChange={e => setFuyongOrigin(e.target.value)}
                   placeholder="例：台北市內湖區瑞光路 100 號"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📍 目的地（destination）
                 <input value={fuyongDestination} onChange={e => setFuyongDestination(e.target.value)}
                   placeholder="例：新竹市科學園區工業東一路（自動偵測節點）"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>包含「科學園區」或「機場」關鍵字時自動加成</span>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>包含「科學園區」或「機場」關鍵字時自動加成</span>
               </label>
 
               {/* 假日開關 */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: isHoliday ? "#fef3c7" : "#f8fafc", borderRadius: 10, border: `1px solid ${isHoliday ? "#fcd34d" : "#e2e8f0"}` }}>
                 <span style={{ fontSize: 18 }}>{isHoliday ? "🎉" : "📅"}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{isHoliday ? "假日／夜間加成（×1.2）" : "一般工作日"}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>對應 Python: is_holiday = {isHoliday ? "True" : "False"}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>{isHoliday ? "假日／夜間加成（×1.2）" : "一般工作日"}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{isHoliday ? "假日加成 ×1.2 已套用" : "一般工作日，不加成"}</div>
                 </div>
                 <div style={{ position: "relative", width: 40, height: 22 }} onClick={() => setIsHoliday(!isHoliday)}>
                   <div style={{ width: 40, height: 22, borderRadius: 11, background: isHoliday ? "#d97706" : "#d1d5db", transition: "background 0.2s", cursor: "pointer" }} />
@@ -508,7 +508,7 @@ export default function FreightQuoteTab() {
                       <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>富詠報價總額</div>
                       <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(q.total_price)}</div>
                       {b.duration_min && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>預估車程約 {Math.round(b.duration_min)} 分鐘</div>}
-                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source}</div>
+                      <div style={{ fontSize: 13, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source}</div>
                     </div>
 
                     {/* 費用明細 */}
@@ -557,19 +557,19 @@ export default function FreightQuoteTab() {
           {/* 左：輸入 */}
           <div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📦 取貨地址
                 <input value={pickup} onChange={e => setPickup(e.target.value)} placeholder="例：台北市內湖區瑞光路 xxx 號"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 📍 送達地址
                 <input value={delivery} onChange={e => setDelivery(e.target.value)} placeholder="例：台東市中華路一段 xxx 號"
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 15, fontWeight: 600 }}>
                 🚛 車型
                 <select value={carType} onChange={e => setCarType(e.target.value)}
                   style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff" }}>
@@ -585,8 +585,8 @@ export default function FreightQuoteTab() {
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: hasElevator ? "#f0fdf4" : "#fef9c3", borderRadius: 10, border: `1px solid ${hasElevator ? "#bbf7d0" : "#fde68a"}` }}>
                 <span style={{ fontSize: 18 }}>{hasElevator ? "🛗" : "🪜"}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>目的地{hasElevator ? "有電梯" : "無電梯（搬樓梯費 +$500）"}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>對應 Python: has_elevator = {hasElevator ? "True" : "False"}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>目的地{hasElevator ? "有電梯" : "無電梯（搬樓梯費 +$500）"}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{hasElevator ? "目的地有電梯，不收搬樓梯費" : "目的地無電梯，自動加收搬樓梯費 $500"}</div>
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
                   <span style={{ color: "#6b7280" }}>無</span>
@@ -600,7 +600,7 @@ export default function FreightQuoteTab() {
 
               {/* 附加服務選單 */}
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>其他附加服務</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>其他附加服務</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {surcharges.filter(s => s.active && s.key !== "no_elevator").map(s => {
                     const checked = !!services[s.key];
@@ -611,7 +611,7 @@ export default function FreightQuoteTab() {
                           style={{ width: 16, height: 16 }} />
                         <span style={{ flex: 1 }}>
                           {s.label}
-                          <span style={{ color: "#64748b", fontSize: 11, marginLeft: 6 }}>
+                          <span style={{ color: "#64748b", fontSize: 13, marginLeft: 6 }}>
                             {s.amount > 0 ? `+${money(s.amount)}` : ""}{s.pct_multiplier > 0 ? ` +${Math.round(s.pct_multiplier * 100)}%` : ""}
                           </span>
                         </span>
@@ -802,7 +802,7 @@ export default function FreightQuoteTab() {
                   const ed = isEdit ? editingSurcharge! : s;
                   return (
                     <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEdit ? "#eff6ff" : "transparent" }}>
-                      <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#64748b", fontSize: 11 }}>{s.key}</td>
+                      <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#64748b", fontSize: 13 }}>{s.key}</td>
                       <td style={{ padding: "8px 12px" }}>
                         {isEdit ? <input value={ed.label} onChange={e => setEditingSurcharge({ ...ed, label: e.target.value })} style={inputStyle} /> : s.label}
                       </td>
@@ -854,7 +854,7 @@ export default function FreightQuoteTab() {
               </p>
             </div>
             <button onClick={() => setShowAddPartner(!showAddPartner)}
-              style={{ padding: "8px 16px", background: showAddPartner ? "#64748b" : "#0f766e", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+              style={{ padding: "8px 16px", background: showAddPartner ? "#64748b" : "#0f766e", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
               {showAddPartner ? "✕ 取消" : "＋ 新增客戶"}
             </button>
           </div>
@@ -948,14 +948,14 @@ export default function FreightQuoteTab() {
                         ["🚌 偏鄉/離島($)", "remote_fee"],
                         ["💰 利潤率(0~1)", "profit_margin"],
                       ] as [string, keyof PartnerConfig][]).map(([label, key]) => (
-                        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
+                        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 13, fontWeight: 600 }}>
                           {label}
                           <input type="number" value={ed[key] as number}
                             onChange={e => setEditingPartner({ ...ed, [key]: +e.target.value })}
                             style={{ ...inputStyle, width: "100%" }} />
                         </label>
                       ))}
-                      <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 13, fontWeight: 600 }}>
                         等級
                         <select value={ed.tier} onChange={e => setEditingPartner({ ...ed, tier: e.target.value })} style={{ ...inputStyle }}>
                           <option>VIP</option><option>一般</option><option>加盟商</option>

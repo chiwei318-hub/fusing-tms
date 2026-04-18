@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, "").replace("/logistics", "") + "/api-server/api";
+const API = import.meta.env.BASE_URL?.replace(/\/$/, "") + "/api";
 
 interface ConfigStatus { ok: boolean; hasCredentials: boolean; projectId?: string | null; }
 interface PreviewRow { id: number; order_no: string; customer_name: string; total_fee: number; driver_payout: number; profit: number; status: string; created_at: string; }
