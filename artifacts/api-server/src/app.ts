@@ -403,6 +403,42 @@ _migPool.query(`
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    // ── 車輛資料擴充欄位 (Glory 欄位對齊) ──────────────────────────────────────
+    for (const col of [
+      "ADD COLUMN IF NOT EXISTS vehicle_no VARCHAR(20)",
+      "ADD COLUMN IF NOT EXISTS branch_company VARCHAR(50)",
+      "ADD COLUMN IF NOT EXISTS driver_code VARCHAR(20)",
+      "ADD COLUMN IF NOT EXISTS vehicle_category VARCHAR(50)",
+      "ADD COLUMN IF NOT EXISTS vehicle_model_type VARCHAR(30)",
+      "ADD COLUMN IF NOT EXISTS mfg_month INTEGER",
+      "ADD COLUMN IF NOT EXISTS empty_weight_kg NUMERIC(10,2)",
+      "ADD COLUMN IF NOT EXISTS max_load_kg NUMERIC(10,2)",
+      "ADD COLUMN IF NOT EXISTS max_cubic_feet INTEGER",
+      "ADD COLUMN IF NOT EXISTS max_pallets INTEGER",
+      "ADD COLUMN IF NOT EXISTS is_legal_id CHAR(1) DEFAULT 'Y'",
+      "ADD COLUMN IF NOT EXISTS inner_length_cm INTEGER",
+      "ADD COLUMN IF NOT EXISTS inner_width_cm INTEGER",
+      "ADD COLUMN IF NOT EXISTS inner_height_cm INTEGER",
+      "ADD COLUMN IF NOT EXISTS lift_height_cm INTEGER",
+      "ADD COLUMN IF NOT EXISTS tire_size VARCHAR(30)",
+      "ADD COLUMN IF NOT EXISTS engine_cc INTEGER",
+      "ADD COLUMN IF NOT EXISTS fuel_type VARCHAR(20)",
+      "ADD COLUMN IF NOT EXISTS gps_vendor VARCHAR(50)",
+      "ADD COLUMN IF NOT EXISTS gps_cost NUMERIC(10,2)",
+      "ADD COLUMN IF NOT EXISTS sim_no VARCHAR(30)",
+      "ADD COLUMN IF NOT EXISTS sub_vehicle_code VARCHAR(20)",
+      "ADD COLUMN IF NOT EXISTS weighing_count INTEGER DEFAULT 0",
+      "ADD COLUMN IF NOT EXISTS insurance_km INTEGER",
+      "ADD COLUMN IF NOT EXISTS next_maintenance_km INTEGER",
+      "ADD COLUMN IF NOT EXISTS fuel_consumption NUMERIC(8,2)",
+      "ADD COLUMN IF NOT EXISTS license_issue_date DATE",
+      "ADD COLUMN IF NOT EXISTS deregister_date DATE",
+      "ADD COLUMN IF NOT EXISTS dealer_sponsor_date DATE",
+      "ADD COLUMN IF NOT EXISTS per_trip_fee NUMERIC(10,2)",
+      "ADD COLUMN IF NOT EXISTS gate_type VARCHAR(20)",
+    ]) {
+      await _migPool.query(`ALTER TABLE vehicles ${col}`).catch(() => {});
+    }
     await _migPool.query(`
       CREATE TABLE IF NOT EXISTS fuel_records (
         id             SERIAL PRIMARY KEY,

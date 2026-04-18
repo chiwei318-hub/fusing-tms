@@ -35,12 +35,42 @@ gloryModulesRouter.get("/vehicles/:id", async (req, res) => {
 
 gloryModulesRouter.post("/vehicles", async (req, res) => {
   try {
-    const { plateNo, vehicleType, brand, model, year, color, vin, engineNo, grossWeight, ownerName, ownerId, assignedDriver, fleetId, status, purchaseDate, notes } = req.body;
+    const {
+      plateNo, vehicleNo, branchCompany, vehicleType, vehicleCategory, vehicleModelType,
+      brand, model, year, mfgMonth, color, vin, engineNo,
+      grossWeight, emptyWeightKg, maxLoadKg, maxCubicFeet, maxPallets,
+      ownerName, ownerId, assignedDriver, driverCode, fleetId, status,
+      purchaseDate, licenseIssueDate, deregisterDate, dealerSponsorDate,
+      notes, isLegalId, innerLengthCm, innerWidthCm, innerHeightCm, liftHeightCm,
+      tireSize, engineCc, fuelType, gpsVendor, gpsCost, simNo, subVehicleCode,
+      weighingCount, insuranceKm, nextMaintenanceKm, fuelConsumption, perTripFee, gateType,
+    } = req.body;
     if (!plateNo) return res.status(400).json({ error: "plate_no required" });
     const r = await pool.query(
-      `INSERT INTO vehicles (plate_no,vehicle_type,brand,model,year,color,vin,engine_no,gross_weight,owner_name,owner_id,assigned_driver,fleet_id,status,purchase_date,notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [plateNo, vehicleType||null, brand||null, model||null, year||null, color||null, vin||null, engineNo||null, grossWeight||null, ownerName||null, ownerId||null, assignedDriver||null, fleetId||null, status||"active", purchaseDate||null, notes||null]
+      `INSERT INTO vehicles (
+        plate_no,vehicle_no,branch_company,vehicle_type,vehicle_category,vehicle_model_type,
+        brand,model,year,mfg_month,color,vin,engine_no,
+        gross_weight,empty_weight_kg,max_load_kg,max_cubic_feet,max_pallets,
+        owner_name,owner_id,assigned_driver,driver_code,fleet_id,status,
+        purchase_date,license_issue_date,deregister_date,dealer_sponsor_date,
+        notes,is_legal_id,inner_length_cm,inner_width_cm,inner_height_cm,lift_height_cm,
+        tire_size,engine_cc,fuel_type,gps_vendor,gps_cost,sim_no,sub_vehicle_code,
+        weighing_count,insurance_km,next_maintenance_km,fuel_consumption,per_trip_fee,gate_type
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+        $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
+        $35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47
+      ) RETURNING *`,
+      [
+        plateNo, vehicleNo||null, branchCompany||null, vehicleType||null, vehicleCategory||null, vehicleModelType||null,
+        brand||null, model||null, year||null, mfgMonth||null, color||null, vin||null, engineNo||null,
+        grossWeight||null, emptyWeightKg||null, maxLoadKg||null, maxCubicFeet||null, maxPallets||null,
+        ownerName||null, ownerId||null, assignedDriver||null, driverCode||null, fleetId||null, status||"active",
+        purchaseDate||null, licenseIssueDate||null, deregisterDate||null, dealerSponsorDate||null,
+        notes||null, isLegalId||"Y", innerLengthCm||null, innerWidthCm||null, innerHeightCm||null, liftHeightCm||null,
+        tireSize||null, engineCc||null, fuelType||null, gpsVendor||null, gpsCost||null, simNo||null, subVehicleCode||null,
+        weighingCount||0, insuranceKm||null, nextMaintenanceKm||null, fuelConsumption||null, perTripFee||null, gateType||null,
+      ]
     );
     res.status(201).json(r.rows[0]);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -48,10 +78,39 @@ gloryModulesRouter.post("/vehicles", async (req, res) => {
 
 gloryModulesRouter.put("/vehicles/:id", async (req, res) => {
   try {
-    const { plateNo, vehicleType, brand, model, year, color, vin, engineNo, grossWeight, ownerName, ownerId, assignedDriver, fleetId, status, purchaseDate, notes } = req.body;
+    const {
+      plateNo, vehicleNo, branchCompany, vehicleType, vehicleCategory, vehicleModelType,
+      brand, model, year, mfgMonth, color, vin, engineNo,
+      grossWeight, emptyWeightKg, maxLoadKg, maxCubicFeet, maxPallets,
+      ownerName, ownerId, assignedDriver, driverCode, fleetId, status,
+      purchaseDate, licenseIssueDate, deregisterDate, dealerSponsorDate,
+      notes, isLegalId, innerLengthCm, innerWidthCm, innerHeightCm, liftHeightCm,
+      tireSize, engineCc, fuelType, gpsVendor, gpsCost, simNo, subVehicleCode,
+      weighingCount, insuranceKm, nextMaintenanceKm, fuelConsumption, perTripFee, gateType,
+    } = req.body;
     const r = await pool.query(
-      `UPDATE vehicles SET plate_no=$1,vehicle_type=$2,brand=$3,model=$4,year=$5,color=$6,vin=$7,engine_no=$8,gross_weight=$9,owner_name=$10,owner_id=$11,assigned_driver=$12,fleet_id=$13,status=$14,purchase_date=$15,notes=$16,updated_at=NOW() WHERE id=$17 RETURNING *`,
-      [plateNo, vehicleType||null, brand||null, model||null, year||null, color||null, vin||null, engineNo||null, grossWeight||null, ownerName||null, ownerId||null, assignedDriver||null, fleetId||null, status||"active", purchaseDate||null, notes||null, req.params.id]
+      `UPDATE vehicles SET
+        plate_no=$1,vehicle_no=$2,branch_company=$3,vehicle_type=$4,vehicle_category=$5,vehicle_model_type=$6,
+        brand=$7,model=$8,year=$9,mfg_month=$10,color=$11,vin=$12,engine_no=$13,
+        gross_weight=$14,empty_weight_kg=$15,max_load_kg=$16,max_cubic_feet=$17,max_pallets=$18,
+        owner_name=$19,owner_id=$20,assigned_driver=$21,driver_code=$22,fleet_id=$23,status=$24,
+        purchase_date=$25,license_issue_date=$26,deregister_date=$27,dealer_sponsor_date=$28,
+        notes=$29,is_legal_id=$30,inner_length_cm=$31,inner_width_cm=$32,inner_height_cm=$33,lift_height_cm=$34,
+        tire_size=$35,engine_cc=$36,fuel_type=$37,gps_vendor=$38,gps_cost=$39,sim_no=$40,sub_vehicle_code=$41,
+        weighing_count=$42,insurance_km=$43,next_maintenance_km=$44,fuel_consumption=$45,per_trip_fee=$46,gate_type=$47,
+        updated_at=NOW()
+       WHERE id=$48 RETURNING *`,
+      [
+        plateNo, vehicleNo||null, branchCompany||null, vehicleType||null, vehicleCategory||null, vehicleModelType||null,
+        brand||null, model||null, year||null, mfgMonth||null, color||null, vin||null, engineNo||null,
+        grossWeight||null, emptyWeightKg||null, maxLoadKg||null, maxCubicFeet||null, maxPallets||null,
+        ownerName||null, ownerId||null, assignedDriver||null, driverCode||null, fleetId||null, status||"active",
+        purchaseDate||null, licenseIssueDate||null, deregisterDate||null, dealerSponsorDate||null,
+        notes||null, isLegalId||"Y", innerLengthCm||null, innerWidthCm||null, innerHeightCm||null, liftHeightCm||null,
+        tireSize||null, engineCc||null, fuelType||null, gpsVendor||null, gpsCost||null, simNo||null, subVehicleCode||null,
+        weighingCount||0, insuranceKm||null, nextMaintenanceKm||null, fuelConsumption||null, perTripFee||null, gateType||null,
+        req.params.id,
+      ]
     );
     if (!r.rows.length) return res.status(404).json({ error: "Not found" });
     res.json(r.rows[0]);
