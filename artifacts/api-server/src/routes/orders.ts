@@ -107,6 +107,32 @@ router.get("/orders/suggestions", async (req, res) => {
   }
 });
 
+// ─── GET /orders/grab-pool — 司機搶單池（待接、未指派的訂單） ──────────────────
+// 供司機 APP 顯示可搶訂單清單，每 15 秒輪詢一次
+router.get("/orders/grab-pool", async (req, res) => {
+  try {
+    const { rows } = await pool.query<{
+      id: number; pickup_address: string; delivery_address: string;
+      cargo_description: string; customer_name: string; customer_phone: string;
+      total_fee: number; suggested_price: number; pickup_time: string;
+      required_vehicle_type: string; distance_km: number; created_at: string; notes: string;
+    }>(`
+      SELECT id, pickup_address, delivery_address, cargo_description,
+             customer_name, customer_phone, total_fee, suggested_price, pickup_time,
+             required_vehicle_type, distance_km, created_at, notes
+      FROM orders
+      WHERE status = 'pending'
+        AND driver_id IS NULL
+        AND created_at > NOW() - INTERVAL '7 days'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+    res.json({ ok: true, orders: rows, fetchedAt: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── GET /orders/search?q=keyword — 全域關鍵字搜尋 ─────────────────────────────
 router.get("/orders/search", async (req, res) => {
   try {

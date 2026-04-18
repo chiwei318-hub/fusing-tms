@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
-import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle, Car, MapPin, Clock, Settings2, Snowflake, Package, X, Plus, Navigation } from "lucide-react";
+import { Truck, ArrowRight, CheckCircle, DollarSign, LogOut, Zap, Star, TrendingUp, ThumbsUp, AlertTriangle, Car, MapPin, Clock, Settings2, Snowflake, Package, X, Plus, Navigation, BellRing } from "lucide-react";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useListOrders } from "@workspace/api-client-react";
 import { DriverStatusBadge } from "@/components/StatusBadge";
@@ -71,6 +71,9 @@ export default function DriverHome() {
   // GPS state
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationStatus, setLocationStatus] = useState<"idle" | "success" | "error">("idle");
+
+  // 搶單大廳：可搶訂單數（每 30 秒輪詢）
+  const [grabCount, setGrabCount] = useState<number | null>(null);
 
   // Service area editing state
   const [editingAreas, setEditingAreas] = useState(false);
@@ -144,6 +147,18 @@ export default function DriverHome() {
       .then(setPerf)
       .catch(() => {});
   }, [user?.id]);
+
+  // 搶單大廳輪詢（30 秒）
+  useEffect(() => {
+    const check = () =>
+      fetch(apiUrl("/orders/grab-pool"))
+        .then(r => r.json())
+        .then(d => setGrabCount(d.ok ? (d.orders?.length ?? 0) : null))
+        .catch(() => {});
+    check();
+    const iv = setInterval(check, 30_000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Fetch vehicle-specific rating when driver's license plate is known
   useEffect(() => {
@@ -562,6 +577,31 @@ export default function DriverHome() {
           </div>
         </div>
       </div>
+
+      {/* 搶單預覽條：有訂單時才顯示 */}
+      {grabCount != null && grabCount > 0 && (
+        <Link href="/driver/grab">
+          <div style={{
+            background: "linear-gradient(135deg, #16a34a, #15803d)",
+            borderRadius: 16, padding: "12px 16px",
+            display: "flex", alignItems: "center", gap: 12,
+            boxShadow: "0 4px 16px rgba(22,163,74,0.3)",
+            cursor: "pointer",
+          }}>
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-300 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-white" />
+            </span>
+            <div style={{ flex: 1 }}>
+              <p style={{ color: "#fff", fontWeight: 900, fontSize: 14, margin: 0 }}>
+                🔥 搶單機會！現有 {grabCount} 筆待接訂單
+              </p>
+              <p style={{ color: "#bbf7d0", fontSize: 12, margin: "2px 0 0" }}>點此進入搶單中心</p>
+            </div>
+            <ArrowRight style={{ color: "#bbf7d0", width: 20, height: 20 }} />
+          </div>
+        </Link>
+      )}
 
       {/* Action buttons */}
       <div className="grid grid-cols-2 gap-3">
