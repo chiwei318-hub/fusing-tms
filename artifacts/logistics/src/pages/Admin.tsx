@@ -27,13 +27,13 @@ const ReportCenter         = lazy(() => import("./admin/ReportCenter"));
 const FinanceReportsTab    = lazy(() => import("./admin/FinanceReportsTab"));
 const SmartDispatchTab     = lazy(() => import("./admin/SmartDispatchTab"));
 const DispatchOptimizerTab = lazy(() => import("./admin/DispatchOptimizerTab"));
-const DriverApplicationsTab = lazy(() => import("./admin/DriverApplicationsTab"));
+const FranchiseHubTab      = lazy(() => import("./admin/FranchiseHubTab"));
+const FleetHubTab          = lazy(() => import("./admin/FleetHubTab"));
 const CustomerManagementTab = lazy(() => import("./admin/CustomerManagementTab"));
 const HeatMapTab           = lazy(() => import("./admin/HeatMapTab"));
 const AIAnalyticsTab       = lazy(() => import("./admin/AIAnalyticsTab"));
 const FleetMapTab          = lazy(() => import("./admin/FleetMapTab"));
 const CarpoolTab           = lazy(() => import("./admin/CarpoolTab"));
-const FleetManagementTab   = lazy(() => import("./admin/FleetManagementTab"));
 const OutsourcingTab       = lazy(() => import("./admin/OutsourcingTab"));
 const PaymentCenter        = lazy(() => import("./admin/PaymentCenter"));
 const QuotationTab         = lazy(() => import("./admin/QuotationTab"));
@@ -45,7 +45,6 @@ const LineManagementTab    = lazy(() => import("./admin/LineManagementTab"));
 const SystemSettingsTab    = lazy(() => import("./admin/SystemSettingsTab"));
 const InvoiceManagementTab = lazy(() => import("./admin/InvoiceManagementTab"));
 const BiddingTab           = lazy(() => import("./admin/BiddingTab"));
-const FleetRegistrationTab = lazy(() => import("./admin/FleetRegistrationTab"));
 const CommissionTab        = lazy(() => import("./admin/CommissionTab"));
 const DriverCreditTab      = lazy(() => import("./admin/DriverCreditTab"));
 const CommissionTiersTab   = lazy(() => import("./admin/CommissionTiersTab"));
@@ -57,7 +56,6 @@ const CarbonReportTab      = lazy(() => import("./admin/CarbonReportTab"));
 const KPIDashboardTab      = lazy(() => import("./admin/KPIDashboardTab"));
 const ApprovalCenterTab    = lazy(() => import("./admin/ApprovalCenterTab"));
 const SettlementCenterTab  = lazy(() => import("./admin/SettlementCenterTab"));
-const FranchiseSettlementTab = lazy(() => import("./admin/FranchiseSettlementTab"));
 const AuditLogTab          = lazy(() => import("./admin/AuditLogTab"));
 const CostAnalysisTab      = lazy(() => import("./admin/CostAnalysisTab"));
 const DemandForecastTab    = lazy(() => import("./admin/DemandForecastTab").then(m => ({ default: m.DemandForecastTab })));
@@ -67,7 +65,6 @@ const AutoRoutingTab       = lazy(() => import("./admin/AutoRoutingTab").then(m 
 const RouteImportTab       = lazy(() => import("./admin/RouteImportTab"));
 const FormImportTab        = lazy(() => import("./admin/FormImportTab"));
 const SheetSyncTab         = lazy(() => import("./admin/SheetSyncTab"));
-const FranchiseeTab        = lazy(() => import("./admin/FranchiseeTab"));
 const ShopeeBillingTab     = lazy(() => import("./admin/ShopeeBillingTab"));
 const PnLTab               = lazy(() => import("./admin/PnLTab"));
 const CashFlowTab          = lazy(() => import("./admin/CashFlowTab"));
@@ -1729,11 +1726,8 @@ export default function Admin() {
               <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 bg-transparent flex-1">
                   {[
                     { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
-                    { value: "join",        icon: <UserPlus className="w-3.5 h-3.5" />,                               label: "加盟審核" },
-                    { value: "franchisee",  icon: <Building2 className="w-3.5 h-3.5 text-indigo-600" />,             label: "加盟主" },
-                    { value: "franchise-settlement", icon: <DollarSign className="w-3.5 h-3.5 text-indigo-500" />,    label: "加盟清算" },
+                    { value: "franchise-hub", icon: <UserPlus className="w-3.5 h-3.5 text-indigo-600" />,             label: "加盟管理" },
                     { value: "openapi",     icon: <Globe className="w-3.5 h-3.5 text-blue-500" />,                    label: "API 接口" },
-                    { value: "fleetreg",    icon: <Building2 className="w-3.5 h-3.5 text-blue-600" />,               label: "車隊入駐" },
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
                     { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
                     { value: "commission",  icon: <span className="text-sm leading-none">%</span>,                    label: "抽成管理" },
@@ -3809,9 +3803,9 @@ export default function Admin() {
           <AIAnalyticsTab />
         </TabsContent>
 
-        {/* ===== 車隊管理 TAB ===== */}
+        {/* ===== 車隊中心 TAB（整合車隊管理＋車隊入駐）===== */}
         <TabsContent value="fleet" className="outline-none">
-          <FleetManagementTab />
+          <FleetHubTab />
         </TabsContent>
 
         {/* ===== 轉單變現 TAB ===== */}
@@ -3854,19 +3848,9 @@ export default function Admin() {
           <DispatchOptimizerTab />
         </TabsContent>
 
-        {/* ===== 加盟審核 TAB ===== */}
-        <TabsContent value="join" className="outline-none">
-          <DriverApplicationsTab />
-        </TabsContent>
-
-        {/* ===== 加盟清算 TAB ===== */}
-        <TabsContent value="franchise-settlement" className="outline-none">
-          <FranchiseSettlementTab />
-        </TabsContent>
-
-        {/* ===== 加盟主管理 TAB ===== */}
-        <TabsContent value="franchisee" className="outline-none">
-          <FranchiseeTab />
+        {/* ===== 加盟管理 TAB（整合審核/加盟主/清算）===== */}
+        <TabsContent value="franchise-hub" className="outline-none">
+          <FranchiseHubTab />
         </TabsContent>
 
         {/* ===== 金流拆解 TAB ===== */}
@@ -3912,11 +3896,6 @@ export default function Admin() {
         {/* ===== 競標比價 TAB ===== */}
         <TabsContent value="bidding" className="outline-none">
           <BiddingTab />
-        </TabsContent>
-
-        {/* ===== 車隊入駐 TAB ===== */}
-        <TabsContent value="fleetreg" className="outline-none">
-          <FleetRegistrationTab />
         </TabsContent>
 
         {/* ===== 抽成管理 TAB ===== */}
