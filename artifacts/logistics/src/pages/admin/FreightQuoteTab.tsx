@@ -32,17 +32,42 @@ interface FuyongResult {
   };
 }
 
+interface PartnerConfig {
+  id: number; partner_id: string; partner_name: string; tier: string;
+  base_price: number; rate_per_km: number; park_fee: number; mountain_fee: number;
+  notes: string; active: boolean;
+}
+
+interface PartnerResult {
+  ok: boolean; error?: string;
+  quote?: { total_price: number };
+  partner?: { partner_id: string; partner_name: string; tier: string };
+  breakdown?: {
+    distance_km: number; distance_source: string; duration_min: number | null;
+    base_price: number; rate_per_km: number; distance_fee: number;
+    surcharges: { type: string; keyword: string; amount: number }[];
+    surcharge_total: number; total_price: number;
+  };
+}
+
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
 function money(v: number) { return `$${Number(v).toLocaleString("zh-TW")}`; }
+
+const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  VIP:   { bg: "#fef9c3", text: "#92400e", border: "#fde68a" },
+  一般:  { bg: "#eff6ff", text: "#1d4ed8", border: "#bfdbfe" },
+  加盟商: { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" },
+};
+function tierStyle(tier: string) { return TIER_COLORS[tier] ?? TIER_COLORS["一般"]; }
 
 // ─── 主元件 ──────────────────────────────────────────────────────────────────
 export default function FreightQuoteTab() {
   const [config, setConfig]   = useState<Config | null>(null);
-  const [viewTab, setViewTab] = useState<"calc" | "rates" | "surcharges">("calc");
+  const [viewTab, setViewTab] = useState<"calc" | "rates" | "surcharges" | "partners">("calc");
   const [loading, setLoading] = useState(false);
 
   // ── 計算機狀態
-  const [calcMode,    setCalcMode]    = useState<"generic" | "fuyong">("generic");
+  const [calcMode,    setCalcMode]    = useState<"generic" | "fuyong" | "partner">("generic");
   const [pickup,      setPickup]      = useState("");
   const [delivery,    setDelivery]    = useState("");
   const [carType,     setCarType]     = useState("3.5t");
@@ -56,12 +81,25 @@ export default function FreightQuoteTab() {
   const [isHoliday,         setIsHoliday]         = useState(false);
   const [fuyongResult,      setFuyongResult]      = useState<FuyongResult | null>(null);
 
+  // ── 合約報價模式狀態
+  const [partners,          setPartners]          = useState<PartnerConfig[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState("");
+  const [partnerOrigin,     setPartnerOrigin]     = useState("");
+  const [partnerDest,       setPartnerDest]       = useState("");
+  const [partnerCarType,    setPartnerCarType]     = useState("3.5t");
+  const [partnerResult,     setPartnerResult]     = useState<PartnerResult | null>(null);
+
+  // ── 合約客戶管理狀態
+  const [editingPartner,   setEditingPartner]   = useState<PartnerConfig | null>(null);
+  const [showAddPartner,   setShowAddPartner]   = useState(false);
+  const [newPartner,       setNewPartner]       = useState<Partial<PartnerConfig>>({ tier: "一般", base_price: 800, rate_per_km: 25, park_fee: 300, mountain_fee: 500 });
+
   // ── 費率編輯
   const [editingRate, setEditingRate] = useState<RateConfig | null>(null);
   const [editingSurcharge, setEditingSurcharge] = useState<SurchargeConfig | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  useEffect(() => { loadConfig(); }, []);
+  useEffect(() => { loadConfig(); loadPartners(); }, []);
 
   async function loadConfig() {
     try {
@@ -94,6 +132,57 @@ export default function FreightQuoteTab() {
       setFuyongResult(await res.json());
     } catch (e: any) { setFuyongResult({ ok: false, error: e.message }); }
     setLoading(false);
+  }
+
+  async function loadPartners() {
+    try {
+      const r = await fetch(`${API}/freight-quote/partners`);
+      const d = await r.json();
+      if (d.ok) {
+        setPartners(d.partners);
+        if (d.partners.length > 0 && !selectedPartnerId) {
+          setSelectedPartnerId(d.partners[0].partner_id);
+        }
+      }
+    } catch { /* silent */ }
+  }
+
+  async function handlePartnerCalculate() {
+    if (!selectedPartnerId || !partnerOrigin || !partnerDest) return;
+    setLoading(true); setPartnerResult(null);
+    try {
+      const res = await fetch(`${API}/freight-quote/partner-calculate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partner_id: selectedPartnerId, origin: partnerOrigin, destination: partnerDest, car_type: partnerCarType }),
+      });
+      setPartnerResult(await res.json());
+    } catch (e: any) { setPartnerResult({ ok: false, error: e.message }); }
+    setLoading(false);
+  }
+
+  async function savePartner(p: PartnerConfig) {
+    setSavingId(`partner-${p.id}`);
+    await fetch(`${API}/freight-quote/partners/${p.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p),
+    });
+    setSavingId(null); setEditingPartner(null); loadPartners();
+  }
+
+  async function deletePartner(id: number) {
+    if (!confirm("確定刪除此合約客戶？")) return;
+    await fetch(`${API}/freight-quote/partners/${id}`, { method: "DELETE" });
+    loadPartners();
+  }
+
+  async function createPartner() {
+    if (!newPartner.partner_id || !newPartner.partner_name) return;
+    setSavingId("new-partner");
+    await fetch(`${API}/freight-quote/partners`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newPartner),
+    });
+    setSavingId(null); setShowAddPartner(false);
+    setNewPartner({ tier: "一般", base_price: 800, rate_per_km: 25, park_fee: 300, mountain_fee: 500 });
+    loadPartners();
   }
 
   async function saveRate(rate: RateConfig) {
@@ -145,7 +234,7 @@ export default function FreightQuoteTab() {
 
       {/* ── 分頁按鈕 ── */}
       <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", marginBottom: 20 }}>
-        {([["calc", "💰 即時報價"], ["rates", "🚛 車型費率"], ["surcharges", "➕ 附加服務"]] as const).map(([v, label]) => (
+        {([["calc", "💰 即時報價"], ["rates", "🚛 車型費率"], ["surcharges", "➕ 附加服務"], ["partners", "🤝 合約客戶"]] as const).map(([v, label]) => (
           <button key={v} onClick={() => setViewTab(v)}
             style={{ padding: "8px 16px", fontSize: 13, fontWeight: viewTab === v ? 700 : 400, border: "none", background: "none", cursor: "pointer", color: viewTab === v ? "#2563eb" : "#64748b", borderBottom: viewTab === v ? "2px solid #2563eb" : "2px solid transparent", marginBottom: -2 }}>
             {label}
@@ -158,7 +247,11 @@ export default function FreightQuoteTab() {
         <div>
           {/* ── 計費模式切換 ── */}
           <div style={{ display: "flex", gap: 0, marginBottom: 20, background: "#f1f5f9", borderRadius: 10, padding: 4, width: "fit-content" }}>
-            {([["generic", "🚛 通用報價", "calculate_taiwan_freight()"], ["fuyong", "🏢 富詠專屬", "get_fuyong_quote()"]] as const).map(([mode, label, fn]) => (
+            {([
+              ["generic", "🚛 通用報價", "calculate_taiwan_freight()"],
+              ["fuyong",  "🏢 富詠專屬", "get_fuyong_quote()"],
+              ["partner", "🤝 合約報價", "auto_quote_engine()"],
+            ] as const).map(([mode, label, fn]) => (
               <button key={mode} onClick={() => setCalcMode(mode)}
                 style={{ padding: "8px 18px", fontSize: 13, fontWeight: calcMode === mode ? 700 : 400, border: "none", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
                   background: calcMode === mode ? "#fff" : "transparent",
@@ -170,7 +263,150 @@ export default function FreightQuoteTab() {
             ))}
           </div>
 
-        {calcMode === "fuyong" ? (
+        {calcMode === "partner" ? (
+          /* ══ 合約客戶報價面板 ══ */
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            {/* 左：輸入 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* 原始碼對照卡片 */}
+              <div style={{ background: "#1e1e2e", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#cdd6f4", fontFamily: "monospace", lineHeight: 1.7 }}>
+                <div style={{ color: "#89dceb", marginBottom: 4 }}>▸ auto_quote_engine(partner_id, origin, destination, car_type)</div>
+                <div style={{ color: "#a6e3a1" }}>  partner_config ← DB partner_contract_config</div>
+                <div style={{ color: "#a6e3a1" }}>  total = base_price + (km × rate_per_km) + surcharge</div>
+                <div style={{ color: "#f9e2af" }}>  科學園區 → +park_fee（各客戶自訂）</div>
+                <div style={{ color: "#fab387" }}>  山區 → +mountain_fee（各客戶自訂）</div>
+              </div>
+
+              {/* 合約客戶選擇 */}
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                🤝 合約客戶
+                <select value={selectedPartnerId} onChange={e => setSelectedPartnerId(e.target.value)}
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff" }}>
+                  <option value="">── 選擇合約客戶 ──</option>
+                  {partners.filter(p => p.active).map(p => {
+                    const ts = tierStyle(p.tier);
+                    return <option key={p.partner_id} value={p.partner_id}>{p.tier === "VIP" ? "⭐ " : ""}{p.partner_name}（{p.tier}）</option>;
+                  })}
+                </select>
+              </label>
+
+              {/* 選中客戶費率預覽 */}
+              {selectedPartnerId && (() => {
+                const p = partners.find(x => x.partner_id === selectedPartnerId);
+                if (!p) return null;
+                const ts = tierStyle(p.tier);
+                return (
+                  <div style={{ background: ts.bg, border: `1px solid ${ts.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <span style={{ background: ts.border, color: ts.text, padding: "2px 8px", borderRadius: 12, fontWeight: 700, fontSize: 11 }}>{p.tier}</span>
+                      <span style={{ fontWeight: 600, color: ts.text }}>{p.partner_name}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", color: "#374151" }}>
+                      <span>起步價：<b>{money(p.base_price)}</b></span>
+                      <span>每公里：<b>${p.rate_per_km}</b></span>
+                      <span>科學園區費：<b>+{money(p.park_fee)}</b></span>
+                      <span>山區費：<b>+{money(p.mountain_fee)}</b></span>
+                    </div>
+                    {p.notes && <div style={{ marginTop: 6, color: "#64748b", fontStyle: "italic" }}>備注：{p.notes}</div>}
+                  </div>
+                );
+              })()}
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                📦 出發地（origin）
+                <input value={partnerOrigin} onChange={e => setPartnerOrigin(e.target.value)}
+                  placeholder="例：台北市內湖區瑞光路 100 號"
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                📍 目的地（destination）
+                <input value={partnerDest} onChange={e => setPartnerDest(e.target.value)}
+                  placeholder="例：新竹市科學園區工業東一路（自動偵測加成）"
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>含「科學園區」或山區關鍵字時，以該客戶合約費率自動加成</span>
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                🚛 車型
+                <select value={partnerCarType} onChange={e => setPartnerCarType(e.target.value)}
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, background: "#fff" }}>
+                  {rates.filter(r => r.active).map(r => (
+                    <option key={r.car_type} value={r.car_type}>{r.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <button onClick={handlePartnerCalculate} disabled={loading || !selectedPartnerId || !partnerOrigin || !partnerDest}
+                style={{ padding: "12px 0", background: selectedPartnerId && partnerOrigin && partnerDest ? "#0f766e" : "#9ca3af", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                {loading ? "計算中..." : "🤝 合約客戶報價計算"}
+              </button>
+            </div>
+
+            {/* 右：結果 */}
+            <div>
+              {partnerResult?.ok && partnerResult.breakdown && partnerResult.quote && partnerResult.partner && (() => {
+                const b = partnerResult.breakdown;
+                const q = partnerResult.quote;
+                const pt = partnerResult.partner;
+                const ts = tierStyle(pt.tier);
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {/* 客戶等級 badge + 報價大字 */}
+                    <div style={{ background: "linear-gradient(135deg, #0f766e, #14b8a6)", borderRadius: 14, padding: "20px 24px", color: "#fff", textAlign: "center" }}>
+                      <div style={{ background: "rgba(255,255,255,0.2)", display: "inline-block", padding: "2px 10px", borderRadius: 10, fontSize: 12, marginBottom: 6 }}>
+                        {pt.tier} · {pt.partner_name}
+                      </div>
+                      <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>合約報價</div>
+                      <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(q.total_price)}</div>
+                      {b.duration_min && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>預估車程約 {Math.round(b.duration_min)} 分鐘</div>}
+                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source}</div>
+                    </div>
+
+                    {/* 費用明細 */}
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", fontSize: 13 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 10 }}>費用明細</div>
+                      {[
+                        { label: `📏 ${b.distance_km.toFixed(1)}km × $${b.rate_per_km}/km`, value: money(b.distance_fee) },
+                        { label: `🏠 起步費`, value: money(b.base_price) },
+                        ...b.surcharges.map(s => ({
+                          label: `${s.type === "science_park" ? "🏭" : "⛰️"} ${s.keyword === "科學園區" || s.type === "science_park" ? "科學園區費" : "山區費"}（${s.keyword}）`,
+                          value: `+${money(s.amount)}`
+                        })),
+                        { label: "━ 合約總計", value: money(q.total_price), total: true },
+                      ].map((row, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: i < b.surcharges.length + 1 ? "1px solid #f1f5f9" : "none",
+                          fontWeight: (row as any).total ? 700 : 400, color: (row as any).total ? "#1e293b" : "#374151" }}>
+                          <span>{row.label}</span>
+                          <span style={{ fontWeight: 600 }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 地點偵測結果 */}
+                    <div style={{ background: b.surcharges.length > 0 ? "#fefce8" : "#f0fdf4", border: `1px solid ${b.surcharges.length > 0 ? "#fde68a" : "#bbf7d0"}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 地點自動偵測</div>
+                      {b.surcharges.length > 0
+                        ? b.surcharges.map((s, i) => (
+                            <div key={i}>{s.type === "science_park" ? "🏭" : "⛰️"} 偵測到「{s.keyword}」→ {s.type === "science_park" ? "科學園區" : "山區"}費 +{money(s.amount)}</div>
+                          ))
+                        : <div style={{ color: "#15803d" }}>✅ 一般地址（無加成）</div>
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
+              {partnerResult && !partnerResult.ok && (
+                <div style={{ padding: "16px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, color: "#b91c1c" }}>❌ {partnerResult.error}</div>
+              )}
+              {!partnerResult && (
+                <div style={{ padding: "40px 24px", textAlign: "center", color: "#94a3b8", fontSize: 14, border: "2px dashed #e2e8f0", borderRadius: 14 }}>
+                  選擇合約客戶並輸入地址<br />按下「合約客戶報價計算」查看結果
+                </div>
+              )}
+            </div>
+          </div>
+        ) : calcMode === "fuyong" ? (
           /* ══ 富詠專屬報價面板 ══ */
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             {/* 左：輸入 */}
@@ -559,6 +795,142 @@ export default function FreightQuoteTab() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 合約客戶 tab ══════════════ */}
+      {viewTab === "partners" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <div>
+              <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
+                管理合約客戶的專屬費率——對應 Python <code>auto_quote_engine</code> 的 <code>partner_config</code>。
+              </p>
+              <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>
+                各客戶可設定獨立的起步價、公里費、科學園區費和山區費。
+              </p>
+            </div>
+            <button onClick={() => setShowAddPartner(!showAddPartner)}
+              style={{ padding: "8px 16px", background: showAddPartner ? "#64748b" : "#0f766e", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {showAddPartner ? "✕ 取消" : "＋ 新增客戶"}
+            </button>
+          </div>
+
+          {/* 新增客戶表單 */}
+          {showAddPartner && (
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: "#15803d" }}>新增合約客戶</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                {[
+                  { label: "客戶代碼（partner_id）", key: "partner_id", ph: "例：VIP002", type: "text" },
+                  { label: "客戶名稱", key: "partner_name", ph: "例：台積電採購部", type: "text" },
+                  { label: "起步價（$）", key: "base_price", ph: "800", type: "number" },
+                  { label: "每公里費（$/km）", key: "rate_per_km", ph: "25", type: "number" },
+                  { label: "科學園區費（$）", key: "park_fee", ph: "300", type: "number" },
+                  { label: "山區費（$）", key: "mountain_fee", ph: "500", type: "number" },
+                ].map(({ label, key, ph, type }) => (
+                  <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600 }}>
+                    {label}
+                    <input type={type} placeholder={ph} value={(newPartner as any)[key] ?? ""}
+                      onChange={e => setNewPartner(p => ({ ...p, [key]: type === "number" ? +e.target.value : e.target.value }))}
+                      style={{ ...inputStyle }} />
+                  </label>
+                ))}
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600 }}>
+                  等級
+                  <select value={newPartner.tier ?? "一般"} onChange={e => setNewPartner(p => ({ ...p, tier: e.target.value }))}
+                    style={{ ...inputStyle }}>
+                    <option>VIP</option><option>一般</option><option>加盟商</option>
+                  </select>
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, gridColumn: "span 2" }}>
+                  備注
+                  <input type="text" placeholder="合約說明..." value={newPartner.notes ?? ""}
+                    onChange={e => setNewPartner(p => ({ ...p, notes: e.target.value }))}
+                    style={{ ...inputStyle }} />
+                </label>
+              </div>
+              <button onClick={createPartner} disabled={savingId === "new-partner" || !newPartner.partner_id || !newPartner.partner_name}
+                style={{ marginTop: 14, padding: "8px 20px", background: "#15803d", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                {savingId === "new-partner" ? "儲存中…" : "✓ 建立合約客戶"}
+              </button>
+            </div>
+          )}
+
+          {/* 客戶列表 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {partners.map(p => {
+              const isEdit = editingPartner?.id === p.id;
+              const ed = isEdit ? editingPartner! : p;
+              const ts = tierStyle(p.tier);
+              return (
+                <div key={p.id} style={{ border: `1px solid ${isEdit ? "#93c5fd" : "#e5e7eb"}`, borderRadius: 12, padding: "14px 16px", background: isEdit ? "#eff6ff" : "#fff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: isEdit ? 12 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ background: ts.bg, color: ts.text, border: `1px solid ${ts.border}`, padding: "2px 10px", borderRadius: 12, fontSize: 12, fontWeight: 700 }}>
+                        {p.tier}
+                      </span>
+                      {isEdit
+                        ? <input value={ed.partner_name} onChange={e => setEditingPartner({ ...ed, partner_name: e.target.value })}
+                            style={{ ...inputStyle, fontSize: 15, fontWeight: 700, width: 180 }} />
+                        : <span style={{ fontSize: 15, fontWeight: 700 }}>{p.partner_name}</span>
+                      }
+                      <span style={{ fontSize: 12, color: "#94a3b8", fontFamily: "monospace" }}>#{p.partner_id}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {isEdit ? (
+                        <>
+                          <button onClick={() => savePartner(ed)} disabled={savingId === `partner-${p.id}`} style={btnStyle("#16a34a")}>儲存</button>
+                          <button onClick={() => setEditingPartner(null)} style={btnStyle("#6b7280")}>取消</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => setEditingPartner({ ...p })} style={btnStyle("#2563eb")}>編輯</button>
+                          <button onClick={() => deletePartner(p.id)} style={btnStyle("#dc2626")}>刪除</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {isEdit ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginTop: 4 }}>
+                      {([
+                        ["起步價($)", "base_price"],
+                        ["每公里費($)", "rate_per_km"],
+                        ["科學園區費($)", "park_fee"],
+                        ["山區費($)", "mountain_fee"],
+                      ] as [string, keyof PartnerConfig][]).map(([label, key]) => (
+                        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
+                          {label}
+                          <input type="number" value={ed[key] as number}
+                            onChange={e => setEditingPartner({ ...ed, [key]: +e.target.value })}
+                            style={{ ...inputStyle, width: "100%" }} />
+                        </label>
+                      ))}
+                      <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
+                        等級
+                        <select value={ed.tier} onChange={e => setEditingPartner({ ...ed, tier: e.target.value })} style={{ ...inputStyle }}>
+                          <option>VIP</option><option>一般</option><option>加盟商</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 12, color: "#64748b" }}>
+                      <span>起步：<b style={{ color: "#374151" }}>{money(p.base_price)}</b></span>
+                      <span>每公里：<b style={{ color: "#374151" }}>${p.rate_per_km}</b></span>
+                      <span>科學園區費：<b style={{ color: "#374151" }}>+{money(p.park_fee)}</b></span>
+                      <span>山區費：<b style={{ color: "#374151" }}>+{money(p.mountain_fee)}</b></span>
+                      {p.notes && <span style={{ fontStyle: "italic", color: "#9ca3af" }}>{p.notes}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {partners.length === 0 && (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#9ca3af", fontSize: 14, border: "2px dashed #e5e7eb", borderRadius: 12 }}>
+                尚無合約客戶，點擊「新增客戶」建立第一筆
+              </div>
+            )}
           </div>
         </div>
       )}
