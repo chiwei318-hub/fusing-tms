@@ -88,6 +88,7 @@ import { orderSettlementsRouter } from "./orderSettlements";
 import { jobsRouter } from "./jobs";
 import { webhookOrdersRouter } from "./webhookOrders";
 import { franchiseSettlementsRouter } from "./franchiseSettlements";
+import { vehicleProfitRouter } from "./vehicleProfit";
 
 const router: IRouter = Router();
 
@@ -195,5 +196,6 @@ router.use("/order-settlements", orderSettlementsRouter);      // 訂單結算 &
 router.use(jobsRouter);                                        // 司機任務 API
 router.use(webhookOrdersRouter);                               // 外部訂單接收 Webhook
 router.use("/franchise-settlements", franchiseSettlementsRouter); // 加盟主清算 & ATOMS 推送
+router.use(vehicleProfitRouter);                                   // 車輛盈虧分析
 
 export default router;

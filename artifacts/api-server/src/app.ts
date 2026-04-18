@@ -19,6 +19,7 @@ import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
+import { ensureVehicleProfitTables } from "./routes/vehicleProfit";
 import { pool as _migPool, db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -183,6 +184,7 @@ ensureRateTables()
   .then(() => startRateSyncScheduler())
   .catch((e) => console.error("[RateSync] table setup failed:", e));
 ensureShopeeDriversTable().catch((e) => console.error("[ShopeeDrivers] table setup failed:", e));
+ensureVehicleProfitTables().catch((e) => console.error("[VehicleProfit] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {
     const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
