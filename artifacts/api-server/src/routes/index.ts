@@ -92,6 +92,7 @@ import { vehicleProfitRouter } from "./vehicleProfit";
 import { laborPensionRouter } from "./laborPension";
 import { payrollCostRouter } from "./payrollCost";
 import { cargoPackagingRouter } from "./cargoPackaging";
+import { platformRequirementsRouter } from "./platformRequirements";
 
 const router: IRouter = Router();
 
@@ -203,5 +204,6 @@ router.use(vehicleProfitRouter);                                   // 車輛盈�
 router.use(laborPensionRouter);                                    // 勞退提撥管理
 router.use(payrollCostRouter);                                     // 薪資成本結算
 router.use(cargoPackagingRouter);                                  // 貨品包裝參考表
+router.use(platformRequirementsRouter);                            // 物流媒合平台需求確認
 
 export default router;

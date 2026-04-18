@@ -87,6 +87,7 @@ const VehicleProfitTab        = lazy(() => import("./fusingao/VehicleProfitTab")
 const LaborPensionTab         = lazy(() => import("./fusingao/LaborPensionTab"));
 const PayrollCostTab          = lazy(() => import("./fusingao/PayrollCostTab"));
 const CargoPackagingTab       = lazy(() => import("./fusingao/CargoPackagingTab"));
+const PlatformRequirementsTab = lazy(() => import("./fusingao/PlatformRequirementsTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1740,6 +1741,7 @@ export default function Admin() {
                     { value: "supplier",    icon: <span className="text-sm leading-none">🏭</span>,                   label: "供應商" },
                     { value: "township",    icon: <span className="text-sm leading-none">🗺️</span>,                   label: "縣市鄉鎮" },
                     { value: "cargopkg",    icon: <span className="text-sm leading-none">📦</span>,                   label: "包裝參考" },
+                    { value: "platformreq", icon: <span className="text-sm leading-none">📋</span>,                   label: "需求確認" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -4059,6 +4061,11 @@ export default function Admin() {
         {/* ===== 貨品包裝參考表 TAB ===== */}
         <TabsContent value="cargopkg" className="outline-none">
           <CargoPackagingTab />
+        </TabsContent>
+
+        {/* ===== 物流媒合平台需求確認 TAB ===== */}
+        <TabsContent value="platformreq" className="outline-none">
+          <PlatformRequirementsTab />
         </TabsContent>
 
         {/* ===== 勞退提撥管理 TAB ===== */}
