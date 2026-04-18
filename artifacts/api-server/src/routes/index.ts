@@ -91,6 +91,7 @@ import { franchiseSettlementsRouter } from "./franchiseSettlements";
 import { vehicleProfitRouter } from "./vehicleProfit";
 import { laborPensionRouter } from "./laborPension";
 import { payrollCostRouter } from "./payrollCost";
+import { cargoPackagingRouter } from "./cargoPackaging";
 
 const router: IRouter = Router();
 
@@ -201,5 +202,6 @@ router.use("/franchise-settlements", franchiseSettlementsRouter); // 加盟主�
 router.use(vehicleProfitRouter);                                   // 車輛盈虧分析
 router.use(laborPensionRouter);                                    // 勞退提撥管理
 router.use(payrollCostRouter);                                     // 薪資成本結算
+router.use(cargoPackagingRouter);                                  // 貨品包裝參考表
 
 export default router;
