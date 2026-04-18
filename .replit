@@ -34,4 +34,4 @@ APP_BASE_URL = "https://25aa9280-967a-471c-b4c8-f7fae9a96c57-00-13weca2s6r6nq.wo
 INVOICE_PROVIDER = "mock"
 INVOICE_API_BASE = ""
 INVOICE_MERCHANT_ID = ""
-ATOMS_WEBHOOK_URL = "https://1096970-9eb7229106774c36b6baa8c3e608c0f4-v7-dev.dev.atoms.dev/api/v1/webhook/orders"
+ATOMS_WEBHOOK_URL = "https://1vz74mr.pub.atoms.dev"
