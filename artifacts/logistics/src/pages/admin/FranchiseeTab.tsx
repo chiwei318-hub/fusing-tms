@@ -34,6 +34,7 @@ interface Franchisee {
   username: string | null;
   has_password: boolean;
   last_login_at: string | null;
+  affiliation_type: "affiliated" | "independent";
   settlement_count: string;
   total_gross_revenue: string;
   total_net_payout: string;
@@ -88,11 +89,16 @@ interface FranchiseeForm extends Partial<Franchisee> {
   password?: string;
 }
 
+const AFFILIATION_MAP: Record<string, { label: string; color: string; border: string }> = {
+  affiliated:   { label: "靠行",   color: "#1d4ed8", border: "#bfdbfe" },
+  independent:  { label: "非靠行", color: "#7c3aed", border: "#ddd6fe" },
+};
+
 const EMPTY: FranchiseeForm = {
   name: "", owner_name: "", phone: "", email: "", address: "", zone_name: "",
   contract_type: "revenue_share", commission_rate: "70", monthly_fee: "0",
   status: "active", notes: "", joined_at: "", contract_end_at: "",
-  username: "", password: "",
+  username: "", password: "", affiliation_type: "affiliated",
 };
 
 function authHeaders() {
@@ -121,7 +127,8 @@ export default function FranchiseeTab() {
   const [genRevenue, setGenRevenue]       = useState("");
   const [generating, setGenerating]       = useState<number | null>(null);
 
-  const [filterStatus, setFilterStatus]   = useState("all");
+  const [filterStatus, setFilterStatus]       = useState("all");
+  const [filterAffiliation, setFilterAffiliation] = useState("all");
   const [search, setSearch]               = useState("");
 
   const fetchAll = useCallback(async () => {
@@ -232,6 +239,7 @@ export default function FranchiseeTab() {
   // ─── Filter ──────────────────────────────────────────────────────────
   const filtered = franchisees.filter(f => {
     if (filterStatus !== "all" && f.status !== filterStatus) return false;
+    if (filterAffiliation !== "all" && (f.affiliation_type ?? "affiliated") !== filterAffiliation) return false;
     if (search) {
       const q = search.toLowerCase();
       return f.name.toLowerCase().includes(q) || f.code.toLowerCase().includes(q)
@@ -291,6 +299,38 @@ export default function FranchiseeTab() {
         </div>
       )}
 
+      {/* Affiliation filter tabs */}
+      <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid #e5e7eb", paddingBottom: "8px" }}>
+        {[
+          { key: "all", label: "全部" },
+          { key: "affiliated", label: "靠行" },
+          { key: "independent", label: "非靠行" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFilterAffiliation(tab.key)}
+            style={{
+              padding: "4px 14px",
+              fontSize: "13px",
+              borderRadius: "6px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: filterAffiliation === tab.key ? 600 : 400,
+              background: filterAffiliation === tab.key ? "#1d4ed8" : "transparent",
+              color: filterAffiliation === tab.key ? "#fff" : "#6b7280",
+              transition: "all 0.15s",
+            }}
+          >
+            {tab.label}
+            {tab.key !== "all" && (
+              <span style={{ marginLeft: "5px", fontSize: "11px", opacity: 0.8 }}>
+                ({franchisees.filter(f => (f.affiliation_type ?? "affiliated") === tab.key).length})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 items-center">
         <Input
@@ -341,6 +381,19 @@ export default function FranchiseeTab() {
                           <span className="font-bold text-base">{f.name}</span>
                           <span className="text-xs text-muted-foreground font-mono">{f.code}</span>
                           <Badge className={`text-xs px-2 py-0 ${st.color}`}>{st.label}</Badge>
+                          {(() => {
+                            const aff = AFFILIATION_MAP[f.affiliation_type ?? "affiliated"];
+                            return (
+                              <span style={{
+                                display: "inline-flex", alignItems: "center",
+                                fontSize: "11px", padding: "1px 8px", borderRadius: "9999px",
+                                background: aff.border, color: aff.color,
+                                fontWeight: 600, border: `1px solid ${aff.border}`,
+                              }}>
+                                {aff.label}
+                              </span>
+                            );
+                          })()}
                           <Badge variant="outline" className="text-xs px-2 py-0">
                             {CONTRACT_LABELS[f.contract_type]}・{f.commission_rate}%
                           </Badge>
@@ -538,6 +591,16 @@ export default function FranchiseeTab() {
                 <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(STATUS_MAP).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">靠行類型</Label>
+              <Select value={formData.affiliation_type ?? "affiliated"} onValueChange={v => setFormData(p => ({ ...p, affiliation_type: v as any }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="affiliated">靠行（掛牌在本公司）</SelectItem>
+                  <SelectItem value="independent">非靠行（自有執照）</SelectItem>
                 </SelectContent>
               </Select>
             </div>

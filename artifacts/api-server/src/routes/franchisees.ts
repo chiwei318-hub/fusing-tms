@@ -15,6 +15,17 @@ function hashPassword(password: string, salt?: string): string {
 
 export const franchiseesRouter = Router();
 
+// ─── DB Migration ────────────────────────────────────────────────────
+(async () => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE franchisees
+        ADD COLUMN IF NOT EXISTS affiliation_type TEXT NOT NULL DEFAULT 'affiliated'
+    `);
+    console.log("[Franchisees] affiliation_type 欄位已確認");
+  } catch (e) { console.error("[Franchisees] migration error", e); }
+})();
+
 // ─── 產生加盟主代碼 ───────────────────────────────────────────────────
 async function generateFranchiseeCode(): Promise<string> {
   const row = await db.execute(sql`
@@ -33,6 +44,7 @@ franchiseesRouter.get("/franchisees", async (_req, res) => {
       f.address, f.zone_name, f.contract_type, f.commission_rate,
       f.monthly_fee, f.status, f.notes, f.joined_at, f.contract_end_at,
       f.username, f.last_login_at, f.created_at, f.updated_at,
+      f.affiliation_type,
       CASE WHEN f.password_hash IS NOT NULL THEN true ELSE false END AS has_password,
       COUNT(DISTINCT s.id)                               AS settlement_count,
       COALESCE(SUM(s.gross_revenue), 0)                  AS total_gross_revenue,
@@ -86,6 +98,7 @@ franchiseesRouter.post("/franchisees", async (req, res) => {
     contract_type = "revenue_share", commission_rate = 70, monthly_fee = 0,
     status = "active", notes, joined_at, contract_end_at,
     username, password,
+    affiliation_type = "affiliated",
   } = req.body;
 
   if (!name) return res.status(400).json({ error: "缺少加盟商名稱" });
@@ -98,7 +111,7 @@ franchiseesRouter.post("/franchisees", async (req, res) => {
       code, name, owner_name, phone, email, address, zone_name,
       contract_type, commission_rate, monthly_fee,
       status, notes, joined_at, contract_end_at,
-      username, password_hash
+      username, password_hash, affiliation_type
     ) VALUES (
       ${code}, ${name}, ${owner_name ?? null}, ${phone ?? null}, ${email ?? null},
       ${address ?? null}, ${zone_name ?? null},
@@ -106,10 +119,11 @@ franchiseesRouter.post("/franchisees", async (req, res) => {
       ${status}, ${notes ?? null},
       ${joined_at ? new Date(joined_at) : new Date()},
       ${contract_end_at ? new Date(contract_end_at) : null},
-      ${username ?? null}, ${pwHash}
+      ${username ?? null}, ${pwHash}, ${affiliation_type}
     ) RETURNING id, code, name, owner_name, phone, email, address, zone_name,
                 contract_type, commission_rate, monthly_fee, status, notes,
-                joined_at, contract_end_at, username, last_login_at, created_at, updated_at
+                joined_at, contract_end_at, username, last_login_at,
+                affiliation_type, created_at, updated_at
   `);
   return res.status(201).json(result.rows[0]);
 });
@@ -121,7 +135,7 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
     name, owner_name, phone, email, address, zone_name,
     contract_type, commission_rate, monthly_fee,
     status, notes, joined_at, contract_end_at,
-    username, password,
+    username, password, affiliation_type,
   } = req.body;
 
   const pwHash = password ? hashPassword(password) : undefined;
@@ -143,13 +157,15 @@ franchiseesRouter.patch("/franchisees/:id", async (req, res) => {
       contract_end_at  = COALESCE(${contract_end_at ? new Date(contract_end_at) : null}, contract_end_at),
       username         = COALESCE(${username ?? null}, username),
       password_hash    = COALESCE(${pwHash ?? null}, password_hash),
+      affiliation_type = COALESCE(${affiliation_type ?? null}, affiliation_type),
       updated_at       = NOW()
     WHERE id = ${id}
   `);
   const rows = await db.execute(sql`
     SELECT id, code, name, owner_name, phone, email, address, zone_name,
            contract_type, commission_rate, monthly_fee, status, notes,
-           joined_at, contract_end_at, username, last_login_at, created_at, updated_at
+           joined_at, contract_end_at, username, last_login_at,
+           affiliation_type, created_at, updated_at
     FROM franchisees WHERE id = ${id} LIMIT 1
   `);
   return res.json(rows.rows[0]);
