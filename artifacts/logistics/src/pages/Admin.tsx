@@ -84,6 +84,7 @@ const GloryContractQuoteTab = lazy(() => import("./fusingao/ContractQuoteTab"));
 const GloryShopeeDriversTab = lazy(() => import("./fusingao/ShopeeDriversTab"));
 const GloryShopeeScheduleTab  = lazy(() => import("./fusingao/ShopeeScheduleTab"));
 const VehicleProfitTab        = lazy(() => import("./fusingao/VehicleProfitTab"));
+const LaborPensionTab         = lazy(() => import("./fusingao/LaborPensionTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,

@@ -89,6 +89,7 @@ import { jobsRouter } from "./jobs";
 import { webhookOrdersRouter } from "./webhookOrders";
 import { franchiseSettlementsRouter } from "./franchiseSettlements";
 import { vehicleProfitRouter } from "./vehicleProfit";
+import { laborPensionRouter } from "./laborPension";
 
 const router: IRouter = Router();
 
@@ -197,5 +198,6 @@ router.use(jobsRouter);                                        // 司機任務 A
 router.use(webhookOrdersRouter);                               // 外部訂單接收 Webhook
 router.use("/franchise-settlements", franchiseSettlementsRouter); // 加盟主清算 & ATOMS 推送
 router.use(vehicleProfitRouter);                                   // 車輛盈虧分析
+router.use(laborPensionRouter);                                    // 勞退提撥管理
 
 export default router;
