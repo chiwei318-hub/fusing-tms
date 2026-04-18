@@ -86,6 +86,7 @@ const GloryShopeeScheduleTab  = lazy(() => import("./fusingao/ShopeeScheduleTab"
 const VehicleProfitTab        = lazy(() => import("./fusingao/VehicleProfitTab"));
 const LaborPensionTab         = lazy(() => import("./fusingao/LaborPensionTab"));
 const PayrollCostTab          = lazy(() => import("./fusingao/PayrollCostTab"));
+const CargoPackagingTab       = lazy(() => import("./fusingao/CargoPackagingTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1707,7 +1708,8 @@ export default function Admin() {
                     { value: "contractquote", icon: <span className="text-sm leading-none">📝</span>,              label: "合約報價" },
                     { value: "driverbonus",   icon: <span className="text-sm leading-none">💰</span>,              label: "司機獎金" },
                     { value: "vehicleprofit", icon: <span className="text-sm leading-none">📊</span>,              label: "盈虧分析" },
-                    { value: "payrollcost",  icon: <span className="text-sm leading-none">💼</span>,              label: "薪資結算" },
+                    { value: "payrollcost",   icon: <span className="text-sm leading-none">💼</span>,              label: "薪資結算" },
+                    { value: "laborpension",  icon: <span className="text-sm leading-none">🏦</span>,              label: "勞退提撥" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -1737,6 +1739,7 @@ export default function Admin() {
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
                     { value: "supplier",    icon: <span className="text-sm leading-none">🏭</span>,                   label: "供應商" },
                     { value: "township",    icon: <span className="text-sm leading-none">🗺️</span>,                   label: "縣市鄉鎮" },
+                    { value: "cargopkg",    icon: <span className="text-sm leading-none">📦</span>,                   label: "包裝參考" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -4051,6 +4054,16 @@ export default function Admin() {
         {/* ===== 薪資成本結算 TAB ===== */}
         <TabsContent value="payrollcost" className="outline-none">
           <PayrollCostTab />
+        </TabsContent>
+
+        {/* ===== 貨品包裝參考表 TAB ===== */}
+        <TabsContent value="cargopkg" className="outline-none">
+          <CargoPackagingTab />
+        </TabsContent>
+
+        {/* ===== 勞退提撥管理 TAB ===== */}
+        <TabsContent value="laborpension" className="outline-none">
+          <LaborPensionTab />
         </TabsContent>
 
         {/* ===== 供應商管理 TAB ===== */}
