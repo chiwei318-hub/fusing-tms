@@ -89,6 +89,7 @@ const PayrollCostTab          = lazy(() => import("./fusingao/PayrollCostTab"));
 const CargoPackagingTab       = lazy(() => import("./fusingao/CargoPackagingTab"));
 const PlatformRequirementsTab = lazy(() => import("./fusingao/PlatformRequirementsTab"));
 const SheetsBackupTab         = lazy(() => import("./admin/SheetsBackupTab"));
+const FirebaseSyncTab         = lazy(() => import("./admin/FirebaseSyncTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1743,7 +1744,8 @@ export default function Admin() {
                     { value: "township",    icon: <span className="text-sm leading-none">🗺️</span>,                   label: "縣市鄉鎮" },
                     { value: "cargopkg",    icon: <span className="text-sm leading-none">📦</span>,                   label: "包裝參考" },
                     { value: "platformreq", icon: <span className="text-sm leading-none">📋</span>,                   label: "需求確認" },
-                    { value: "sheetsbackup", icon: <span className="text-sm leading-none">📊</span>,                  label: "Sheets備份" },
+                    { value: "sheetsbackup",  icon: <span className="text-sm leading-none">📊</span>,                  label: "Sheets備份" },
+                    { value: "firebasesync", icon: <span className="text-sm leading-none">🔥</span>,                  label: "雲端金庫" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -4073,6 +4075,11 @@ export default function Admin() {
         {/* ===== Google Sheets 財務備份 TAB ===== */}
         <TabsContent value="sheetsbackup" className="outline-none">
           <SheetsBackupTab />
+        </TabsContent>
+
+        {/* ===== Firebase 雲端金庫同步 TAB ===== */}
+        <TabsContent value="firebasesync" className="outline-none">
+          <FirebaseSyncTab />
         </TabsContent>
 
         {/* ===== 勞退提撥管理 TAB ===== */}

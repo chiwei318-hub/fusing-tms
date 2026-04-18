@@ -94,6 +94,7 @@ import { payrollCostRouter } from "./payrollCost";
 import { cargoPackagingRouter } from "./cargoPackaging";
 import { platformRequirementsRouter } from "./platformRequirements";
 import { sheetsExportRouter } from "./sheetsExport";
+import { firebaseSyncRouter } from "./firebaseSync";
 
 const router: IRouter = Router();
 
@@ -207,5 +208,6 @@ router.use(payrollCostRouter);                                     // 薪資成�
 router.use(cargoPackagingRouter);                                  // 貨品包裝參考表
 router.use(platformRequirementsRouter);                            // 物流媒合平台需求確認
 router.use(sheetsExportRouter);                                    // Google Sheets 財務備份匯出
+router.use(firebaseSyncRouter);                                    // Firebase Firestore 雲端金庫同步
 
 export default router;
