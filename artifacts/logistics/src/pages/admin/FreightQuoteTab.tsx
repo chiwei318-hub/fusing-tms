@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 const API = import.meta.env.BASE_URL.replace(/\/$/, "").replace("/logistics", "") + "/api-server/api";
 
 // ─── 型別 ────────────────────────────────────────────────────────────────────
-interface RateConfig { id: number; car_type: string; label: string; base_price: number; km_rate: number; platform_pct: number; driver_pct: number; active: boolean; }
+interface RateConfig { id: number; car_type: string; label: string; base_price: number; km_rate: number; car_multiplier: number; platform_pct: number; driver_pct: number; active: boolean; }
 interface SurchargeConfig { id: number; key: string; label: string; amount: number; pct_multiplier: number; description: string; active: boolean; }
 interface Config { ok: boolean; rates: RateConfig[]; surcharges: SurchargeConfig[]; googleMapsAvailable: boolean; error?: string; }
 
@@ -12,7 +12,8 @@ interface QuoteResult {
   quote?: { total_quote: number; driver_payout: number; your_profit: number; platform_pct: number; driver_pct: number; };
   breakdown?: {
     base_price: number; distance_km: number; km_rate: number; distance_fee: number;
-    car_label: string; remote_area: string | null; remote_multiplier: number;
+    car_label: string; car_multiplier: number; has_elevator: boolean;
+    remote_area: string | null; remote_multiplier: number;
     surcharges: { key: string; label: string; amount: number; pct: number }[];
     pct_surcharge_added: number;
   };
@@ -29,11 +30,12 @@ export default function FreightQuoteTab() {
   const [loading, setLoading] = useState(false);
 
   // ── 計算機狀態
-  const [pickup,   setPickup]   = useState("");
-  const [delivery, setDelivery] = useState("");
-  const [carType,  setCarType]  = useState("3.5t");
-  const [services, setServices] = useState<Record<string, number | boolean>>({});
-  const [result,   setResult]   = useState<QuoteResult | null>(null);
+  const [pickup,      setPickup]      = useState("");
+  const [delivery,    setDelivery]    = useState("");
+  const [carType,     setCarType]     = useState("3.5t");
+  const [hasElevator, setHasElevator] = useState(true);
+  const [services,    setServices]    = useState<Record<string, number | boolean>>({});
+  const [result,      setResult]      = useState<QuoteResult | null>(null);
 
   // ── 費率編輯
   const [editingRate, setEditingRate] = useState<RateConfig | null>(null);
@@ -55,7 +57,7 @@ export default function FreightQuoteTab() {
     try {
       const res = await fetch(`${API}/freight-quote/calculate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pickup_address: pickup, delivery_address: delivery, car_type: carType, services }),
+        body: JSON.stringify({ pickup_address: pickup, delivery_address: delivery, car_type: carType, has_elevator: hasElevator, services }),
       });
       setResult(await res.json());
     } catch (e: any) { setResult({ ok: false, error: e.message }); }
@@ -149,11 +151,28 @@ export default function FreightQuoteTab() {
                 </select>
               </label>
 
+              {/* 電梯/樓梯 開關（對應 get_quote_engine has_elevator） */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: hasElevator ? "#f0fdf4" : "#fef9c3", borderRadius: 10, border: `1px solid ${hasElevator ? "#bbf7d0" : "#fde68a"}` }}>
+                <span style={{ fontSize: 18 }}>{hasElevator ? "🛗" : "🪜"}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>目的地{hasElevator ? "有電梯" : "無電梯（搬樓梯費 +$500）"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>對應 Python: has_elevator = {hasElevator ? "True" : "False"}</div>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 }}>
+                  <span style={{ color: "#6b7280" }}>無</span>
+                  <div style={{ position: "relative", width: 40, height: 22 }} onClick={() => setHasElevator(!hasElevator)}>
+                    <div style={{ width: 40, height: 22, borderRadius: 11, background: hasElevator ? "#16a34a" : "#d1d5db", transition: "background 0.2s", cursor: "pointer" }} />
+                    <div style={{ position: "absolute", top: 3, left: hasElevator ? 21 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                  </div>
+                  <span style={{ color: "#374151" }}>有</span>
+                </label>
+              </div>
+
               {/* 附加服務選單 */}
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>附加服務</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>其他附加服務</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {surcharges.filter(s => s.active).map(s => {
+                  {surcharges.filter(s => s.active && s.key !== "no_elevator").map(s => {
                     const checked = !!services[s.key];
                     const isQty = s.key === "upstairs" || s.key === "wait_over30";
                     return (
@@ -215,14 +234,23 @@ export default function FreightQuoteTab() {
                   {[
                     { label: `起步費（${result.breakdown.car_label}）`, value: money(result.breakdown.base_price) },
                     { label: `里程費（${result.breakdown.distance_km}km × $${result.breakdown.km_rate}）`, value: money(result.breakdown.distance_fee) },
+                    ...(result.breakdown.car_multiplier !== 1 ? [{
+                      label: `車型係數（${result.breakdown.car_label} ×${result.breakdown.car_multiplier}）`,
+                      value: `×${result.breakdown.car_multiplier}`, highlight: false, accent: true
+                    }] : []),
                     ...(result.breakdown.remote_area ? [{
                       label: `偏遠加成（${result.breakdown.remote_area} ×${result.breakdown.remote_multiplier}）`,
                       value: `×${result.breakdown.remote_multiplier}`, highlight: true
                     }] : []),
-                    ...result.breakdown.surcharges.map(s => ({
-                      label: s.label,
-                      value: s.amount > 0 ? `+${money(s.amount)}` : `+${s.pct}%`
-                    })),
+                    ...(!result.breakdown.has_elevator ? [{
+                      label: "無電梯搬樓梯費", value: "+$500", highlight: false
+                    }] : []),
+                    ...result.breakdown.surcharges
+                      .filter(s => s.key !== "no_elevator")
+                      .map(s => ({
+                        label: s.label,
+                        value: s.amount > 0 ? `+${money(s.amount)}` : `+${s.pct}%`
+                      })),
                   ].map((row, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f1f5f9", color: (row as any).highlight ? "#dc2626" : "#374151" }}>
                       <span>{row.label}</span>
@@ -253,12 +281,15 @@ export default function FreightQuoteTab() {
       {/* ══════════════ 車型費率 tab ══════════════ */}
       {viewTab === "rates" && (
         <div>
-          <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>調整各車型的起步價、每公里費率和財務分帳比例。</p>
+          <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
+            調整各車型的起步價、每公里費率、車型係數（×整體費用）和財務分帳比例。
+            <span style={{ background: "#fef9c3", padding: "2px 8px", borderRadius: 6, marginLeft: 8, fontSize: 12 }}>車型係數 = Python 的 <code>car_multiplier</code></span>
+          </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#f1f5f9" }}>
-                  {["車型代碼", "名稱", "起步價($)", "每公里費($)", "老闆利潤(%)", "司機(%)", "啟用", "操作"].map(h => (
+                  {["車型代碼", "名稱", "起步價($)", "每公里費($)", "車型係數×", "老闆利潤(%)", "司機(%)", "啟用", "操作"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -278,6 +309,14 @@ export default function FreightQuoteTab() {
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         {isEdit ? <input type="number" value={ed.km_rate} onChange={e => setEditingRate({ ...ed, km_rate: +e.target.value })} style={{ ...inputStyle, width: 70 }} /> : `$${r.km_rate}`}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {isEdit
+                          ? <input type="number" step="0.1" min="0.1" max="10" value={ed.car_multiplier}
+                              onChange={e => setEditingRate({ ...ed, car_multiplier: +e.target.value })}
+                              style={{ ...inputStyle, width: 70 }} />
+                          : <span style={{ fontWeight: 600, color: r.car_multiplier !== 1 ? "#7c3aed" : "#374151" }}>×{r.car_multiplier}</span>
+                        }
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         {isEdit ? (

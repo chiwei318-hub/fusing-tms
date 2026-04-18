@@ -140,20 +140,26 @@ freightQuoteRouter.get("/freight-quote/config", async (_req, res) => {
 });
 
 // ── POST /api/freight-quote/calculate ─────────────────────────────────────────
-// 核心報價計算（對應 calculate_taiwan_freight()）
+// 核心報價計算
+// 計算順序（對應 get_quote_engine + calculate_taiwan_freight）：
+//   subtotal = (base_price + dist_km × km_rate) × car_multiplier × remote_multiplier
+//   + flat surcharges  → × pct surcharges
+//   profit = subtotal × platform_pct%;  driver = subtotal × driver_pct%
 freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
   try {
     const {
       pickup_address,
       delivery_address,
       car_type = "3.5t",
-      services = {},          // { upstairs: 2, hydraulic: true, night_delivery: true, ... }
-      custom_km_rate,         // 可覆蓋 DB 設定的公里費
-      custom_platform_pct,    // 可覆蓋分帳比例
+      has_elevator = true,        // false → 自動套用「無電梯搬樓梯費 +500」
+      services = {},              // { upstairs: 2, hydraulic: true, night_delivery: true, ... }
+      custom_km_rate,
+      custom_platform_pct,
     } = req.body as {
       pickup_address: string;
       delivery_address: string;
       car_type?: string;
+      has_elevator?: boolean;
       services?: Record<string, number | boolean>;
       custom_km_rate?: number;
       custom_platform_pct?: number;
@@ -163,27 +169,41 @@ freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
       return res.status(400).json({ ok: false, error: "需要 pickup_address 和 delivery_address" });
     }
 
-    // 1. 取得車型費率
+    // 1. 取得車型費率（含 car_multiplier）
     const rateRow = await pool.query<{
-      base_price: string; km_rate: string; platform_pct: string; driver_pct: string; label: string;
+      base_price: string; km_rate: string; platform_pct: string; driver_pct: string;
+      label: string; car_multiplier: string;
     }>(`SELECT * FROM freight_rate_config WHERE car_type = $1 AND active = true LIMIT 1`, [car_type]);
 
-    const rate = rateRow.rows[0] ?? { base_price: "500", km_rate: "25", platform_pct: "10", driver_pct: "90", label: car_type };
-    const basePrice   = Number(rate.base_price);
-    const kmRate      = custom_km_rate     ?? Number(rate.km_rate);
-    const platformPct = custom_platform_pct ?? Number(rate.platform_pct);
-    const driverPct   = 100 - platformPct;
+    const rate = rateRow.rows[0] ?? {
+      base_price: "500", km_rate: "25", platform_pct: "10", driver_pct: "90",
+      label: car_type, car_multiplier: "1.0",
+    };
+    const basePrice      = Number(rate.base_price);
+    const kmRate         = custom_km_rate     ?? Number(rate.km_rate);
+    const platformPct    = custom_platform_pct ?? Number(rate.platform_pct);
+    const driverPct      = 100 - platformPct;
+    const carMultiplier  = Number(rate.car_multiplier ?? 1);
 
     // 2. 距離計算（使用現有 distanceService）
     const distResult = await getDistanceKm(pickup_address, delivery_address);
     const distKm = distResult.distance_km;
     const distFee = Math.round(distKm * kmRate);
 
-    // 3. 偏遠地區加成
-    const remote = await detectRemoteArea(delivery_address);
-    let subtotal = (basePrice + distFee) * remote.multiplier;
+    // 3. 套用車型係數（get_quote_engine：整體乘以 car_multiplier）
+    let subtotal = (basePrice + distFee) * carMultiplier;
 
-    // 4. 附加服務費用
+    // 4. 偏遠地區加成（calculate_taiwan_freight：×1.3 偏遠地區）
+    const remote = await detectRemoteArea(delivery_address);
+    subtotal = subtotal * remote.multiplier;
+
+    // 5. has_elevator = false → 自動加入「無電梯搬樓梯費」
+    const servicesWithElevator: Record<string, number | boolean> = { ...services };
+    if (!has_elevator) {
+      servicesWithElevator["no_elevator"] = true;
+    }
+
+    // 6. 附加服務費用
     const surchargeRows = await pool.query<{
       key: string; label: string; amount: string; pct_multiplier: string;
     }>(`SELECT * FROM freight_surcharge_config WHERE active = true`);
@@ -192,7 +212,7 @@ freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
     let pctSurchargeMultiplier = 1;
 
     for (const s of surchargeRows.rows) {
-      const val = services[s.key];
+      const val = servicesWithElevator[s.key];
       if (!val) continue;
 
       const qty = typeof val === "number" ? val : 1;
@@ -212,7 +232,7 @@ freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
     // 百分比加成在最後一次性計算（避免複利）
     subtotal = subtotal * pctSurchargeMultiplier;
 
-    // 5. 財務分帳（老闆利潤 platform_pct%，司機/加盟 driver_pct%）
+    // 7. 財務分帳
     const totalQuote   = Math.round(subtotal);
     const profit       = Math.round(subtotal * platformPct / 100);
     const driverPayout = Math.round(subtotal * driverPct / 100);
@@ -227,15 +247,17 @@ freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
         driver_pct:     driverPct,
       },
       breakdown: {
-        base_price:    basePrice,
-        distance_km:   distKm,
-        km_rate:       kmRate,
-        distance_fee:  distFee,
-        car_type:      car_type,
-        car_label:     rate.label,
-        remote_area:   remote.isRemote ? remote.keyword : null,
+        base_price:       basePrice,
+        distance_km:      distKm,
+        km_rate:          kmRate,
+        distance_fee:     distFee,
+        car_type:         car_type,
+        car_label:        rate.label,
+        car_multiplier:   carMultiplier,
+        has_elevator:     has_elevator,
+        remote_area:      remote.isRemote ? remote.keyword : null,
         remote_multiplier: remote.isRemote ? remote.multiplier : 1,
-        surcharges:    appliedSurcharges,
+        surcharges:       appliedSurcharges,
         pct_surcharge_added: Math.round((pctSurchargeMultiplier - 1) * 100),
       },
       distance_source: distResult.source,
@@ -251,13 +273,14 @@ freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
 freightQuoteRouter.put("/freight-quote/config/rate/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { base_price, km_rate, platform_pct, label, active } = req.body;
+    const { base_price, km_rate, platform_pct, label, active, car_multiplier } = req.body;
     const driver_pct = 100 - Number(platform_pct);
     await pool.query(`
       UPDATE freight_rate_config
-      SET base_price=$1, km_rate=$2, platform_pct=$3, driver_pct=$4, label=$5, active=$6, updated_at=NOW()
-      WHERE id=$7
-    `, [base_price, km_rate, platform_pct, driver_pct, label, active ?? true, id]);
+      SET base_price=$1, km_rate=$2, platform_pct=$3, driver_pct=$4, label=$5, active=$6,
+          car_multiplier=$7, updated_at=NOW()
+      WHERE id=$8
+    `, [base_price, km_rate, platform_pct, driver_pct, label, active ?? true, car_multiplier ?? 1, id]);
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
 });
