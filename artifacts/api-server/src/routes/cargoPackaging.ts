@@ -1,8 +1,9 @@
 /**
- * cargoPackaging.ts — 台灣貨品包裝類型參考表
+ * cargoPackaging.ts — 台灣貨品包裝類型參考表 + 容器規格表
  *
- * GET  /api/cargo-packaging        列出全部（?category=xxx&q=搜尋關鍵字）
- * GET  /api/cargo-packaging/cats   取得所有分類
+ * GET  /api/cargo-packaging               列出全部（?category=xxx&q=搜尋關鍵字）
+ * GET  /api/cargo-packaging/cats          取得所有分類
+ * GET  /api/cargo-containers              容器規格列表（?type=箱|籃|桶|袋&q=關鍵字）
  */
 
 import { Router } from "express";
@@ -57,6 +58,36 @@ const SEED: { category: string; cargo_type: string; packaging_methods: string[] 
   { category: "特殊貨", cargo_type: "冷藏藥品/疫苗",   packaging_methods: ["保冷箱","溫控容器","乾冰箱"] },
 ];
 
+// ── 容器規格種子資料 ───────────────────────────────────────────────────────
+interface ContainerSeed {
+  container_type: string;
+  name_zh:        string;
+  size_desc:      string;
+  volume_m3:      number;
+  common_use:     string;
+}
+
+const CONTAINER_SEED: ContainerSeed[] = [
+  // 箱
+  { container_type: "箱", name_zh: "小紙箱",         size_desc: "30×20×20 cm",             volume_m3: 0.012, common_use: "3C小家電、食品禮盒" },
+  { container_type: "箱", name_zh: "中紙箱",         size_desc: "40×30×30 cm",             volume_m3: 0.036, common_use: "網購宅配標準箱" },
+  { container_type: "箱", name_zh: "大紙箱",         size_desc: "60×40×40 cm",             volume_m3: 0.096, common_use: "家居用品、服飾批發" },
+  { container_type: "箱", name_zh: "特大箱",         size_desc: "80×60×60 cm",             volume_m3: 0.288, common_use: "玩具、寢具、電器" },
+  // 籃
+  { container_type: "籃", name_zh: "蔬果籃（小）",   size_desc: "53×37×30 cm",             volume_m3: 0.059, common_use: "菜市場、通路進貨" },
+  { container_type: "籃", name_zh: "蔬果籃（大）",   size_desc: "60×40×35 cm",             volume_m3: 0.084, common_use: "批發市場常見" },
+  { container_type: "籃", name_zh: "塑膠物流籃",     size_desc: "65×45×32 cm",             volume_m3: 0.094, common_use: "便利商店、物流中心" },
+  // 桶
+  { container_type: "桶", name_zh: "小塑膠桶",       size_desc: "20L（直徑30×高35 cm）",   volume_m3: 0.025, common_use: "調味料、油品" },
+  { container_type: "桶", name_zh: "中塑膠桶",       size_desc: "50L（直徑40×高50 cm）",   volume_m3: 0.063, common_use: "清潔用品" },
+  { container_type: "桶", name_zh: "大藍桶",         size_desc: "100L（直徑50×高65 cm）",  volume_m3: 0.127, common_use: "工業原料" },
+  { container_type: "桶", name_zh: "鐵桶",           size_desc: "200L（直徑58×高88 cm）",  volume_m3: 0.233, common_use: "化工、油品" },
+  // 袋
+  { container_type: "袋", name_zh: "穀物麻布袋",     size_desc: "50 kg（60×40×20 cm）",    volume_m3: 0.048, common_use: "白米、穀物" },
+  { container_type: "袋", name_zh: "化肥/飼料編織袋", size_desc: "20–40 kg（70×50×15 cm）", volume_m3: 0.053, common_use: "農業、飼料" },
+  { container_type: "袋", name_zh: "大型編織袋（噸袋 FIBC）", size_desc: "1,000 kg（100×100×100 cm）", volume_m3: 1.000, common_use: "大宗貨品、粉料" },
+];
+
 // ── 建立資料表 ─────────────────────────────────────────────────────────────
 export async function ensureCargoPackagingTable() {
   await pool.query(`
@@ -83,7 +114,54 @@ export async function ensureCargoPackagingTable() {
     }
     console.log(`[CargoPackaging] 已種入 ${SEED.length} 筆包裝類型參考資料`);
   }
+
+  // ── 容器規格表 ─────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cargo_containers (
+      id              SERIAL PRIMARY KEY,
+      container_type  TEXT           NOT NULL,
+      name_zh         TEXT           NOT NULL,
+      size_desc       TEXT           NOT NULL,
+      volume_m3       NUMERIC(10,3)  NOT NULL,
+      common_use      TEXT           NOT NULL,
+      is_custom       BOOLEAN        NOT NULL DEFAULT false,
+      created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+      UNIQUE (name_zh)
+    )
+  `);
+
+  const { rows: cntRows } = await pool.query("SELECT COUNT(*) FROM cargo_containers WHERE is_custom = false");
+  if (Number(cntRows[0].count) === 0) {
+    for (const c of CONTAINER_SEED) {
+      await pool.query(
+        `INSERT INTO cargo_containers (container_type, name_zh, size_desc, volume_m3, common_use, is_custom)
+         VALUES ($1, $2, $3, $4, $5, false) ON CONFLICT DO NOTHING`,
+        [c.container_type, c.name_zh, c.size_desc, c.volume_m3, c.common_use]
+      );
+    }
+    console.log(`[CargoContainers] 已種入 ${CONTAINER_SEED.length} 筆容器規格資料`);
+  }
 }
+
+// ── GET /api/cargo-containers ─────────────────────────────────────────────
+cargoPackagingRouter.get("/cargo-containers", async (req, res) => {
+  const { type, q } = req.query as Record<string, string>;
+  const conds: string[] = [];
+  const vals: unknown[] = [];
+  if (type && type !== "全部") {
+    conds.push(`container_type = $${vals.length + 1}`); vals.push(type);
+  }
+  if (q) {
+    conds.push(`(name_zh ILIKE $${vals.length + 1} OR common_use ILIKE $${vals.length + 1} OR size_desc ILIKE $${vals.length + 1})`);
+    vals.push(`%${q}%`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const { rows } = await pool.query(
+    `SELECT * FROM cargo_containers ${where} ORDER BY container_type, volume_m3`,
+    vals
+  );
+  res.json({ ok: true, containers: rows });
+});
 
 // ── GET /api/cargo-packaging/cats ──────────────────────────────────────────
 cargoPackagingRouter.get("/cargo-packaging/cats", async (_req, res) => {
