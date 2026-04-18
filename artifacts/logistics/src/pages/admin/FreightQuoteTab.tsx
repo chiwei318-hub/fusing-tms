@@ -35,20 +35,29 @@ interface FuyongResult {
 interface PartnerConfig {
   id: number; partner_id: string; partner_name: string; tier: string;
   base_price: number; rate_per_km: number; park_fee: number; mountain_fee: number;
-  special_zone_fee: number; notes: string; active: boolean;
+  special_zone_fee: number; remote_fee: number; profit_margin: number;
+  notes: string; active: boolean;
 }
 
 interface PartnerResult {
   ok: boolean; error?: string;
-  price?: number;    // Python-compatible 回傳欄位
-  detail?: string;   // Python: f"里程 {km}km + 特殊加成 {surcharge}"
-  quote?: { total_price: number };
+  // get_automated_quote() Python 格式
+  client_name?: string;
+  quote?: number;
+  profit?: number;
+  distance?: string;
+  applied_surcharges?: string[];
+  // generate_auto_quote() 兼容格式
+  price?: number;
+  detail?: string;
+  // 完整前端結構
   partner?: { partner_id: string; partner_name: string; tier: string };
   breakdown?: {
     distance_km: number; distance_source: string; duration_min: number | null;
     base_price: number; rate_per_km: number; distance_fee: number;
     surcharges: { type: string; label: string; keyword: string; amount: number }[];
-    surcharge_total: number; total_price: number; detail: string;
+    surcharge_total: number; profit_margin: number; profit: number;
+    total_price: number; detail: string;
   };
 }
 
@@ -308,7 +317,9 @@ export default function FreightQuoteTab() {
                       <span>每公里：<b>${p.rate_per_km}</b></span>
                       <span>🏭 科學園區費：<b>+{money(p.park_fee)}</b></span>
                       <span>⛰️ 山區費：<b>+{money(p.mountain_fee)}</b></span>
-                      <span style={{ gridColumn: "span 2" }}>🏪 進倉/特殊區費：<b>+{money(p.special_zone_fee ?? 500)}</b></span>
+                      <span>🏪 進倉/碼頭/機場：<b>+{money(p.special_zone_fee ?? 500)}</b></span>
+                      <span>🚌 偏鄉/離島加成：<b>+{money(p.remote_fee ?? 1000)}</b></span>
+                      <span style={{ gridColumn: "span 2", color: "#6b7280" }}>💰 平台利潤率：<b>{((p.profit_margin ?? 0.15) * 100).toFixed(0)}%</b></span>
                     </div>
                     {p.notes && <div style={{ marginTop: 6, color: "#64748b", fontStyle: "italic" }}>備注：{p.notes}</div>}
                   </div>
@@ -348,11 +359,14 @@ export default function FreightQuoteTab() {
 
             {/* 右：結果 */}
             <div>
-              {partnerResult?.ok && partnerResult.breakdown && partnerResult.quote && partnerResult.partner && (() => {
+              {partnerResult?.ok && partnerResult.breakdown && partnerResult.price != null && partnerResult.partner && (() => {
                 const b = partnerResult.breakdown;
-                const q = partnerResult.quote;
+                const total = partnerResult.price!;
+                const profit = b.profit ?? partnerResult.profit ?? 0;
                 const pt = partnerResult.partner;
                 const ts = tierStyle(pt.tier);
+                const surchargeIcon = (type: string) =>
+                  type === "science_park" ? "🏭" : type === "mountain" ? "⛰️" : type === "special_zone" ? "🏪" : "🚌";
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {/* 客戶等級 badge + 報價大字 */}
@@ -361,9 +375,9 @@ export default function FreightQuoteTab() {
                         {pt.tier} · {pt.partner_name}
                       </div>
                       <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>合約報價</div>
-                      <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(q.total_price)}</div>
+                      <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(total)}</div>
                       {b.duration_min && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>預估車程約 {Math.round(b.duration_min)} 分鐘</div>}
-                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source}</div>
+                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source} · {partnerResult.distance}</div>
                     </div>
 
                     {/* 費用明細 */}
@@ -373,12 +387,13 @@ export default function FreightQuoteTab() {
                         { label: `📏 ${b.distance_km.toFixed(1)}km × $${b.rate_per_km}/km`, value: money(b.distance_fee) },
                         { label: `🏠 起步費`, value: money(b.base_price) },
                         ...b.surcharges.map(s => ({
-                          label: `${s.type === "science_park" ? "🏭" : "⛰️"} ${s.keyword === "科學園區" || s.type === "science_park" ? "科學園區費" : "山區費"}（${s.keyword}）`,
+                          label: `${surchargeIcon(s.type)} ${s.label}（${s.keyword}）`,
                           value: `+${money(s.amount)}`
                         })),
-                        { label: "━ 合約總計", value: money(q.total_price), total: true },
+                        { label: "━ 合約總計", value: money(total), total: true },
                       ].map((row, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: i < b.surcharges.length + 1 ? "1px solid #f1f5f9" : "none",
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0",
+                          borderBottom: i < b.surcharges.length + 1 ? "1px solid #f1f5f9" : "none",
                           fontWeight: (row as any).total ? 700 : 400, color: (row as any).total ? "#1e293b" : "#374151" }}>
                           <span>{row.label}</span>
                           <span style={{ fontWeight: 600 }}>{row.value}</span>
@@ -386,20 +401,37 @@ export default function FreightQuoteTab() {
                       ))}
                     </div>
 
+                    {/* 平台利潤區塊 — 對應 Python: platform_profit = total_quote * profit_margin */}
+                    <div style={{ background: "linear-gradient(135deg, #1e3a5f, #1d4ed8)", borderRadius: 12, padding: "14px 18px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>💰 平台利潤（{((b.profit_margin ?? 0.15) * 100).toFixed(0)}%）</div>
+                        <div style={{ fontSize: 24, fontWeight: 800 }}>{money(profit)}</div>
+                      </div>
+                      <div style={{ textAlign: "right", fontSize: 11, opacity: 0.7 }}>
+                        <div>客戶付款</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, opacity: 1 }}>{money(total)}</div>
+                        <div style={{ marginTop: 4 }}>司機分潤</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, opacity: 1 }}>{money(total - profit)}</div>
+                      </div>
+                    </div>
+
                     {/* Python detail 字串 */}
                     <div style={{ background: "#1e1e2e", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#cdd6f4", fontFamily: "monospace" }}>
-                      <span style={{ color: "#89dceb" }}>detail: </span>
-                      <span style={{ color: "#a6e3a1" }}>"{b.detail}"</span>
+                      <div style={{ color: "#89b4fa", marginBottom: 4, fontWeight: 600 }}>// get_automated_quote() 回傳</div>
+                      <div><span style={{ color: "#89dceb" }}>client_name: </span><span style={{ color: "#a6e3a1" }}>"{partnerResult.client_name}"</span></div>
+                      <div><span style={{ color: "#89dceb" }}>quote: </span><span style={{ color: "#fab387" }}>{total}</span></div>
+                      <div><span style={{ color: "#89dceb" }}>profit: </span><span style={{ color: "#fab387" }}>{profit}</span></div>
+                      <div><span style={{ color: "#89dceb" }}>distance: </span><span style={{ color: "#a6e3a1" }}>"{partnerResult.distance}"</span></div>
+                      <div><span style={{ color: "#89dceb" }}>applied_surcharges: </span><span style={{ color: "#cba6f7" }}>[{(partnerResult.applied_surcharges ?? []).map(t => `"${t}"`).join(", ")}]</span></div>
                     </div>
 
                     {/* 地點偵測結果 */}
                     <div style={{ background: b.surcharges.length > 0 ? "#fefce8" : "#f0fdf4", border: `1px solid ${b.surcharges.length > 0 ? "#fde68a" : "#bbf7d0"}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 全方位地點偵測（科學園區 / 山區 / 進倉區）</div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 全方位地點偵測（科學園區 / 山區 / 進倉碼頭機場 / 偏鄉離島）</div>
                       {b.surcharges.length > 0
-                        ? b.surcharges.map((s, i) => {
-                            const icon = s.type === "science_park" ? "🏭" : s.type === "mountain" ? "⛰️" : "🏪";
-                            return <div key={i}>{icon} 偵測到「{s.keyword}」→ {s.label} +{money(s.amount)}</div>;
-                          })
+                        ? b.surcharges.map((s, i) => (
+                            <div key={i}>{surchargeIcon(s.type)} 偵測到「{s.keyword}」→ {s.label} +{money(s.amount)}</div>
+                          ))
                         : <div style={{ color: "#15803d" }}>✅ 一般地址（無加成）</div>
                       }
                     </div>
@@ -839,7 +871,9 @@ export default function FreightQuoteTab() {
                   { label: "每公里費（$/km）", key: "rate_per_km", ph: "25", type: "number" },
                   { label: "🏭 科學園區費（$）", key: "park_fee", ph: "300", type: "number" },
                   { label: "⛰️ 山區費（$）", key: "mountain_fee", ph: "500", type: "number" },
-                  { label: "🏪 進倉/特殊區費（$）", key: "special_zone_fee", ph: "500", type: "number" },
+                  { label: "🏪 進倉/碼頭/機場費（$）", key: "special_zone_fee", ph: "500", type: "number" },
+                  { label: "🚌 偏鄉/離島加成（$）", key: "remote_fee", ph: "1000", type: "number" },
+                  { label: "💰 平台利潤率（0~1）", key: "profit_margin", ph: "0.15", type: "number" },
                 ].map(({ label, key, ph, type }) => (
                   <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600 }}>
                     {label}
@@ -910,7 +944,9 @@ export default function FreightQuoteTab() {
                         ["每公里費($)", "rate_per_km"],
                         ["🏭 科學園區費($)", "park_fee"],
                         ["⛰️ 山區費($)", "mountain_fee"],
-                        ["🏪 進倉/特殊區費($)", "special_zone_fee"],
+                        ["🏪 進倉/碼頭/機場($)", "special_zone_fee"],
+                        ["🚌 偏鄉/離島($)", "remote_fee"],
+                        ["💰 利潤率(0~1)", "profit_margin"],
                       ] as [string, keyof PartnerConfig][]).map(([label, key]) => (
                         <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
                           {label}
@@ -930,9 +966,11 @@ export default function FreightQuoteTab() {
                     <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 12, color: "#64748b" }}>
                       <span>起步：<b style={{ color: "#374151" }}>{money(p.base_price)}</b></span>
                       <span>每公里：<b style={{ color: "#374151" }}>${p.rate_per_km}</b></span>
-                      <span>🏭 科學園區費：<b style={{ color: "#374151" }}>+{money(p.park_fee)}</b></span>
-                      <span>⛰️ 山區費：<b style={{ color: "#374151" }}>+{money(p.mountain_fee)}</b></span>
-                      <span>🏪 進倉費：<b style={{ color: "#374151" }}>+{money(p.special_zone_fee ?? 500)}</b></span>
+                      <span>🏭 科學園區：<b style={{ color: "#374151" }}>+{money(p.park_fee)}</b></span>
+                      <span>⛰️ 山區：<b style={{ color: "#374151" }}>+{money(p.mountain_fee)}</b></span>
+                      <span>🏪 進倉/碼頭/機場：<b style={{ color: "#374151" }}>+{money(p.special_zone_fee ?? 500)}</b></span>
+                      <span>🚌 偏鄉/離島：<b style={{ color: "#374151" }}>+{money(p.remote_fee ?? 1000)}</b></span>
+                      <span>💰 利潤率：<b style={{ color: "#6b7280" }}>{((p.profit_margin ?? 0.15) * 100).toFixed(0)}%</b></span>
                       {p.notes && <span style={{ fontStyle: "italic", color: "#9ca3af" }}>{p.notes}</span>}
                     </div>
                   )}

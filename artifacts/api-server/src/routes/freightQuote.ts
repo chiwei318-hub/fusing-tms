@@ -116,6 +116,8 @@ export async function ensureFreightRateTables() {
       park_fee          NUMERIC      NOT NULL DEFAULT 300,
       mountain_fee      NUMERIC      NOT NULL DEFAULT 500,
       special_zone_fee  NUMERIC      NOT NULL DEFAULT 500,
+      remote_fee        NUMERIC      NOT NULL DEFAULT 1000,
+      profit_margin     NUMERIC      NOT NULL DEFAULT 0.15,
       notes             TEXT,
       active            BOOLEAN      DEFAULT true,
       created_at        TIMESTAMPTZ  DEFAULT NOW(),
@@ -124,6 +126,8 @@ export async function ensureFreightRateTables() {
   `);
   // 老資料補欄位（idempotent）
   await pool.query(`ALTER TABLE partner_contract_config ADD COLUMN IF NOT EXISTS special_zone_fee NUMERIC NOT NULL DEFAULT 500`);
+  await pool.query(`ALTER TABLE partner_contract_config ADD COLUMN IF NOT EXISTS remote_fee        NUMERIC NOT NULL DEFAULT 1000`);
+  await pool.query(`ALTER TABLE partner_contract_config ADD COLUMN IF NOT EXISTS profit_margin     NUMERIC NOT NULL DEFAULT 0.15`);
   // 預設示範合約客戶
   await pool.query(`
     INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes)
@@ -167,9 +171,18 @@ function detectMountainArea(address: string): string | null {
 // ── 特殊進倉區偵測 ─────────────────────────────────────────────────────────────
 // 對應 Python: is_special_zone(destination)  → 進場費 / 進倉費
 // generate_auto_quote: if is_special_zone(destination): surcharge = 500
-const SPECIAL_ZONE_KEYWORDS = ["進倉", "倉庫", "物流中心", "配送中心", "貨運站", "轉運站", "工業區倉儲", "集散站", "保稅倉", "保稅區", "自由貿易港"];
+// Python: if any(keyword in destination for keyword in ["倉", "碼頭", "機場"])
+const SPECIAL_ZONE_KEYWORDS = ["進倉", "倉庫", "物流中心", "配送中心", "貨運站", "轉運站", "工業區倉儲", "集散站", "保稅倉", "保稅區", "自由貿易港", "碼頭", "貨運碼頭", "機場", "國際機場", "國際貨站"];
 function detectSpecialZone(address: string): string | null {
   return SPECIAL_ZONE_KEYWORDS.find(k => address.includes(k)) ?? null;
+}
+
+// ── 合約客戶專用偏遠地區關鍵字偵測 ──────────────────────────────────────────────
+// 對應 Python: is_remote_area(destination) → remote_fee（離島/偏鄉加成）
+// 使用關鍵字陣列（同 detectSciencePark / detectMountainArea 模式）
+const REMOTE_AREA_KEYWORDS = ["離島", "金門", "馬祖", "澎湖", "綠島", "蘭嶼", "琉球", "小琉球", "七美", "望安", "偏遠鄉", "部落", "台東池上", "台東關山", "東河", "海端", "延平鄉", "達仁", "花蓮秀林"];
+function detectRemoteKw(address: string): string | null {
+  return REMOTE_AREA_KEYWORDS.find(k => address.includes(k)) ?? null;
 }
 
 // ── GET /api/freight-quote/partners ──────────────────────────────────────────
@@ -183,12 +196,12 @@ freightQuoteRouter.get("/freight-quote/partners", async (_req, res) => {
 // ── POST /api/freight-quote/partners ─────────────────────────────────────────
 freightQuoteRouter.post("/freight-quote/partners", async (req, res) => {
   try {
-    const { partner_id, partner_name, tier = "一般", base_price = 800, rate_per_km = 25, park_fee = 300, mountain_fee = 500, special_zone_fee = 500, notes = "" } = req.body;
+    const { partner_id, partner_name, tier = "一般", base_price = 800, rate_per_km = 25, park_fee = 300, mountain_fee = 500, special_zone_fee = 500, remote_fee = 1000, profit_margin = 0.15, notes = "" } = req.body;
     if (!partner_id || !partner_name) return res.status(400).json({ ok: false, error: "需要 partner_id 和 partner_name" });
     await pool.query(
-      `INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes]
+      `INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, remote_fee, profit_margin, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, remote_fee, profit_margin, notes]
     );
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
@@ -198,11 +211,12 @@ freightQuoteRouter.post("/freight-quote/partners", async (req, res) => {
 freightQuoteRouter.put("/freight-quote/partners/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee = 500, notes, active } = req.body;
+    const { partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee = 500, remote_fee = 1000, profit_margin = 0.15, notes, active } = req.body;
     await pool.query(
       `UPDATE partner_contract_config SET partner_name=$1, tier=$2, base_price=$3, rate_per_km=$4,
-       park_fee=$5, mountain_fee=$6, special_zone_fee=$7, notes=$8, active=$9, updated_at=NOW() WHERE id=$10`,
-      [partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes, active ?? true, id]
+       park_fee=$5, mountain_fee=$6, special_zone_fee=$7, remote_fee=$8, profit_margin=$9,
+       notes=$10, active=$11, updated_at=NOW() WHERE id=$12`,
+      [partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, remote_fee, profit_margin, notes, active ?? true, id]
     );
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
@@ -232,11 +246,12 @@ freightQuoteRouter.post("/freight-quote/partner-calculate", async (req, res) => 
     const partnerRow = await pool.query<{
       partner_id: string; partner_name: string; tier: string;
       base_price: string; rate_per_km: string;
-      park_fee: string; mountain_fee: string; special_zone_fee: string; notes: string;
+      park_fee: string; mountain_fee: string; special_zone_fee: string;
+      remote_fee: string; profit_margin: string; notes: string;
     }>(`SELECT * FROM partner_contract_config WHERE partner_id=$1 AND active=true LIMIT 1`, [partner_id]);
 
     if (!partnerRow.rows[0]) {
-      return res.status(404).json({ ok: false, error: `找不到合約客戶：${partner_id}` });
+      return res.status(404).json({ ok: false, error: `找不到合約客戶：${partner_id}，請先至後台新增` });
     }
     const p = partnerRow.rows[0];
     const basePrice       = Number(p.base_price);
@@ -244,50 +259,71 @@ freightQuoteRouter.post("/freight-quote/partner-calculate", async (req, res) => 
     const parkFee         = Number(p.park_fee);
     const mountainFee     = Number(p.mountain_fee);
     const specialZoneFee  = Number(p.special_zone_fee ?? 500);
+    // 對應 Python: settings.get('remote_fee', 1000) 和 settings.get('profit_margin', 0.15)
+    const remoteFee       = Number(p.remote_fee ?? 1000);
+    const profitMargin    = Number(p.profit_margin ?? 0.15);
 
-    // 2. 取得精準公里數（串接 Google API，對應 Python: get_real_distance / get_google_distance）
+    // 2. 取得精準公里數（串接 Google API，對應 Python: get_real_road_distance(origin, destination)）
     const distResult = await getDistanceKm(origin, destination);
     const km = distResult.distance_km;
 
-    // 3. 全方位地點偵測（對應 Python: is_science_park / is_mountain_area / is_special_zone）
+    // 3. 全方位地點偵測（對應 Python: is_science_park / is_mountain_area / is_special_zone / is_remote_area）
     const parkKw        = detectSciencePark(destination);
     const mountainKw    = detectMountainArea(destination);
     const specialZoneKw = detectSpecialZone(destination);
+    const remoteKw      = detectRemoteKw(destination);
 
     let surcharge = 0;
     const appliedSurcharges: { type: string; label: string; keyword: string; amount: number }[] = [];
+    const tags: string[] = [];  // Python: tags = []
 
     if (parkKw) {
       surcharge += parkFee;
       appliedSurcharges.push({ type: "science_park", label: "科學園區費", keyword: parkKw, amount: parkFee });
+      tags.push("科學園區費");
     }
     if (mountainKw) {
       surcharge += mountainFee;
       appliedSurcharges.push({ type: "mountain", label: "山區費", keyword: mountainKw, amount: mountainFee });
+      tags.push("山區加成");
     }
     if (specialZoneKw) {
-      // 對應 Python: if is_special_zone(destination): surcharge = 500（進場費）
+      // 對應 Python: if any(keyword in destination for keyword in ["倉", "碼頭", "機場"]): surcharge += warehouse_fee
       surcharge += specialZoneFee;
-      appliedSurcharges.push({ type: "special_zone", label: "進倉/特殊區費", keyword: specialZoneKw, amount: specialZoneFee });
+      appliedSurcharges.push({ type: "special_zone", label: "進倉服務費", keyword: specialZoneKw, amount: specialZoneFee });
+      tags.push("進倉服務費");
+    }
+    if (remoteKw) {
+      // 對應 Python: if is_remote_area(destination): surcharge += remote_fee; tags.append("偏鄉加成")
+      surcharge += remoteFee;
+      appliedSurcharges.push({ type: "remote", label: "偏鄉加成", keyword: remoteKw, amount: remoteFee });
+      tags.push("偏鄉加成");
     }
 
     // 4. 根據客戶等級計算總價
-    //    Python: subtotal = base + (km * rate); final_quote = subtotal + surcharge; return round(final_quote)
-    //    ⚠️  原始碼 bug: return round(final_price) 應為 round(final_quote) — 已在此修正
+    //    Python: total_quote = base_price + (distance_km * rate_per_km) + surcharge; return round(total_quote)
     const distFee   = km * ratePerKm;
     const subtotal  = basePrice + distFee;
     const total     = Math.round(subtotal + surcharge);
 
-    // 5. Python 格式的 detail 字串（對應 return {"price":..., "detail": f"里程 {km}km + 特殊加成 {surcharge}"}）
+    // 5. 利潤計算 對應 Python: platform_profit = total_quote * settings.get('profit_margin', 0.15)
+    const profit    = Math.round(total * profitMargin);
+
+    // 6. Python 格式的 detail 字串
     const detail = `里程 ${km.toFixed(1)}km × $${ratePerKm} + 起步 $${basePrice}${surcharge > 0 ? ` + 特殊加成 $${surcharge}` : ""}`;
 
     res.json({
       ok: true,
-      // Python-compatible 格式
+      // Python get_automated_quote() 完整回傳格式
+      client_name:       p.partner_name,
+      quote:             total,
+      profit,
+      distance:          `${km.toFixed(1)} km`,
+      applied_surcharges: tags,
+      // Python generate_auto_quote() 兼容格式
       price:  total,
       detail,
-      // 完整結構（前端用）
-      quote:   { total_price: total },
+      // 完整前端結構
       partner: { partner_id: p.partner_id, partner_name: p.partner_name, tier: p.tier },
       breakdown: {
         distance_km:     km,
@@ -298,6 +334,8 @@ freightQuoteRouter.post("/freight-quote/partner-calculate", async (req, res) => 
         distance_fee:    Math.round(distFee),
         surcharges:      appliedSurcharges,
         surcharge_total: surcharge,
+        profit_margin:   profitMargin,
+        profit,
         total_price:     total,
         detail,
       },
