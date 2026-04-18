@@ -201,6 +201,7 @@ router.get("/orders/search", async (req, res) => {
         o.required_vehicle_type, o.need_tailgate, o.need_hydraulic_pallet,
         o.source, o.created_at, o.updated_at,
         o.driver_id,
+        o.atoms_synced_at, o.atoms_accepted_at, o.atoms_driver_name, o.atoms_driver_phone,
         d.name AS driver_name, d.license_plate, d.phone AS driver_phone, d.vehicle_type
       FROM orders o
       LEFT JOIN drivers d ON o.driver_id = d.id
@@ -221,7 +222,16 @@ router.get("/orders", async (req, res) => {
     const query = ListOrdersQueryParams.parse(req.query);
     const q = req.query as Record<string, string>;
     let qb = db
-      .select()
+      .select({
+        orders: ordersTable,
+        drivers: driversTable,
+        // atoms 欄位（ALTER TABLE 加的，不在 Drizzle schema）
+        atomsSyncedAt:    sql<string | null>`orders.atoms_synced_at`,
+        atomsAcceptedAt:  sql<string | null>`orders.atoms_accepted_at`,
+        atomsDriverName:  sql<string | null>`orders.atoms_driver_name`,
+        atomsDriverPhone: sql<string | null>`orders.atoms_driver_phone`,
+        atomsDriverId:    sql<string | null>`orders.atoms_driver_id`,
+      })
       .from(ordersTable)
       .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
       .$dynamic();
@@ -259,6 +269,11 @@ router.get("/orders", async (req, res) => {
     const result = orders.map((row) => ({
       ...row.orders,
       driver: row.drivers ?? null,
+      atomsSyncedAt:    row.atomsSyncedAt    ?? null,
+      atomsAcceptedAt:  row.atomsAcceptedAt  ?? null,
+      atomsDriverName:  row.atomsDriverName  ?? null,
+      atomsDriverPhone: row.atomsDriverPhone ?? null,
+      atomsDriverId:    row.atomsDriverId    ?? null,
     }));
     res.json(result);
   } catch (err) {
@@ -584,7 +599,17 @@ router.patch("/orders/:id", async (req, res) => {
             driver_license:   driver?.licensePlate ?? null,
             driver_vehicle:   driver?.vehicleType ?? null,
             assigned_at:      new Date().toISOString(),
-          }).catch((e: Error) => log.warn({ err: e }, "[Webhook] order.assigned broadcast failed"));
+            // Callback URL: Atoms 接單後回傳此端點
+            callback_url: `${process.env.APP_BASE_URL ?? ""}/api/v1/webhook/atoms-accept`,
+          })
+          .then(() => {
+            // ── 廣播成功 → 標記 atoms_synced_at ──
+            db.execute(sql`
+              UPDATE orders SET atoms_synced_at = NOW(), updated_at = NOW()
+              WHERE id = ${order.id} AND atoms_synced_at IS NULL
+            `).catch(() => {});
+          })
+          .catch((e: Error) => log.warn({ err: e }, "[Webhook] order.assigned broadcast failed"));
         } catch (err) {
           log.warn({ err }, "Failed to send LINE dispatch notification");
         }

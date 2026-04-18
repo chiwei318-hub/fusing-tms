@@ -3,7 +3,8 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import {
   Filter, ChevronRight, InboxIcon, Truck, Search,
-  Calendar, Clock, Pencil, Trash2, Copy, Loader2, Plus, Send
+  Calendar, Clock, Pencil, Trash2, Copy, Loader2, Plus, Send,
+  CheckCircle2, Radio, Minus,
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 import { useOrdersData, useDeleteOrderMutation, useDuplicateOrderMutation } from "@/hooks/use-orders";
@@ -65,6 +66,45 @@ function CreatedAtCell({ createdAt }: { createdAt: string }) {
         {format(d, "HH:mm:ss")}
       </div>
     </div>
+  );
+}
+
+/** Atoms 同步狀態徽章：
+ *  - ✅ 已接單（atoms_accepted_at 有值）→ 綠色
+ *  - 📤 已發送（atoms_synced_at 有值）  → 藍色  
+ *  - —  未同步                           → 灰色虛線
+ */
+function AtomsStatusBadge({ syncedAt, acceptedAt, driverName }: {
+  syncedAt?: string | null;
+  acceptedAt?: string | null;
+  driverName?: string | null;
+}) {
+  if (acceptedAt) {
+    return (
+      <div title={`Atoms 司機接單：${driverName ?? "—"}\n${format(new Date(acceptedAt), "MM/dd HH:mm")}`}
+        style={{ display: "inline-flex", alignItems: "center", gap: 4,
+          background: "#dcfce7", color: "#15803d", borderRadius: 8,
+          padding: "3px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+        <CheckCircle2 style={{ width: 12, height: 12 }} />
+        已接單
+      </div>
+    );
+  }
+  if (syncedAt) {
+    return (
+      <div title={`已發送至 Atoms：${format(new Date(syncedAt), "MM/dd HH:mm")}`}
+        style={{ display: "inline-flex", alignItems: "center", gap: 4,
+          background: "#dbeafe", color: "#1d4ed8", borderRadius: 8,
+          padding: "3px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+        <Radio style={{ width: 12, height: 12 }} />
+        已發送
+      </div>
+    );
+  }
+  return (
+    <span style={{ color: "#cbd5e1", fontSize: 12 }}>
+      <Minus style={{ width: 14, height: 14 }} />
+    </span>
   );
 }
 
@@ -231,6 +271,11 @@ export default function OrderList() {
                 <th className="px-3 py-3 font-semibold">客戶</th>
                 <th className="px-3 py-3 font-semibold">狀態</th>
                 <th className="px-3 py-3 font-semibold">司機</th>
+                <th className="px-3 py-3 font-semibold hidden lg:table-cell">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Atoms
+                  </span>
+                </th>
                 <th className="px-3 py-3 font-semibold">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-primary inline-block" />提貨時間
@@ -255,7 +300,7 @@ export default function OrderList() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 12 }).map((__, j) => (
+                    {Array.from({ length: 13 }).map((__, j) => (
                       <td key={j} className="px-3 py-3">
                         <Skeleton className="h-4 w-20" />
                       </td>
@@ -264,7 +309,7 @@ export default function OrderList() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={15} className="px-6 py-12 text-center text-muted-foreground">
                     <InboxIcon className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="font-medium">{search ? "找不到符合的訂單" : "目前沒有訂單"}</p>
                     <p className="text-xs mt-1">{search ? "請嘗試不同的搜尋關鍵字" : "尚未有符合此條件的訂單記錄"}</p>
@@ -309,6 +354,15 @@ export default function OrderList() {
                       {order.driver
                         ? <div className="font-medium text-foreground text-sm">{order.driver.name}</div>
                         : <span className="text-muted-foreground italic text-xs">尚未指派</span>}
+                    </td>
+
+                    {/* Atoms 同步狀態 */}
+                    <td className="px-3 py-2.5 hidden lg:table-cell">
+                      <AtomsStatusBadge
+                        syncedAt={(order as any).atomsSyncedAt ?? (order as any).atoms_synced_at}
+                        acceptedAt={(order as any).atomsAcceptedAt ?? (order as any).atoms_accepted_at}
+                        driverName={(order as any).atomsDriverName ?? (order as any).atoms_driver_name}
+                      />
                     </td>
 
                     {/* 提貨時間 */}

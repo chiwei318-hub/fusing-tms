@@ -1,51 +1,154 @@
 /**
  * webhookOrders.ts — 外部系統推送訂單接收端點
- * POST /api/v1/webhook/orders
  *
- * 支援兩種 payload 格式：
- *
- * 1. 事件包裝格式（Event-wrapped）：
- *    { event, timestamp, data: { order_id, customer_name, ... } }
- *
- * 2. 直接訂單格式（Flat）：
- *    { order_id, customer_name, address, contact_phone, temp_type, lat, lng, status, ... }
- *
- * 認證：X-API-Key header（需 orders:create 權限）
+ * 端點列表：
+ *   POST /api/v1/webhook/orders           — 外部建立訂單（需 X-API-Key: orders:create）
+ *   POST /api/v1/webhook/receive-order    — 同上（別名）
+ *   POST /api/v1/webhook/atoms-broadcast  — 批次補發訂單給 Atoms
+ *   POST /api/v1/webhook/atoms-accept     — Atoms 司機接單回傳（迴圈完成）
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { verifyApiKey } from "./apiKeys.js";
 import { broadcastWebhook } from "./webhooks.js";
+import { getOrderNotifyReceivers } from "../lib/line.js";
+import { enqueueNotification } from "../lib/notificationQueue.js";
+import * as line from "@line/bot-sdk";
 
 export const webhookOrdersRouter = Router();
 
+// ─── DB Migration: atoms_synced_at / atoms_accepted_at ─────────────────────
+(async () => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS atoms_synced_at   TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS atoms_accepted_at  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS atoms_driver_name  TEXT,
+        ADD COLUMN IF NOT EXISTS atoms_driver_phone TEXT,
+        ADD COLUMN IF NOT EXISTS atoms_driver_id    TEXT
+    `);
+    console.log("[AtomsColumns] atoms_synced_at / atoms_accepted_at 欄位已確認");
+  } catch (e) {
+    console.warn("[AtomsColumns] migration warn:", String(e).slice(0, 200));
+  }
+})();
+
+// ─── LINE：Atoms 接單通知推送管理者 ────────────────────────────────────────
+async function sendAtomsAcceptedAlert(params: {
+  orderId: number;
+  driverName: string;
+  driverPhone: string;
+  pickupAddress: string;
+  deliveryAddress: string;
+  event: string;
+}) {
+  try {
+    const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+    if (!channelAccessToken) return;
+
+    const receivers = await getOrderNotifyReceivers();
+    const envId = process.env.LINE_COMPANY_USER_ID;
+    const all = [...new Set([...receivers, ...(envId ? [envId] : [])])];
+    if (!all.length) return;
+
+    const isCompleted = /complet|finish|done|deliver/i.test(params.event);
+    const headerColor = isCompleted ? "#16a34a" : "#2563eb";
+    const headerText  = isCompleted ? "✅ Atoms 司機完成派送" : "✅ Atoms 司機已接單";
+
+    const client = new line.messagingApi.MessagingApiClient({ channelAccessToken });
+
+    const bubble: line.messagingApi.FlexBubble = {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical",
+        backgroundColor: headerColor, paddingAll: "md",
+        contents: [
+          { type: "text", text: headerText, weight: "bold", color: "#ffffff", size: "lg" },
+          { type: "text", text: `訂單 #${params.orderId}`, color: "#e0f2fe", size: "sm", margin: "xs" },
+        ],
+      },
+      body: {
+        type: "box", layout: "vertical", paddingAll: "md", spacing: "sm",
+        contents: [
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "text", text: "司機", size: "sm", color: "#64748b", flex: 2 },
+              { type: "text", text: params.driverName || "—", size: "sm", color: "#1e293b", weight: "bold", flex: 5 },
+            ],
+          },
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "text", text: "電話", size: "sm", color: "#64748b", flex: 2 },
+              { type: "text", text: params.driverPhone || "—", size: "sm", color: "#1e293b", flex: 5 },
+            ],
+          },
+          { type: "separator", margin: "md" },
+          {
+            type: "box", layout: "horizontal", spacing: "sm", margin: "md",
+            contents: [
+              { type: "text", text: "取貨", size: "sm", color: "#64748b", flex: 2 },
+              { type: "text", text: params.pickupAddress || "—", size: "sm", color: "#1e293b", flex: 5, wrap: true },
+            ],
+          },
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "text", text: "送達", size: "sm", color: "#64748b", flex: 2 },
+              { type: "text", text: params.deliveryAddress || "—", size: "sm", color: "#1e293b", flex: 5, wrap: true },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: "box", layout: "vertical", paddingAll: "md",
+        contents: [
+          {
+            type: "button", style: "primary", color: headerColor,
+            action: {
+              type: "uri",
+              label: "查看訂單詳情",
+              uri: `${process.env.APP_BASE_URL ?? ""}/orders/${params.orderId}`,
+            },
+          },
+        ],
+      },
+    };
+
+    const altText = `【Atoms 接單】訂單 #${params.orderId} 司機 ${params.driverName} 已接單`;
+    for (const uid of all) {
+      enqueueNotification(
+        () => client.pushMessage({ to: uid, messages: [{ type: "flex", altText, contents: bubble }] }),
+        `atomsAccept#${params.orderId}`,
+      );
+    }
+  } catch (e) {
+    console.warn("[AtomsAcceptAlert] LINE push failed:", String(e).slice(0, 200));
+  }
+}
+
 // ─── Field normaliser ─────────────────────────────────────────────────────
-/**
- * Accepts both flat and event-wrapped payloads and returns a normalised object.
- */
 function normalise(body: Record<string, any>): Record<string, any> {
-  // Unwrap event envelope if present
   const raw: Record<string, any> =
-    body.event && body.data && typeof body.data === "object"
-      ? body.data
-      : body;
+    body.event && body.data && typeof body.data === "object" ? body.data : body;
 
   return {
-    externalOrderId: String(raw.order_id ?? "").trim() || null,
-    customerName:    String(raw.customer_name  ?? "").trim() || null,
-    customerPhone:   String(raw.customer_phone ?? raw.contact_phone ?? "").trim() || null,
-    // Support both `address` (pickup) and separate pickup/delivery
-    pickupAddress:   String(raw.pickup_address  ?? raw.address ?? "").trim() || null,
-    deliveryAddress: String(raw.delivery_address ?? raw.address ?? "").trim() || null,
-    cargoDescription:String(raw.cargo_description ?? raw.temp_type ?? "").trim() || null,
-    isColdChain:     /冷凍|冷藏|cold/i.test(String(raw.temp_type ?? raw.cargo_description ?? "")),
-    totalFee:        raw.total_fee != null ? Number(raw.total_fee) : null,
-    notes:           buildNotes(raw),
-    status:          raw.status ?? "pending",
-    driverName:      raw.driver_name  ?? null,
-    driverPhone:     raw.driver_phone ?? null,
-    driverLicense:   raw.driver_license ?? null,
+    externalOrderId:  String(raw.order_id ?? "").trim() || null,
+    customerName:     String(raw.customer_name  ?? "").trim() || null,
+    customerPhone:    String(raw.customer_phone ?? raw.contact_phone ?? "").trim() || null,
+    pickupAddress:    String(raw.pickup_address  ?? raw.address ?? "").trim() || null,
+    deliveryAddress:  String(raw.delivery_address ?? raw.address ?? "").trim() || null,
+    cargoDescription: String(raw.cargo_description ?? raw.temp_type ?? "").trim() || null,
+    isColdChain:      /冷凍|冷藏|cold/i.test(String(raw.temp_type ?? raw.cargo_description ?? "")),
+    totalFee:         raw.total_fee != null ? Number(raw.total_fee) : null,
+    notes:            buildNotes(raw),
+    status:           raw.status ?? "pending",
+    driverName:       raw.driver_name  ?? null,
+    driverPhone:      raw.driver_phone ?? null,
+    driverLicense:    raw.driver_license ?? null,
   };
 }
 
@@ -62,19 +165,16 @@ function buildNotes(raw: Record<string, any>): string | null {
 async function requireOrdersCreate(req: any, res: any, next: any) {
   const raw = (req.headers["x-api-key"] as string) ?? "";
   if (!raw) return res.status(401).json({ error: "缺少 X-API-Key header" });
-
   const keyInfo = await verifyApiKey(raw);
   if (!keyInfo) return res.status(401).json({ error: "API Key 無效或已過期" });
-
   if (!keyInfo.scope.includes("orders:create")) {
     return res.status(403).json({ error: "此 API Key 缺少 orders:create 權限" });
   }
-
   req.apiKeyId = keyInfo.id;
   next();
 }
 
-// ─── POST /v1/webhook/atoms-broadcast — 批次補發未派車訂單給 ATOMS ─────────────
+// ─── POST /v1/webhook/atoms-broadcast — 批次補發訂單給 Atoms ──────────────
 webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
   try {
     const statuses: string[] = req.body?.statuses ?? ["pending"];
@@ -132,6 +232,8 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
         driver_license:    o.driver_license ?? null,
         driver_vehicle:    o.driver_vehicle ?? null,
         broadcast_at:      now,
+        // Callback URL: tells Atoms where to send the acceptance notification
+        callback_url: `${process.env.APP_BASE_URL ?? ""}/api/v1/webhook/atoms-accept`,
       };
       try {
         const r = await fetch(atomsUrl, {
@@ -140,13 +242,20 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
           body: JSON.stringify({ event: "order.assigned", timestamp: now, data: payload }),
           signal: AbortSignal.timeout(10000),
         });
-        return { order_id: o.id, ok: r.ok, statusCode: r.status };
+        const ok = r.ok;
+        // ── 成功發送 → 標記 atoms_synced_at ──
+        if (ok) {
+          db.execute(sql`
+            UPDATE orders SET atoms_synced_at = NOW(), updated_at = NOW()
+            WHERE id = ${o.id}
+          `).catch(() => {});
+        }
+        return { order_id: o.id, ok, statusCode: r.status };
       } catch (err: any) {
         return { order_id: o.id, ok: false, error: err?.message ?? "error" };
       }
     }
 
-    // Process in batches of CONCURRENCY
     for (let i = 0; i < orders.length; i += CONCURRENCY) {
       const batch = orders.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(batch.map(sendOne));
@@ -164,7 +273,113 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
   }
 });
 
-// ─── POST /v1/webhook/orders  (and alias /v1/webhook/receive-order) ──────────
+// ─── POST /v1/webhook/atoms-accept — Atoms 司機接單迴圈回傳 ──────────────
+/**
+ * Atoms 派單系統在司機接單（或完成派送）後，呼叫此端點回傳結果。
+ *
+ * 支援 payload 格式（兩種皆可）：
+ *   1. 事件包裝：{ event, timestamp, data: { order_id, driver_name, ... } }
+ *   2. 扁平：    { order_id, driver_name, driver_phone, atoms_driver_id, ... }
+ *
+ * 認證（選擇性）：
+ *   - 若設定環境變數 ATOMS_CALLBACK_SECRET，要求 Header X-Atoms-Secret 相符
+ *
+ * 回傳事件（event 欄位）：
+ *   - order.accepted / driver.accepted / accepted → 標記 atoms_accepted_at
+ *   - order.completed / order.delivered / completed / delivered → 同上（視為完成）
+ */
+webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
+  try {
+    // ── 選擇性認證 ──
+    const secret = process.env.ATOMS_CALLBACK_SECRET;
+    if (secret) {
+      const incoming = req.headers["x-atoms-secret"] as string | undefined;
+      if (incoming !== secret) {
+        return res.status(401).json({ error: "X-Atoms-Secret 驗證失敗" });
+      }
+    }
+
+    // ── Unwrap payload ──
+    const body = req.body ?? {};
+    const raw: Record<string, any> =
+      body.event && body.data && typeof body.data === "object" ? body.data : body;
+
+    const event: string = (body.event ?? raw.event ?? "unknown").toLowerCase();
+
+    // ── 取得訂單 ID ──
+    const orderId = parseInt(String(raw.order_id ?? raw.orderId ?? ""), 10);
+    if (!orderId || isNaN(orderId)) {
+      return res.status(400).json({ error: "缺少 order_id" });
+    }
+
+    // ── 取得 Atoms 司機資訊 ──
+    const atomsDriverName  = String(raw.driver_name  ?? raw.driverName  ?? "").trim() || null;
+    const atomsDriverPhone = String(raw.driver_phone ?? raw.driverPhone ?? "").trim() || null;
+    const atomsDriverId    = String(raw.atoms_driver_id ?? raw.atomsDriverId ?? raw.driver_id ?? "").trim() || null;
+    const acceptedAt       = raw.accepted_at ?? raw.acceptedAt ?? null;
+
+    // ── 查詢訂單 ──
+    const orderRows = await db.execute(sql`
+      SELECT id, status, pickup_address, delivery_address, customer_name,
+             driver_id, atoms_accepted_at
+      FROM orders WHERE id = ${orderId} LIMIT 1
+    `);
+    if (!orderRows.rows.length) {
+      return res.status(404).json({ error: `訂單 #${orderId} 不存在` });
+    }
+    const order = orderRows.rows[0] as any;
+
+    // ── 更新 atoms_accepted_at（冪等：已有就不覆蓋，除非明確 force=true）──
+    const force = body.force === true;
+    if (!order.atoms_accepted_at || force) {
+      await db.execute(sql`
+        UPDATE orders
+        SET atoms_accepted_at  = ${acceptedAt ? new Date(acceptedAt) : sql`NOW()`},
+            atoms_driver_name  = ${atomsDriverName},
+            atoms_driver_phone = ${atomsDriverPhone},
+            atoms_driver_id    = ${atomsDriverId},
+            atoms_synced_at    = COALESCE(atoms_synced_at, NOW()),
+            updated_at         = NOW()
+        WHERE id = ${orderId}
+      `);
+
+      // ── 若訂單仍是 pending，自動切換為 assigned ──
+      if (order.status === "pending" && /accept|assign/i.test(event)) {
+        await db.execute(sql`
+          UPDATE orders SET status = 'assigned', updated_at = NOW()
+          WHERE id = ${orderId} AND status = 'pending'
+        `);
+      }
+
+      console.log(`[AtomsAccept] 訂單 #${orderId} Atoms 司機 ${atomsDriverName ?? "—"} 接單成功（event: ${event}）`);
+
+      // ── LINE 通知管理者 ──
+      sendAtomsAcceptedAlert({
+        orderId,
+        driverName:     atomsDriverName  ?? "Atoms 司機",
+        driverPhone:    atomsDriverPhone ?? "—",
+        pickupAddress:  order.pickup_address   ?? "—",
+        deliveryAddress:order.delivery_address ?? "—",
+        event,
+      }).catch(() => {});
+    } else {
+      console.log(`[AtomsAccept] 訂單 #${orderId} 已有 atoms_accepted_at，略過（使用 force=true 強制覆蓋）`);
+    }
+
+    res.json({
+      ok: true,
+      order_id: orderId,
+      atoms_driver_name: atomsDriverName,
+      atoms_accepted_at: order.atoms_accepted_at ?? new Date().toISOString(),
+      message: "接單回傳已處理",
+    });
+  } catch (err: any) {
+    console.error("[AtomsAccept] error:", err?.message ?? err);
+    res.status(500).json({ error: "接單回傳處理失敗", detail: err?.message ?? "unknown" });
+  }
+});
+
+// ─── POST /v1/webhook/orders ──────────────────────────────────────────────
 webhookOrdersRouter.post(
   ["/v1/webhook/orders", "/v1/webhook/receive-order"],
   requireOrdersCreate,
@@ -173,7 +388,6 @@ webhookOrdersRouter.post(
       const body = req.body ?? {};
       const d = normalise(body);
 
-      // Required field validation
       const missing: string[] = [];
       if (!d.customerName)    missing.push("customer_name");
       if (!d.customerPhone)   missing.push("customer_phone / contact_phone");
@@ -182,10 +396,7 @@ webhookOrdersRouter.post(
         return res.status(400).json({ error: "必填欄位缺少", missing });
       }
 
-      // Pickup address defaults to delivery address if omitted
       const pickupAddress = d.pickupAddress || d.deliveryAddress;
-
-      // Map status to valid enum values
       const validStatuses = ["pending", "assigned", "in_transit", "delivered", "cancelled"];
       const status = validStatuses.includes(d.status) ? d.status : "pending";
 
@@ -215,13 +426,11 @@ webhookOrdersRouter.post(
 
       const newOrder = result.rows[0] as any;
 
-      // Log API key usage
       db.execute(sql`
         INSERT INTO api_usage_logs (api_key_id, endpoint, method, status_code, ip_address, latency_ms)
         VALUES (${req.apiKeyId}, '/v1/webhook/orders', 'POST', 201, ${req.ip ?? "unknown"}, 0)
       `).catch(() => {});
 
-      // Broadcast outgoing webhooks
       broadcastWebhook("order.created", {
         ...newOrder,
         external_order_id: d.externalOrderId,
