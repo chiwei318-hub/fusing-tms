@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   RefreshCw, Plus, Pencil, Trash2, Settings2, TrendingUp, TrendingDown,
-  BarChart2, Fuel, Save,
+  BarChart2, Fuel, Save, Download, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,6 +273,130 @@ export default function VehicleProfitTab() {
     { label: "整體利潤率",  val: totalProfitRate.toFixed(2), unit: "%",  color: totalProfitRate >= 0 ? "#7c3aed" : "#dc2626", bg: "#faf5ff", icon: <Fuel className="w-4 h-4" /> },
   ];
 
+  // ── 匯出 CSV（對應模板格式）────────────────────────────────────────────────
+  function exportCsv() {
+    const header = ["車牌號碼","車型","噸數","車價","總里程(km)","運費收入","油費支出","過路費","維修費用","輪胎費用","保險費用","折舊費用","其他支出","總支出","淨利潤","利潤率(%)"];
+    const rows = computed.map(r => [
+      r.vehicle_plate,
+      r.vehicle_type ?? "",
+      r.tonnage ?? "",
+      r.vehicle_price ?? "",
+      Math.round(Number(r.total_km)),
+      Math.round(Number(r.freight_income)),
+      Math.round(r.fuel_cost),
+      Math.round(Number(r.toll_fee)),
+      Math.round(Number(r.maintenance_fee)),
+      Math.round(Number(r.tire_fee)),
+      Math.round(r.insurance_monthly),
+      Math.round(r.depreciation_monthly),
+      Math.round(Number(r.other_expense)),
+      Math.round(r.total_expense),
+      Math.round(r.net_profit),
+      r.profit_rate.toFixed(2),
+    ]);
+    // 合計列
+    rows.push([
+      "合計","","","","",
+      Math.round(totals.freight_income),
+      Math.round(totals.fuel_cost),
+      Math.round(totals.toll_fee),
+      Math.round(totals.maintenance_fee),
+      Math.round(totals.tire_fee),
+      Math.round(totals.insurance_m),
+      Math.round(totals.depreciation_m),
+      Math.round(totals.other_expense),
+      Math.round(totals.total_expense),
+      Math.round(totals.net_profit),
+      totalProfitRate.toFixed(2),
+    ]);
+    // 參數列
+    rows.push([]);
+    rows.push(["參數項目","年度金額"]);
+    rows.push(["年度保險費", params.annual_insurance]);
+    rows.push(["年度折舊額", params.annual_depreciation]);
+    rows.push(["每公里油耗(公升)", params.fuel_per_km]);
+    rows.push(["柴油單價", params.diesel_price]);
+
+    const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob(["\ufeff"+csv], { type:"text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `貨運車輛盈虧分析表_${month}.csv`;
+    a.click();
+  }
+
+  // ── 列印報表 ────────────────────────────────────────────────────────────────
+  function printReport() {
+    const rowHtml = computed.map((r, i) => `
+      <tr style="background:${i%2===0?"#fff":"#f9fafb"}">
+        <td style="padding:5px 8px;font-weight:700;color:#1e40af;font-family:monospace">${r.vehicle_plate}</td>
+        <td style="padding:5px 8px">${r.vehicle_type??""}</td>
+        <td style="padding:5px 8px;text-align:right">${r.tonnage??""}</td>
+        <td style="padding:5px 8px;text-align:right">${r.vehicle_price?Number(r.vehicle_price).toLocaleString():""}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(Number(r.total_km)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#059669;font-weight:600">${Math.round(Number(r.freight_income)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(r.fuel_cost).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(Number(r.toll_fee)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(Number(r.maintenance_fee)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(Number(r.tire_fee)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#6b7280">${Math.round(r.insurance_monthly).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#6b7280">${Math.round(r.depreciation_monthly).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${Math.round(Number(r.other_expense)).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:600">${Math.round(r.total_expense).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:${r.net_profit>=0?"#059669":"#dc2626"};font-weight:700">${r.net_profit>=0?"+":""}${Math.round(r.net_profit).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#7c3aed;font-weight:600">${r.profit_rate.toFixed(2)}%</td>
+      </tr>`).join("");
+
+    const html = `<html><head><meta charset="utf-8"><title>貨運車輛盈虧分析表 ${month}</title>
+<style>
+  body{font-family:sans-serif;padding:20px;font-size:12px}
+  table{width:100%;border-collapse:collapse}
+  th{background:#1e3a5f;color:#fff;padding:6px 8px;text-align:right;font-size:11px;white-space:nowrap}
+  th.left{text-align:left}
+  td{border-bottom:1px solid #e5e7eb}
+  .total-row td{background:#1e3a5f;color:#fff;font-weight:700;padding:6px 8px;text-align:right}
+  .total-row td.left{text-align:left;color:#fbbf24}
+  .params{margin-top:16px;font-size:11px;color:#6b7280}
+  @media print{body{padding:0}}
+</style></head><body>
+<h2 style="text-align:center;margin:0 0 4px">貨運車輛盈虧分析表</h2>
+<p style="text-align:center;color:#888;font-size:11px;margin:0 0 12px">報表月份：${month}　　列印日期：${new Date().toLocaleDateString("zh-TW")}</p>
+<table>
+  <thead><tr>
+    <th class="left">車牌</th><th class="left">車型</th><th>噸</th><th>車價</th>
+    <th>里程(km)</th><th>運費收入</th><th>油費</th><th>過路費</th>
+    <th>維修費</th><th>輪胎費</th><th>保險(月)</th><th>折舊(月)</th>
+    <th>其他</th><th>總支出</th><th>淨利潤</th><th>利潤率</th>
+  </tr></thead>
+  <tbody>
+    ${rowHtml}
+    <tr class="total-row">
+      <td class="left" colspan="5">合計（${records.length} 輛）</td>
+      <td>${Math.round(totals.freight_income).toLocaleString()}</td>
+      <td>${Math.round(totals.fuel_cost).toLocaleString()}</td>
+      <td>${Math.round(totals.toll_fee).toLocaleString()}</td>
+      <td>${Math.round(totals.maintenance_fee).toLocaleString()}</td>
+      <td>${Math.round(totals.tire_fee).toLocaleString()}</td>
+      <td>${Math.round(totals.insurance_m).toLocaleString()}</td>
+      <td>${Math.round(totals.depreciation_m).toLocaleString()}</td>
+      <td>${Math.round(totals.other_expense).toLocaleString()}</td>
+      <td>${Math.round(totals.total_expense).toLocaleString()}</td>
+      <td>${totals.net_profit>=0?"+":""}${Math.round(totals.net_profit).toLocaleString()}</td>
+      <td>${totalProfitRate.toFixed(2)}%</td>
+    </tr>
+  </tbody>
+</table>
+<div class="params">
+  📊 固定成本參數：年度保險費 NT$${params.annual_insurance.toLocaleString()} （月攤 NT$${Math.round(params.annual_insurance/12).toLocaleString()}）　
+  年度折舊額 NT$${params.annual_depreciation.toLocaleString()} （月攤 NT$${Math.round(params.annual_depreciation/12).toLocaleString()}）　
+  每公里油耗 ${params.fuel_per_km}L／柴油 NT$${params.diesel_price}/L
+</div>
+</body></html>`;
+    const w = window.open("","_blank","width=1100,height=700");
+    if (!w) return;
+    w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 400);
+  }
+
   const inp = (key: keyof typeof form, label: string, type = "number", placeholder = "0") => (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
@@ -337,6 +461,16 @@ export default function VehicleProfitTab() {
               >
                 <Settings2 className="w-3.5 h-3.5 mr-1" />固定成本參數
               </Button>
+              {computed.length > 0 && (
+                <>
+                  <Button variant="outline" size="sm" className="h-8" onClick={exportCsv}>
+                    <Download className="w-3.5 h-3.5 mr-1" />匯出 CSV
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8" onClick={printReport}>
+                    <Printer className="w-3.5 h-3.5 mr-1" />列印報表
+                  </Button>
+                </>
+              )}
               <Button size="sm" className="h-8" onClick={openCreate}>
                 <Plus className="w-3.5 h-3.5 mr-1" />新增車輛
               </Button>
