@@ -17,7 +17,7 @@ The project is structured as a pnpm workspace monorepo, separating applications 
 
 ## UI/UX Decisions
 
-The frontend for the logistics system (`artifacts/logistics`) is built with React and Vite, focusing on a clear, functional design with consistent UI components. Admin panels are designed for intuitive data management, featuring interactive elements for dispatch, driver management, and reporting, including a specialized `TaiwanAddressInput` component with Google Maps integration.
+The frontend for the logistics system (`artifacts/logistics`) is built with React and Vite, focusing on a clear, functional design with consistent UI components. Admin panels are designed for intuitive data management, featuring interactive elements for dispatch, driver management, and reporting, including a specialized `TaiwanAddressInput` component with Google Maps integration. All 40+ tab components are lazy-loaded via `React.lazy()` + `Suspense` for minimal initial bundle size.
 
 ## Technical Implementations
 
@@ -29,51 +29,27 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Type Safety:** Extensive TypeScript usage across the monorepo.
 *   **Build System:** `esbuild` for CJS bundle generation.
 *   **Error Handling:** Zod for request validation.
-*   **Email Service:** Nodemailer for automated email invoicing with configurable SMTP settings.
+*   **Email Service:** Nodemailer for automated email invoicing.
 *   **PDF Generation:** `pdfkit` for generating A4 electronic invoices and monthly bills.
-
-## Feature Specifications
-
-*   **Admin Panel:** Comprehensive dashboard with tabs for Order Dispatch, Driver/Customer Management, Reporting, Smart Scheduling, AI Analysis (forecasting, auto-dispatch, dynamic pricing), AI Customer Service, Payment Gateway, Freight Quotation, Route Pricing, and Permission Management. All 40+ tab components are lazy-loaded via `React.lazy()` + `Suspense` for minimal initial bundle size.
-*   **Bundle Optimization:** `App.tsx` uses `React.lazy()` for all portal pages (Admin, FranchiseFleetPortal, FusingaoFleetPortal, EnterprisePortal, Landing, all sub-portal pages). Main bundle reduced from 3.3 MB → 893 KB (73% reduction). Each portal loads as a separate async chunk.
 *   **Permission Management:** Role-based access control with customizable permissions and audit logging, including zone-scoped permissions.
-*   **Order Management:** Supports multi-stop deliveries, full order editing by administrators, and a Quick Order mode for guest users. Includes auto-dispatch, a Dispatch Suggestion Engine, and an Auto-Routing Rules Engine.
-*   **Fleet & Driver Management:** Carpool panel, Outsourcing System for partner fleets, Fleet Onboarding System, Driver Rating System, Driver Income Dashboard, and GPS/Service Area/Capability Settings for drivers.
-*   **Financials:** E-Invoice Management with auto-triggering, PDF generation, LINE push notifications, bulk monthly invoicing, void/allowance invoice capabilities, and various payment methods. Includes a full billing flow with AR ledger, monthly bills, and payment reconciliation.
-*   **Quoting Engine:** Full-featured vehicle-type-based pricing engine with DB-persisted and cached rate cards, providing public and admin-facing quote functionalities.
-*   **Analytics & Reporting:** KPI Dashboard, Performance Audit & Bonus System, Fleet Analytics, and financial reports including AR aging, driver commission, and gross margin analysis.
+*   **Order Management:** Supports multi-stop deliveries, full order editing, Quick Order mode, auto-dispatch, a Dispatch Suggestion Engine, and an Auto-Routing Rules Engine.
+*   **Fleet & Driver Management:** Carpool panel, Outsourcing System for partner fleets, Fleet Onboarding, Driver Rating, Driver Income Dashboard, and GPS/Service Area/Capability Settings. Includes expanded driver data fields (ID, insurance, inspection, bank details, referrer) with expiry warnings.
+*   **Financials:** E-Invoice Management with auto-triggering, PDF generation, LINE push notifications, bulk monthly invoicing, void/allowance capabilities, and various payment methods. Full billing flow with AR ledger, monthly bills, and payment reconciliation.
+*   **Quoting Engine:** Full-featured vehicle-type-based pricing engine with DB-persisted and cached rate cards.
+*   **Analytics & Reporting:** KPI Dashboard, Performance Audit & Bonus System, Fleet Analytics, and financial reports.
 *   **Customization:** System Config Management via admin UI and dynamic Order Custom Fields.
-*   **Integrations:** LINE Integration for notifications and AI chatbot, Google Maps for location services.
-*   **Enterprise Features:** Enterprise Customer Portal, Multi-depot Zone/Team structure, and Master Data completeness.
-*   **Franchise Fleet Management System (加盟車行管理):** Full multi-role franchise platform:
-    - Platform admin CRUD (`/api/platform/fleets`) for managing franchisees, setting commission rates, and platform-level controls
-    - Fleet owner backend (`/api/fleet/*`) with JWT auth (`fleet_owner` role): manage own drivers, real-time dispatch wall, pricing rules, leave approval, salary calculation and settlement, standby scheduling
-    - Driver mobile API (`/api/driver/*`) with JWT auth (`fleet_driver` role): GPS location updates, order acceptance/transit/completion, leave requests, standby slots, salary records — designed for FlutterFlow integration
-    - Dedicated login endpoints: `POST /api/auth/login/fleet-owner`, `POST /api/auth/login/fleet-driver`
-    - DB tables: `franchisees` (with auth columns), `fleet_pricing_rules`, `driver_leaves`, `driver_salary_records`, `driver_standby_slots`; `drivers` extended with `franchisee_id`, `engine_cc`, `tonnage`
-    - Strict data isolation: all queries filter by `franchisee_id` (and `driver_id`) from JWT claims
-    - **班表自動同步 (Sheet Auto-Sync):** Fleet owners can connect Google Sheets (蝦皮班表) to the dispatch wall. DB table `fleet_sheet_sync_configs` stores per-franchisee sync configs (sync_name, sheet_url, interval_minutes, last_sync_at, last_sync_status). Scheduler in `artifacts/api-server/src/lib/fleetSheetSync.ts` checks every 60s and runs overdue syncs. Parse logic reuses the same column-order format as the existing `POST /fleet/trips/parse-sheet` endpoint. CRUD endpoints: `GET/POST /api/fleet/sheet-sync`, `PATCH/DELETE /api/fleet/sheet-sync/:id`, `POST /api/fleet/sheet-sync/:id/run` (manual trigger). Frontend: "班表自動同步" section in DashboardTab with cards showing status, last sync time, and controls (Zap=manual sync, gear=edit, toggle=enable/disable, trash=delete).
-    - **司機資料擴充欄位** (via `ensureDriverColumns` in `drivers.ts`): `id_no TEXT` (身分證), `insurance_expiry DATE` (強制險到期), `inspection_date DATE` (定期驗車), `bank_code VARCHAR(10)` (行庫代碼), `bank_account VARCHAR(30)` (帳號), `referrer TEXT` (介紹人). Both `GET/POST/PATCH /api/drivers` and fleet portal `GET/POST/PATCH /api/fleet/drivers/:id` support all these fields. Admin portal and franchise fleet portal driver forms include all fields with expiry warning badges (red/orange) on driver cards when within 30 days of expiry.
-*   **Open API Module:** Provides external API access with API key management (SHA-256 hashed keys), usage logging, webhook support for order events, and rate limiting.
-*   **Cash Flow Decomposition:** APIs and admin UI for monthly cash flow summaries, trends, and detailed breakdowns by order, driver, and franchisee.
-*   **Shopee Finance Module:** Integrates specific financial analysis for Shopee logistics, including managing route prefix rates, driver earnings calculations, penalties tracking, and profit & loss analysis by vehicle and fleet, with dedicated DB tables and APIs. Includes a Fusingao customer portal for route management and billing.
-*   **福興高 TMS 訂單維護 (OrderManageTab):** FusingaoPortal 新增「📦 訂單維護」分頁（Group 1 nav），提供完整 TMS 式訂單管理：
-    - 列表/搜尋：關鍵字、狀態、月份篩選；分頁、展開明細列
-    - 新增/編輯對話框：取送貨聯絡、貨品、計費、排程、經手人
-    - 時間軸 Drawer：事件歷程（event_type, note, created_by, created_at）+ 新增事件
-    - 列印/PDF：瀏覽器 print view，顯示完整訂單資料
-    - 自動產生訂單編號 `FY${YYYYMMDD}-${SEQ}` (e.g. FY20260415-0001)
-    - DB：`fusingao_order_events` 表；`orders` 補充欄位（pickup/delivery contacts, cargo fields, scheduled_date, operator_name）
-    - API：`GET/POST /api/fusingao/order-manage`, `PUT /api/fusingao/order-manage/:id`, `GET /api/fusingao/order-manage/:id/timeline`, `POST /api/fusingao/order-manage/:id/events`
-    - 舊訂單自動補充「訂單建立」事件（啟動時 backfill）
-    - `orders.customer_phone` & `orders.cargo_description` 已移除 NOT NULL 限制（允許不完整訂單）
-*   **福興高車隊帳號系統 (Fleet Sub-contractor) — 4-layer settlement chain:** Admin portal `/fusingao` → 5 tabs (default: 調度控制中心/Control Tower): 調度控制中心 (KPI dashboard, exception panel, fleet ranking, unassigned routes with 1-click dispatch), 車趟完成通知, 月度對帳, 合作車隊管理 (with commission_rate/bank fields), 結算總覽 (per-fleet settlement breakdown). Control Tower API: `GET /api/fusingao/control-tower`. Fleet portal `/fleet` → 7 tabs: 可搶路線 (atomic grab), 我的任務 (mark complete + assign driver dropdown), 月結帳單 (CSV export), 旗下司機 (CRUD fleet drivers), 結算分析 (settlement chain visualization + per-driver breakdown), 派車單 (dispatch orders), **司機子帳號** (driver sub-accounts management). DB tables: `fusingao_fleets` (with commission_rate/bank_account/bank_name), `fleet_drivers`, `fleet_sub_accounts` (username/password_hash/display_name/shopee_driver_id/role/is_active), `orders.fusingao_fleet_id/fleet_driver_id/fleet_grabbed_at/fleet_completed_at`, `fusingao_fleet_adjustments` (per-fleet per-month: extra_deduct_pct, fuel_amount, other_amount, notes), `fusingao_report_tokens` (90-day shareable settlement report tokens). APIs: `GET/POST/PUT /api/fusingao/fleets/:id/drivers`, `GET /api/fusingao/settlement`, `GET /api/fusingao/fleets/:id/settlement`, `PUT /api/fusingao/routes/:id/assign-driver`, `GET/POST/PUT/DELETE /api/fusingao/fleets/:id/sub-accounts`, `POST /api/fusingao/fleets/:id/sub-accounts/:id/reset-password`, `GET/POST /api/fusingao/fleets/:id/adjustments`, `POST /api/fusingao/fleets/:id/report-token`, `GET /api/fusingao/public-report/:token`. Auth: `POST /api/auth/login/fleet` JWT — supports role `fusingao_fleet` (full fleet admin) and `fleet_sub` (driver sub-account, only sees own routes filtered by shopeeDriverId). Sub-account JWT: `{ role: "fleet_sub", fleetId, subAccountId, shopeeDriverId, subRole, fleetName }`. Settlement formula: shopee_income → platform keeps commission_rate% → fleet_receive → -extra_deduct% → -fuel_amount → -other_amount → net_payout. Public settlement report: `/fleet/report/:token` (no auth, for franchise partners). Test account: fleet01/test1234.
-*   **API URL Pattern (Frontend):** Admin login and fleet login use `${BASE_URL}/api/<path>` pattern directly. Other data-fetching components use `getApiUrl()` from `@/lib/api`. Never pass `/api/` prefix to `getApiUrl()` — it prepends BASE_URL which already maps to the api root.
-*   **平台需求確認模組 (PlatformRequirementsTab):** 整合三份文件（doc_type 切換）於同一介面：`customer_req`（客戶需求確認，23項）、`architecture`（程式架構清單，56項含成功KPI）、`cfo_jd`（CFO工作說明書，26項）。支援狀態標記（CFO文件用「已完成/暫緩/待執行」，其餘用「需要/不需要/待確認」）、進度統計卡片、CSV匯出、列印確認書（CFO版本含財務長/老闆簽名欄）、重設全部。DB：`platform_requirements`表含`doc_type`欄位（`ALTER TABLE ADD COLUMN IF NOT EXISTS`）。API：`GET /api/platform-requirements?doc_type=...`、`PATCH /api/platform-requirements/:id`、`POST /api/platform-requirements/reset`、`GET /api/platform-requirements/export-csv`。
-*   **車輛盈虧分析 (VehicleProfitTab):** 月度車輛營運獲利分析，支援可配置固定成本參數（年度保險費120000、折舊額240000、油耗0.35L/km、柴油28元/L）。自動計算：油費=里程×油耗×單價、月保險=年保/12、月折舊=年折/12、淨利潤=運費-總支出、利潤率%。統計卡片（車輛數/收入/淨利潤/利潤率）、車輛CRUD、合計列、CSV匯出（含參數表）、列印報表（格式化版型含公式說明）。DB：`vehicle_profit_records`、`vehicle_profit_params`（預設已建立）。API：`GET/POST /api/vehicle-profit/records`、`PATCH/DELETE /api/vehicle-profit/records/:id`、`GET/PATCH /api/vehicle-profit/params`。
-*   **薪資成本結算 v2 (PayrollCostTab):** 司機薪資報酬單，月度選擇，CRUD管理。DB：`payroll_costs`（含v2欄位）。API：`GET/POST/PATCH/DELETE /api/payroll-cost/*`。
-*   **勞退提撥管理 (LaborPensionTab):** 勞退提撥費用管理。
-*   **貨品包裝參考 (CargoPackagingTab):** 貨品包裝方式與容器尺寸參考表。DB欄位：id, category, cargo_type, packaging_methods, is_custom。API：`GET /api/cargo-packaging`、`GET /api/cargo-containers`。
+*   **Franchise Fleet Management System:** A full multi-role franchise platform with platform admin CRUD, fleet owner backend (driver management, real-time dispatch wall, pricing rules, leave approval, salary, standby scheduling), and driver mobile API. Includes Google Sheets auto-sync for dispatch data and driver sub-accounts with a 4-layer settlement chain.
+*   **Open API Module:** External API access with API key management, usage logging, webhook support, and rate limiting.
+*   **Cash Flow Decomposition:** APIs and admin UI for monthly cash flow summaries, trends, and detailed breakdowns.
+*   **Shopee Finance Module:** Specific financial analysis for Shopee logistics, including route prefix rates, driver earnings, penalties, and P&L analysis. Includes a Fusingao customer portal for route management and billing.
+*   **Fusingao TMS Order Management:** Dedicated "Order Manage" tab in Fusingao portal for comprehensive TMS-style order management, including list/search, add/edit dialogs, timeline drawer, print/PDF, and auto-generated order numbers.
+*   **Fusingao Fleet Sub-contractor System:** Admin portal for Fusingao fleet management (Control Tower, fleet completion notices, monthly reconciliation, partner fleet management, settlement overview) and fleet portal (route grabbing, tasks, monthly bills, driver management, settlement analysis, dispatch orders, driver sub-accounts). Implements a 4-layer settlement chain with detailed formulas and public reporting.
+*   **Platform Requirements Module:** Integrates customer requirements, architecture checklist, and CFO job description documents into a single interface with status tagging, progress statistics, CSV export, and print functionality.
+*   **Vehicle Profit Analysis:** Monthly vehicle operational profit analysis with configurable fixed cost parameters, automatic calculations for fuel, insurance, depreciation, net profit, and profit margin. Includes vehicle CRUD, totals, CSV export, and printable reports.
+*   **Payroll Cost Settlement v2:** Monthly driver payroll management.
+*   **Labor Pension Management:** Management of labor pension contributions.
+*   **Cargo Packaging Reference:** Reference table for cargo packaging methods and container sizes.
+*   **Sheet Sync 班表欄位 Type:** The Google Sheets auto-sync system (`sheetSyncScheduler.ts`) now supports three sync types: `route` (路線匯入 → inserts to `orders`), `billing` (帳務趟次 → inserts to `fusingao_billing_trips`), and `班表欄位` / `schedule` (蝦皮班表 → upserts to `shopee_route_schedules`). The 班表欄位 type parses positional columns [0]=date [2]=route_no [3]=vehicle_type [4]=driver_id [5]=time_slot [6]=dock_no, and also auto-detects header-based CSV format. Frontend `SheetSyncTab.tsx` displays three color-coded type buttons (blue/orange/green) with format descriptions.
 
 # External Dependencies
 
@@ -82,7 +58,7 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **API Framework:** Express 5
 *   **Database:** PostgreSQL
 *   **ORM:** Drizzle ORM
-*   **Validation:** Zod, drizzle-zod
+*   **Validation:** Zod
 *   **API Codegen:** Orval
 *   **Auth Library:** `jsonwebtoken`
 *   **SMS Service:** Every8D
@@ -92,8 +68,4 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Data Manipulation/Utility:** `exceljs`, `date-fns`, `lucide-react`
 *   **Email Client:** Nodemailer
 *   **PDF Generation:** `pdfkit`
-*   **Payment Gateway:** ECPay (for e-invoicing)
-
-# Pending Integrations
-
-*   **Google Sheets（福興高派車表）**: User provided Google Sheets URL (`https://docs.google.com/spreadsheets/d/1Z65luSGOGNYpFPyL1apLR8kxOvYV-U2VvPcVrmC5TzI/edit?gid=547652343`) for auto-sync of dispatch data. Replit Google Sheets connector was dismissed (connector ID: `ccfg_google-sheet_E42A9F6CA62546F68A1FECA0E8`). Next step: User needs to either (a) make the sheet publicly viewable so the server can fetch via CSV export URL, or (b) re-authorize the Replit Google Sheets integration. Once accessible, build an import endpoint `POST /fusingao/sync-dispatch` that reads the sheet and creates/updates `orders` rows with route data.
+*   **Payment Gateway:** ECPay
