@@ -75,7 +75,14 @@ const OpenApiTab           = lazy(() => import("./admin/OpenApiTab"));
 const BillingFlowTab       = lazy(() => import("./admin/BillingFlowTab"));
 const PricingPanel         = lazy(() => import("@/components/PricingPanel"));
 const OrderSearchTab       = lazy(() => import("./admin/OrderSearchTab"));
-const GloryPortalTab       = lazy(() => import("./fusingao/GloryPortalTab"));
+const GloryVehicleTab      = lazy(() => import("./fusingao/VehicleTab"));
+const GloryFuelTab         = lazy(() => import("./fusingao/FuelTab"));
+const GloryDriverBonusTab  = lazy(() => import("./fusingao/DriverBonusTab"));
+const GloryTownshipTab     = lazy(() => import("./fusingao/TownshipTab"));
+const GlorySupplierTab     = lazy(() => import("./fusingao/SupplierTab"));
+const GloryContractQuoteTab = lazy(() => import("./fusingao/ContractQuoteTab"));
+const GloryShopeeDriversTab = lazy(() => import("./fusingao/ShopeeDriversTab"));
+const GloryShopeeScheduleTab = lazy(() => import("./fusingao/ShopeeScheduleTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1657,9 +1664,13 @@ export default function Admin() {
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
                     { value: "heatmap",     icon: <Map className="w-3.5 h-3.5" />,                                  label: "熱區圖" },
                     { value: "fleetmap",    icon: <Navigation className="w-3.5 h-3.5" />,                           label: "車隊圖" },
-                    { value: "vehicles",    icon: <Truck className="w-3.5 h-3.5" />,                                label: "車型庫" },
-                    { value: "fleet",       icon: <Bell className="w-3.5 h-3.5" />,                                 label: "車隊" },
-                    { value: "outsourcing", icon: <DollarSign className="w-3.5 h-3.5" />,                           label: "轉單" },
+                    { value: "vehicles",       icon: <Truck className="w-3.5 h-3.5" />,                                label: "車型庫" },
+                    { value: "vehicle-mgmt",   icon: <Truck className="w-3.5 h-3.5 text-orange-500" />,              label: "車輛管理" },
+                    { value: "fuel-mgmt",      icon: <span className="text-sm leading-none">⛽</span>,                label: "油料管理" },
+                    { value: "fleet",          icon: <Bell className="w-3.5 h-3.5" />,                               label: "車隊" },
+                    { value: "outsourcing",    icon: <DollarSign className="w-3.5 h-3.5" />,                         label: "轉單" },
+                    { value: "shopeedrivers",  icon: <span className="text-sm leading-none">🧑‍✈️</span>,              label: "蝦皮司機" },
+                    { value: "shopeeschedule", icon: <span className="text-sm leading-none">📅</span>,               label: "蝦皮班表" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -1688,8 +1699,10 @@ export default function Admin() {
                     { value: "settlement",  icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,         label: "結算" },
                     { value: "cashflow",   icon: <Layers className="w-3.5 h-3.5 text-indigo-500" />,              label: "金流拆解" },
                     { value: "billingflow", icon: <RotateCcw className="w-3.5 h-3.5 text-violet-500" />,          label: "金流閉環" },
-                    { value: "bidding",    icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,              label: "競標比價" },
-                    { value: "approval",    icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,               label: "審批" },
+                    { value: "bidding",       icon: <Layers className="w-3.5 h-3.5 text-orange-500" />,            label: "競標比價" },
+                    { value: "approval",      icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,             label: "審批" },
+                    { value: "contractquote", icon: <span className="text-sm leading-none">📝</span>,              label: "合約報價" },
+                    { value: "driverbonus",   icon: <span className="text-sm leading-none">💰</span>,              label: "司機獎金" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -1717,7 +1730,8 @@ export default function Admin() {
                     { value: "drivercredit", icon: <span className="text-sm leading-none">⭐</span>,                 label: "信用積分" },
                     { value: "system",      icon: <Settings2 className="w-3.5 h-3.5" />,                             label: "系統設定" },
                     { value: "zones",       icon: <MapPin className="w-3.5 h-3.5 text-emerald-500" />,               label: "站點" },
-                    { value: "glory",       icon: <span className="text-sm leading-none">🖥️</span>,                  label: "Glory 模組" },
+                    { value: "supplier",    icon: <span className="text-sm leading-none">🏭</span>,                   label: "供應商" },
+                    { value: "township",    icon: <span className="text-sm leading-none">🗺️</span>,                   label: "縣市鄉鎮" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -3994,9 +4008,44 @@ export default function Admin() {
           <StrategicKPITab />
         </TabsContent>
 
-        {/* ===== 後台管理中心 TAB ===== */}
-        <TabsContent value="glory" className="outline-none">
-          <GloryPortalTab onNavigateAdmin={handleTabChange} />
+        {/* ===== 車輛管理 TAB ===== */}
+        <TabsContent value="vehicle-mgmt" className="outline-none">
+          <GloryVehicleTab />
+        </TabsContent>
+
+        {/* ===== 油料管理 TAB ===== */}
+        <TabsContent value="fuel-mgmt" className="outline-none">
+          <GloryFuelTab />
+        </TabsContent>
+
+        {/* ===== 蝦皮司機名單 TAB ===== */}
+        <TabsContent value="shopeedrivers" className="outline-none">
+          <GloryShopeeDriversTab />
+        </TabsContent>
+
+        {/* ===== 蝦皮北倉班表 TAB ===== */}
+        <TabsContent value="shopeeschedule" className="outline-none">
+          <GloryShopeeScheduleTab />
+        </TabsContent>
+
+        {/* ===== 合約報價管理 TAB ===== */}
+        <TabsContent value="contractquote" className="outline-none">
+          <GloryContractQuoteTab />
+        </TabsContent>
+
+        {/* ===== 司機獎金管理 TAB ===== */}
+        <TabsContent value="driverbonus" className="outline-none">
+          <GloryDriverBonusTab />
+        </TabsContent>
+
+        {/* ===== 供應商管理 TAB ===== */}
+        <TabsContent value="supplier" className="outline-none">
+          <GlorySupplierTab />
+        </TabsContent>
+
+        {/* ===== 縣市鄉鎮 TAB ===== */}
+        <TabsContent value="township" className="outline-none">
+          <GloryTownshipTab />
         </TabsContent>
       </Tabs>
       </Suspense>
