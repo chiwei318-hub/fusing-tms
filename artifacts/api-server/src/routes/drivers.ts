@@ -59,9 +59,23 @@ ensureDriverColumns().catch(console.error);
 
 router.get("/drivers", async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT * FROM drivers ORDER BY created_at`
-    );
+    const { franchisee_id } = req.query;
+    let query = `SELECT id, name, phone, vehicle_type, license_plate, status,
+                        driver_type, username, line_user_id, engine_cc, vehicle_year,
+                        vehicle_brand, vehicle_tonnage, vehicle_body_type, has_tailgate,
+                        max_load_kg, max_volume_cbm, bank_name, bank_branch, bank_account,
+                        bank_account_name, credit_score, rating, rating_count,
+                        can_cold_chain, franchisee_id, is_franchisee, employee_id,
+                        is_active, created_at,
+                        CASE WHEN password IS NOT NULL THEN true ELSE false END AS has_password
+                 FROM drivers`;
+    const params: any[] = [];
+    if (franchisee_id) {
+      query += ` WHERE franchisee_id = $1`;
+      params.push(parseInt(franchisee_id as string));
+    }
+    query += ` ORDER BY created_at`;
+    const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "Failed to list drivers");
@@ -98,6 +112,7 @@ router.post("/drivers", async (req, res) => {
         bankAccount: b.bankAccount ?? null,
         bankAccountName: b.bankAccountName ?? null,
         employeeId: b.employeeId ? String(b.employeeId) : null,
+        franchiseeId: b.franchiseeId ? parseInt(b.franchiseeId) : null,
         status: "available",
       })
       .returning();

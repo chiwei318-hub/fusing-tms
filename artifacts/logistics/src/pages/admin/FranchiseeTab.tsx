@@ -3,6 +3,7 @@ import {
   Building2, Plus, RefreshCw, Edit2, Trash2, TrendingUp, Users,
   DollarSign, CheckCircle2, Clock, XCircle, ChevronDown, ChevronUp,
   FileText, Send, MapPin, Phone, Mail, Calendar, KeyRound, Eye, EyeOff,
+  Truck, UserCog,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,40 @@ interface Franchisee {
   total_net_payout: string;
   current_month_orders: string;
 }
+
+interface FranchiseeDriver {
+  id: number;
+  name: string;
+  phone: string;
+  vehicle_type: string;
+  license_plate: string;
+  status: string;
+  username: string | null;
+  has_password: boolean;
+  driver_type: string | null;
+  created_at: string;
+}
+
+interface DriverForm {
+  name: string;
+  phone: string;
+  vehicle_type: string;
+  license_plate: string;
+  username: string;
+  password: string;
+  driver_type: string;
+}
+
+const EMPTY_DRIVER: DriverForm = {
+  name: "", phone: "", vehicle_type: "", license_plate: "",
+  username: "", password: "", driver_type: "affiliated",
+};
+
+const DRIVER_TYPE_MAP: Record<string, string> = {
+  self: "自家司機",
+  affiliated: "靠行司機",
+  external: "外部司機",
+};
 
 interface Settlement {
   id: number;
@@ -131,6 +166,14 @@ export default function FranchiseeTab() {
   const [filterAffiliation, setFilterAffiliation] = useState("all");
   const [search, setSearch]               = useState("");
 
+  // ─── Driver management state ──────────────────────────────────────────
+  const [franchiseeDrivers, setFranchiseeDrivers] = useState<Record<number, FranchiseeDriver[]>>({});
+  const [expandedSubTab, setExpandedSubTab]       = useState<Record<number, "settlement" | "drivers">>({});
+  const [driverDialog, setDriverDialog]           = useState<{ franchiseeId: number; editDriver?: FranchiseeDriver } | null>(null);
+  const [driverForm, setDriverForm]               = useState<DriverForm>(EMPTY_DRIVER);
+  const [savingDriver, setSavingDriver]           = useState(false);
+  const [showDriverPw, setShowDriverPw]           = useState(false);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -163,6 +206,99 @@ export default function FranchiseeTab() {
     } else {
       setExpandedId(id);
       if (!settlements[id]) fetchSettlements(id);
+      if (!franchiseeDrivers[id]) fetchFranchiseeDrivers(id);
+    }
+  };
+
+  const fetchFranchiseeDrivers = async (franchiseeId: number) => {
+    try {
+      const res = await fetch(
+        getApiUrl(`/api/drivers?franchisee_id=${franchiseeId}`),
+        { headers: authHeaders() }
+      );
+      const data = await res.json();
+      setFranchiseeDrivers(prev => ({ ...prev, [franchiseeId]: Array.isArray(data) ? data : [] }));
+    } catch { /* ignore */ }
+  };
+
+  const openDriverCreate = (franchiseeId: number) => {
+    setDriverForm(EMPTY_DRIVER);
+    setShowDriverPw(false);
+    setDriverDialog({ franchiseeId });
+  };
+
+  const openDriverEdit = (franchiseeId: number, d: FranchiseeDriver) => {
+    setDriverForm({
+      name: d.name,
+      phone: d.phone,
+      vehicle_type: d.vehicle_type,
+      license_plate: d.license_plate,
+      username: d.username ?? "",
+      password: "",
+      driver_type: d.driver_type ?? "affiliated",
+    });
+    setShowDriverPw(false);
+    setDriverDialog({ franchiseeId, editDriver: d });
+  };
+
+  const handleSaveDriver = async () => {
+    if (!driverDialog) return;
+    if (!driverForm.name.trim() || !driverForm.phone.trim()) {
+      toast({ title: "姓名和電話為必填", variant: "destructive" }); return;
+    }
+    setSavingDriver(true);
+    try {
+      const { franchiseeId, editDriver } = driverDialog;
+      const payload = {
+        name: driverForm.name.trim(),
+        phone: driverForm.phone.trim(),
+        vehicleType: driverForm.vehicle_type.trim() || "小型車",
+        licensePlate: driverForm.license_plate.trim() || "未填",
+        driverType: driverForm.driver_type,
+        username: driverForm.username.trim() || undefined,
+        password: driverForm.password.trim() || undefined,
+        franchiseeId,
+      };
+      if (editDriver) {
+        const res = await fetch(getApiUrl(`/api/drivers/${editDriver.id}`), {
+          method: "PATCH",
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json()).error ?? "更新失敗");
+        toast({ title: "司機資料已更新", description: driverForm.name });
+      } else {
+        const res = await fetch(getApiUrl("/api/drivers"), {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json()).error ?? "建立失敗");
+        toast({ title: "司機已建立", description: driverForm.name });
+      }
+      setDriverDialog(null);
+      setFranchiseeDrivers(prev => ({ ...prev, [franchiseeId]: [] })); // force refetch
+      await fetchFranchiseeDrivers(franchiseeId);
+    } catch (e: any) {
+      toast({ title: "操作失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setSavingDriver(false);
+    }
+  };
+
+  const handleDeleteDriver = async (franchiseeId: number, driverId: number, name: string) => {
+    if (!confirm(`確定要移除司機「${name}」？`)) return;
+    try {
+      await fetch(getApiUrl(`/api/drivers/${driverId}`), {
+        method: "DELETE", headers: authHeaders(),
+      });
+      toast({ title: "已移除", description: name });
+      setFranchiseeDrivers(prev => ({
+        ...prev,
+        [franchiseeId]: (prev[franchiseeId] ?? []).filter(d => d.id !== driverId),
+      }));
+    } catch {
+      toast({ title: "移除失敗", variant: "destructive" });
     }
   };
 
@@ -450,9 +586,105 @@ export default function FranchiseeTab() {
                     </div>
                   </div>
 
-                  {/* Expanded: settlements */}
+                  {/* Expanded: sub-tab */}
                   {isExpanded && (
                     <div className="mt-4 pt-4 border-t space-y-4">
+                      {/* Sub-tab switcher */}
+                      <div style={{ display: "flex", gap: "6px", borderBottom: "1px solid #e5e7eb", paddingBottom: "8px" }}>
+                        {([
+                          { key: "settlement", icon: <DollarSign className="w-3.5 h-3.5" />, label: "月結帳單" },
+                          { key: "drivers",    icon: <Truck className="w-3.5 h-3.5" />,     label: `司機管理（${franchiseeDrivers[f.id]?.length ?? "…"}）` },
+                        ] as const).map(tab => {
+                          const active = (expandedSubTab[f.id] ?? "settlement") === tab.key;
+                          return (
+                            <button key={tab.key} onClick={() => setExpandedSubTab(p => ({ ...p, [f.id]: tab.key }))}
+                              style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 12px",
+                                fontSize: "12px", borderRadius: "6px", border: "none", cursor: "pointer",
+                                fontWeight: active ? 600 : 400, background: active ? "#1d4ed8" : "transparent",
+                                color: active ? "#fff" : "#6b7280" }}>
+                              {tab.icon}{tab.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* ── Drivers sub-tab ── */}
+                      {(expandedSubTab[f.id] ?? "settlement") === "drivers" && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5" />旗下司機
+                            </span>
+                            <Button size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={() => openDriverCreate(f.id)}>
+                              <Plus className="w-3 h-3 mr-1" />新增司機
+                            </Button>
+                          </div>
+
+                          {!franchiseeDrivers[f.id] ? (
+                            <p className="text-xs text-muted-foreground py-4 text-center">載入中...</p>
+                          ) : franchiseeDrivers[f.id].length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Truck className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                              <p className="text-xs">尚未建立司機帳號</p>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-lg border">
+                              <table className="w-full text-xs">
+                                <thead className="bg-muted/50">
+                                  <tr>
+                                    {["姓名", "電話", "車牌", "車型", "類型", "Atoms帳號", ""].map(h => (
+                                      <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {franchiseeDrivers[f.id].map(d => (
+                                    <tr key={d.id} className="hover:bg-muted/25">
+                                      <td className="px-3 py-2 font-medium">{d.name}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{d.phone}</td>
+                                      <td className="px-3 py-2 font-mono">{d.license_plate}</td>
+                                      <td className="px-3 py-2">{d.vehicle_type}</td>
+                                      <td className="px-3 py-2">
+                                        <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "9999px",
+                                          background: "#dbeafe", color: "#1d4ed8", fontWeight: 600 }}>
+                                          {DRIVER_TYPE_MAP[d.driver_type ?? "affiliated"] ?? d.driver_type}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        {d.username
+                                          ? <span className="flex items-center gap-1 text-blue-600 font-mono">
+                                              <KeyRound className="w-3 h-3" />{d.username}
+                                              {d.has_password
+                                                ? <span className="text-green-600 ml-1">・密碼已設</span>
+                                                : <span className="text-amber-500 ml-1">・未設密碼</span>}
+                                            </span>
+                                          : <span className="text-muted-foreground/50 italic">未設帳號</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        <div className="flex gap-1 justify-end">
+                                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                                            onClick={() => openDriverEdit(f.id, d)}>
+                                            <Edit2 className="w-3 h-3 text-blue-500" />
+                                          </Button>
+                                          <Button variant="ghost" size="icon" className="h-6 w-6"
+                                            onClick={() => handleDeleteDriver(f.id, d.id, d.name)}>
+                                            <Trash2 className="w-3 h-3 text-red-400" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Settlement sub-tab ── */}
+                      {(expandedSubTab[f.id] ?? "settlement") === "settlement" && (
+                      <div className="space-y-4">
                       {/* Generate settlement */}
                       <div className="flex flex-wrap gap-2 items-center bg-gray-50 rounded-xl p-3 border">
                         <span className="text-xs font-semibold w-full mb-1">產出月結帳單</span>
@@ -536,6 +768,8 @@ export default function FranchiseeTab() {
                             </tbody>
                           </table>
                         </div>
+                      )}
+                      </div>
                       )}
                     </div>
                   )}
@@ -693,6 +927,110 @@ export default function FranchiseeTab() {
             <Button variant="outline" onClick={() => setShowForm(false)}>取消</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
               {saving ? "儲存中..." : editId ? "更新資料" : "建立加盟主"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Driver Create / Edit Dialog ───────────────────────────── */}
+      <Dialog open={!!driverDialog} onOpenChange={o => { if (!o) setDriverDialog(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5 text-blue-600" />
+              {driverDialog?.editDriver ? `編輯司機：${driverDialog.editDriver.name}` : "新增司機"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+            {/* 基本資料 */}
+            <div className="sm:col-span-2">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">基本資料</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">姓名 *</Label>
+              <Input placeholder="王大明" value={driverForm.name}
+                onChange={e => setDriverForm(p => ({ ...p, name: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">電話 *</Label>
+              <Input placeholder="0912-345-678" value={driverForm.phone}
+                onChange={e => setDriverForm(p => ({ ...p, phone: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">車牌號碼</Label>
+              <Input placeholder="ABC-1234" value={driverForm.license_plate}
+                onChange={e => setDriverForm(p => ({ ...p, license_plate: e.target.value }))} className="h-8 text-sm font-mono" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">車型</Label>
+              <Input placeholder="小型貨車 / 1.5T" value={driverForm.vehicle_type}
+                onChange={e => setDriverForm(p => ({ ...p, vehicle_type: e.target.value }))} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">司機類型</Label>
+              <Select value={driverForm.driver_type} onValueChange={v => setDriverForm(p => ({ ...p, driver_type: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="affiliated">靠行司機</SelectItem>
+                  <SelectItem value="self">自家司機</SelectItem>
+                  <SelectItem value="external">外部司機</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Atoms 帳密設定 */}
+            <div className="sm:col-span-2 pt-1">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                <UserCog className="w-3.5 h-3.5" />Atoms 司機登入帳密
+              </p>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                設定後司機可用此帳號密碼登入 Atoms 司機 APP 接單
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">登入帳號</Label>
+              <Input placeholder="英數字，如 driver_chen" value={driverForm.username}
+                onChange={e => setDriverForm(p => ({ ...p, username: e.target.value }))}
+                className="h-8 text-sm font-mono" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                {driverDialog?.editDriver ? "重設密碼（留空不更改）" : "登入密碼"}
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showDriverPw ? "text" : "password"}
+                  placeholder={driverDialog?.editDriver ? "輸入新密碼..." : "設定初始密碼"}
+                  value={driverForm.password}
+                  onChange={e => setDriverForm(p => ({ ...p, password: e.target.value }))}
+                  className="h-8 text-sm pr-9"
+                />
+                <button type="button" tabIndex={-1}
+                  className="absolute right-2 top-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowDriverPw(v => !v)}>
+                  {showDriverPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* 說明 */}
+            <div className="sm:col-span-2">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-muted-foreground">
+                <p className="font-semibold text-foreground mb-1 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-500" />帳號說明
+                </p>
+                <p>• 帳號建立後司機可於 Atoms APP 直接登入</p>
+                <p>• 建議帳號格式：姓名縮寫 + 手機後4碼，例如 <code className="bg-blue-100 px-1 rounded">chen1234</code></p>
+                <p>• 密碼至少 6 碼</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDriverDialog(null)}>取消</Button>
+            <Button onClick={handleSaveDriver} disabled={savingDriver} className="bg-blue-600 hover:bg-blue-700 text-white">
+              {savingDriver ? "儲存中..." : driverDialog?.editDriver ? "更新司機" : "建立司機帳號"}
             </Button>
           </DialogFooter>
         </DialogContent>
