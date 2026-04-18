@@ -388,6 +388,158 @@ async function syncBilling(
   };
 }
 
+// ── Schedule (班表欄位) sync handler ────────────────────────────────────────
+// Parses Shopee 北倉班表 format and upserts into shopee_route_schedules
+// Column layout (positional): [0] date_time [1] empty [2] route_no [3] vehicle_type
+//   [4] driver_id [5] time_slot [6] dock_no [7] stop_seq [8] store_name [9] store_address
+// Also supports header-based format with columns: 日期時間/路線編號/車型/司機工號/時間/碼頭
+async function syncSchedule(
+  _cfg: { id: number; name: string },
+  text: string
+): Promise<{ inserted: number; duplicates: number; errors: number; warnings: number; detail: object }> {
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const allLines = cleaned.split(/\r?\n/).filter(l => l.trim());
+  const warnings: string[] = [];
+  const insertedList: string[] = [];
+  const duplicateList: string[] = [];
+  const errorList: { line: string; error: string }[] = [];
+
+  function splitLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { result.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  // Detect header or use positional columns
+  const HEADER_KEYWORDS = ["路線編號", "route_no", "routeno", "日期", "date"];
+  let headerColMap: Record<string, number> | null = null;
+  let dataStartIdx = 0;
+
+  const firstCols = splitLine(allLines[0] ?? "");
+  const firstJoined = firstCols.join(",").toLowerCase();
+  if (HEADER_KEYWORDS.some(k => firstJoined.includes(k.toLowerCase()))) {
+    // Header-based
+    headerColMap = {};
+    for (let i = 0; i < firstCols.length; i++) {
+      const h = firstCols[i].toLowerCase().replace(/\s/g, "");
+      if (h.includes("日期") || h.includes("date")) headerColMap["date"] = i;
+      if (h.includes("路線") || h.includes("route")) headerColMap["route_no"] = i;
+      if (h.includes("車型") || h.includes("vehicle")) headerColMap["vehicle_type"] = i;
+      if (h.includes("司機") || h.includes("driver")) headerColMap["driver_id"] = i;
+      if (h.includes("時間") || h.includes("time")) headerColMap["time_slot"] = i;
+      if (h.includes("碼頭") || h.includes("dock")) headerColMap["dock_no"] = i;
+      if (h.includes("倉") || h.includes("warehouse")) headerColMap["warehouse"] = i;
+    }
+    dataStartIdx = 1;
+  }
+
+  // Ensure shopee_route_schedules table has import_source
+  await pool.query(`ALTER TABLE shopee_route_schedules ADD COLUMN IF NOT EXISTS import_source TEXT DEFAULT 'excel'`);
+  await pool.query(`ALTER TABLE shopee_route_schedules ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMP DEFAULT NOW()`);
+
+  // Parse rows
+  let currentRouteDate = "";
+  let currentRouteNo = "";
+
+  for (let i = dataStartIdx; i < allLines.length; i++) {
+    const line = allLines[i];
+    // Skip header-like rows
+    if (line.includes("路線編號（預排）") || line.includes("路線編號,")) continue;
+
+    const cols = splitLine(line);
+    if (cols.length < 2) continue;
+
+    let routeDate = "";
+    let routeNo = "";
+    let vehicleType = "";
+    let driverRaw = "";
+    let timeSlot = "";
+    let dockNo = "";
+    let warehouse = "";
+
+    if (headerColMap) {
+      routeDate = cols[headerColMap["date"] ?? -1] ?? "";
+      routeNo = cols[headerColMap["route_no"] ?? -1] ?? "";
+      vehicleType = cols[headerColMap["vehicle_type"] ?? -1] ?? "";
+      driverRaw = cols[headerColMap["driver_id"] ?? -1] ?? "";
+      timeSlot = cols[headerColMap["time_slot"] ?? -1] ?? "";
+      dockNo = cols[headerColMap["dock_no"] ?? -1] ?? "";
+      warehouse = cols[headerColMap["warehouse"] ?? -1] ?? "";
+    } else {
+      // Positional: [0] date_time [2] route_no [3] vehicle_type [4] driver_id [5] time_slot [6] dock_no
+      routeDate = (cols[0] ?? "").split(" ")[0]?.replace(/\//g, "-") ?? "";
+      routeNo = cols[2] ?? "";
+      vehicleType = cols[3] ?? "";
+      driverRaw = cols[4] ?? "";
+      timeSlot = cols[5] ?? "";
+      dockNo = cols[6] ?? "";
+    }
+
+    // Track current route info (rows without routeNo are store stops of previous route)
+    if (routeNo) { currentRouteDate = routeDate; currentRouteNo = routeNo; }
+    if (!currentRouteNo) continue;
+
+    // Only upsert route-level rows (skip pure stop rows)
+    if (!routeNo) continue;
+
+    // Normalise date
+    const dateStr = currentRouteDate
+      .replace(/[年\/]/g, "-").replace(/[月日]/g, "").trim();
+    const dateMatch = dateStr.match(/^(\d{4}-\d{1,2}-\d{1,2})/);
+    if (!dateMatch) continue;
+    const routeDateNorm = dateMatch[1];
+    const importMonth = routeDateNorm.slice(0, 7);
+
+    try {
+      const dup = await pool.query(
+        `SELECT id FROM shopee_route_schedules WHERE route_date = $1 AND route_id = $2 LIMIT 1`,
+        [routeDateNorm, routeNo]
+      );
+      if (dup.rows.length > 0) {
+        await pool.query(
+          `UPDATE shopee_route_schedules SET vehicle_type=$1, driver_id=$2, departure_time=$3,
+           dock_number=$4, warehouse=$5, import_source='sheet_sync', last_updated_at=NOW()
+           WHERE route_date=$6 AND route_id=$7`,
+          [vehicleType || null, driverRaw || null, timeSlot || null,
+           dockNo || null, warehouse || null, routeDateNorm, routeNo]
+        );
+        duplicateList.push(`${routeDateNorm}/${routeNo}`);
+      } else {
+        await pool.query(
+          `INSERT INTO shopee_route_schedules
+             (route_date, route_id, vehicle_type, driver_id, departure_time,
+              dock_number, warehouse, import_month, import_source, last_updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sheet_sync',NOW())`,
+          [routeDateNorm, routeNo, vehicleType || null, driverRaw || null,
+           timeSlot || null, dockNo || null, warehouse || null, importMonth]
+        );
+        insertedList.push(`${routeDateNorm}/${routeNo}`);
+      }
+    } catch (e: unknown) {
+      errorList.push({ line: `L${i + 1}:${routeNo}`, error: String(e).slice(0, 150) });
+    }
+  }
+
+  if (insertedList.length === 0 && duplicateList.length === 0 && errorList.length === 0) {
+    warnings.push("試算表中找不到可解析的班表資料，請確認格式：第1欄為「日期時間」、第3欄為「路線編號」，或試算表有欄位標題列");
+  }
+
+  return {
+    inserted: insertedList.length,
+    duplicates: duplicateList.length,
+    errors: errorList.length,
+    warnings: warnings.length,
+    detail: { insertedList, duplicateList, errorList, warnings },
+  };
+}
+
 // ── Core sync logic (shared between scheduler and manual /run) ─────────────
 export async function runSheetSync(
   cfg: {
@@ -420,7 +572,9 @@ export async function runSheetSync(
   const syncType = cfg.sync_type ?? "route";
   const summary = syncType === "billing"
     ? await syncBilling(cfg, text)
-    : await syncRoutes(cfg, text);
+    : syncType === "班表欄位" || syncType === "schedule"
+      ? await syncSchedule(cfg, text)
+      : await syncRoutes(cfg, text);
 
   // 3. Write log entry
   await pool.query(

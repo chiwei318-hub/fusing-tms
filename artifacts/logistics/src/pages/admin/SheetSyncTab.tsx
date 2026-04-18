@@ -51,8 +51,10 @@ interface SyncLog {
 }
 
 const SYNC_TYPE_LABELS: Record<string, string> = {
-  route:   "路線匯入",
-  billing: "帳務趟次",
+  route:    "路線匯入",
+  billing:  "帳務趟次",
+  "班表欄位": "班表欄位",
+  schedule: "班表欄位",
 };
 
 const EMPTY_FORM = {
@@ -263,7 +265,7 @@ export default function SheetSyncTab() {
                       <Badge variant={cfg.is_active ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
                         {cfg.is_active ? "啟用" : "暫停"}
                       </Badge>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.sync_type === "billing" ? "border-orange-400 text-orange-600" : "border-blue-400 text-blue-600"}`}>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.sync_type === "billing" ? "border-orange-400 text-orange-600" : cfg.sync_type === "班表欄位" || cfg.sync_type === "schedule" ? "border-green-500 text-green-700" : "border-blue-400 text-blue-600"}`}>
                         {SYNC_TYPE_LABELS[cfg.sync_type] ?? cfg.sync_type}
                       </Badge>
                       <span className="text-[11px] text-muted-foreground flex items-center gap-1">
@@ -306,7 +308,7 @@ export default function SheetSyncTab() {
                     <>
                       <span className="flex items-center gap-1 text-green-600">
                         <CheckCircle2 className="w-3 h-3" />
-                        新增 {lastResult.inserted ?? 0} 條路線
+                        新增 {lastResult.inserted ?? 0} {cfg.sync_type === "billing" ? "筆帳務" : cfg.sync_type === "班表欄位" || cfg.sync_type === "schedule" ? "筆班表" : "條路線"}
                       </span>
                       {(lastResult.duplicates ?? 0) > 0 && (
                         <span className="text-muted-foreground">略過重複 {lastResult.duplicates}</span>
@@ -487,18 +489,30 @@ export default function SheetSyncTab() {
             <div className="space-y-1.5">
               <Label>同步類型</Label>
               <div className="flex gap-2">
-                {(["route", "billing"] as const).map(type => (
+                {(["route", "billing", "班表欄位"] as const).map(type => (
                   <button
                     key={type}
                     type="button"
                     onClick={() => setForm(f => ({ ...f, sync_type: type }))}
-                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                      form.sync_type === type
-                        ? type === "billing"
-                          ? "border-orange-400 bg-orange-50 text-orange-700"
-                          : "border-blue-400 bg-blue-50 text-blue-700"
-                        : "border-border text-muted-foreground hover:bg-muted"
-                    }`}
+                    style={{
+                      flex: 1,
+                      borderRadius: 6,
+                      border: "1px solid",
+                      padding: "8px 12px",
+                      fontSize: 14,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      borderColor: form.sync_type === type
+                        ? type === "billing" ? "#fb923c" : type === "班表欄位" ? "#22c55e" : "#60a5fa"
+                        : "var(--border, #e5e7eb)",
+                      backgroundColor: form.sync_type === type
+                        ? type === "billing" ? "#fff7ed" : type === "班表欄位" ? "#f0fdf4" : "#eff6ff"
+                        : "transparent",
+                      color: form.sync_type === type
+                        ? type === "billing" ? "#c2410c" : type === "班表欄位" ? "#15803d" : "#1d4ed8"
+                        : "var(--muted-foreground, #6b7280)",
+                    }}
                   >
                     {SYNC_TYPE_LABELS[type]}
                   </button>
@@ -507,7 +521,9 @@ export default function SheetSyncTab() {
               <p className="text-[11px] text-muted-foreground">
                 {form.sync_type === "billing"
                   ? "帳務趟次格式：月份、類型、車隊名稱、倉別、區域、路線號碼、車型、司機工號、出車日期、金額"
-                  : "路線匯入格式：路線編號、門市名稱、門市地址"}
+                  : form.sync_type === "班表欄位"
+                    ? "蝦皮班表格式：日期時間、路線編號、車型、司機工號、時間段、碼頭號碼 → 匯入班表排程"
+                    : "路線匯入格式：路線編號、門市名稱、門市地址"}
               </p>
             </div>
             {form.sync_type === "route" && (
