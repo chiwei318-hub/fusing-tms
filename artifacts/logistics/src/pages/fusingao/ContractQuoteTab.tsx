@@ -60,11 +60,12 @@ interface Customer { id: number; name: string; short_name?: string; phone: strin
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const STATUS_CFG: Record<string,{ label:string; color:string; dot:string; icon:any }> = {
-  draft:     { label:"草稿",   color:"bg-slate-100 text-slate-600 border border-slate-200",     dot:"bg-slate-400",   icon: <Clock className="w-3 h-3" /> },
-  confirmed: { label:"已確認", color:"bg-emerald-50 text-emerald-700 border border-emerald-200", dot:"bg-emerald-500", icon: <CheckCircle2 className="w-3 h-3" /> },
-  expired:   { label:"已過期", color:"bg-amber-50 text-amber-700 border border-amber-200",       dot:"bg-amber-500",   icon: <Clock className="w-3 h-3" /> },
-  cancelled: { label:"已取消", color:"bg-red-50 text-red-600 border border-red-200",             dot:"bg-red-500",     icon: <Ban className="w-3 h-3" /> },
+type StatusKey = "draft"|"confirmed"|"expired"|"cancelled";
+const STATUS_CFG: Record<StatusKey,{ label:string; bg:string; tc:string; bc:string; dot:string }> = {
+  draft:     { label:"草稿",   bg:"#f1f5f9", tc:"#475569", bc:"#e2e8f0", dot:"#94a3b8" },
+  confirmed: { label:"已確認", bg:"#ecfdf5", tc:"#065f46", bc:"#a7f3d0", dot:"#10b981" },
+  expired:   { label:"已過期", bg:"#fffbeb", tc:"#92400e", bc:"#fde68a", dot:"#f59e0b" },
+  cancelled: { label:"已取消", bg:"#fef2f2", tc:"#991b1b", bc:"#fecaca", dot:"#ef4444" },
 };
 
 const UNIT_LABELS: Record<string,string> = {
@@ -74,10 +75,11 @@ const UNIT_LABELS: Record<string,string> = {
 const VEHICLE_TYPES = ["","1.5噸","2噸","3.5噸","5噸","7噸","10噸","17噸","20噸","冷藏車","曳引車","廂型車","平板車"];
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status] ?? STATUS_CFG.draft;
+  const cfg = STATUS_CFG[(status as StatusKey)] ?? STATUS_CFG.draft;
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${cfg.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+      style={{background:cfg.bg, color:cfg.tc, border:`1px solid ${cfg.bc}`}}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{background:cfg.dot}} />
       {cfg.label}
     </span>
   );
@@ -516,33 +518,17 @@ export default function ContractQuoteTab() {
 
       {/* ── 統計卡片 ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          {
-            label:"報價單總數", value: stats.total,
-            bg:"bg-gradient-to-br from-blue-500 to-blue-600",
-            icon:<FileText className="w-5 h-5 text-white/80"/>,
-          },
-          {
-            label:"草稿",       value: stats.draft,
-            bg:"bg-gradient-to-br from-slate-400 to-slate-500",
-            icon:<Clock className="w-5 h-5 text-white/80"/>,
-          },
-          {
-            label:"已確認",     value: stats.confirmed,
-            bg:"bg-gradient-to-br from-emerald-500 to-emerald-600",
-            icon:<CheckCircle2 className="w-5 h-5 text-white/80"/>,
-          },
-          {
-            label:"已過期",     value: stats.expired,
-            bg:"bg-gradient-to-br from-amber-400 to-amber-500",
-            icon:<Calendar className="w-5 h-5 text-white/80"/>,
-          },
-        ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-xl p-4 shadow-sm flex items-center gap-3`}>
-            <div className="w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center shrink-0">{s.icon}</div>
+        {([
+          { label:"報價單總數", value: stats.total,     grad:"linear-gradient(135deg,#3b82f6,#2563eb)", icon:<FileText className="w-5 h-5" style={{color:"rgba(255,255,255,0.85)"}}/> },
+          { label:"草稿",       value: stats.draft,     grad:"linear-gradient(135deg,#94a3b8,#64748b)", icon:<Clock className="w-5 h-5" style={{color:"rgba(255,255,255,0.85)"}}/> },
+          { label:"已確認",     value: stats.confirmed, grad:"linear-gradient(135deg,#10b981,#059669)", icon:<CheckCircle2 className="w-5 h-5" style={{color:"rgba(255,255,255,0.85)"}}/> },
+          { label:"已過期",     value: stats.expired,   grad:"linear-gradient(135deg,#f59e0b,#d97706)", icon:<Calendar className="w-5 h-5" style={{color:"rgba(255,255,255,0.85)"}}/> },
+        ] as const).map(s => (
+          <div key={s.label} style={{background:s.grad}} className="rounded-xl p-4 shadow-sm flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{background:"rgba(255,255,255,0.2)"}}>{s.icon}</div>
             <div>
-              <div className="text-2xl font-bold text-white leading-none">{s.value}</div>
-              <div className="text-xs text-white/80 mt-0.5">{s.label}</div>
+              <div className="text-2xl font-bold leading-none" style={{color:"#fff"}}>{s.value}</div>
+              <div className="text-xs mt-0.5" style={{color:"rgba(255,255,255,0.8)"}}>{s.label}</div>
             </div>
           </div>
         ))}
@@ -621,7 +607,7 @@ export default function ContractQuoteTab() {
       {isLoading ? (
         <div className="space-y-2">
           {[1,2,3,4].map(i => (
-            <div key={i} className="h-12 bg-gradient-to-r from-gray-100 to-gray-50 rounded-xl animate-pulse" />
+            <div key={i} className="h-12 rounded-xl animate-pulse" style={{background:"linear-gradient(90deg,#f3f4f6,#f9fafb)"}} />
           ))}
         </div>
       ) : quotes.length === 0 ? (
@@ -638,7 +624,7 @@ export default function ContractQuoteTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[1120px]">
               <thead>
-                <tr className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+                <tr style={{background:"linear-gradient(90deg,#2563eb,#1d4ed8)",color:"#fff"}}>
                   <th className="p-3 w-9 text-center">
                     <input type="checkbox" className="w-3.5 h-3.5 accent-white rounded"
                       checked={selectedIds.size === quotes.length && quotes.length > 0}
@@ -662,11 +648,11 @@ export default function ContractQuoteTab() {
                   const effectiveStatus = expired && q.status === "confirmed" ? "expired" : q.status;
                   return (
                     <tr key={q.id}
-                      className={`border-b last:border-b-0 transition-all duration-100 cursor-pointer
-                        ${isSelected
-                          ? "bg-blue-50 ring-1 ring-inset ring-blue-200"
-                          : idx%2===0 ? "bg-white" : "bg-slate-50/60"}
-                        hover:bg-blue-50/80`}
+                      className="border-b last:border-b-0 transition-all duration-100 cursor-pointer hover:bg-blue-50"
+                      style={{
+                        background: isSelected ? "#eff6ff" : idx%2===0 ? "#ffffff" : "#f8fafc",
+                        outline: isSelected ? "1px solid #bfdbfe" : undefined,
+                      }}
                       onClick={() => setSelectedIds(prev => { const n=new Set(prev); n.has(q.id)?n.delete(q.id):n.add(q.id); return n; })}>
 
                       {/* checkbox */}
@@ -780,7 +766,7 @@ export default function ContractQuoteTab() {
             </table>
           </div>
           {/* 底部資訊列 */}
-          <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-white border-t flex items-center justify-between">
+          <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{background:"linear-gradient(90deg,#f9fafb,#fff)"}}>
             <span className="text-xs text-gray-500">
               共 <span className="font-semibold text-gray-700">{quotes.length}</span> 筆報價單
               {selectedIds.size > 0 && <> · 已勾選 <span className="font-semibold text-blue-600">{selectedIds.size}</span> 筆</>}
