@@ -95,6 +95,7 @@ import { cargoPackagingRouter } from "./cargoPackaging";
 import { platformRequirementsRouter } from "./platformRequirements";
 import { sheetsExportRouter } from "./sheetsExport";
 import { firebaseSyncRouter } from "./firebaseSync";
+import { freightQuoteRouter } from "./freightQuote";
 
 const router: IRouter = Router();
 
@@ -209,5 +210,6 @@ router.use(cargoPackagingRouter);                                  // 貨品包�
 router.use(platformRequirementsRouter);                            // 物流媒合平台需求確認
 router.use(sheetsExportRouter);                                    // Google Sheets 財務備份匯出
 router.use(firebaseSyncRouter);                                    // Firebase Firestore 雲端金庫同步
+router.use(freightQuoteRouter);                                    // 台灣貨運報價計算引擎
 
 export default router;

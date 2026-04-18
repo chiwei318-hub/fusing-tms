@@ -90,6 +90,7 @@ const CargoPackagingTab       = lazy(() => import("./fusingao/CargoPackagingTab"
 const PlatformRequirementsTab = lazy(() => import("./fusingao/PlatformRequirementsTab"));
 const SheetsBackupTab         = lazy(() => import("./admin/SheetsBackupTab"));
 const FirebaseSyncTab         = lazy(() => import("./admin/FirebaseSyncTab"));
+const FreightQuoteTab         = lazy(() => import("./admin/FreightQuoteTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1745,7 +1746,8 @@ export default function Admin() {
                     { value: "cargopkg",    icon: <span className="text-sm leading-none">📦</span>,                   label: "包裝參考" },
                     { value: "platformreq", icon: <span className="text-sm leading-none">📋</span>,                   label: "需求確認" },
                     { value: "sheetsbackup",  icon: <span className="text-sm leading-none">📊</span>,                  label: "Sheets備份" },
-                    { value: "firebasesync", icon: <span className="text-sm leading-none">🔥</span>,                  label: "雲端金庫" },
+                    { value: "firebasesync",  icon: <span className="text-sm leading-none">🔥</span>,                  label: "雲端金庫" },
+                    { value: "freightquote", icon: <span className="text-sm leading-none">🚚</span>,                  label: "報價計算" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -4080,6 +4082,11 @@ export default function Admin() {
         {/* ===== Firebase 雲端金庫同步 TAB ===== */}
         <TabsContent value="firebasesync" className="outline-none">
           <FirebaseSyncTab />
+        </TabsContent>
+
+        {/* ===== 台灣貨運報價計算機 TAB ===== */}
+        <TabsContent value="freightquote" className="outline-none">
+          <FreightQuoteTab />
         </TabsContent>
 
         {/* ===== 勞退提撥管理 TAB ===== */}

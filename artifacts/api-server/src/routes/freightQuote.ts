@@ -1,0 +1,277 @@
+/**
+ * 台灣貨運報價計算引擎
+ * 對應 calculate_taiwan_freight() Python 函式，並升級為：
+ *   - DB 可調費率表（車型、公里單價、財務分帳比例）
+ *   - 偏遠地區關鍵字自動加成
+ *   - 附加服務清單（搬運上樓、卸貨吊車、冷鏈等）
+ *   - 使用現有 distanceService（Google Maps + Haversine 備援）
+ */
+import { Router } from "express";
+import { pool } from "@workspace/db";
+import { getDistanceKm, geocodeTW, isGoogleMapsConfigured } from "../lib/distanceService";
+
+export const freightQuoteRouter = Router();
+
+// ── DB 初始化 ────────────────────────────────────────────────────────────────
+
+export async function ensureFreightRateTables() {
+  // 車型費率主表
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS freight_rate_config (
+      id             SERIAL PRIMARY KEY,
+      car_type       VARCHAR(50)  NOT NULL UNIQUE,
+      label          VARCHAR(100) NOT NULL,
+      base_price     NUMERIC      NOT NULL DEFAULT 500,
+      km_rate        NUMERIC      NOT NULL DEFAULT 25,
+      platform_pct   NUMERIC      NOT NULL DEFAULT 10,
+      driver_pct     NUMERIC      NOT NULL DEFAULT 90,
+      sort_order     INTEGER      DEFAULT 0,
+      active         BOOLEAN      DEFAULT true,
+      created_at     TIMESTAMPTZ  DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ  DEFAULT NOW()
+    )
+  `);
+
+  // 附加服務費用表
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS freight_surcharge_config (
+      id              SERIAL PRIMARY KEY,
+      key             VARCHAR(50)  NOT NULL UNIQUE,
+      label           VARCHAR(100) NOT NULL,
+      amount          NUMERIC      NOT NULL DEFAULT 0,
+      pct_multiplier  NUMERIC      NOT NULL DEFAULT 0,
+      description     TEXT,
+      active          BOOLEAN      DEFAULT true,
+      created_at      TIMESTAMPTZ  DEFAULT NOW()
+    )
+  `);
+
+  // 偏遠地區關鍵字表
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS freight_remote_areas (
+      id          SERIAL PRIMARY KEY,
+      keyword     VARCHAR(50) NOT NULL UNIQUE,
+      label       VARCHAR(100),
+      multiplier  NUMERIC NOT NULL DEFAULT 1.3,
+      active      BOOLEAN DEFAULT true
+    )
+  `);
+
+  // 預設車型費率（Python base_rates 對應）
+  await pool.query(`
+    INSERT INTO freight_rate_config (car_type, label, base_price, km_rate, platform_pct, driver_pct, sort_order)
+    VALUES
+      ('3.5t',         '3.5噸貨車',   500,   25, 10, 90, 1),
+      ('6.2t',         '6.2噸貨車',   900,   30, 10, 90, 2),
+      ('10t',          '10噸貨車',    1500,  35, 10, 90, 3),
+      ('17t',          '17噸貨車',    2500,  45, 10, 90, 4),
+      ('refrigerator', '冷藏車',      800,   30, 10, 90, 5),
+      ('van',          '箱型車',      400,   20, 10, 90, 6),
+      ('motorcycle',   '機車快遞',    150,   12, 10, 90, 7)
+    ON CONFLICT (car_type) DO NOTHING
+  `);
+
+  // 預設附加服務
+  await pool.query(`
+    INSERT INTO freight_surcharge_config (key, label, amount, pct_multiplier, description)
+    VALUES
+      ('upstairs',       '搬運上樓（每層）', 500,  0,    '搬運至指定樓層，每層加收'),
+      ('hydraulic',      '油壓板車',         800,  0,    '需要油壓板車卸貨'),
+      ('tailgate',       '尾板服務',         600,  0,    '尾板升降卸貨'),
+      ('cold_chain',     '冷鏈全程監控',     300,  0,    '溫度記錄儀 + 全程追蹤'),
+      ('wait_over30',    '等候超時（30分/次）', 300, 0,  '等候超過30分鐘加收'),
+      ('night_delivery', '夜間配送（22:00後）', 0,  0.2, '標準費用加成 20%'),
+      ('holiday',        '假日加成',         0,    0.3,  '假日加成 30%')
+    ON CONFLICT (key) DO NOTHING
+  `);
+
+  // 預設偏遠地區
+  await pool.query(`
+    INSERT INTO freight_remote_areas (keyword, label, multiplier)
+    VALUES
+      ('台東',   '台東縣',   1.3),
+      ('花蓮',   '花蓮縣',   1.3),
+      ('澎湖',   '澎湖縣',   1.5),
+      ('金門',   '金門縣',   1.5),
+      ('馬祖',   '馬祖',     1.5),
+      ('山區',   '山區地帶', 1.3),
+      ('阿里山', '阿里山區', 1.3),
+      ('合歡山', '合歡山區', 1.3),
+      ('廬山',   '廬山地區', 1.3),
+      ('埔里',   '埔里地區', 1.2),
+      ('蘭嶼',   '蘭嶼',     1.6),
+      ('綠島',   '綠島',     1.6)
+    ON CONFLICT (keyword) DO NOTHING
+  `);
+
+  console.log("[FreightQuote] tables ensured");
+}
+
+// ── 偏遠地區檢查 ──────────────────────────────────────────────────────────────
+async function detectRemoteArea(address: string): Promise<{ isRemote: boolean; keyword: string | null; multiplier: number }> {
+  const { rows } = await pool.query<{ keyword: string; label: string; multiplier: number }>(
+    `SELECT keyword, label, multiplier FROM freight_remote_areas WHERE active = true`
+  );
+  for (const row of rows) {
+    if (address.includes(row.keyword)) {
+      return { isRemote: true, keyword: row.label || row.keyword, multiplier: Number(row.multiplier) };
+    }
+  }
+  return { isRemote: false, keyword: null, multiplier: 1 };
+}
+
+// ── GET /api/freight-quote/config ─────────────────────────────────────────────
+// 取得所有費率設定（供前端計算機和設定頁使用）
+freightQuoteRouter.get("/freight-quote/config", async (_req, res) => {
+  try {
+    const [rates, surcharges, remoteAreas] = await Promise.all([
+      pool.query(`SELECT * FROM freight_rate_config ORDER BY sort_order, id`),
+      pool.query(`SELECT * FROM freight_surcharge_config ORDER BY id`),
+      pool.query(`SELECT * FROM freight_remote_areas ORDER BY id`),
+    ]);
+    res.json({
+      ok: true,
+      rates: rates.rows,
+      surcharges: surcharges.rows,
+      remoteAreas: remoteAreas.rows,
+      googleMapsAvailable: isGoogleMapsConfigured(),
+    });
+  } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ── POST /api/freight-quote/calculate ─────────────────────────────────────────
+// 核心報價計算（對應 calculate_taiwan_freight()）
+freightQuoteRouter.post("/freight-quote/calculate", async (req, res) => {
+  try {
+    const {
+      pickup_address,
+      delivery_address,
+      car_type = "3.5t",
+      services = {},          // { upstairs: 2, hydraulic: true, night_delivery: true, ... }
+      custom_km_rate,         // 可覆蓋 DB 設定的公里費
+      custom_platform_pct,    // 可覆蓋分帳比例
+    } = req.body as {
+      pickup_address: string;
+      delivery_address: string;
+      car_type?: string;
+      services?: Record<string, number | boolean>;
+      custom_km_rate?: number;
+      custom_platform_pct?: number;
+    };
+
+    if (!pickup_address || !delivery_address) {
+      return res.status(400).json({ ok: false, error: "需要 pickup_address 和 delivery_address" });
+    }
+
+    // 1. 取得車型費率
+    const rateRow = await pool.query<{
+      base_price: string; km_rate: string; platform_pct: string; driver_pct: string; label: string;
+    }>(`SELECT * FROM freight_rate_config WHERE car_type = $1 AND active = true LIMIT 1`, [car_type]);
+
+    const rate = rateRow.rows[0] ?? { base_price: "500", km_rate: "25", platform_pct: "10", driver_pct: "90", label: car_type };
+    const basePrice   = Number(rate.base_price);
+    const kmRate      = custom_km_rate     ?? Number(rate.km_rate);
+    const platformPct = custom_platform_pct ?? Number(rate.platform_pct);
+    const driverPct   = 100 - platformPct;
+
+    // 2. 距離計算（使用現有 distanceService）
+    const distResult = await getDistanceKm(pickup_address, delivery_address);
+    const distKm = distResult.distance_km;
+    const distFee = Math.round(distKm * kmRate);
+
+    // 3. 偏遠地區加成
+    const remote = await detectRemoteArea(delivery_address);
+    let subtotal = (basePrice + distFee) * remote.multiplier;
+
+    // 4. 附加服務費用
+    const surchargeRows = await pool.query<{
+      key: string; label: string; amount: string; pct_multiplier: string;
+    }>(`SELECT * FROM freight_surcharge_config WHERE active = true`);
+
+    const appliedSurcharges: { key: string; label: string; amount: number; pct: number }[] = [];
+    let pctSurchargeMultiplier = 1;
+
+    for (const s of surchargeRows.rows) {
+      const val = services[s.key];
+      if (!val) continue;
+
+      const qty = typeof val === "number" ? val : 1;
+      const flatAmount = Number(s.amount) * qty;
+      const pctAdd = Number(s.pct_multiplier);
+
+      if (flatAmount > 0) {
+        subtotal += flatAmount;
+        appliedSurcharges.push({ key: s.key, label: s.label, amount: flatAmount, pct: 0 });
+      }
+      if (pctAdd > 0) {
+        pctSurchargeMultiplier += pctAdd;
+        appliedSurcharges.push({ key: s.key, label: s.label, amount: 0, pct: Math.round(pctAdd * 100) });
+      }
+    }
+
+    // 百分比加成在最後一次性計算（避免複利）
+    subtotal = subtotal * pctSurchargeMultiplier;
+
+    // 5. 財務分帳（老闆利潤 platform_pct%，司機/加盟 driver_pct%）
+    const totalQuote   = Math.round(subtotal);
+    const profit       = Math.round(subtotal * platformPct / 100);
+    const driverPayout = Math.round(subtotal * driverPct / 100);
+
+    res.json({
+      ok: true,
+      quote: {
+        total_quote:    totalQuote,
+        driver_payout:  driverPayout,
+        your_profit:    profit,
+        platform_pct:   platformPct,
+        driver_pct:     driverPct,
+      },
+      breakdown: {
+        base_price:    basePrice,
+        distance_km:   distKm,
+        km_rate:       kmRate,
+        distance_fee:  distFee,
+        car_type:      car_type,
+        car_label:     rate.label,
+        remote_area:   remote.isRemote ? remote.keyword : null,
+        remote_multiplier: remote.isRemote ? remote.multiplier : 1,
+        surcharges:    appliedSurcharges,
+        pct_surcharge_added: Math.round((pctSurchargeMultiplier - 1) * 100),
+      },
+      distance_source: distResult.source,
+      duration_min:    distResult.duration_min ?? null,
+    });
+  } catch (err: any) {
+    console.error("[FreightQuote]", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── PUT /api/freight-quote/config/rate/:id ────────────────────────────────────
+freightQuoteRouter.put("/freight-quote/config/rate/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { base_price, km_rate, platform_pct, label, active } = req.body;
+    const driver_pct = 100 - Number(platform_pct);
+    await pool.query(`
+      UPDATE freight_rate_config
+      SET base_price=$1, km_rate=$2, platform_pct=$3, driver_pct=$4, label=$5, active=$6, updated_at=NOW()
+      WHERE id=$7
+    `, [base_price, km_rate, platform_pct, driver_pct, label, active ?? true, id]);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ── PUT /api/freight-quote/config/surcharge/:id ───────────────────────────────
+freightQuoteRouter.put("/freight-quote/config/surcharge/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { label, amount, pct_multiplier, active } = req.body;
+    await pool.query(`
+      UPDATE freight_surcharge_config
+      SET label=$1, amount=$2, pct_multiplier=$3, active=$4
+      WHERE id=$5
+    `, [label, amount, pct_multiplier, active ?? true, id]);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+});
