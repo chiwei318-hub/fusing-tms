@@ -85,6 +85,7 @@ const GloryShopeeDriversTab = lazy(() => import("./fusingao/ShopeeDriversTab"));
 const GloryShopeeScheduleTab  = lazy(() => import("./fusingao/ShopeeScheduleTab"));
 const VehicleProfitTab        = lazy(() => import("./fusingao/VehicleProfitTab"));
 const LaborPensionTab         = lazy(() => import("./fusingao/LaborPensionTab"));
+const PayrollCostTab          = lazy(() => import("./fusingao/PayrollCostTab"));
 import { useOrdersData, useUpdateOrderMutation, useDeleteOrderMutation } from "@/hooks/use-orders";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -1706,6 +1707,7 @@ export default function Admin() {
                     { value: "contractquote", icon: <span className="text-sm leading-none">📝</span>,              label: "合約報價" },
                     { value: "driverbonus",   icon: <span className="text-sm leading-none">💰</span>,              label: "司機獎金" },
                     { value: "vehicleprofit", icon: <span className="text-sm leading-none">📊</span>,              label: "盈虧分析" },
+                    { value: "payrollcost",  icon: <span className="text-sm leading-none">💼</span>,              label: "薪資結算" },
                   ].map(t => (
                     <TabsTrigger key={t.value} value={t.value}
                       className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg">
@@ -4044,6 +4046,11 @@ export default function Admin() {
         {/* ===== 車輛盈虧分析 TAB ===== */}
         <TabsContent value="vehicleprofit" className="outline-none">
           <VehicleProfitTab />
+        </TabsContent>
+
+        {/* ===== 薪資成本結算 TAB ===== */}
+        <TabsContent value="payrollcost" className="outline-none">
+          <PayrollCostTab />
         </TabsContent>
 
         {/* ===== 供應商管理 TAB ===== */}
