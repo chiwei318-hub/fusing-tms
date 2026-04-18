@@ -4,6 +4,7 @@
  * doc_type:
  *   customer_req  — 客戶需求確認表（5 大類 × 23 項）
  *   architecture  — 程式架構清單（10 大類 × 56 項）
+ *   cfo_jd        — 兼職財務長工作說明書（8 大類 × 26 項）
  *
  * GET   /api/platform-requirements?doc_type=...   列出項目
  * PATCH /api/platform-requirements/:id            更新是否需要 + 備注
@@ -113,6 +114,44 @@ const ARCH_SEED = [
   { seq:56, category:"成功 KPI",       feature:"平台 KPI",   description:"月留存（司機/貨主）≥ 85%/90%、NPS ≥ 60" },
 ].map(r => ({ ...r, doc_type: "architecture" }));
 
+// ── 兼職財務長工作說明書種子 ─────────────────────────────────────────────
+const CFO_JD_SEED = [
+  // 工作目標
+  { seq:1,  category:"工作目標",              feature:"帳務制度建立",       description:"建立公司完整帳務制度，協助財務透明化" },
+  { seq:2,  category:"工作目標",              feature:"月度財務報表",       description:"產出月度財務報表，讓管理層能掌握盈虧狀況" },
+  { seq:3,  category:"工作目標",              feature:"財務規劃與稅務建議", description:"提供財務規劃與稅務建議，協助公司邁向專業化經營" },
+  // 帳務制度建立
+  { seq:4,  category:"帳務制度建立",          feature:"設計會計科目表",     description:"收入、成本、費用分類" },
+  { seq:5,  category:"帳務制度建立",          feature:"建立帳務紀錄模板",   description:"Excel/會計系統模板，讓會計人員可正確輸入" },
+  { seq:6,  category:"帳務制度建立",          feature:"制定憑證管理制度",   description:"收據、發票、付款單，避免稅務爭議" },
+  // 月度財務報表
+  { seq:7,  category:"月度財務報表",          feature:"損益表 P/L",         description:"收入、毛利、營業費用、淨利" },
+  { seq:8,  category:"月度財務報表",          feature:"現金流量表",         description:"實際現金流入流出，避免「帳上有賺、現金卻不足」" },
+  { seq:9,  category:"月度財務報表",          feature:"資產負債表",         description:"資產（車輛/押金）、負債（貸款/應付款）、淨值" },
+  { seq:10, category:"月度財務報表",          feature:"每月10號前交付",     description:"完成上月報表並解釋數字" },
+  // 財務分析與管理支持
+  { seq:11, category:"財務分析與管理支持",    feature:"單車毛利率分析",     description:"每月提供單車毛利率、油料成本佔比、固定費用率" },
+  { seq:12, category:"財務分析與管理支持",    feature:"營運盈虧趨勢圖",     description:"每月提供營運盈虧趨勢視覺化圖表" },
+  { seq:13, category:"財務分析與管理支持",    feature:"改善建議",           description:"依報表提出改善建議（例：降低成本、提升靠行抽成策略）" },
+  { seq:14, category:"財務分析與管理支持",    feature:"商業模式盈虧模擬",   description:"模擬靠行 vs 承攬制 vs 平台化的不同盈虧結果" },
+  // 稅務與合規
+  { seq:15, category:"稅務與合規",            feature:"合法節稅建議",       description:"避免同業利潤標準補稅" },
+  { seq:16, category:"稅務與合規",            feature:"憑證與發票審查",     description:"協助檢視憑證、發票開立方式，確保合法合規" },
+  { seq:17, category:"稅務與合規",            feature:"與會計師溝通",       description:"協助年度結算與報稅" },
+  // 交付成果
+  { seq:18, category:"交付成果",              feature:"會計科目表＋記帳模板", description:"第一次上任一個月內完成" },
+  { seq:19, category:"交付成果",              feature:"月度財務報表（P/L/現金流/資產負債）", description:"每月10號前交付" },
+  { seq:20, category:"交付成果",              feature:"財務分析簡報（摘要）", description:"每月10號前同步交付" },
+  { seq:21, category:"交付成果",              feature:"年度稅務規劃建議書",  description:"每年一次" },
+  // 配合事項（小愛負責）
+  { seq:22, category:"配合事項（小愛負責）",  feature:"日常收支憑證登錄",   description:"日常收入、支出、憑證的登錄" },
+  { seq:23, category:"配合事項（小愛負責）",  feature:"月底應收應付盤點",   description:"每月底盤點未收款、未付款清單" },
+  { seq:24, category:"配合事項（小愛負責）",  feature:"定期交資料給CFO",    description:"定期將資料交給CFO整理分析" },
+  // 匯報方式
+  { seq:25, category:"匯報方式",              feature:"每月財務會議",       description:"每月一次（1小時），CFO向老闆與會計人員報告財務狀況" },
+  { seq:26, category:"匯報方式",              feature:"大額支出財務建議",   description:"針對大額支出/投資，提前給予財務建議" },
+].map(r => ({ ...r, doc_type: "cfo_jd" }));
+
 // ── 建立資料表 + 遷移 ────────────────────────────────────────────────────
 export async function ensurePlatformRequirementsTable() {
   await pool.query(`
@@ -161,6 +200,21 @@ export async function ensurePlatformRequirementsTable() {
       );
     }
     console.log(`[PlatformReq] 已種入 ${ARCH_SEED.length} 筆程式架構項目`);
+  }
+
+  // 種入兼職CFO工作說明書（若尚未有資料）
+  const { rows: cfo } = await pool.query(
+    "SELECT COUNT(*) FROM platform_requirements WHERE doc_type='cfo_jd'"
+  );
+  if (Number(cfo[0].count) === 0) {
+    for (const r of CFO_JD_SEED) {
+      await pool.query(
+        `INSERT INTO platform_requirements (seq,category,feature,description,doc_type,is_needed)
+         VALUES ($1,$2,$3,$4,$5,'pending')`,
+        [r.seq, r.category, r.feature, r.description, r.doc_type]
+      );
+    }
+    console.log(`[PlatformReq] 已種入 ${CFO_JD_SEED.length} 筆CFO工作說明書項目`);
   }
 }
 

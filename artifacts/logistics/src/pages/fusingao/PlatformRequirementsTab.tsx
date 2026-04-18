@@ -31,12 +31,32 @@ interface RequirementItem {
   doc_type:    string;
 }
 
-type DocType = "customer_req" | "architecture";
+type DocType = "customer_req" | "architecture" | "cfo_jd";
 
 // ── 文件 meta ─────────────────────────────────────────────────────────────
-const DOC_META: Record<DocType, { label: string; emoji: string; title: string; subtitle: string }> = {
-  customer_req: { label:"客戶需求確認", emoji:"📋", title:"客戶需求確認表", subtitle:"5大類 × 23項核心功能，對客確認用" },
-  architecture: { label:"程式架構清單", emoji:"🏗️", title:"物流平台程式架構清單", subtitle:"10大類 × 56項功能模組 + 成功KPI指標" },
+interface DocMeta {
+  label:    string;
+  emoji:    string;
+  title:    string;
+  subtitle: string;
+  statusLabels: { yes: string; no: string; pending: string };
+}
+const DOC_META: Record<DocType, DocMeta> = {
+  customer_req: {
+    label:"客戶需求確認", emoji:"📋",
+    title:"客戶需求確認表", subtitle:"5大類 × 23項核心功能，對客確認用",
+    statusLabels:{ yes:"需要", no:"不需要", pending:"待確認" },
+  },
+  architecture: {
+    label:"程式架構清單", emoji:"🏗️",
+    title:"物流平台程式架構清單", subtitle:"10大類 × 56項功能模組 + 成功KPI指標",
+    statusLabels:{ yes:"需要", no:"不需要", pending:"待確認" },
+  },
+  cfo_jd: {
+    label:"CFO 工作說明書", emoji:"📊",
+    title:"運輸公司兼職財務長工作說明書", subtitle:"8大類 × 26項職責與交付成果追蹤",
+    statusLabels:{ yes:"已完成", no:"暫緩", pending:"待執行" },
+  },
 };
 
 // ── 分類顏色 ─────────────────────────────────────────────────────────────
@@ -58,11 +78,11 @@ function catMeta(cat: string, catList: string[]) {
   return CAT_PALETTE[Math.max(0, idx)];
 }
 
-// ── 狀態 meta ────────────────────────────────────────────────────────────
-const STATUS_META = {
-  pending: { label:"待確認", color:"#9ca3af", bg:"#f3f4f6", icon:<Circle      className="w-4 h-4" /> },
-  yes:     { label:"需要",   color:"#059669", bg:"#f0fdf4", icon:<CheckCircle2 className="w-4 h-4" /> },
-  no:      { label:"不需要", color:"#dc2626", bg:"#fef2f2", icon:<XCircle      className="w-4 h-4" /> },
+// ── 狀態樣式（顏色/圖示不變，標籤動態由 docMeta.statusLabels 提供）────────
+const STATUS_STYLE = {
+  pending: { color:"#9ca3af", bg:"#f3f4f6", icon:<Circle      className="w-4 h-4" /> },
+  yes:     { color:"#059669", bg:"#f0fdf4", icon:<CheckCircle2 className="w-4 h-4" /> },
+  no:      { color:"#dc2626", bg:"#fef2f2", icon:<XCircle      className="w-4 h-4" /> },
 };
 
 export default function PlatformRequirementsTab() {
@@ -145,13 +165,14 @@ export default function PlatformRequirementsTab() {
     const yesCount = items.filter(i => i.is_needed==="yes").length;
     const noCount  = items.filter(i => i.is_needed==="no").length;
 
+    const sl = docMeta.statusLabels;
     const catHtml = Object.entries(grouped).map(([cat, catItems]) => `
       <h3 style="margin:16px 0 6px;color:#1e40af;border-bottom:2px solid #bfdbfe;padding-bottom:4px">${cat}</h3>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr style="background:#f1f5f9">
-          <th style="padding:6px;text-align:left;font-size:11px;border:1px solid #e2e8f0">功能</th>
-          <th style="padding:6px;text-align:left;font-size:11px;border:1px solid #e2e8f0">描述</th>
-          <th style="padding:6px;text-align:center;font-size:11px;border:1px solid #e2e8f0;width:70px">是否需要</th>
+          <th style="padding:6px;text-align:left;font-size:11px;border:1px solid #e2e8f0">項目</th>
+          <th style="padding:6px;text-align:left;font-size:11px;border:1px solid #e2e8f0">說明</th>
+          <th style="padding:6px;text-align:center;font-size:11px;border:1px solid #e2e8f0;width:70px">狀態</th>
           <th style="padding:6px;text-align:left;font-size:11px;border:1px solid #e2e8f0">備注</th>
         </tr></thead><tbody>
         ${catItems.map(i => `
@@ -160,27 +181,31 @@ export default function PlatformRequirementsTab() {
             <td style="padding:5px;border:1px solid #e2e8f0;font-size:10px;color:#555">${i.description}</td>
             <td style="padding:5px;border:1px solid #e2e8f0;text-align:center;font-size:11px;
               color:${i.is_needed==="yes"?"#059669":i.is_needed==="no"?"#dc2626":"#9ca3af"}">
-              ${i.is_needed==="yes"?"✅ 需要":i.is_needed==="no"?"❌ 不需要":"⬜ 待確認"}</td>
+              ${i.is_needed==="yes"?"✅ "+sl.yes:i.is_needed==="no"?"❌ "+sl.no:"⬜ "+sl.pending}</td>
             <td style="padding:5px;border:1px solid #e2e8f0;font-size:10px">${i.notes ?? ""}</td>
           </tr>`).join("")}
         </tbody></table>`).join("");
 
+    const sigRow = docType === "cfo_jd"
+      ? `<div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">財務長確認簽名</div>
+         <div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">老闆確認簽名</div>`
+      : `<div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">客戶確認簽名</div>
+         <div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">業務代表簽名</div>`;
+
     const html = `<html><head><meta charset="utf-8"><title>${docMeta.title}</title>
 <style>body{font-family:sans-serif;padding:24px;max-width:950px;margin:auto}@media print{body{padding:0}}</style>
 </head><body>
-<h1 style="text-align:center;margin-bottom:4px">物流媒合平台</h1>
+<h1 style="text-align:center;margin-bottom:4px">富詠運輸</h1>
 <h2 style="text-align:center;margin:0 0 4px;color:#555;font-size:16px">${docMeta.title}</h2>
 <p style="text-align:center;color:#888;font-size:12px;margin:0 0 16px">列印日期：${new Date().toLocaleDateString("zh-TW")}</p>
 <div style="display:flex;gap:24px;justify-content:center;margin-bottom:20px;font-size:13px">
-  <span style="color:#059669">✅ 需要：${yesCount} 項</span>
-  <span style="color:#dc2626">❌ 不需要：${noCount} 項</span>
-  <span style="color:#9ca3af">⬜ 待確認：${items.length-yesCount-noCount} 項</span>
+  <span style="color:#059669">✅ ${sl.yes}：${yesCount} 項</span>
+  <span style="color:#dc2626">❌ ${sl.no}：${noCount} 項</span>
+  <span style="color:#9ca3af">⬜ ${sl.pending}：${items.length-yesCount-noCount} 項</span>
 </div>
 ${catHtml}
-<div style="margin-top:40px;display:flex;justify-content:space-between">
-  <div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">客戶確認簽名</div>
-  <div style="border-top:1px solid #ccc;padding-top:6px;width:200px;text-align:center;font-size:12px;color:#777">業務代表簽名</div>
-</div></body></html>`;
+<div style="margin-top:40px;display:flex;justify-content:space-between">${sigRow}</div>
+</body></html>`;
     const w = window.open("","_blank","width=1000,height=800");
     if (!w) return;
     w.document.write(html); w.document.close();
@@ -255,9 +280,9 @@ ${catHtml}
           <div style={{ width:`${total>0?(noCount/total)*100:0}%`,  background:"#dc2626", transition:"width 0.4s" }} />
         </div>
         <div className="flex gap-4 text-xs text-gray-400 mt-1">
-          <span style={{ color:"#059669" }}>■ 需要</span>
-          <span style={{ color:"#dc2626" }}>■ 不需要</span>
-          <span style={{ color:"#d1d5db" }}>■ 待確認 ({pendingCount})</span>
+          <span style={{ color:"#059669" }}>■ {docMeta.statusLabels.yes}</span>
+          <span style={{ color:"#dc2626" }}>■ {docMeta.statusLabels.no}</span>
+          <span style={{ color:"#d1d5db" }}>■ {docMeta.statusLabels.pending} ({pendingCount})</span>
         </div>
       </div>
 
@@ -298,7 +323,7 @@ ${catHtml}
 
               <div className="space-y-2 mb-4">
                 {catItems.map(item => {
-                  const sm       = STATUS_META[item.is_needed];
+                  const sm       = { ...STATUS_STYLE[item.is_needed], label: docMeta.statusLabels[item.is_needed] };
                   const isSaving = saving === item.id;
                   return (
                     <Card key={item.id} className="hover:shadow-sm transition-shadow"
@@ -330,7 +355,7 @@ ${catHtml}
                           {/* 狀態切換按鈕 */}
                           <div className="shrink-0 flex gap-1">
                             {(["yes","pending","no"] as const).map(status => {
-                              const s      = STATUS_META[status];
+                              const s      = { ...STATUS_STYLE[status], label: docMeta.statusLabels[status] };
                               const active = item.is_needed === status;
                               return (
                                 <button key={status} onClick={() => update(item, status)}
@@ -367,7 +392,7 @@ ${catHtml}
       )}
 
       <div className="text-center text-xs text-gray-400 py-2 border-t">
-        ✅ 需要 = 確認納入開發　·　❌ 不需要 = 本期不開發　·　⬜ 待確認 = 尚未決定
+        ✅ {docMeta.statusLabels.yes}　·　❌ {docMeta.statusLabels.no}　·　⬜ {docMeta.statusLabels.pending}
       </div>
     </div>
   );
