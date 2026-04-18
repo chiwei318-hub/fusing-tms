@@ -35,18 +35,20 @@ interface FuyongResult {
 interface PartnerConfig {
   id: number; partner_id: string; partner_name: string; tier: string;
   base_price: number; rate_per_km: number; park_fee: number; mountain_fee: number;
-  notes: string; active: boolean;
+  special_zone_fee: number; notes: string; active: boolean;
 }
 
 interface PartnerResult {
   ok: boolean; error?: string;
+  price?: number;    // Python-compatible 回傳欄位
+  detail?: string;   // Python: f"里程 {km}km + 特殊加成 {surcharge}"
   quote?: { total_price: number };
   partner?: { partner_id: string; partner_name: string; tier: string };
   breakdown?: {
     distance_km: number; distance_source: string; duration_min: number | null;
     base_price: number; rate_per_km: number; distance_fee: number;
-    surcharges: { type: string; keyword: string; amount: number }[];
-    surcharge_total: number; total_price: number;
+    surcharges: { type: string; label: string; keyword: string; amount: number }[];
+    surcharge_total: number; total_price: number; detail: string;
   };
 }
 
@@ -304,8 +306,9 @@ export default function FreightQuoteTab() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", color: "#374151" }}>
                       <span>起步價：<b>{money(p.base_price)}</b></span>
                       <span>每公里：<b>${p.rate_per_km}</b></span>
-                      <span>科學園區費：<b>+{money(p.park_fee)}</b></span>
-                      <span>山區費：<b>+{money(p.mountain_fee)}</b></span>
+                      <span>🏭 科學園區費：<b>+{money(p.park_fee)}</b></span>
+                      <span>⛰️ 山區費：<b>+{money(p.mountain_fee)}</b></span>
+                      <span style={{ gridColumn: "span 2" }}>🏪 進倉/特殊區費：<b>+{money(p.special_zone_fee ?? 500)}</b></span>
                     </div>
                     {p.notes && <div style={{ marginTop: 6, color: "#64748b", fontStyle: "italic" }}>備注：{p.notes}</div>}
                   </div>
@@ -383,13 +386,20 @@ export default function FreightQuoteTab() {
                       ))}
                     </div>
 
+                    {/* Python detail 字串 */}
+                    <div style={{ background: "#1e1e2e", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#cdd6f4", fontFamily: "monospace" }}>
+                      <span style={{ color: "#89dceb" }}>detail: </span>
+                      <span style={{ color: "#a6e3a1" }}>"{b.detail}"</span>
+                    </div>
+
                     {/* 地點偵測結果 */}
                     <div style={{ background: b.surcharges.length > 0 ? "#fefce8" : "#f0fdf4", border: `1px solid ${b.surcharges.length > 0 ? "#fde68a" : "#bbf7d0"}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 地點自動偵測</div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 全方位地點偵測（科學園區 / 山區 / 進倉區）</div>
                       {b.surcharges.length > 0
-                        ? b.surcharges.map((s, i) => (
-                            <div key={i}>{s.type === "science_park" ? "🏭" : "⛰️"} 偵測到「{s.keyword}」→ {s.type === "science_park" ? "科學園區" : "山區"}費 +{money(s.amount)}</div>
-                          ))
+                        ? b.surcharges.map((s, i) => {
+                            const icon = s.type === "science_park" ? "🏭" : s.type === "mountain" ? "⛰️" : "🏪";
+                            return <div key={i}>{icon} 偵測到「{s.keyword}」→ {s.label} +{money(s.amount)}</div>;
+                          })
                         : <div style={{ color: "#15803d" }}>✅ 一般地址（無加成）</div>
                       }
                     </div>
@@ -827,8 +837,9 @@ export default function FreightQuoteTab() {
                   { label: "客戶名稱", key: "partner_name", ph: "例：台積電採購部", type: "text" },
                   { label: "起步價（$）", key: "base_price", ph: "800", type: "number" },
                   { label: "每公里費（$/km）", key: "rate_per_km", ph: "25", type: "number" },
-                  { label: "科學園區費（$）", key: "park_fee", ph: "300", type: "number" },
-                  { label: "山區費（$）", key: "mountain_fee", ph: "500", type: "number" },
+                  { label: "🏭 科學園區費（$）", key: "park_fee", ph: "300", type: "number" },
+                  { label: "⛰️ 山區費（$）", key: "mountain_fee", ph: "500", type: "number" },
+                  { label: "🏪 進倉/特殊區費（$）", key: "special_zone_fee", ph: "500", type: "number" },
                 ].map(({ label, key, ph, type }) => (
                   <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600 }}>
                     {label}
@@ -897,8 +908,9 @@ export default function FreightQuoteTab() {
                       {([
                         ["起步價($)", "base_price"],
                         ["每公里費($)", "rate_per_km"],
-                        ["科學園區費($)", "park_fee"],
-                        ["山區費($)", "mountain_fee"],
+                        ["🏭 科學園區費($)", "park_fee"],
+                        ["⛰️ 山區費($)", "mountain_fee"],
+                        ["🏪 進倉/特殊區費($)", "special_zone_fee"],
                       ] as [string, keyof PartnerConfig][]).map(([label, key]) => (
                         <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 600 }}>
                           {label}
@@ -918,8 +930,9 @@ export default function FreightQuoteTab() {
                     <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 12, color: "#64748b" }}>
                       <span>起步：<b style={{ color: "#374151" }}>{money(p.base_price)}</b></span>
                       <span>每公里：<b style={{ color: "#374151" }}>${p.rate_per_km}</b></span>
-                      <span>科學園區費：<b style={{ color: "#374151" }}>+{money(p.park_fee)}</b></span>
-                      <span>山區費：<b style={{ color: "#374151" }}>+{money(p.mountain_fee)}</b></span>
+                      <span>🏭 科學園區費：<b style={{ color: "#374151" }}>+{money(p.park_fee)}</b></span>
+                      <span>⛰️ 山區費：<b style={{ color: "#374151" }}>+{money(p.mountain_fee)}</b></span>
+                      <span>🏪 進倉費：<b style={{ color: "#374151" }}>+{money(p.special_zone_fee ?? 500)}</b></span>
                       {p.notes && <span style={{ fontStyle: "italic", color: "#9ca3af" }}>{p.notes}</span>}
                     </div>
                   )}

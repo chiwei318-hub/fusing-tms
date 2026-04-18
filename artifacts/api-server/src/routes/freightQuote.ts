@@ -104,23 +104,26 @@ export async function ensureFreightRateTables() {
     ON CONFLICT (keyword) DO NOTHING
   `);
 
-  // 合約客戶費率表（對應 Python auto_quote_engine 的 partner_config）
+  // 合約客戶費率表（對應 Python auto_quote_engine / generate_auto_quote 的 partner_config）
   await pool.query(`
     CREATE TABLE IF NOT EXISTS partner_contract_config (
-      id           SERIAL PRIMARY KEY,
-      partner_id   VARCHAR(50)  NOT NULL UNIQUE,
-      partner_name VARCHAR(100) NOT NULL,
-      tier         VARCHAR(20)  NOT NULL DEFAULT '一般',
-      base_price   NUMERIC      NOT NULL DEFAULT 800,
-      rate_per_km  NUMERIC      NOT NULL DEFAULT 25,
-      park_fee     NUMERIC      NOT NULL DEFAULT 300,
-      mountain_fee NUMERIC      NOT NULL DEFAULT 500,
-      notes        TEXT,
-      active       BOOLEAN      DEFAULT true,
-      created_at   TIMESTAMPTZ  DEFAULT NOW(),
-      updated_at   TIMESTAMPTZ  DEFAULT NOW()
+      id                SERIAL PRIMARY KEY,
+      partner_id        VARCHAR(50)  NOT NULL UNIQUE,
+      partner_name      VARCHAR(100) NOT NULL,
+      tier              VARCHAR(20)  NOT NULL DEFAULT '一般',
+      base_price        NUMERIC      NOT NULL DEFAULT 800,
+      rate_per_km       NUMERIC      NOT NULL DEFAULT 25,
+      park_fee          NUMERIC      NOT NULL DEFAULT 300,
+      mountain_fee      NUMERIC      NOT NULL DEFAULT 500,
+      special_zone_fee  NUMERIC      NOT NULL DEFAULT 500,
+      notes             TEXT,
+      active            BOOLEAN      DEFAULT true,
+      created_at        TIMESTAMPTZ  DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ  DEFAULT NOW()
     )
   `);
+  // 老資料補欄位（idempotent）
+  await pool.query(`ALTER TABLE partner_contract_config ADD COLUMN IF NOT EXISTS special_zone_fee NUMERIC NOT NULL DEFAULT 500`);
   // 預設示範合約客戶
   await pool.query(`
     INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes)
@@ -161,6 +164,14 @@ function detectMountainArea(address: string): string | null {
   return MOUNTAIN_KEYWORDS.find(k => address.includes(k)) ?? null;
 }
 
+// ── 特殊進倉區偵測 ─────────────────────────────────────────────────────────────
+// 對應 Python: is_special_zone(destination)  → 進場費 / 進倉費
+// generate_auto_quote: if is_special_zone(destination): surcharge = 500
+const SPECIAL_ZONE_KEYWORDS = ["進倉", "倉庫", "物流中心", "配送中心", "貨運站", "轉運站", "工業區倉儲", "集散站", "保稅倉", "保稅區", "自由貿易港"];
+function detectSpecialZone(address: string): string | null {
+  return SPECIAL_ZONE_KEYWORDS.find(k => address.includes(k)) ?? null;
+}
+
 // ── GET /api/freight-quote/partners ──────────────────────────────────────────
 freightQuoteRouter.get("/freight-quote/partners", async (_req, res) => {
   try {
@@ -172,12 +183,12 @@ freightQuoteRouter.get("/freight-quote/partners", async (_req, res) => {
 // ── POST /api/freight-quote/partners ─────────────────────────────────────────
 freightQuoteRouter.post("/freight-quote/partners", async (req, res) => {
   try {
-    const { partner_id, partner_name, tier = "一般", base_price = 800, rate_per_km = 25, park_fee = 300, mountain_fee = 500, notes = "" } = req.body;
+    const { partner_id, partner_name, tier = "一般", base_price = 800, rate_per_km = 25, park_fee = 300, mountain_fee = 500, special_zone_fee = 500, notes = "" } = req.body;
     if (!partner_id || !partner_name) return res.status(400).json({ ok: false, error: "需要 partner_id 和 partner_name" });
     await pool.query(
-      `INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes]
+      `INSERT INTO partner_contract_config (partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [partner_id, partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes]
     );
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
@@ -187,11 +198,11 @@ freightQuoteRouter.post("/freight-quote/partners", async (req, res) => {
 freightQuoteRouter.put("/freight-quote/partners/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes, active } = req.body;
+    const { partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee = 500, notes, active } = req.body;
     await pool.query(
       `UPDATE partner_contract_config SET partner_name=$1, tier=$2, base_price=$3, rate_per_km=$4,
-       park_fee=$5, mountain_fee=$6, notes=$7, active=$8, updated_at=NOW() WHERE id=$9`,
-      [partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, notes, active ?? true, id]
+       park_fee=$5, mountain_fee=$6, special_zone_fee=$7, notes=$8, active=$9, updated_at=NOW() WHERE id=$10`,
+      [partner_name, tier, base_price, rate_per_km, park_fee, mountain_fee, special_zone_fee, notes, active ?? true, id]
     );
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
@@ -206,8 +217,8 @@ freightQuoteRouter.delete("/freight-quote/partners/:id", async (req, res) => {
 });
 
 // ── POST /api/freight-quote/partner-calculate ─────────────────────────────────
-// 直接對應 auto_quote_engine(partner_id, origin, destination, car_type)
-// 邏輯：從 DB 讀取合約費率 → 距離計算 → 科學園區/山區自動加成 → 計算
+// 對應 auto_quote_engine() + generate_auto_quote() — 三種地點自動偵測
+// 邏輯：從 DB 讀取合約費率 → 距離計算 → 科學園區/山區/進倉區加成 → 回傳 price + detail
 freightQuoteRouter.post("/freight-quote/partner-calculate", async (req, res) => {
   try {
     const { partner_id, origin, destination, car_type = "3.5t" } = req.body as {
@@ -220,55 +231,75 @@ freightQuoteRouter.post("/freight-quote/partner-calculate", async (req, res) => 
     // 1. 從 DB 抓取合約等級配置（對應 Python: db.collection("Partners").document(partner_id).get()）
     const partnerRow = await pool.query<{
       partner_id: string; partner_name: string; tier: string;
-      base_price: string; rate_per_km: string; park_fee: string; mountain_fee: string; notes: string;
+      base_price: string; rate_per_km: string;
+      park_fee: string; mountain_fee: string; special_zone_fee: string; notes: string;
     }>(`SELECT * FROM partner_contract_config WHERE partner_id=$1 AND active=true LIMIT 1`, [partner_id]);
 
     if (!partnerRow.rows[0]) {
       return res.status(404).json({ ok: false, error: `找不到合約客戶：${partner_id}` });
     }
     const p = partnerRow.rows[0];
-    const basePrice    = Number(p.base_price);
-    const ratePerKm    = Number(p.rate_per_km);
-    const parkFee      = Number(p.park_fee);
-    const mountainFee  = Number(p.mountain_fee);
+    const basePrice       = Number(p.base_price);
+    const ratePerKm       = Number(p.rate_per_km);
+    const parkFee         = Number(p.park_fee);
+    const mountainFee     = Number(p.mountain_fee);
+    const specialZoneFee  = Number(p.special_zone_fee ?? 500);
 
-    // 2. 取得精準公里數（串接 Google API，對應 Python: get_google_distance(origin, destination)）
+    // 2. 取得精準公里數（串接 Google API，對應 Python: get_real_distance / get_google_distance）
     const distResult = await getDistanceKm(origin, destination);
     const km = distResult.distance_km;
 
-    // 3. 自動判斷特殊加成（對應 Python: is_science_park / is_mountain_area）
-    const parkKw     = detectSciencePark(destination);
-    const mountainKw = detectMountainArea(destination);
+    // 3. 全方位地點偵測（對應 Python: is_science_park / is_mountain_area / is_special_zone）
+    const parkKw        = detectSciencePark(destination);
+    const mountainKw    = detectMountainArea(destination);
+    const specialZoneKw = detectSpecialZone(destination);
 
     let surcharge = 0;
-    const appliedSurcharges: { type: string; keyword: string; amount: number }[] = [];
+    const appliedSurcharges: { type: string; label: string; keyword: string; amount: number }[] = [];
+
     if (parkKw) {
       surcharge += parkFee;
-      appliedSurcharges.push({ type: "science_park", keyword: parkKw, amount: parkFee });
+      appliedSurcharges.push({ type: "science_park", label: "科學園區費", keyword: parkKw, amount: parkFee });
     }
     if (mountainKw) {
       surcharge += mountainFee;
-      appliedSurcharges.push({ type: "mountain", keyword: mountainKw, amount: mountainFee });
+      appliedSurcharges.push({ type: "mountain", label: "山區費", keyword: mountainKw, amount: mountainFee });
+    }
+    if (specialZoneKw) {
+      // 對應 Python: if is_special_zone(destination): surcharge = 500（進場費）
+      surcharge += specialZoneFee;
+      appliedSurcharges.push({ type: "special_zone", label: "進倉/特殊區費", keyword: specialZoneKw, amount: specialZoneFee });
     }
 
-    // 4. 根據客戶等級計算總價（對應 Python: total = base_price + (km * rate_per_km) + surcharge）
-    const distFee  = km * ratePerKm;         // 保留浮點，最後再 round
-    const total    = Math.round(basePrice + distFee + surcharge);
+    // 4. 根據客戶等級計算總價
+    //    Python: subtotal = base + (km * rate); final_quote = subtotal + surcharge; return round(final_quote)
+    //    ⚠️  原始碼 bug: return round(final_price) 應為 round(final_quote) — 已在此修正
+    const distFee   = km * ratePerKm;
+    const subtotal  = basePrice + distFee;
+    const total     = Math.round(subtotal + surcharge);
+
+    // 5. Python 格式的 detail 字串（對應 return {"price":..., "detail": f"里程 {km}km + 特殊加成 {surcharge}"}）
+    const detail = `里程 ${km.toFixed(1)}km × $${ratePerKm} + 起步 $${basePrice}${surcharge > 0 ? ` + 特殊加成 $${surcharge}` : ""}`;
 
     res.json({
       ok: true,
-      quote: { total_price: total },
+      // Python-compatible 格式
+      price:  total,
+      detail,
+      // 完整結構（前端用）
+      quote:   { total_price: total },
       partner: { partner_id: p.partner_id, partner_name: p.partner_name, tier: p.tier },
       breakdown: {
-        distance_km:    km,
+        distance_km:     km,
         distance_source: distResult.source,
-        duration_min:   distResult.duration_min ?? null,
-        base_price:     basePrice,
-        rate_per_km:    ratePerKm,
-        distance_fee:   Math.round(distFee),
-        surcharges:     appliedSurcharges,
+        duration_min:    distResult.duration_min ?? null,
+        base_price:      basePrice,
+        rate_per_km:     ratePerKm,
+        distance_fee:    Math.round(distFee),
+        surcharges:      appliedSurcharges,
         surcharge_total: surcharge,
-        total_price:    total,
+        total_price:     total,
+        detail,
       },
     });
   } catch (err: any) {
