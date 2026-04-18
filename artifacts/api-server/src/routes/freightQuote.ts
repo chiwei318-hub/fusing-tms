@@ -285,6 +285,76 @@ freightQuoteRouter.put("/freight-quote/config/rate/:id", async (req, res) => {
   } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// ── POST /api/freight-quote/fuyong-calculate ─────────────────────────────────
+// 直接對應 get_fuyong_quote() Python 函式
+// 梯度計費：≤10km = $800；>10km = $800 + (km-10)×$25
+// 特殊節點：科學園區 +300、機場 +500
+// 假日加成：×1.2
+freightQuoteRouter.post("/freight-quote/fuyong-calculate", async (req, res) => {
+  try {
+    const {
+      origin,
+      destination,
+      is_holiday = false,
+    }: { origin: string; destination: string; is_holiday?: boolean } = req.body;
+
+    if (!origin || !destination) {
+      return res.status(400).json({ ok: false, error: "需要 origin（取貨）和 destination（送達）地址" });
+    }
+
+    // 1. 取得精準里程（串接 Google API，無 key 時 Haversine 備援）
+    const distResult = await getDistanceKm(origin, destination);
+    const km = distResult.distance_km;
+
+    // 2. 富詠專屬級距計費（與 Python 完全一致：不中途 round，最終 round(final_price)）
+    let base_price: number;
+    let tier_label: string;
+    if (km <= 10) {
+      base_price = 800;
+      tier_label = `短程（≤10km）固定 $800`;
+    } else {
+      base_price = 800 + (km - 10) * 25; // 保留浮點，最後才 round
+      tier_label = `$800 + (${km.toFixed(1)}km - 10km) × $25`;
+    }
+
+    // 3. 台灣特殊節點自動判斷
+    const SPECIAL_NODES: { keyword: string; label: string; amount: number }[] = [
+      { keyword: "科學園區", label: "科學園區附加費", amount: 300 },
+      { keyword: "機場",     label: "機場附加費",     amount: 500 },
+    ];
+    const appliedNodes = SPECIAL_NODES.filter(n => destination.includes(n.keyword));
+    const surcharge = appliedNodes.reduce((sum, n) => sum + n.amount, 0);
+
+    // 4. 小計 + 假日加成
+    let subtotal = base_price + surcharge;
+    const before_holiday = subtotal;
+    if (is_holiday) subtotal = subtotal * 1.2;
+
+    const total_price = Math.round(subtotal);
+
+    res.json({
+      ok: true,
+      quote: { total_price },
+      breakdown: {
+        distance_km:   km,
+        distance_source: distResult.source,
+        duration_min:  distResult.duration_min ?? null,
+        tier_label,
+        base_price: Math.round(base_price),
+        special_nodes: appliedNodes,
+        surcharge,
+        subtotal_before_holiday: Math.round(before_holiday),
+        is_holiday,
+        holiday_multiplier: is_holiday ? 1.2 : 1,
+        total_price,
+      },
+    });
+  } catch (err: any) {
+    console.error("[FuyongQuote]", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── PUT /api/freight-quote/config/surcharge/:id ───────────────────────────────
 freightQuoteRouter.put("/freight-quote/config/surcharge/:id", async (req, res) => {
   try {

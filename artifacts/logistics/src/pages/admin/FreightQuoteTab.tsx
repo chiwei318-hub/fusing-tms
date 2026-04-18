@@ -20,6 +20,18 @@ interface QuoteResult {
   distance_source?: string; duration_min?: number | null;
 }
 
+interface FuyongResult {
+  ok: boolean; error?: string;
+  quote?: { total_price: number };
+  breakdown?: {
+    distance_km: number; distance_source: string; duration_min: number | null;
+    tier_label: string; base_price: number;
+    special_nodes: { keyword: string; label: string; amount: number }[];
+    surcharge: number; subtotal_before_holiday: number;
+    is_holiday: boolean; holiday_multiplier: number; total_price: number;
+  };
+}
+
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
 function money(v: number) { return `$${Number(v).toLocaleString("zh-TW")}`; }
 
@@ -30,12 +42,19 @@ export default function FreightQuoteTab() {
   const [loading, setLoading] = useState(false);
 
   // ── 計算機狀態
+  const [calcMode,    setCalcMode]    = useState<"generic" | "fuyong">("generic");
   const [pickup,      setPickup]      = useState("");
   const [delivery,    setDelivery]    = useState("");
   const [carType,     setCarType]     = useState("3.5t");
   const [hasElevator, setHasElevator] = useState(true);
   const [services,    setServices]    = useState<Record<string, number | boolean>>({});
   const [result,      setResult]      = useState<QuoteResult | null>(null);
+
+  // ── 富詠模式狀態
+  const [fuyongOrigin,      setFuyongOrigin]      = useState("");
+  const [fuyongDestination, setFuyongDestination] = useState("");
+  const [isHoliday,         setIsHoliday]         = useState(false);
+  const [fuyongResult,      setFuyongResult]      = useState<FuyongResult | null>(null);
 
   // ── 費率編輯
   const [editingRate, setEditingRate] = useState<RateConfig | null>(null);
@@ -61,6 +80,19 @@ export default function FreightQuoteTab() {
       });
       setResult(await res.json());
     } catch (e: any) { setResult({ ok: false, error: e.message }); }
+    setLoading(false);
+  }
+
+  async function handleFuyongCalculate() {
+    if (!fuyongOrigin || !fuyongDestination) return;
+    setLoading(true); setFuyongResult(null);
+    try {
+      const res = await fetch(`${API}/freight-quote/fuyong-calculate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin: fuyongOrigin, destination: fuyongDestination, is_holiday: isHoliday }),
+      });
+      setFuyongResult(await res.json());
+    } catch (e: any) { setFuyongResult({ ok: false, error: e.message }); }
     setLoading(false);
   }
 
@@ -123,6 +155,126 @@ export default function FreightQuoteTab() {
 
       {/* ══════════════ 即時報價 tab ══════════════ */}
       {viewTab === "calc" && (
+        <div>
+          {/* ── 計費模式切換 ── */}
+          <div style={{ display: "flex", gap: 0, marginBottom: 20, background: "#f1f5f9", borderRadius: 10, padding: 4, width: "fit-content" }}>
+            {([["generic", "🚛 通用報價", "calculate_taiwan_freight()"], ["fuyong", "🏢 富詠專屬", "get_fuyong_quote()"]] as const).map(([mode, label, fn]) => (
+              <button key={mode} onClick={() => setCalcMode(mode)}
+                style={{ padding: "8px 18px", fontSize: 13, fontWeight: calcMode === mode ? 700 : 400, border: "none", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                  background: calcMode === mode ? "#fff" : "transparent",
+                  color: calcMode === mode ? "#1e40af" : "#64748b",
+                  boxShadow: calcMode === mode ? "0 1px 4px #0001" : "none" }}>
+                {label}
+                <span style={{ display: "block", fontSize: 10, opacity: 0.6, fontWeight: 400, fontFamily: "monospace" }}>{fn}</span>
+              </button>
+            ))}
+          </div>
+
+        {calcMode === "fuyong" ? (
+          /* ══ 富詠專屬報價面板 ══ */
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            {/* 左：輸入 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* 原始碼對照卡片 */}
+              <div style={{ background: "#1e1e2e", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#cdd6f4", fontFamily: "monospace", lineHeight: 1.7 }}>
+                <div style={{ color: "#89dceb", marginBottom: 4 }}>▸ get_fuyong_quote(origin, destination, is_holiday)</div>
+                <div style={{ color: "#a6e3a1" }}>  ≤10km → $800 固定</div>
+                <div style={{ color: "#a6e3a1" }}>  &gt;10km → $800 + (km-10)×$25</div>
+                <div style={{ color: "#f9e2af" }}>  科學園區 +$300 ／ 機場 +$500</div>
+                <div style={{ color: "#f38ba8" }}>  is_holiday → ×1.2</div>
+              </div>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                📦 出發地（origin）
+                <input value={fuyongOrigin} onChange={e => setFuyongOrigin(e.target.value)}
+                  placeholder="例：台北市內湖區瑞光路 100 號"
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+                📍 目的地（destination）
+                <input value={fuyongDestination} onChange={e => setFuyongDestination(e.target.value)}
+                  placeholder="例：新竹市科學園區工業東一路（自動偵測節點）"
+                  style={{ padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14 }} />
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>包含「科學園區」或「機場」關鍵字時自動加成</span>
+              </label>
+
+              {/* 假日開關 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: isHoliday ? "#fef3c7" : "#f8fafc", borderRadius: 10, border: `1px solid ${isHoliday ? "#fcd34d" : "#e2e8f0"}` }}>
+                <span style={{ fontSize: 18 }}>{isHoliday ? "🎉" : "📅"}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{isHoliday ? "假日／夜間加成（×1.2）" : "一般工作日"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>對應 Python: is_holiday = {isHoliday ? "True" : "False"}</div>
+                </div>
+                <div style={{ position: "relative", width: 40, height: 22 }} onClick={() => setIsHoliday(!isHoliday)}>
+                  <div style={{ width: 40, height: 22, borderRadius: 11, background: isHoliday ? "#d97706" : "#d1d5db", transition: "background 0.2s", cursor: "pointer" }} />
+                  <div style={{ position: "absolute", top: 3, left: isHoliday ? 21 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                </div>
+              </div>
+
+              <button onClick={handleFuyongCalculate} disabled={loading || !fuyongOrigin || !fuyongDestination}
+                style={{ padding: "12px 0", background: loading ? "#94a3b8" : "#7c3aed", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                {loading ? "計算中..." : "🏢 富詠報價計算"}
+              </button>
+            </div>
+
+            {/* 右：結果 */}
+            <div>
+              {fuyongResult?.ok && fuyongResult.breakdown && fuyongResult.quote && (() => {
+                const b = fuyongResult.breakdown;
+                const q = fuyongResult.quote;
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {/* 報價大字 */}
+                    <div style={{ background: "linear-gradient(135deg, #7c3aed, #a855f7)", borderRadius: 14, padding: "20px 24px", color: "#fff", textAlign: "center" }}>
+                      <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>富詠報價總額</div>
+                      <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: 1 }}>{money(q.total_price)}</div>
+                      {b.duration_min && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>預估車程約 {Math.round(b.duration_min)} 分鐘</div>}
+                      <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>里程來源：{b.distance_source}</div>
+                    </div>
+
+                    {/* 費用明細 */}
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", fontSize: 13 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 10 }}>費用明細</div>
+                      {[
+                        { label: `📏 里程（${b.distance_km.toFixed(1)}km）`, value: "" },
+                        { label: `⚙️ ${b.tier_label}`, value: money(b.base_price) },
+                        ...b.special_nodes.map(n => ({ label: `🏷️ ${n.label}`, value: `+${money(n.amount)}` })),
+                        ...(b.is_holiday ? [{ label: `🎉 假日加成（×${b.holiday_multiplier}）`, value: `×${b.holiday_multiplier}`, holiday: true }] : []),
+                        { label: "━ 合計", value: money(q.total_price), total: true },
+                      ].map((row, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: i < 3 + b.special_nodes.length ? "1px solid #f1f5f9" : "none",
+                          color: (row as any).holiday ? "#d97706" : (row as any).total ? "#1e293b" : "#374151",
+                          fontWeight: (row as any).total ? 700 : 400 }}>
+                          <span>{row.label}</span>
+                          <span style={{ fontWeight: 600 }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 節點偵測結果 */}
+                    <div style={{ background: b.special_nodes.length > 0 ? "#fefce8" : "#f0fdf4", border: `1px solid ${b.special_nodes.length > 0 ? "#fde68a" : "#bbf7d0"}`, borderRadius: 10, padding: "10px 14px", fontSize: 12 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>🔍 特殊節點偵測</div>
+                      {b.special_nodes.length > 0
+                        ? b.special_nodes.map(n => <div key={n.keyword}>✅ 偵測到「{n.keyword}」→ +{money(n.amount)}</div>)
+                        : <div style={{ color: "#15803d" }}>✅ 無特殊節點（一般地址）</div>
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
+              {fuyongResult && !fuyongResult.ok && (
+                <div style={{ padding: "16px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, color: "#b91c1c" }}>❌ {fuyongResult.error}</div>
+              )}
+              {!fuyongResult && (
+                <div style={{ padding: "40px 24px", textAlign: "center", color: "#94a3b8", fontSize: 14, border: "2px dashed #e2e8f0", borderRadius: 14 }}>
+                  輸入出發地和目的地<br />按下「富詠報價計算」查看結果
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+        /* ══ 通用報價面板（原有邏輯） ══ */
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
           {/* 左：輸入 */}
           <div>
@@ -276,6 +428,8 @@ export default function FreightQuoteTab() {
             )}
           </div>
         </div>
+        )}
+      </div>
       )}
 
       {/* ══════════════ 車型費率 tab ══════════════ */}
