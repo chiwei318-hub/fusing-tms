@@ -17,9 +17,9 @@ import multer from "multer";
 export const payrollCostRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-// ── 建立資料表 ─────────────────────────────────────────────────────────────
+// ── 建立/升級資料表 ────────────────────────────────────────────────────────
 export async function ensurePayrollCostTables() {
-  // 費率參數（singleton, id=1）
+  // 費率參數（保留，但新版欄位改為固定金額輸入）
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payroll_cost_params (
       id               SERIAL PRIMARY KEY,
@@ -30,11 +30,10 @@ export async function ensurePayrollCostTables() {
   `);
   await pool.query(`
     INSERT INTO payroll_cost_params (id, labor_ins_rate, health_ins_rate)
-    VALUES (1, 0.07, 0.045)
-    ON CONFLICT (id) DO NOTHING
+    VALUES (1, 0.07, 0.045) ON CONFLICT (id) DO NOTHING
   `);
 
-  // 月度薪資成本記錄
+  // 月度薪資記錄（建立基礎表）
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payroll_cost_records (
       id               SERIAL PRIMARY KEY,
@@ -52,9 +51,29 @@ export async function ensurePayrollCostTables() {
       updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
     )
   `);
+
+  // ── 新版欄位：ALTER ADD COLUMN IF NOT EXISTS ────────────────────────────
+  const newCols: string[] = [
+    "ADD COLUMN IF NOT EXISTS daily_trips       NUMERIC(6,1)  NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS trip_price        NUMERIC(10,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS fuel_cost         NUMERIC(12,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS insurance_fee     NUMERIC(12,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS maintenance_fee   NUMERIC(12,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS pay_mode          TEXT          NOT NULL DEFAULT 'fixed'",
+    "ADD COLUMN IF NOT EXISTS fixed_salary      NUMERIC(12,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS commission_rate   NUMERIC(6,2)  NOT NULL DEFAULT 80",
+    "ADD COLUMN IF NOT EXISTS labor_ins_fixed   NUMERIC(10,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS health_ins_fixed  NUMERIC(10,2) NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS advance_payment   NUMERIC(12,2) NOT NULL DEFAULT 0",
+  ];
+  for (const col of newCols) {
+    await pool.query(`ALTER TABLE payroll_cost_records ${col}`).catch(() => {});
+  }
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS payroll_cost_month_idx ON payroll_cost_records (report_month)
   `);
+  console.log("[PayrollCost] schema ensured (v2 fields added)");
 }
 
 // ── GET /api/payroll-cost/params ───────────────────────────────────────────
@@ -88,18 +107,23 @@ payrollCostRouter.get("/payroll-cost/records", async (req, res) => {
 
 // ── POST /api/payroll-cost/records ─────────────────────────────────────────
 payrollCostRouter.post("/payroll-cost/records", async (req, res) => {
-  const { report_month, driver_name, attendance_days, daily_wage, freight_income,
-          toll_fee, diesel_fee, other_fee, invoice_tax_rate, notes } = req.body;
-  if (!report_month || !driver_name)
+  const b = req.body;
+  if (!b.report_month || !b.driver_name)
     return res.status(400).json({ error: "report_month 與 driver_name 為必填" });
   try {
     const { rows } = await pool.query(
       `INSERT INTO payroll_cost_records
-         (report_month, driver_name, attendance_days, daily_wage, freight_income,
-          toll_fee, diesel_fee, other_fee, invoice_tax_rate, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [report_month, driver_name, attendance_days ?? 0, daily_wage ?? 0, freight_income ?? 0,
-       toll_fee ?? 0, diesel_fee ?? 0, other_fee ?? 0, invoice_tax_rate ?? 0, notes ?? null]
+         (report_month, driver_name, attendance_days, daily_trips, trip_price,
+          toll_fee, fuel_cost, insurance_fee, maintenance_fee,
+          pay_mode, fixed_salary, commission_rate,
+          labor_ins_fixed, health_ins_fixed, advance_payment, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [b.report_month, b.driver_name,
+       b.attendance_days ?? 0, b.daily_trips ?? 0, b.trip_price ?? 0,
+       b.toll_fee ?? 0, b.fuel_cost ?? 0, b.insurance_fee ?? 0, b.maintenance_fee ?? 0,
+       b.pay_mode ?? "fixed", b.fixed_salary ?? 0, b.commission_rate ?? 80,
+       b.labor_ins_fixed ?? 0, b.health_ins_fixed ?? 0, b.advance_payment ?? 0,
+       b.notes ?? null]
     );
     res.status(201).json({ ok: true, record: rows[0] });
   } catch (e: any) { res.status(400).json({ error: e.message }); }
@@ -108,11 +132,13 @@ payrollCostRouter.post("/payroll-cost/records", async (req, res) => {
 // ── PATCH /api/payroll-cost/records/:id ────────────────────────────────────
 payrollCostRouter.patch("/payroll-cost/records/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const fields = ["driver_name","attendance_days","daily_wage","freight_income",
-                  "toll_fee","diesel_fee","other_fee","invoice_tax_rate","notes"];
+  const ALLOWED = ["driver_name","attendance_days","daily_trips","trip_price",
+    "toll_fee","fuel_cost","insurance_fee","maintenance_fee",
+    "pay_mode","fixed_salary","commission_rate",
+    "labor_ins_fixed","health_ins_fixed","advance_payment","notes"];
   const updates = ["updated_at=NOW()"];
   const vals: unknown[] = [];
-  for (const f of fields) {
+  for (const f of ALLOWED) {
     if (req.body[f] !== undefined) { vals.push(req.body[f]); updates.push(`${f}=$${vals.length}`); }
   }
   if (!vals.length) return res.status(400).json({ error: "無可更新欄位" });
