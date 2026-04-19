@@ -69,6 +69,7 @@ const ShopeeBillingTab     = lazy(() => import("./admin/ShopeeBillingTab"));
 const PnLTab               = lazy(() => import("./admin/PnLTab"));
 const CashFlowTab          = lazy(() => import("./admin/CashFlowTab"));
 const OpenApiTab           = lazy(() => import("./admin/OpenApiTab"));
+const AtomsWebhookTab      = lazy(() => import("./admin/AtomsWebhookTab"));
 const BillingFlowTab       = lazy(() => import("./admin/BillingFlowTab"));
 const PricingPanel         = lazy(() => import("@/components/PricingPanel"));
 const OrderSearchTab       = lazy(() => import("./admin/OrderSearchTab"));
@@ -1728,6 +1729,7 @@ export default function Admin() {
                     { value: "crm",         icon: <Building2 className="w-3.5 h-3.5" />,                              label: "廠商管理" },
                     { value: "franchise-hub", icon: <UserPlus className="w-3.5 h-3.5 text-indigo-600" />,             label: "加盟管理" },
                     { value: "openapi",     icon: <Globe className="w-3.5 h-3.5 text-blue-500" />,                    label: "API 接口" },
+                    { value: "atoms",       icon: <span className="text-sm leading-none">🚚</span>,                    label: "Atoms 診斷" },
                     { value: "perm",        icon: <span className="text-sm leading-none">🔐</span>,                   label: "權限" },
                     { value: "line",        icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,          label: "LINE" },
                     { value: "commission",  icon: <span className="text-sm leading-none">%</span>,                    label: "抽成管理" },
@@ -3866,6 +3868,15 @@ export default function Admin() {
         {/* ===== API 開放接口 TAB ===== */}
         <TabsContent value="openapi" className="outline-none">
           <OpenApiTab />
+        </TabsContent>
+
+        {/* ===== Atoms 派車診斷 TAB ===== */}
+        <TabsContent value="atoms" className="outline-none">
+          <TabErrorBoundary>
+            <Suspense fallback={<div className="p-8 text-center text-muted-foreground">載入中...</div>}>
+              <AtomsWebhookTab />
+            </Suspense>
+          </TabErrorBoundary>
         </TabsContent>
 
         {/* ===== 廠商管理 TAB ===== */}

@@ -5,7 +5,10 @@
  *   POST /api/v1/webhook/orders           — 外部建立訂單（需 X-API-Key: orders:create）
  *   POST /api/v1/webhook/receive-order    — 同上（別名）
  *   POST /api/v1/webhook/atoms-broadcast  — 批次補發訂單給 Atoms
- *   POST /api/v1/webhook/atoms-accept     — Atoms 司機接單回傳（迴圈完成）
+ *   POST /api/v1/webhook/atoms-accept     — Atoms 司機接單/完成回傳
+ *   POST /api/v1/webhook/atoms-callback   — 同上（別名，相容不同路徑設定）
+ *   GET  /api/v1/webhook/atoms-logs       — 查詢 Atoms 收到的 webhook 日誌
+ *   GET  /api/v1/webhook/atoms-diagnostics — 診斷資訊（callback URL / 近期 log）
  */
 import { Router } from "express";
 import { db } from "@workspace/db";
@@ -35,6 +38,60 @@ export const webhookOrdersRouter = Router();
     console.warn("[AtomsColumns] migration warn:", String(e).slice(0, 200));
   }
 })();
+
+// ─── DB Migration: webhook_incoming_logs ────────────────────────────────────
+(async () => {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS webhook_incoming_logs (
+        id          SERIAL PRIMARY KEY,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        path        TEXT        NOT NULL,
+        method      TEXT        NOT NULL DEFAULT 'POST',
+        source_ip   TEXT,
+        headers     JSONB,
+        body        JSONB,
+        status_code INTEGER     NOT NULL DEFAULT 200,
+        note        TEXT
+      )
+    `);
+    console.log("[WebhookLog] webhook_incoming_logs 表已確認");
+  } catch (e) {
+    console.warn("[WebhookLog] migration warn:", String(e).slice(0, 200));
+  }
+})();
+
+// ─── 共用：記錄 webhook 進入日誌 ───────────────────────────────────────────
+async function logIncomingWebhook(params: {
+  path: string;
+  method?: string;
+  ip?: string;
+  headers?: Record<string, any>;
+  body?: any;
+  statusCode?: number;
+  note?: string;
+}) {
+  try {
+    const safeHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(params.headers ?? {})) {
+      if (typeof v === "string") safeHeaders[k] = v;
+    }
+    await db.execute(sql`
+      INSERT INTO webhook_incoming_logs (path, method, source_ip, headers, body, status_code, note)
+      VALUES (
+        ${params.path},
+        ${params.method ?? "POST"},
+        ${params.ip ?? null},
+        ${JSON.stringify(safeHeaders)}::jsonb,
+        ${JSON.stringify(params.body ?? {})}::jsonb,
+        ${params.statusCode ?? 200},
+        ${params.note ?? null}
+      )
+    `);
+  } catch (e) {
+    console.warn("[WebhookLog] 記錄失敗:", String(e).slice(0, 100));
+  }
+}
 
 // ─── LINE：Atoms 接單通知推送管理者 ────────────────────────────────────────
 async function sendAtomsAcceptedAlert(params: {
@@ -287,6 +344,10 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
     const results: { order_id: number; ok: boolean; statusCode?: number; error?: string }[] = [];
 
     async function sendOne(o: any) {
+      // ── 決定 callback URL（優先用 ATOMS_CALLBACK_BASE_URL，其次 APP_BASE_URL）──
+      const callbackBase = process.env.ATOMS_CALLBACK_BASE_URL || process.env.APP_BASE_URL || "";
+      const callbackUrl  = `${callbackBase}/api/v1/webhook/atoms-accept`;
+
       const payload = {
         order_id:          o.id,
         order_no:          o.order_no,
@@ -309,14 +370,19 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
         driver_license:    o.driver_license ?? null,
         driver_vehicle:    o.driver_vehicle ?? null,
         broadcast_at:      now,
-        // Callback URL: tells Atoms where to send the acceptance notification
-        callback_url: `${process.env.APP_BASE_URL ?? ""}/api/v1/webhook/atoms-accept`,
+        callback_url:      callbackUrl,
       };
       try {
         const r = await fetch(atomsUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: "order.assigned", timestamp: now, data: payload }),
+          // callback_url 同時放頂層 AND data 內，相容不同 Atoms 版本格式
+          body: JSON.stringify({
+            event: "order.assigned",
+            timestamp: now,
+            callback_url: callbackUrl,
+            data: payload,
+          }),
           signal: AbortSignal.timeout(10000),
         });
         const ok = r.ok;
@@ -365,13 +431,25 @@ webhookOrdersRouter.post("/v1/webhook/atoms-broadcast", async (req, res) => {
  *   - order.accepted / driver.accepted / accepted → 標記 atoms_accepted_at
  *   - order.completed / order.delivered / completed / delivered → 同上（視為完成）
  */
-webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
+async function handleAtomsCallback(req: any, res: any) {
+  const reqPath = req.path || req.url || "/v1/webhook/atoms-accept";
+  // ── 立即記錄進入日誌（無論後續是否成功）──
+  logIncomingWebhook({
+    path: reqPath,
+    method: req.method ?? "POST",
+    ip: req.headers["x-forwarded-for"] as string ?? req.ip ?? undefined,
+    headers: req.headers as Record<string, any>,
+    body: req.body,
+    note: "atoms-callback",
+  }).catch(() => {});
+
   try {
     // ── 選擇性認證 ──
     const secret = process.env.ATOMS_CALLBACK_SECRET;
     if (secret) {
       const incoming = req.headers["x-atoms-secret"] as string | undefined;
       if (incoming !== secret) {
+        logIncomingWebhook({ path: reqPath, body: req.body, statusCode: 401, note: "auth-failed" }).catch(() => {});
         return res.status(401).json({ error: "X-Atoms-Secret 驗證失敗" });
       }
     }
@@ -586,9 +664,14 @@ webhookOrdersRouter.post("/v1/webhook/atoms-accept", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[AtomsAccept] error:", err?.message ?? err);
+    logIncomingWebhook({ path: reqPath, body: req.body, statusCode: 500, note: `error: ${err?.message}` }).catch(() => {});
     res.status(500).json({ error: "接單回傳處理失敗", detail: err?.message ?? "unknown" });
   }
-});
+}
+
+// 綁定兩個別名路徑（atoms-accept + atoms-callback）
+webhookOrdersRouter.post("/v1/webhook/atoms-accept", handleAtomsCallback);
+webhookOrdersRouter.post("/v1/webhook/atoms-callback", handleAtomsCallback);
 
 // ─── POST /v1/webhook/orders ──────────────────────────────────────────────
 webhookOrdersRouter.post(
@@ -661,3 +744,88 @@ webhookOrdersRouter.post(
     }
   }
 );
+
+// ─── GET /v1/webhook/atoms-logs — 查詢 Atoms 接收日誌 ─────────────────────
+webhookOrdersRouter.get("/v1/webhook/atoms-logs", async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "50"), 10), 200);
+    const offset = parseInt(String(req.query.offset ?? "0"),  10);
+    const rows = await db.execute(sql`
+      SELECT id, received_at, path, method, source_ip,
+             headers, body, status_code, note
+      FROM webhook_incoming_logs
+      ORDER BY received_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+    const total = await db.execute(sql`SELECT COUNT(*) AS cnt FROM webhook_incoming_logs`);
+    res.json({
+      ok: true,
+      total: parseInt(String((total.rows[0] as any)?.cnt ?? "0"), 10),
+      logs: rows.rows,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "查詢日誌失敗", detail: err?.message });
+  }
+});
+
+// ─── GET /v1/webhook/atoms-diagnostics — 診斷資訊 ─────────────────────────
+webhookOrdersRouter.get("/v1/webhook/atoms-diagnostics", async (_req, res) => {
+  try {
+    const callbackBase = process.env.ATOMS_CALLBACK_BASE_URL || process.env.APP_BASE_URL || "";
+    const callbackUrl  = `${callbackBase}/api/v1/webhook/atoms-accept`;
+
+    const recentLogs = await db.execute(sql`
+      SELECT id, received_at, path, method, source_ip, status_code, note,
+             SUBSTRING(body::text, 1, 300) AS body_preview
+      FROM webhook_incoming_logs
+      ORDER BY received_at DESC
+      LIMIT 20
+    `);
+
+    const atomsOrders = await db.execute(sql`
+      SELECT COUNT(*) AS total_sent,
+             COUNT(atoms_accepted_at) AS total_accepted,
+             COUNT(CASE WHEN status = 'delivered' AND atoms_accepted_at IS NOT NULL THEN 1 END) AS total_completed
+      FROM orders
+      WHERE atoms_synced_at IS NOT NULL
+    `);
+
+    const stats = atomsOrders.rows[0] as any;
+
+    res.json({
+      ok: true,
+      config: {
+        atoms_webhook_url:       process.env.ATOMS_WEBHOOK_URL       ?? "(未設定)",
+        atoms_callback_base_url: process.env.ATOMS_CALLBACK_BASE_URL ?? "(未設定，使用 APP_BASE_URL)",
+        app_base_url:            process.env.APP_BASE_URL            ?? "(未設定)",
+        current_callback_url:    callbackUrl,
+        atoms_callback_secret:   process.env.ATOMS_CALLBACK_SECRET ? "已設定" : "(未設定，無需驗證)",
+      },
+      atoms_order_stats: {
+        total_sent_to_atoms:    parseInt(String(stats?.total_sent      ?? 0), 10),
+        total_accepted_by_atoms: parseInt(String(stats?.total_accepted ?? 0), 10),
+        total_completed:         parseInt(String(stats?.total_completed ?? 0), 10),
+      },
+      recent_incoming_logs: recentLogs.rows,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "診斷查詢失敗", detail: err?.message });
+  }
+});
+
+// ─── 全域 Atoms webhook catch-all（記錄打錯路徑的回傳）─────────────────────
+// 任何打到 /v1/webhook/atoms-XXX 但不是上面路徑的請求都記錄下來
+webhookOrdersRouter.all(/^\/v1\/webhook\/atoms/, async (req, res) => {
+  console.warn(`[WebhookCatchAll] 未知路徑：${req.method} ${req.path}`);
+  logIncomingWebhook({
+    path: req.path,
+    method: req.method,
+    ip: req.headers["x-forwarded-for"] as string ?? req.ip ?? undefined,
+    headers: req.headers as Record<string, any>,
+    body: req.body,
+    statusCode: 200,
+    note: "catch-all: unknown atoms path",
+  }).catch(() => {});
+  // 回傳 200 讓 Atoms 知道我們收到了（避免重試）
+  res.json({ ok: true, received: true, path: req.path, note: "已記錄，請確認正確 callback 路徑" });
+});
