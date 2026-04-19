@@ -1297,14 +1297,14 @@ function parsePersonalAffiliationLedger(
   const r0 = String(allRows[0]?.[0] ?? "");
   const r1 = String(allRows[1]?.[0] ?? "");
 
-  // 偵測：含「富詠運輸靠行車」且 row1 含「車主：」
-  if (!r0.includes("富詠運輸靠行車") || !r1.includes("車主：")) return null;
+  // 偵測：含「富詠運輸靠行車」且 row1 含「車主」
+  if (!r0.includes("富詠運輸靠行車") || !r1.includes("車主")) return null;
   // 排除格式9（"靠行車明細"相連，不含月份在中間）
   if (r0.includes("靠行車明細")) return null;
 
-  // 從 row1 提取車號和車主姓名
-  const vehicleMatch = r1.match(/車號[：:]\s*([A-Z0-9\-]+)/);
-  const ownerMatch   = r1.match(/車主[：:]\s*([^\)]+)\)/);
+  // 從 row1 提取車號和車主姓名（支援有冒號/無冒號格式）
+  const vehicleMatch = r1.match(/車號[：:]\s*([^(（\s]+)/);
+  const ownerMatch   = r1.match(/車主[：:\s]*([^)\）]+)[)\）]/);
   const vehicle = vehicleMatch?.[1]?.trim() ?? sn0;
   const owner   = ownerMatch?.[1]?.trim() ?? "未知車主";
 
@@ -1324,37 +1324,61 @@ function parsePersonalAffiliationLedger(
     if (yr !== rocYear) return null;
   }
 
-  // 累計所有「支出」欄（col4）= 富詠向車主收取的金額
-  let totalCollected = 0;
+  // 逐行解析
+  let totalCollected = 0;   // 富詠向車主收取的合計（支出欄）
   let affiliationFee = 0;
   let fuelRecovery   = 0;
+  let driverEarnings = 0;   // 富詠支付給車主的運費（收入欄 中的「運費」項）
   let endBalance     = 0;
   const breakdown: Record<string, number> = {};
 
   for (const r of allRows.slice(2)) {
     const desc = String(r[2] ?? "").trim();
+    const inc  = parseFloat(String(r[3] ?? "0").replace(/,/g, "")) || 0;
     const exp  = parseFloat(String(r[4] ?? "0").replace(/,/g, "")) || 0;
     const bal  = parseFloat(String(r[5] ?? "0").replace(/,/g, "")) || 0;
     if (bal > 0) endBalance = bal;
+
+    // 收入欄：「富詠N月運費」= 富詠付給車主的司機費
+    if (inc > 0 && (desc.includes("運費") || desc.includes("富詠")) && !desc.includes("結餘") && !desc.includes("餘款")) {
+      driverEarnings += inc;
+    }
+
+    // 支出欄：富詠向車主收取的費用
     if (exp <= 0) continue;
-    totalCollected += exp;
-    if (desc.includes("靠行費")) affiliationFee += exp;
-    else if (desc.includes("燃料費") || desc.includes("油費")) fuelRecovery += exp;
-    else breakdown[desc] = (breakdown[desc] ?? 0) + exp;
+    if (desc.includes("靠行費")) {
+      affiliationFee += exp;
+      totalCollected += exp;
+    } else if (desc.includes("燃料費") || desc.includes("油費")) {
+      fuelRecovery += exp;
+      totalCollected += exp;
+    } else {
+      // 罰單等代墊項目：記錄但不計入 misc_income（代墊後從帳上扣回，淨零）
+      breakdown[desc] = (breakdown[desc] ?? 0) + exp;
+    }
   }
 
-  // 寫入 misc_income
+  // 寫入 misc_income（富詠向車主收取的費用）
   if (!data.misc_income) data.misc_income = {};
   if (!data._affiliation_ledger_imported) data._affiliation_ledger_imported = {};
-  const key = `靠行費-${owner}`;
-  data.misc_income[key] = totalCollected;
-  data._affiliation_ledger_imported[key] = { vehicle, owner, totalCollected, affiliationFee, fuelRecovery, endBalance };
+  const incomeKey = `靠行費-${owner}`;
+  data.misc_income[incomeKey] = totalCollected;
+
+  // 若有「富詠運費」，更新 driver_costs（使用子鍵「靠行運費」，不覆蓋格式5的客戶明細）
+  if (driverEarnings > 0) {
+    if (!data.driver_costs[owner]) data.driver_costs[owner] = {};
+    data.driver_costs[owner]["靠行運費"] = driverEarnings;
+  }
+
+  data._affiliation_ledger_imported[incomeKey] = {
+    vehicle, owner, totalCollected, affiliationFee, fuelRecovery, driverEarnings, endBalance,
+  };
 
   return {
     format: "靠行車個人帳",
     rows_scanned: allRows.length,
-    stats: { income: 1, driver: 0, expense: 0, skipped: 0 },
-    extra: { vehicle, owner, affiliationFee, fuelRecovery, totalCollected, endBalance, breakdown },
+    stats: { income: 1, driver: driverEarnings > 0 ? 1 : 0, expense: 0, skipped: 0 },
+    extra: { vehicle, owner, affiliationFee, fuelRecovery, totalCollected, driverEarnings, endBalance, breakdown },
   };
 }
 
