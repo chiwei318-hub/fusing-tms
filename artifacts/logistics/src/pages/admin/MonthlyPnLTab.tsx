@@ -227,17 +227,40 @@ export default function MonthlyPnLTab() {
   const importFromGSheet = async () => {
     if (!selectedId || !gsheetUrl.trim()) return;
     setGsheetLoading(true);
+    const url = gsheetUrl.trim();
+    const isFolder = url.includes("/drive/folders/");
     try {
-      const r = await fetch(apiUrl(`/monthly-pnl/${selectedId}/import-gsheet`), {
+      const endpoint = isFolder
+        ? `/monthly-pnl/${selectedId}/import-gfolder`
+        : `/monthly-pnl/${selectedId}/import-gsheet`;
+      const r = await fetch(apiUrl(endpoint), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: gsheetUrl.trim() }),
+        body: JSON.stringify({ url }),
       }).then(x => x.json());
       if (r.ok) {
-        const b = r.breakdown ?? {};
-        toast.success(
-          `試算表匯入完成（${r.target_month}月）：運費收入 ${b.運費收入} 筆、司機 ${b.司機運費} 筆、費用 ${b.費用 + b.罰單} 筆`
-        );
+        if (isFolder) {
+          const lines = (r.results ?? []).map((x: any) =>
+            x.format === "外車運費對帳單"
+              ? `${x.driver} NT$${x.total?.toLocaleString()}`
+              : x.format ?? ""
+          ).join("、");
+          toast.success(
+            `資料夾匯入完成（${r.target_month}月）：共 ${r.files_imported} 份對帳單${lines ? " — " + lines : ""}`
+          );
+        } else {
+          const b = r.breakdown ?? {};
+          const detail = r.detail;
+          let msg = `試算表匯入完成（${r.format}，${r.target_month}月）`;
+          if (r.format === "外車運費對帳單" && detail) {
+            msg = `${detail.driver} 外車費 NT$${detail.total?.toLocaleString()} 已匯入`;
+          } else if (r.format === "油卡消費明細" && detail) {
+            msg = `油費 NT$${detail.totalFuel?.toLocaleString()}（${detail.totalLiters}L，${r.rows_scanned}筆）已匯入`;
+          } else {
+            msg += `：運費收入 ${b.運費收入} 筆、司機 ${b.司機運費} 筆、費用 ${b.費用} 筆`;
+          }
+          toast.success(msg);
+        }
         await loadReport(selectedId);
         setShowGsheet(false);
       } else {
@@ -453,14 +476,14 @@ export default function MonthlyPnLTab() {
           <div className="flex-1 min-w-64">
             <p className="text-xs font-semibold text-green-800 mb-1">從 Google 試算表（收支明細帳）自動匯入</p>
             <p className="text-xs text-green-700 mb-2">
-              試算表需設為「任何人可檢視」。系統將依月報月份過濾當月資料，自動填入運費收入、司機外包費用及各項費用。
+              支援貼上 Google 試算表連結（單一檔案）或 Google Drive 資料夾連結（批次匯入所有對帳單）。需設為「任何人可檢視」。
             </p>
             <div className="flex gap-2 items-center flex-wrap">
               <input
                 type="url"
                 value={gsheetUrl}
                 onChange={e => setGsheetUrl(e.target.value)}
-                placeholder="貼上 Google 試算表網址…"
+                placeholder="貼上 Google 試算表 或 Drive 資料夾網址…"
                 className="flex-1 min-w-64 text-sm border border-green-300 rounded px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
                 onKeyDown={e => { if (e.key === "Enter") importFromGSheet(); }}
               />

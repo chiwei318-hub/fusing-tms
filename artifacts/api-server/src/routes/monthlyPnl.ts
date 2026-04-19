@@ -516,6 +516,7 @@ function isFineCompanyExpense(note: string): boolean {
 const VENDOR_DRIVER_MAP: Record<string, string> = {
   "泰通交通股份有限公司": "泰立",
   "泰通":                "泰立",
+  "泰立交通有限公司":     "泰立",
   "蝦皮車隊":            "蝦皮",
   "吳育昇":              "吳昱陞",
 };
@@ -1053,6 +1054,89 @@ function parseFuelCardFormat(
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 7：外車運費對帳單（每司機一份，含總計）
+//   — Row0: 富詠運輸有限公司
+//   — Row1: YYYY年MM月 外車運費
+//   — Row2: 客戶 :XXX … 匯款日期:ROC.M.D
+//   — 資料列：col0 = 日期 (115.MM.DD)，col9 = 小計
+//   — 疊加模式：只更新該司機的 driver_costs 欄（不影響其他司機）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseDriverSlipFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  drivers: string[],
+  rocYear: number,
+  month: number,
+): { format: string; rows_scanned: number; stats: any; extra?: any } | null {
+  const sheetName = wb.SheetNames[0];
+  const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+
+  // 格式驗證
+  const r0 = String(rows[0]?.[0] ?? "");
+  const r1 = String(rows[1]?.[0] ?? "");
+  const r2 = String(rows[2]?.[0] ?? "");
+  if (!r0.includes("富詠") || !r1.includes("外車運費") || !r2.includes("客戶")) return null;
+
+  // 解析月份（"2026年01月 外車運費" or 年月 from sheet name）
+  let slipYear = rocYear, slipMonth = month;
+  const ym = r1.match(/(\d{4})年(\d{1,2})月/);
+  if (ym) { slipYear = parseInt(ym[1]) - 1911; slipMonth = parseInt(ym[2]); }
+
+  if (slipYear !== rocYear || slipMonth !== month) return null; // 月份不符，略過
+
+  // 解析司機名稱
+  const driverRaw = r2.replace(/^客戶\s*[:：]\s*/, "").split(/\s+/)[0].trim();
+  const driverAliases = buildDriverAliases(drivers);
+  let drvName: string | null = VENDOR_DRIVER_MAP[driverRaw] ?? null;
+  if (!drvName) {
+    for (const [alias, full] of Object.entries(driverAliases)) {
+      if (driverRaw.includes(alias as string)) { drvName = full as string; break; }
+    }
+  }
+  if (!drvName) drvName = driverRaw; // 未知司機，原名保留
+
+  // 加總有日期的資料列小計（col9）
+  let total = 0;
+  let count = 0;
+  const dateRe = /^\d{3}\.\d{2}\.\d{2}/;
+  for (const r of rows.slice(4)) {
+    const dateCell = String(r[0] ?? "").trim();
+    if (!dateRe.test(dateCell)) continue;
+    const amt = parseFloat(String(r[9] ?? "0").replace(/,/g, "")) || 0;
+    if (amt) { total += amt; count++; }
+  }
+
+  // 對帳單為最終付款憑證 → 覆蓋該司機的現有金額（冪等）
+  if (!data._slip_imported) data._slip_imported = {};
+  // 清除該司機原有所有費用項目，以對帳單為準
+  data.driver_costs[drvName] = { 對帳單: total };
+  data._slip_imported[drvName] = total;
+
+  return {
+    format: "外車運費對帳單",
+    rows_scanned: count,
+    stats: { income: 0, driver: count, expense: 0, skipped: 0 },
+    extra: { driver: drvName, total },
+  };
+}
+
+// ─── 輔助：從 Google Drive 資料夾頁面抓取試算表 ID ───────────────────────────
+async function fetchFolderFileIds(folderId: string): Promise<string[]> {
+  const html = await fetch(`https://drive.google.com/drive/folders/${folderId}`, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+    redirect: "follow",
+  }).then(r => r.text()).catch(() => "");
+  const ids = new Set<string>();
+  for (const m of html.matchAll(/"([A-Za-z0-9_-]{25,})"(?:[^}]*?"mimeType":"application\/vnd\.google-apps\.spreadsheet")?/g)) {
+    const candidate = m[1];
+    if (candidate.length >= 25 && candidate !== folderId) ids.add(candidate);
+  }
+  // 補撈 /file/d/ 格式
+  for (const m of html.matchAll(/\/spreadsheets\/d\/([A-Za-z0-9_-]{25,})/g)) ids.add(m[1]);
+  return Array.from(ids);
+}
+
 // ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
 monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
   try {
@@ -1126,7 +1210,13 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
       // 格式6：油卡消費明細，疊加 fuel 費用（冪等）
       result = parseFuelCardFormat(wb, data, rocYear, month);
     } else {
-      result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
+      // 嘗試格式7：外車運費對帳單
+      const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
+      if (slipResult) {
+        result = slipResult;
+      } else {
+        result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
+      }
     }
 
     // ── 寫回 DB ──────────────────────────────────────────────────────────────
@@ -1153,6 +1243,80 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     };
     if (result.extra) importResult.detail = result.extra;
     res.json(importResult);
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── POST /monthly-pnl/:id/import-gfolder — 從 Google Drive 資料夾批次匯入 ──
+monthlyPnlRouter.post("/:id/import-gfolder", async (req, res) => {
+  try {
+    const id  = parseInt(req.params.id);
+    const { url } = req.body as { url: string };
+    if (!url) return res.status(400).json({ error: "請提供 Google Drive 資料夾網址" });
+
+    // 解析資料夾 ID
+    const folderMatch = url.match(/\/folders\/([A-Za-z0-9_-]{15,})/);
+    if (!folderMatch) return res.status(400).json({ error: "無法解析資料夾 ID" });
+    const folderId = folderMatch[1];
+
+    // 取得月報
+    const rpt = await db.execute(sql`SELECT data, roc_year, month FROM monthly_pnl_reports WHERE id = ${id}`);
+    if (!rpt.rows.length) return res.status(404).json({ error: "月報不存在" });
+    const reportRow = rpt.rows[0] as any;
+    const data: any = JSON.parse(JSON.stringify(reportRow.data));
+    const customers: string[] = data.customers ?? DEFAULT_CUSTOMERS;
+    const drivers:   string[] = data.drivers   ?? DEFAULT_DRIVERS;
+    const rocYear = reportRow.roc_year as number;
+    const month   = reportRow.month    as number;
+
+    // 抓資料夾檔案清單
+    const fileIds = await fetchFolderFileIds(folderId);
+    const results: any[] = [];
+    let errors: string[] = [];
+
+    for (const fileId of fileIds) {
+      try {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+        const resp = await fetch(exportUrl, { redirect: "follow" });
+        if (!resp.ok) continue;
+        const buf = Buffer.from(await resp.arrayBuffer());
+        // 簡單驗證是否為有效 XLSX（magic bytes 50 4B 03 04）
+        if (buf[0] !== 0x50 || buf[1] !== 0x4B) continue;
+
+        const wb = XLSX.read(buf, { type: "buffer" });
+
+        // 格式7：外車運費對帳單
+        const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
+        if (slipResult) {
+          results.push({ fileId: fileId.slice(0, 12) + "…", ...slipResult.extra });
+        }
+        // 格式6：油卡消費明細
+        else {
+          const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" })[0] ?? [];
+          if (hdr.some((h: any) => String(h).includes("虛擬帳號") || String(h).includes("車牌號碼"))) {
+            const fuel = parseFuelCardFormat(wb, data, rocYear, month);
+            results.push({ fileId: fileId.slice(0, 12) + "…", format: fuel.format, ...fuel.extra });
+          }
+        }
+      } catch { /* 忽略無法解析的檔案 */ }
+    }
+
+    // 寫回 DB
+    await db.execute(sql`
+      UPDATE monthly_pnl_reports
+      SET data = ${JSON.stringify(data)}::jsonb, updated_at = NOW()
+      WHERE id = ${id}
+    `);
+
+    res.json({
+      ok: true,
+      folder_id: folderId,
+      target_month: `${rocYear}.${month}`,
+      files_found: fileIds.length,
+      files_imported: results.length,
+      results,
+    });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: e.message });
   }
