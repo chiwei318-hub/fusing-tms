@@ -160,6 +160,50 @@ export default function FusingaoFleetPortal() {
     }
   }, [fleetId, importSelected, importNames, importSuggestions]); // eslint-disable-line
 
+  // ── Import drivers from main driver list ─────────────────────────────────
+  interface MainDriver {
+    id: number; name: string; phone: string|null; license_plate: string|null;
+    vehicle_type: string; employee_id: string|null; driver_type: string; status: string;
+    already_imported: boolean;
+  }
+  const [mainImportModal, setMainImportModal]       = useState(false);
+  const [mainDrivers, setMainDrivers]               = useState<MainDriver[]>([]);
+  const [mainImportQ, setMainImportQ]               = useState("");
+  const [mainImportSelected, setMainImportSelected] = useState<Set<number>>(new Set());
+  const [mainImportLoading, setMainImportLoading]   = useState(false);
+  const [mainImportMsg, setMainImportMsg]           = useState("");
+
+  const searchMainDrivers = useCallback(async (q: string) => {
+    if (!fleetId) return;
+    setMainImportLoading(true);
+    const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/available-main-drivers?q=${encodeURIComponent(q)}`)).then(x => x.json());
+    setMainImportLoading(false);
+    if (d.ok) setMainDrivers(d.drivers ?? []);
+  }, [fleetId]); // eslint-disable-line
+
+  const openMainImportModal = useCallback(async () => {
+    setMainImportModal(true); setMainImportMsg(""); setMainImportSelected(new Set()); setMainImportQ("");
+    searchMainDrivers("");
+  }, [searchMainDrivers]); // eslint-disable-line
+
+  const doMainImport = useCallback(async () => {
+    if (!fleetId || mainImportSelected.size === 0) return;
+    setMainImportLoading(true); setMainImportMsg("");
+    const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/import-main-drivers`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ driver_ids: [...mainImportSelected] }),
+    }).then(x => x.json());
+    setMainImportLoading(false);
+    if (d.ok) {
+      setMainImportMsg(`✅ 已匯入 ${d.inserted} 筆司機`);
+      loadDrivers();
+      searchMainDrivers(mainImportQ);
+      setMainImportSelected(new Set());
+    } else {
+      setMainImportMsg(`❌ ${d.error}`);
+    }
+  }, [fleetId, mainImportSelected, mainImportQ, loadDrivers, searchMainDrivers]); // eslint-disable-line
+
   // ── Payroll state ──────────────────────────────────────────────────────────
   interface PayrollRecord {
     id: number; driver_id: number; driver_name: string; employee_id: string | null;
@@ -1044,6 +1088,10 @@ export default function FusingaoFleetPortal() {
                 <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
                   onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" }); setShowDriverForm(true); }}>
                   <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                  onClick={openMainImportModal}>
+                  👥 從司機名單匯入
                 </Button>
                 {schedWeeks.length > 0 && (
                   <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
@@ -2049,6 +2097,136 @@ export default function FusingaoFleetPortal() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Import Drivers from Main Driver List modal ══════════════════════ */}
+      {mainImportModal && (
+        <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.5)",
+          display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={() => setMainImportModal(false)}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:560,
+            maxHeight:"85vh", display:"flex", flexDirection:"column",
+            boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #e5e7eb" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ fontSize:17, fontWeight:700, color:"#1d4ed8" }}>👥 從司機名單匯入</div>
+                  <div style={{ fontSize:12, color:"#6b7280", marginTop:3 }}>
+                    從系統司機總名單中選取，直接加入旗下司機
+                  </div>
+                </div>
+                <button onClick={() => setMainImportModal(false)}
+                  style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#9ca3af" }}>✕</button>
+              </div>
+              {/* Search bar */}
+              <div style={{ marginTop:12, position:"relative" }}>
+                <input
+                  style={{ width:"100%", border:"1px solid #d1d5db", borderRadius:8, padding:"8px 12px 8px 36px",
+                    fontSize:14, outline:"none", boxSizing:"border-box" }}
+                  placeholder="搜尋工號 / 姓名 / 手機..."
+                  value={mainImportQ}
+                  onChange={e => { setMainImportQ(e.target.value); searchMainDrivers(e.target.value); }}
+                />
+                <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9ca3af", fontSize:14 }}>🔍</span>
+              </div>
+            </div>
+            {/* Body */}
+            <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+              {mainImportLoading && (
+                <div style={{ textAlign:"center", padding:32, color:"#6b7280" }}>載入中…</div>
+              )}
+              {!mainImportLoading && mainDrivers.length === 0 && (
+                <div style={{ textAlign:"center", padding:32, color:"#9ca3af" }}>找不到符合的司機</div>
+              )}
+              {!mainImportLoading && mainDrivers.length > 0 && (
+                <>
+                  <div style={{ display:"flex", gap:8, marginBottom:10, alignItems:"center" }}>
+                    <button style={{ fontSize:12, padding:"4px 10px", borderRadius:6, border:"1px solid #3b82f6",
+                      background:"#eff6ff", color:"#1d4ed8", cursor:"pointer" }}
+                      onClick={() => setMainImportSelected(new Set(mainDrivers.filter(d => !d.already_imported).map(d => d.id)))}>
+                      全選可匯入
+                    </button>
+                    <button style={{ fontSize:12, padding:"4px 10px", borderRadius:6, border:"1px solid #e5e7eb",
+                      background:"#f9fafb", cursor:"pointer" }}
+                      onClick={() => setMainImportSelected(new Set())}>
+                      取消全選
+                    </button>
+                    <span style={{ fontSize:12, color:"#6b7280", marginLeft:"auto" }}>
+                      已選 {mainImportSelected.size} 筆 / 共 {mainDrivers.length} 筆
+                    </span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {mainDrivers.map(d => (
+                      <div key={d.id} style={{
+                        display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
+                        borderRadius:8, border:"1px solid #e5e7eb",
+                        background: d.already_imported ? "#f0fdf4" : mainImportSelected.has(d.id) ? "#eff6ff" : "#fafafa",
+                        opacity: d.already_imported ? 0.7 : 1,
+                      }}>
+                        <input type="checkbox" style={{ width:16, height:16, cursor:"pointer" }}
+                          checked={mainImportSelected.has(d.id)}
+                          disabled={d.already_imported}
+                          onChange={e => {
+                            setMainImportSelected(prev => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(d.id) : next.delete(d.id);
+                              return next;
+                            });
+                          }} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                            {d.employee_id && (
+                              <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:14, color:"#0284c7" }}>
+                                {d.employee_id}
+                              </span>
+                            )}
+                            <span style={{ fontWeight:600, fontSize:14 }}>{d.name}</span>
+                            <span style={{ fontSize:11, color:"#6b7280", background:"#f3f4f6",
+                              padding:"1px 7px", borderRadius:10 }}>
+                              {d.vehicle_type} · {d.driver_type}
+                            </span>
+                            {d.already_imported && (
+                              <span style={{ fontSize:11, color:"#16a34a", background:"#dcfce7",
+                                padding:"1px 7px", borderRadius:10 }}>✓ 已匯入</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>
+                            {d.phone ?? "—"}
+                            {d.license_plate && ` ・ ${d.license_plate}`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {mainImportMsg && (
+                <div style={{ marginTop:12, textAlign:"center", fontSize:14, fontWeight:600,
+                  color: mainImportMsg.startsWith("✅") ? "#16a34a" : "#dc2626" }}>
+                  {mainImportMsg}
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            {mainImportSelected.size > 0 && (
+              <div style={{ padding:"12px 16px", borderTop:"1px solid #e5e7eb", display:"flex", gap:10 }}>
+                <button onClick={() => setMainImportModal(false)}
+                  style={{ flex:1, padding:"10px", border:"1px solid #d1d5db", borderRadius:8,
+                    fontSize:14, cursor:"pointer", background:"#fff", color:"#374151" }}>
+                  取消
+                </button>
+                <button onClick={doMainImport} disabled={mainImportLoading}
+                  style={{ flex:2, padding:"10px", border:"none", borderRadius:8,
+                    fontSize:14, fontWeight:700, cursor:"pointer",
+                    background: mainImportLoading ? "#93c5fd" : "#1d4ed8", color:"#fff" }}>
+                  {mainImportLoading ? "匯入中…" : `匯入選取的 ${mainImportSelected.size} 位司機`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

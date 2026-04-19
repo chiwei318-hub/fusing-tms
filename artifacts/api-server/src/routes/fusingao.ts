@@ -850,6 +850,73 @@ fusingaoRouter.post("/fleets/:id/import-schedule-drivers", async (req, res) => {
   }
 });
 
+// GET /fusingao/fleets/:id/available-main-drivers — search main drivers table for import
+fusingaoRouter.get("/fleets/:id/available-main-drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { q } = req.query as Record<string,string>;
+    // Fetch drivers from main drivers table not yet in fleet_drivers for this fleet
+    const qParam = q ? `%${q}%` : "%";
+    const rows = await pool.query(`
+      SELECT d.id, d.name, d.phone, d.license_plate, d.vehicle_type, d.employee_id,
+             d.driver_type, d.status
+      FROM drivers d
+      WHERE d.name ILIKE $1
+         OR d.phone ILIKE $1
+         OR CAST(d.employee_id AS TEXT) ILIKE $1
+      ORDER BY d.employee_id ASC NULLS LAST, d.name ASC
+      LIMIT 100
+    `, [qParam]);
+    // Mark which ones are already in fleet_drivers for this fleet
+    const existingRes = await pool.query(
+      `SELECT employee_id, name, phone FROM fleet_drivers WHERE fleet_id=$1`,
+      [Number(id)]
+    );
+    const existingKeys = new Set(existingRes.rows.map((r: any) =>
+      `${r.employee_id ?? ""}|${r.name}|${r.phone ?? ""}`
+    ));
+    const drivers = rows.rows.map((d: any) => ({
+      ...d,
+      already_imported: existingKeys.has(`${d.employee_id ?? ""}|${d.name}|${d.phone ?? ""}`)
+    }));
+    res.json({ ok: true, drivers });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/import-main-drivers — batch import from main drivers table
+fusingaoRouter.post("/fleets/:id/import-main-drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { driver_ids } = req.body as { driver_ids: number[] };
+    if (!driver_ids?.length) return res.status(400).json({ ok: false, error: "driver_ids 不可為空" });
+
+    const driverRows = await pool.query(
+      `SELECT id, name, phone, license_plate AS vehicle_plate, vehicle_type, employee_id FROM drivers WHERE id = ANY($1)`,
+      [driver_ids]
+    );
+    const inserted: any[] = [];
+    for (const d of driverRows.rows as any[]) {
+      // Skip if already exists (by employee_id + name match)
+      const exists = await pool.query(
+        `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND name=$2 AND (employee_id=$3 OR (employee_id IS NULL AND $3 IS NULL))`,
+        [Number(id), d.name, d.employee_id ? String(d.employee_id) : null]
+      );
+      if (exists.rows.length > 0) { inserted.push({ ...d, status: "已存在" }); continue; }
+      const r = await pool.query(`
+        INSERT INTO fleet_drivers (fleet_id, name, phone, vehicle_plate, vehicle_type, employee_id, is_active)
+        VALUES ($1,$2,$3,$4,$5,$6,true)
+        RETURNING *
+      `, [Number(id), d.name, d.phone??null, d.vehicle_plate??null, d.vehicle_type??"一般", d.employee_id ? String(d.employee_id) : null]);
+      inserted.push(r.rows[0]);
+    }
+    res.json({ ok: true, inserted: inserted.length, drivers: inserted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/fleets/:id/payroll — list monthly payroll records
 fusingaoRouter.get("/fleets/:id/payroll", async (req, res) => {
   try {
