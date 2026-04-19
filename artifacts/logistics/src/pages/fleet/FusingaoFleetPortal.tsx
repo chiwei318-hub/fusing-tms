@@ -119,6 +119,46 @@ export default function FusingaoFleetPortal() {
   // ── Quick add driver state (from home) ───────────────────────────────────
   const [quickDriverForm, setQuickDriverForm] = useState(false);
 
+  // ── Import drivers from schedule ─────────────────────────────────────────
+  interface DriverSuggestion { shopee_driver_id: string; vehicle_type: string; route_count: number; }
+  const [importModal, setImportModal]           = useState(false);
+  const [importSuggestions, setImportSuggestions] = useState<DriverSuggestion[]>([]);
+  const [importSelected, setImportSelected]     = useState<Set<string>>(new Set());
+  const [importNames, setImportNames]           = useState<Record<string, string>>({});
+  const [importLoading, setImportLoading]       = useState(false);
+  const [importMsg, setImportMsg]               = useState("");
+
+  const openImportModal = useCallback(async () => {
+    if (!fleetId) return;
+    setImportLoading(true); setImportModal(true); setImportMsg(""); setImportSelected(new Set()); setImportNames({});
+    try {
+      const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/schedule-driver-suggestions`)).then(x => x.json());
+      if (d.ok) setImportSuggestions(d.suggestions ?? []);
+    } finally { setImportLoading(false); }
+  }, [fleetId]); // eslint-disable-line
+
+  const doImportDrivers = useCallback(async () => {
+    if (!fleetId || importSelected.size === 0) return;
+    setImportLoading(true);
+    const payload = Array.from(importSelected).map(sid => ({
+      shopee_driver_id: sid,
+      name: importNames[sid]?.trim() || sid,
+      vehicle_type: importSuggestions.find(s => s.shopee_driver_id === sid)?.vehicle_type || "一般",
+    }));
+    const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/import-schedule-drivers`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ drivers: payload }),
+    }).then(x => x.json());
+    setImportLoading(false);
+    if (d.ok) {
+      setImportMsg(`✅ 成功匯入 ${d.inserted} 位司機`);
+      loadDrivers();
+      setTimeout(() => { setImportModal(false); setImportMsg(""); }, 1500);
+    } else {
+      setImportMsg(`❌ ${d.error}`);
+    }
+  }, [fleetId, importSelected, importNames, importSuggestions]); // eslint-disable-line
+
   // ── Schedule tab state ────────────────────────────────────────────────────
   interface SchedWeek { week_label: string; route_count: number; total_stops: number; imported_at: string; }
   interface SchedRoute {
@@ -928,10 +968,18 @@ export default function FusingaoFleetPortal() {
             )}
 
             {!showDriverForm && (
-              <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" }); setShowDriverForm(true); }}>
-                <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                  onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" }); setShowDriverForm(true); }}>
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
+                </Button>
+                {schedWeeks.length > 0 && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    onClick={openImportModal}>
+                    📥 從班表匯入司機
+                  </Button>
+                )}
+              </div>
             )}
 
             {/* Driver list */}
@@ -1843,6 +1891,121 @@ export default function FusingaoFleetPortal() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Import Drivers from Schedule modal ══════════════════════════════ */}
+      {importModal && (
+        <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.5)",
+          display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={() => setImportModal(false)}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:520,
+            maxHeight:"80vh", display:"flex", flexDirection:"column",
+            boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ background:"linear-gradient(135deg,#4f46e5,#6366f1)", padding:"16px 20px" }}>
+              <div style={{ color:"#fff", fontWeight:700, fontSize:16 }}>📥 從班表匯入司機</div>
+              <div style={{ color:"#c7d2fe", fontSize:13, marginTop:3 }}>
+                以下工號出現在班表但尚未建立司機資料，請填入姓名後勾選匯入
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+              {importLoading && importSuggestions.length === 0 ? (
+                <div style={{ textAlign:"center", padding:32, color:"#9ca3af" }}>⏳ 讀取中…</div>
+              ) : importSuggestions.length === 0 ? (
+                <div style={{ textAlign:"center", padding:32, color:"#9ca3af" }}>
+                  ✅ 班表中所有司機工號已匯入，無需額外操作
+                </div>
+              ) : (
+                <>
+                  <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                    <button
+                      style={{ fontSize:12, padding:"4px 10px", borderRadius:6, border:"1px solid #e5e7eb",
+                        background:"#f9fafb", cursor:"pointer" }}
+                      onClick={() => setImportSelected(new Set(importSuggestions.map(s => s.shopee_driver_id)))}>
+                      全選
+                    </button>
+                    <button
+                      style={{ fontSize:12, padding:"4px 10px", borderRadius:6, border:"1px solid #e5e7eb",
+                        background:"#f9fafb", cursor:"pointer" }}
+                      onClick={() => setImportSelected(new Set())}>
+                      取消全選
+                    </button>
+                    <span style={{ fontSize:12, color:"#6b7280", marginLeft:"auto", lineHeight:"28px" }}>
+                      已選 {importSelected.size} / {importSuggestions.length}
+                    </span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {importSuggestions.map(s => (
+                      <div key={s.shopee_driver_id} style={{
+                        display:"flex", alignItems:"center", gap:10,
+                        padding:"10px 12px", borderRadius:8, border:"1px solid #e5e7eb",
+                        background: importSelected.has(s.shopee_driver_id) ? "#eef2ff" : "#fafafa",
+                      }}>
+                        <input type="checkbox" style={{ width:16, height:16, cursor:"pointer" }}
+                          checked={importSelected.has(s.shopee_driver_id)}
+                          onChange={e => {
+                            setImportSelected(prev => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(s.shopee_driver_id) : next.delete(s.shopee_driver_id);
+                              return next;
+                            });
+                          }} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:15, color:"#0284c7" }}>
+                              {s.shopee_driver_id}
+                            </span>
+                            <span style={{ fontSize:12, color:"#6b7280", background:"#f3f4f6",
+                              padding:"2px 8px", borderRadius:12 }}>
+                              {s.vehicle_type || "一般"} · {s.route_count} 趟
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          style={{ width:120, border:"1px solid #d1d5db", borderRadius:6,
+                            padding:"5px 8px", fontSize:13 }}
+                          placeholder="輸入姓名"
+                          value={importNames[s.shopee_driver_id] ?? ""}
+                          onChange={e => setImportNames(prev => ({ ...prev, [s.shopee_driver_id]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {importMsg && (
+                <div style={{ marginTop:12, textAlign:"center", fontSize:14, fontWeight:600,
+                  color: importMsg.startsWith("✅") ? "#16a34a" : "#dc2626" }}>
+                  {importMsg}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {importSuggestions.length > 0 && (
+              <div style={{ borderTop:"1px solid #e5e7eb", padding:"12px 20px",
+                display:"flex", gap:10, justifyContent:"flex-end" }}>
+                <button
+                  style={{ padding:"8px 18px", borderRadius:8, border:"1px solid #d1d5db",
+                    background:"#fff", cursor:"pointer", fontSize:14 }}
+                  onClick={() => setImportModal(false)}>取消</button>
+                <button
+                  disabled={importSelected.size === 0 || importLoading}
+                  style={{ padding:"8px 18px", borderRadius:8, border:"none",
+                    background: importSelected.size === 0 ? "#a5b4fc" : "#4f46e5",
+                    color:"#fff", cursor: importSelected.size === 0 ? "not-allowed" : "pointer",
+                    fontSize:14, fontWeight:600 }}
+                  onClick={doImportDrivers}>
+                  {importLoading ? "匯入中…" : `匯入 ${importSelected.size} 位司機`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

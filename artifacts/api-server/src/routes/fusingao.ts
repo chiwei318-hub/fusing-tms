@@ -756,6 +756,68 @@ fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
   }
 });
 
+// GET /fusingao/fleets/:id/schedule-driver-suggestions
+// 從班表取得未匯入的蝦皮司機工號清單
+fusingaoRouter.get("/fleets/:id/schedule-driver-suggestions", async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Get all existing employee_ids for this fleet
+    const existing = await pool.query(
+      `SELECT COALESCE(employee_id, '') AS eid FROM fleet_drivers WHERE fleet_id = $1 AND employee_id IS NOT NULL AND employee_id <> ''`,
+      [Number(id)]
+    );
+    const existingIds = new Set(existing.rows.map((r: any) => r.eid));
+
+    // Get distinct shopee_driver_id from schedule, with most common vehicle_type
+    const result = await pool.query(`
+      SELECT
+        shopee_driver_id,
+        MODE() WITHIN GROUP (ORDER BY vehicle_type) AS vehicle_type,
+        COUNT(*) AS route_count
+      FROM shopee_week_routes
+      WHERE shopee_driver_id IS NOT NULL AND shopee_driver_id <> ''
+      GROUP BY shopee_driver_id
+      ORDER BY shopee_driver_id
+    `);
+
+    const suggestions = result.rows.filter((r: any) => !existingIds.has(r.shopee_driver_id));
+    res.json({ ok: true, suggestions });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/import-schedule-drivers
+// 批量從班表匯入司機（以蝦皮工號為 employee_id）
+fusingaoRouter.post("/fleets/:id/import-schedule-drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { drivers } = req.body as { drivers: { shopee_driver_id: string; name: string; vehicle_type: string }[] };
+    if (!Array.isArray(drivers) || drivers.length === 0) {
+      return res.status(400).json({ ok: false, error: "未提供司機資料" });
+    }
+    const inserted: any[] = [];
+    for (const d of drivers) {
+      // Skip if already exists
+      const dup = await pool.query(
+        `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND employee_id=$2 LIMIT 1`,
+        [Number(id), d.shopee_driver_id]
+      );
+      if (dup.rows.length > 0) continue;
+      const r = await pool.query(
+        `INSERT INTO fleet_drivers (fleet_id, name, vehicle_type, employee_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [Number(id), d.name || d.shopee_driver_id, d.vehicle_type || "一般", d.shopee_driver_id]
+      );
+      inserted.push(r.rows[0]);
+    }
+    res.json({ ok: true, inserted: inserted.length, drivers: inserted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // PUT /fusingao/fleets/:id/drivers/:driverId
 fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
   try {
