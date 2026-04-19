@@ -995,6 +995,64 @@ function parseSingleMonthDetailFormat(
   return { format: "單月運費淨利明細表", rows_scanned: stats.income + stats.driver, stats };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 6：油卡消費明細 解析（車隊加油卡交易記錄）
+//   — 日期格式 "2026-01-01 044313"，按月過濾，加總售價小計 → fuel 費用
+//   — 疊加模式（保留其他費用，oil 欄位用 _fuel_card_imported 追蹤冪等）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseFuelCardFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  rocYear: number,
+  month: number,
+) {
+  const sheetName = wb.SheetNames[0];
+  const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+
+  // 解析 "2026-01-01 044313" → { year(ROC), month, day }
+  const parseCardDate = (s: any) => {
+    const m = String(s ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return { year: parseInt(m[1]) - 1911, month: parseInt(m[2]) };
+  };
+
+  // 冪等：先扣除上次油卡匯入的金額
+  if (!data._fuel_card_imported) data._fuel_card_imported = 0;
+  data.expenses["fuel"] = Math.max(0, (data.expenses["fuel"] ?? 0) - data._fuel_card_imported);
+  data._fuel_card_imported = 0;
+
+  let totalFuel = 0;
+  let totalLiters = 0;
+  let count = 0;
+  const byPlate: Record<string, number> = {};
+
+  for (const r of rows.slice(1)) {
+    const dt  = parseCardDate(r[3]);
+    if (!dt || dt.year !== rocYear || dt.month !== month) continue;
+
+    const plate = String(r[2] ?? "").trim();
+    const amt   = parseFloat(String(r[11] ?? "0").replace(/,/g, "")) || 0;
+    const liters= parseFloat(String(r[6]  ?? "0").replace(/,/g, "")) || 0;
+    if (!amt) continue;
+
+    totalFuel   += amt;
+    totalLiters += liters;
+    count++;
+    if (plate) byPlate[plate] = (byPlate[plate] ?? 0) + amt;
+  }
+
+  // 加總到 fuel 費用
+  data.expenses["fuel"]       = (data.expenses["fuel"] ?? 0) + totalFuel;
+  data._fuel_card_imported    = totalFuel;
+
+  return {
+    format: "油卡消費明細",
+    rows_scanned: count,
+    stats: { income: 0, expense: count, skipped: 0 },
+    extra: { totalFuel, totalLiters: Math.round(totalLiters * 10) / 10, byPlate },
+  };
+}
+
 // ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
 monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
   try {
@@ -1045,7 +1103,13 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
         const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: "" })[2] ?? [];
         return hdr.some((h: any) => String(h).includes("帳款月份"));
       })();
-    let result: { format: string; rows_scanned: number; stats: any };
+    // 格式6：油卡消費明細（含「前台登入之虛擬帳號」+「車牌號碼」欄）
+    const isFuelCardFmt = !isDetailedFmt && !isInvoiceFmt && !isPettyCashFmt && !isSingleMonthFmt &&
+      (() => {
+        const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" })[0] ?? [];
+        return hdr.some((h: any) => String(h).includes("虛擬帳號") || String(h).includes("車牌號碼"));
+      })();
+    let result: { format: string; rows_scanned: number; stats: any; extra?: any };
 
     if (isDetailedFmt) {
       result = parseDetailedFormat(wb, data, customers, drivers, rocYear, month);
@@ -1058,6 +1122,9 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     } else if (isSingleMonthFmt) {
       // 格式5：單月逐筆訂單，同時推導收入 + 司機外包費（按客戶拆分）
       result = parseSingleMonthDetailFormat(wb, data, customers, drivers, month);
+    } else if (isFuelCardFmt) {
+      // 格式6：油卡消費明細，疊加 fuel 費用（冪等）
+      result = parseFuelCardFormat(wb, data, rocYear, month);
     } else {
       result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
     }
@@ -1071,7 +1138,7 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
 
     const s = result.stats;
     const filled = (s.income ?? 0) + (s.driver ?? 0) + (s.expense ?? 0) + (s.fine ?? 0);
-    res.json({
+    const importResult: any = {
       ok:           true,
       format:       result.format,
       target_month: targetMonth,
@@ -1083,7 +1150,9 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
         費用:    (s.expense ?? 0) + (s.fine ?? 0),
         忽略:    s.skipped ?? 0,
       },
-    });
+    };
+    if (result.extra) importResult.detail = result.extra;
+    res.json(importResult);
   } catch (e: any) {
     res.status(500).json({ ok: false, error: e.message });
   }
