@@ -856,6 +856,88 @@ function parseInvoiceFormat(
   return { format: "進銷項發票", rows_scanned, stats };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 4：零用金收支表 解析（Excel 序列號日期，疊加模式）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Excel 序列號 → ROC 年/月/日 */
+function excelSerialToRoc(serial: number): { year: number; month: number; day: number } | null {
+  if (!serial || typeof serial !== "number") return null;
+  const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+  return {
+    year:  d.getUTCFullYear() - 1911,
+    month: d.getUTCMonth() + 1,
+    day:   d.getUTCDate(),
+  };
+}
+
+/** 零用金說明 → P&L 費用欄位對照 */
+const PETTY_CASH_MAP: Array<[RegExp, string]> = [
+  [/油費|機油|加油/,             "fuel"],
+  [/保養|驗車|校正|洗車|輪胎/,  "vehicle_maintenance"],
+  [/餐費|餐/,                    "entertainment"],
+  [/土地公|貢品|開工|水果|金香/, "entertainment"],
+  [/郵資|快遞|寄件/,             "postage"],
+  [/停車/,                       "misc_expense"],
+  [/五金|文具|碳粉/,             "misc_expense"],
+  [/手機|電話|網路/,             "telecom"],
+  [/瓦斯|水電/,                  "utilities"],
+  [/廣告/,                       "facebook_ads"],
+];
+
+/** 零用金格式解析（疊加到現有費用，不重置）*/
+function parsePettyCashFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  rocYear: number,
+  month: number,
+) {
+  const sheetName = wb.SheetNames.find(n => n.includes("零用金")) ?? wb.SheetNames[0];
+  const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+
+  const stats = { expense: 0, skipped: 0 };
+
+  // 先把此來源的零用金費用歸零（用 tag 追蹤，避免重複匯入疊加）
+  if (!data._petty_cash_imported) data._petty_cash_imported = {};
+  // 把上次零用金匯入的費用從 expenses 扣除
+  for (const [key, amt] of Object.entries(data._petty_cash_imported as Record<string, number>)) {
+    if (data.expenses[key]) data.expenses[key] = Math.max(0, data.expenses[key] - amt);
+  }
+  data._petty_cash_imported = {};
+
+  for (const r of rows.slice(5)) {
+    const dt  = excelSerialToRoc(r[0] as number);
+    if (!dt || dt.year !== rocYear || dt.month !== month) continue;
+
+    const desc    = String(r[2] ?? "").trim();
+    const expense = parseFloat(String(r[4] ?? "0").replace(/,/g, "")) || 0;
+
+    if (!desc || !expense) continue;
+    // 跳過非支出項目（存入、代付司機等）
+    if (desc.includes("存入") || desc.includes("補充")) continue;
+    if (desc.includes("代付司機")) continue;
+
+    let mapped = false;
+    for (const [re, key] of PETTY_CASH_MAP) {
+      if (re.test(desc)) {
+        data.expenses[key]                  = (data.expenses[key]       ?? 0) + expense;
+        data._petty_cash_imported[key]      = (data._petty_cash_imported[key] ?? 0) + expense;
+        stats.expense++;
+        mapped = true;
+        break;
+      }
+    }
+    if (!mapped) {
+      // 歸入雜項費用
+      data.expenses["misc_expense"]              = (data.expenses["misc_expense"]              ?? 0) + expense;
+      data._petty_cash_imported["misc_expense"]  = (data._petty_cash_imported["misc_expense"] ?? 0) + expense;
+      stats.skipped++;
+    }
+  }
+
+  return { format: "零用金收支表", rows_scanned: stats.expense + stats.skipped, stats };
+}
+
 // ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
 monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
   try {
@@ -893,9 +975,11 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     // ── 自動偵測格式並解析 ─────────────────────────────────────────────────
     // 格式2：含「運費淨利明細表」工作表（逐筆訂單 + 應付帳款）
     // 格式3：含「進項發票」或「銷項發票」工作表（稅務發票明細）
+    // 格式4：含「零用金」工作表（零用金收支表，疊加模式）
     // 格式1：其他（收支明細帳，月份+類別欄）
-    const isDetailedFmt = wb.SheetNames.some(n => n.includes("運費淨利明細表"));
-    const isInvoiceFmt  = wb.SheetNames.some(n => n.includes("進項發票") || n.includes("銷項發票"));
+    const isDetailedFmt   = wb.SheetNames.some(n => n.includes("運費淨利明細表"));
+    const isInvoiceFmt    = wb.SheetNames.some(n => n.includes("進項發票") || n.includes("銷項發票"));
+    const isPettyCashFmt  = wb.SheetNames.some(n => n.includes("零用金"));
     let result: { format: string; rows_scanned: number; stats: any };
 
     if (isDetailedFmt) {
@@ -903,6 +987,9 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     } else if (isInvoiceFmt) {
       // 格式3 只更新收入與費用，不覆蓋司機成本（需另用格式1或2匯入）
       result = parseInvoiceFormat(wb, data, customers, rocYear, month);
+    } else if (isPettyCashFmt) {
+      // 格式4 疊加至現有費用（可在格式2/3之後匯入，記帳仍冪等）
+      result = parsePettyCashFormat(wb, data, rocYear, month);
     } else {
       result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
     }
