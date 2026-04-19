@@ -938,6 +938,63 @@ function parsePettyCashFormat(
   return { format: "零用金收支表", rows_scanned: stats.expense + stats.skipped, stats };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 5：單月運費淨利明細表 解析（工作表名如 "115.3月"，含外車欄）
+//   — 從逐筆訂單同時推導收入（小計）與司機外包費（派外車10%欄）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseSingleMonthDetailFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  customers: string[],
+  drivers: string[],
+  month: number,
+) {
+  // 找到名稱含「月」的工作表（如 "115.3月"）
+  const sheetName = wb.SheetNames.find(n => /\d+月/.test(n)) ?? wb.SheetNames[0];
+  const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+  const driverAliases = buildDriverAliases(drivers);
+
+  resetData(data, customers, drivers);
+  const stats = { income: 0, driver: 0, skipped: 0 };
+
+  for (const r of rows.slice(3)) {
+    const billingMonth = parseInt(String(r[1] ?? "").trim());
+    if (billingMonth !== month) continue; // 只取目標帳款月份
+
+    const custRaw    = String(r[2]  ?? "").trim();
+    const subtotal   = parseFloat(String(r[11] ?? "0").replace(/,/g, "")) || 0;
+    const driverCost = parseFloat(String(r[12] ?? "0").replace(/,/g, "")) || 0;
+    const driverRaw  = String(r[14] ?? "").trim();
+
+    if (!custRaw || !subtotal) continue;
+
+    // ── 運費收入 ────────────────────────────────────────────────────────────
+    const matched = customers.find(c => c !== "其他" && (custRaw === c || custRaw.includes(c))) ?? "其他";
+    data.transport_income[matched] = (data.transport_income[matched] ?? 0) + subtotal;
+    stats.income++;
+
+    // ── 司機外包費 ──────────────────────────────────────────────────────────
+    if (driverRaw && driverCost > 0) {
+      // 先用 VENDOR_DRIVER_MAP 對照，再用別名，最後直接用原名
+      let drvName = VENDOR_DRIVER_MAP[driverRaw] ?? null;
+      if (!drvName) {
+        for (const [alias, full] of Object.entries(driverAliases)) {
+          if (driverRaw.includes(alias)) { drvName = full as string; break; }
+        }
+      }
+      if (!drvName) drvName = driverRaw;
+
+      ensureDriver(data, drvName);
+      // 按客戶拆分（每筆訂單知道對應客戶）
+      if (!data.driver_costs[drvName][matched]) data.driver_costs[drvName][matched] = 0;
+      data.driver_costs[drvName][matched] = (data.driver_costs[drvName][matched] ?? 0) + driverCost;
+      stats.driver++;
+    }
+  }
+
+  return { format: "單月運費淨利明細表", rows_scanned: stats.income + stats.driver, stats };
+}
+
 // ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
 monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
   try {
@@ -980,6 +1037,14 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     const isDetailedFmt   = wb.SheetNames.some(n => n.includes("運費淨利明細表"));
     const isInvoiceFmt    = wb.SheetNames.some(n => n.includes("進項發票") || n.includes("銷項發票"));
     const isPettyCashFmt  = wb.SheetNames.some(n => n.includes("零用金"));
+    // 格式5：工作表名稱形如 "115.3月" 且第4列有「帳款月份」欄位
+    const isSingleMonthFmt = !isDetailedFmt && !isInvoiceFmt && !isPettyCashFmt &&
+      wb.SheetNames.some(n => /^\d{3}\.\d+月/.test(n.trim())) &&
+      (() => {
+        const sn = wb.SheetNames.find(n => /\d+月/.test(n)) ?? wb.SheetNames[0];
+        const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: "" })[2] ?? [];
+        return hdr.some((h: any) => String(h).includes("帳款月份"));
+      })();
     let result: { format: string; rows_scanned: number; stats: any };
 
     if (isDetailedFmt) {
@@ -990,6 +1055,9 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     } else if (isPettyCashFmt) {
       // 格式4 疊加至現有費用（可在格式2/3之後匯入，記帳仍冪等）
       result = parsePettyCashFormat(wb, data, rocYear, month);
+    } else if (isSingleMonthFmt) {
+      // 格式5：單月逐筆訂單，同時推導收入 + 司機外包費（按客戶拆分）
+      result = parseSingleMonthDetailFormat(wb, data, customers, drivers, month);
     } else {
       result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
     }
