@@ -41,10 +41,11 @@ async function ensureFusingaoFleetColumns() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_driver_name TEXT`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_vehicle_plate TEXT`,
   ];
-  // Add atoms_account to fleet_drivers if not exists
+  // Add extra columns to fleet_drivers if not exists
   try {
     await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_account TEXT`));
     await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_password TEXT`));
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS employee_id TEXT`));
   } catch { /* already exists */ }
   for (const s of fleetOrderCols) {
     try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
@@ -663,7 +664,7 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
       SELECT
         fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
         fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
-        fd.atoms_account,
+        fd.atoms_account, fd.employee_id,
         COUNT(o.id)                                                  AS total_routes,
         COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL)  AS completed_routes,
         COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings
@@ -675,8 +676,8 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
       WHERE fd.fleet_id = ${Number(id)}
       GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
                fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
-               fd.atoms_account
-      ORDER BY fd.is_active DESC, fd.name
+               fd.atoms_account, fd.employee_id
+      ORDER BY fd.is_active DESC, fd.employee_id NULLS LAST, fd.name
     `);
     res.json({ ok: true, drivers: rows.rows });
   } catch (err: any) {
@@ -742,11 +743,11 @@ async function pushFleetRouteToAtoms(orderId: number, driverName: string | null,
 fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id } = req.body;
     if (!name) return res.status(400).json({ ok: false, error: "司機姓名為必填" });
     const [row] = await db.execute(sql`
-      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password)
-      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null}, ${atoms_account??null}, ${atoms_password??null})
+      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id)
+      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null}, ${atoms_account??null}, ${atoms_password??null}, ${employee_id??null})
       RETURNING *
     `).then(r => r.rows as any[]);
     res.json({ ok: true, driver: row });
@@ -759,20 +760,21 @@ fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
 fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
   try {
     const { id, driverId } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active, atoms_account, atoms_password } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active, atoms_account, atoms_password, employee_id } = req.body;
     await db.execute(sql`
       UPDATE fleet_drivers SET
-        name          = ${name},
-        phone         = ${phone??null},
-        id_number     = ${id_number??null},
-        vehicle_plate = ${vehicle_plate??null},
-        vehicle_type  = ${vehicle_type??"一般"},
-        line_id       = ${line_id??null},
-        notes         = ${notes??null},
-        is_active     = ${is_active??true},
-        atoms_account = ${atoms_account??null},
+        name           = ${name},
+        phone          = ${phone??null},
+        id_number      = ${id_number??null},
+        vehicle_plate  = ${vehicle_plate??null},
+        vehicle_type   = ${vehicle_type??"一般"},
+        line_id        = ${line_id??null},
+        notes          = ${notes??null},
+        is_active      = ${is_active??true},
+        atoms_account  = ${atoms_account??null},
         atoms_password = ${atoms_password??null},
-        updated_at    = NOW()
+        employee_id    = ${employee_id??null},
+        updated_at     = NOW()
       WHERE id = ${Number(driverId)} AND fleet_id = ${Number(id)}
     `);
     res.json({ ok: true });

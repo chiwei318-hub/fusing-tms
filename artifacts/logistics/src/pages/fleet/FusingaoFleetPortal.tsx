@@ -37,7 +37,7 @@ interface FleetDriver {
   id: number; fleet_id: number; name: string; phone: string | null;
   vehicle_plate: string | null; vehicle_type: string; is_active: boolean;
   total_routes: string; completed_routes: string; total_earnings: string;
-  atoms_account: string | null;
+  atoms_account: string | null; employee_id: string | null;
 }
 interface SettlementSummary {
   shopee_income: string; fleet_receive: string; commission_rate: string;
@@ -174,7 +174,7 @@ export default function FusingaoFleetPortal() {
   const [drivers, setDrivers]         = useState<FleetDriver[]>([]);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [editingDriver, setEditingDriver]   = useState<FleetDriver | null>(null);
-  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"" });
+  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" });
   const [assigningRoute, setAssigningRoute] = useState<number | null>(null);
 
   // ── Settlement state ───────────────────────────────────────────────────────
@@ -688,7 +688,7 @@ export default function FusingaoFleetPortal() {
             <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-xs"
               onClick={() => {
                 setEditingDriver(null);
-                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般", atoms_account: "", atoms_password: "" });
+                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般", atoms_account: "", atoms_password: "", employee_id: "" });
                 setQuickDriverForm(true);
               }}>
               <UserPlus className="h-3.5 w-3.5 mr-1" />新增旗下司機
@@ -873,6 +873,11 @@ export default function FusingaoFleetPortal() {
                 <CardContent className="px-4 pb-3 space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
+                      <p className="text-xs text-gray-500 mb-1">工號</p>
+                      <input className="w-full border rounded px-2 py-1 text-sm" value={driverForm.employee_id}
+                        onChange={e => setDriverForm(p => ({ ...p, employee_id: e.target.value }))} placeholder="例：D001" />
+                    </div>
+                    <div>
                       <p className="text-xs text-gray-500 mb-1">姓名 <span className="text-red-500">*</span></p>
                       <input className="w-full border rounded px-2 py-1 text-sm" value={driverForm.name}
                         onChange={e => setDriverForm(p => ({ ...p, name: e.target.value }))} placeholder="司機姓名" />
@@ -924,7 +929,7 @@ export default function FusingaoFleetPortal() {
 
             {!showDriverForm && (
               <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"" }); setShowDriverForm(true); }}>
+                onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" }); setShowDriverForm(true); }}>
                 <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
               </Button>
             )}
@@ -944,7 +949,10 @@ export default function FusingaoFleetPortal() {
                         <User className="h-4 w-4 text-orange-500" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {d.employee_id && (
+                            <span className="text-xs font-mono font-semibold text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{d.employee_id}</span>
+                          )}
                           <span className="font-semibold text-sm text-gray-800">{d.name}</span>
                           {d.vehicle_plate && <span className="text-xs text-gray-400 font-mono">{d.vehicle_plate}</span>}
                           <Badge className={`text-xs ${d.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -964,7 +972,7 @@ export default function FusingaoFleetPortal() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-orange-500"
-                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"" }); setShowDriverForm(true); }}>
+                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"", employee_id:d.employee_id??"" }); setShowDriverForm(true); }}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-gray-400 hover:text-gray-600"
@@ -1861,6 +1869,13 @@ export default function FusingaoFleetPortal() {
             </div>
             <div style={{ padding: "20px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>工號</label>
+                  <input className="w-full border rounded px-2 py-1.5 text-sm"
+                    value={driverForm.employee_id}
+                    onChange={e => setDriverForm(p => ({ ...p, employee_id: e.target.value }))}
+                    placeholder="例：D001" />
+                </div>
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
                     姓名 <span style={{ color: "#ef4444" }}>*</span>
