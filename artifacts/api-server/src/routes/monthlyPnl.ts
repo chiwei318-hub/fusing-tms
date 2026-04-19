@@ -501,21 +501,220 @@ function extractGSheetId(url: string): string | null {
   return m ? m[1] : null;
 }
 
-// ─── 富詠收支明細帳 → P&L 對照 ────────────────────────────────────────────────
-const GSHEET_EXPENSE_MAP: Record<string, string> = {
-  "油費儲值": "fuel",
-  "水電費":   "utilities",
-  "交際費":   "entertainment",
-  "記帳費":   "labor",
-  "電信費":   "telecom",
-  "FB廣告費": "facebook_ads",
+// ─── 格式 1：收支明細帳（舊格式）費用類別對照 ────────────────────────────────
+const CASHFLOW_EXPENSE_MAP: Record<string, string> = {
+  "油費儲值": "fuel",  "水電費": "utilities",   "交際費": "entertainment",
+  "記帳費":   "labor", "電信費": "telecom",      "FB廣告費": "facebook_ads",
   "租金支出": "rent",
 };
-
-// 罰單：只計「公司費用」（排除代付款/代收代付）
 function isFineCompanyExpense(note: string): boolean {
   const n = String(note ?? "").trim();
-  return n === "" || n.toLowerCase().includes("公司費用");
+  return n === "" || n.includes("公司費用");
+}
+
+// ─── 格式 2：運費淨利明細表 供應商 → 司機名稱 對照 ──────────────────────────
+const VENDOR_DRIVER_MAP: Record<string, string> = {
+  "泰通交通股份有限公司": "泰立",
+  "泰通":                "泰立",
+  "蝦皮車隊":            "蝦皮",
+  "吳育昇":              "吳昱陞",
+};
+
+// ─── 通用：建立司機別名查詢表（忽略括號內容）─────────────────────────────────
+function buildDriverAliases(drivers: string[]) {
+  return Object.fromEntries(drivers.map(d => [d.replace(/\(.*?\)/g, "").trim(), d]));
+}
+
+// ─── 通用：清空可重填欄位 ─────────────────────────────────────────────────────
+function resetData(data: any, customers: string[], drivers: string[]) {
+  for (const c of customers) data.transport_income[c] = 0;
+  for (const k of Object.keys(data.expenses ?? {})) data.expenses[k] = 0;
+  data.parking_income = 0;
+  data.misc_income    = 0;
+  for (const d of drivers) {
+    if (data.driver_costs[d]) {
+      for (const c of customers) data.driver_costs[d][c] = 0;
+    }
+  }
+}
+
+// ─── 通用：確保司機存在於 data.drivers + data.driver_costs ────────────────────
+function ensureDriver(data: any, drv: string) {
+  if (!data.drivers.includes(drv)) data.drivers.push(drv);
+  if (!data.driver_costs[drv]) data.driver_costs[drv] = {};
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 1：收支明細帳 解析（月份 + 類別欄）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseCashflowFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  customers: string[],
+  drivers: string[],
+  targetMonth: string,   // e.g. "115.3"
+) {
+  const wsn   = wb.SheetNames[0];
+  const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[wsn], { header: 1, defval: "" });
+  const driverAliases = buildDriverAliases(drivers);
+
+  const [yr, mo]  = targetMonth.split(".");
+  const moNum     = parseInt(mo);
+  const matchMonth = (v: any) => {
+    const s = String(v).trim();
+    return s === targetMonth ||
+           s === `${yr}.${String(moNum).padStart(2, "0")}` ||
+           parseFloat(s) === parseFloat(targetMonth);
+  };
+
+  const monthRows = rows.slice(2).filter(r => matchMonth(r[1]));
+  if (!monthRows.length) {
+    const avail = [...new Set(rows.slice(2).map((r: any) => String(r[1]).trim()).filter(Boolean))].join(", ");
+    throw new Error(`找不到「${targetMonth}」月份的資料，試算表內月份：${avail}`);
+  }
+
+  resetData(data, customers, drivers);
+  const stats = { income: 0, driver: 0, expense: 0, fine: 0, skipped: 0 };
+
+  const findCustomer = (desc: string) => customers.find(c => c !== "其他" && desc.includes(c)) ?? "其他";
+  const findDriver   = (desc: string) => {
+    for (const [alias, full] of Object.entries(driverAliases)) {
+      if (desc.includes(alias)) return full as string;
+    }
+    const m = desc.match(/^支付(.+?)(?:\d+月|運費|$)/);
+    return m ? m[1].trim() : desc.replace(/^支付/, "").trim();
+  };
+
+  for (const r of monthRows) {
+    const cat  = String(r[2] ?? "").trim();
+    const desc = String(r[4] ?? "").trim();
+    const inc  = parseFloat(String(r[5] ?? "0").replace(/,/g, "")) || 0;
+    const exp  = parseFloat(String(r[6] ?? "0").replace(/,/g, "")) || 0;
+    const note = String(r[8] ?? "").trim();
+
+    if (cat === "運費收入" && inc > 0) {
+      const c = findCustomer(desc);
+      data.transport_income[c] = (data.transport_income[c] ?? 0) + inc;
+      stats.income++;
+    } else if (cat === "支付外包" && exp > 0) {
+      const drv = findDriver(desc);
+      ensureDriver(data, drv);
+      data.driver_costs[drv]["其他"] = (data.driver_costs[drv]["其他"] ?? 0) + exp;
+      stats.driver++;
+    } else if (CASHFLOW_EXPENSE_MAP[cat] && exp > 0) {
+      data.expenses[CASHFLOW_EXPENSE_MAP[cat]] = (data.expenses[CASHFLOW_EXPENSE_MAP[cat]] ?? 0) + exp;
+      stats.expense++;
+    } else if (cat === "罰單" && exp > 0 && isFineCompanyExpense(note)) {
+      data.expenses["fines"] = (data.expenses["fines"] ?? 0) + exp;
+      stats.fine++;
+    } else if (cat === "靠行收入" && inc > 0) {
+      data.parking_income = (data.parking_income ?? 0) + inc;
+    } else {
+      stats.skipped++;
+    }
+  }
+
+  return { format: "收支明細帳", rows_scanned: monthRows.length, stats };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 2：運費淨利明細表 解析（逐筆訂單 + 應付帳款）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseDetailedFormat(
+  wb: XLSX.WorkBook,
+  data: any,
+  customers: string[],
+  drivers: string[],
+  rocYear: number,
+  month: number,
+) {
+  const driverAliases = buildDriverAliases(drivers);
+  const stats = { income: 0, driver: 0, expense: 0, skipped: 0 };
+
+  resetData(data, customers, drivers);
+
+  // ── 運費收入：從「運費淨利明細表 *」工作表 ────────────────────────────────
+  const detailSheetName = wb.SheetNames.find(n => n.includes("運費淨利明細表"));
+  if (detailSheetName) {
+    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[detailSheetName], { header: 1, defval: "" });
+    const monthRows = rows.slice(3).filter(r => {
+      const v = r[1];
+      return v === month || parseInt(String(v)) === month;
+    });
+
+    for (const r of monthRows) {
+      const custRaw = String(r[2] ?? "").trim();
+      const amt     = parseFloat(String(r[11] ?? "0").replace(/,/g, "")) || 0;
+      if (!custRaw || !amt) continue;
+
+      // 比對客戶清單（含部分比對）
+      const matched = customers.find(c => c !== "其他" && (custRaw === c || custRaw.includes(c))) ?? "其他";
+      data.transport_income[matched] = (data.transport_income[matched] ?? 0) + amt;
+      stats.income++;
+    }
+  }
+
+  // ── 司機外包費用：從「應付帳款」工作表 ───────────────────────────────────
+  const apSheetName = wb.SheetNames.find(n => n === "應付帳款");
+  if (apSheetName) {
+    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[apSheetName], { header: 1, defval: "" });
+
+    // 找到目標月份的 section header（e.g., "115.03月應付" 或 "115.3月應付"）
+    const monthPadded = `${rocYear}.${String(month).padStart(2, "0")}月`;
+    const monthShort  = `${rocYear}.${month}月`;
+
+    let inSection = false;
+    for (const r of rows) {
+      const col0 = String(r[0] ?? "").trim();
+      const col1 = String(r[1] ?? "").trim();
+      const col2 = r[2];
+      const note = String(r[3] ?? "").trim();
+
+      // 偵測 section header（如 "115.03月應付(01)"）
+      if (col0.includes(monthPadded) || col0.includes(monthShort)) {
+        inSection = true;
+        continue;
+      }
+      // 下一個 section 結束
+      if (inSection && col0.match(/^\d{3}\.\d{1,2}月應付/) && !col0.includes(monthPadded) && !col0.includes(monthShort)) {
+        inSection = false;
+      }
+
+      if (!inSection) continue;
+      if (!col1 || !col2) continue;
+
+      // 跳過「累計」行
+      if (note.includes("累計") || String(col2).includes("累計")) continue;
+
+      const amt = parseFloat(String(col2).replace(/,/g, "")) || 0;
+      if (!amt || amt <= 0) continue;
+
+      const vendorName = col1;
+      // 供應商 → 司機名稱對照
+      let drvName = VENDOR_DRIVER_MAP[vendorName] ?? null;
+      if (!drvName) {
+        // 嘗試對照司機別名
+        for (const [alias, full] of Object.entries(driverAliases)) {
+          if (vendorName.includes(alias)) { drvName = full as string; break; }
+        }
+      }
+      if (!drvName) drvName = vendorName; // 無匹配，直接用原名
+
+      // 會計事務所 → 記帳費
+      if (vendorName.includes("會計事務所") || vendorName.includes("記帳")) {
+        data.expenses["labor"] = (data.expenses["labor"] ?? 0) + amt;
+        stats.expense++;
+        continue;
+      }
+
+      ensureDriver(data, drvName);
+      data.driver_costs[drvName]["其他"] = (data.driver_costs[drvName]["其他"] ?? 0) + amt;
+      stats.driver++;
+    }
+  }
+
+  const totalRows = (stats.income + stats.driver + stats.expense);
+  return { format: "運費淨利明細表", rows_scanned: totalRows, stats };
 }
 
 // ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
@@ -537,129 +736,50 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
     const data: any  = JSON.parse(JSON.stringify(reportRow.data));
     const customers: string[] = data.customers ?? DEFAULT_CUSTOMERS;
     const drivers:   string[] = data.drivers   ?? DEFAULT_DRIVERS;
-
-    // 預設 filter_month 用月報的民國年月（e.g., "115.3"）
-    const targetMonth = filter_month ?? `${reportRow.roc_year}.${reportRow.month}`;
+    const rocYear   = reportRow.roc_year as number;
+    const month     = reportRow.month    as number;
+    const targetMonth = filter_month ?? `${rocYear}.${month}`;
 
     // ── 下載 Google 試算表 ──────────────────────────────────────────────────
     const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
     const resp = await fetch(exportUrl, { redirect: "follow" });
     if (!resp.ok) {
-      return res.status(400).json({ error: `無法下載試算表（HTTP ${resp.status}），請確認試算表已設為「任何人可檢視」` });
+      return res.status(400).json({
+        error: `無法下載試算表（HTTP ${resp.status}），請確認試算表已設為「任何人可檢視」`,
+      });
     }
     const buf = Buffer.from(await resp.arrayBuffer());
+    const wb  = XLSX.read(buf, { type: "buffer" });
 
-    // ── 解析 XLSX ──────────────────────────────────────────────────────────
-    const wb   = XLSX.read(buf, { type: "buffer" });
-    const wsn  = wb.SheetNames[0];
-    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[wsn], { header: 1, defval: "" });
+    // ── 自動偵測格式並解析 ─────────────────────────────────────────────────
+    const isDetailedFmt = wb.SheetNames.some(n => n.includes("運費淨利明細表"));
+    let result: { format: string; rows_scanned: number; stats: any };
 
-    // 過濾目標月份（月份欄支援數字或字串格式）
-    const matchMonth = (v: any) => {
-      const s = String(v).trim();
-      // 115.3 或 115.03 或純數字 115.3
-      const [yr, mo] = targetMonth.split(".");
-      const moNum    = parseInt(mo);
-      return s === targetMonth || s === `${yr}.${String(moNum).padStart(2,"0")}` ||
-             parseFloat(s) === parseFloat(targetMonth);
-    };
-
-    const monthRows = rows.slice(2).filter(r => matchMonth(r[1]));
-    if (!monthRows.length) {
-      return res.json({ ok: false, error: `找不到「${targetMonth}」月份的資料，試算表內月份列表：${[...new Set(rows.slice(2).map(r=>String(r[1]).trim()).filter(Boolean))].join(", ")}` });
+    if (isDetailedFmt) {
+      result = parseDetailedFormat(wb, data, customers, drivers, rocYear, month);
+    } else {
+      result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
     }
 
-    // 輔助：在客戶清單裡尋找描述中包含的客戶名稱
-    const findCustomer = (desc: string): string => {
-      for (const c of customers) {
-        if (c !== "其他" && desc.includes(c)) return c;
-      }
-      return "其他";
-    };
-
-    // 輔助：在司機清單裡尋找描述中包含的司機名稱（忽略括號內別名）
-    const driverAliases = Object.fromEntries(
-      drivers.map(d => [d.replace(/\(.*?\)/g, "").trim(), d])
-    );
-    const findDriver = (desc: string): string => {
-      for (const [alias, full] of Object.entries(driverAliases)) {
-        if (desc.includes(alias)) return full;
-      }
-      // 沒在清單裡的外包，直接用描述裡「支付」後到「月」前的文字
-      const m = desc.match(/^支付(.+?)(?:\d+月|運費|$)/);
-      return m ? m[1].trim() : desc.replace(/^支付/, "").trim();
-    };
-
-    const stats = { income: 0, driver: 0, expense: 0, fine: 0, skipped: 0 };
-
-    // 先歸零各項目（避免疊加到舊資料）
-    for (const c of customers) data.transport_income[c] = 0;
-    for (const k of Object.keys(data.expenses ?? {})) data.expenses[k] = 0;
-    data.parking_income = 0;
-    data.misc_income    = 0;
-    for (const d of drivers) {
-      for (const c of customers) {
-        if (data.driver_costs[d]) data.driver_costs[d][c] = 0;
-      }
-    }
-
-    for (const r of monthRows) {
-      const cat  = String(r[2] ?? "").trim();
-      const desc = String(r[4] ?? "").trim();
-      const inc  = parseFloat(String(r[5] ?? "0").replace(/,/g, "")) || 0;
-      const exp  = parseFloat(String(r[6] ?? "0").replace(/,/g, "")) || 0;
-      const note = String(r[8] ?? "").trim();
-
-      if (cat === "運費收入" && inc > 0) {
-        const cust = findCustomer(desc);
-        data.transport_income[cust] = (data.transport_income[cust] ?? 0) + inc;
-        stats.income++;
-
-      } else if (cat === "支付外包" && exp > 0) {
-        const drv = findDriver(desc);
-        if (!data.driver_costs[drv]) data.driver_costs[drv] = {};
-        // 總額填入「其他」欄（無法從明細帳拆分到客戶）
-        data.driver_costs[drv]["其他"] = (data.driver_costs[drv]["其他"] ?? 0) + exp;
-        // 若不在預設司機清單，加入 drivers
-        if (!data.drivers.includes(drv)) data.drivers.push(drv);
-        stats.driver++;
-
-      } else if (GSHEET_EXPENSE_MAP[cat] && exp > 0) {
-        const key = GSHEET_EXPENSE_MAP[cat];
-        data.expenses[key] = (data.expenses[key] ?? 0) + exp;
-        stats.expense++;
-
-      } else if (cat === "罰單" && exp > 0 && isFineCompanyExpense(note)) {
-        data.expenses["fines"] = (data.expenses["fines"] ?? 0) + exp;
-        stats.fine++;
-
-      } else if (cat === "靠行收入" && inc > 0) {
-        data.parking_income = (data.parking_income ?? 0) + inc;
-
-      } else {
-        stats.skipped++;
-      }
-    }
-
-    const totalFilled = stats.income + stats.driver + stats.expense + stats.fine;
-
+    // ── 寫回 DB ──────────────────────────────────────────────────────────────
     await db.execute(sql`
       UPDATE monthly_pnl_reports
       SET data = ${JSON.stringify(data)}::jsonb, updated_at = NOW()
       WHERE id = ${id}
     `);
 
+    const s = result.stats;
     res.json({
-      ok:          true,
+      ok:           true,
+      format:       result.format,
       target_month: targetMonth,
-      rows_scanned: monthRows.length,
-      filled:      totalFilled,
+      rows_scanned: result.rows_scanned,
+      filled:       s.income + s.driver + (s.expense ?? 0) + (s.fine ?? 0),
       breakdown: {
-        運費收入:  stats.income,
-        司機運費:  stats.driver,
-        費用:     stats.expense,
-        罰單:     stats.fine,
-        忽略:     stats.skipped,
+        運費收入: s.income,
+        司機運費: s.driver,
+        費用:    (s.expense ?? 0) + (s.fine ?? 0),
+        忽略:    s.skipped ?? 0,
       },
     });
   } catch (e: any) {
