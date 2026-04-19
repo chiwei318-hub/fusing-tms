@@ -199,7 +199,7 @@ ensureShopeeScheduleTables()
   .then(async () => {
     const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
     if (Number(rows[0].count) === 0) {
-      const excelPath = require("path").resolve(process.cwd(), "../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
+      const excelPath = require("path").resolve(__dirname, "../../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
       await importShopeeScheduleFromExcel(excelPath).catch((e) => console.error("[ShopeeSchedule] 首次匯入失敗:", e));
     }
   })

@@ -174,8 +174,8 @@ payrollCostRouter.post(
         wb = xlsx.read(req.file.buffer, { type: "buffer" });
       } else {
         const path = require("path");
-        const p = path.resolve(process.cwd(),
-          "../../attached_assets/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx");
+        const p = path.resolve(__dirname,
+          "../../../attached_assets/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx");
         wb = xlsx.readFile(p);
       }
     } catch (e: any) {

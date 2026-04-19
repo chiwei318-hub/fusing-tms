@@ -210,7 +210,7 @@ shopeeSchedulesRouter.get("/shopee-schedules/:id/stops", async (req, res) => {
 
 // ── POST /api/shopee-schedules/import ────────────────────────────────────────
 shopeeSchedulesRouter.post("/shopee-schedules/import", async (_req, res) => {
-  const excelPath = path.resolve(process.cwd(), "../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
+  const excelPath = path.resolve(__dirname, "../../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
   try {
     const result = await importShopeeScheduleFromExcel(excelPath);
     res.json({ ok: true, ...result });

@@ -163,7 +163,7 @@ shopeeDriversRouter.post(
       } else {
         // 讀取預設附件
         const path = require("path");
-        const p = path.resolve(process.cwd(), "../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
+        const p = path.resolve(__dirname, "../../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
         wb = xlsx.readFile(p);
       }
     } catch (e: any) {
