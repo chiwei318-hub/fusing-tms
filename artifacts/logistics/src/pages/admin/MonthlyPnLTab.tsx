@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { RefreshCw, PlusCircle, Save, Zap, Printer, Edit2, Check, X, ChevronRight } from "lucide-react";
+import { RefreshCw, PlusCircle, Save, Zap, Printer, Edit2, Check, X, ChevronRight, Download, Upload } from "lucide-react";
 
 // ─── 常數 ──────────────────────────────────────────────────────────────────────
 const DEFAULT_CUSTOMERS = [
@@ -131,7 +131,9 @@ export default function MonthlyPnLTab() {
   const [editing, setEditing]       = useState(false);
   const [saving, setSaving]         = useState(false);
   const [autofilling, setAutofilling] = useState(false);
+  const [importing, setImporting]   = useState(false);
   const [activeTab, setActiveTab]   = useState<"pnl" | "adj">("pnl");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [createRocYear, setCreateRocYear] = useState(115);
   const [createMonth, setCreateMonth]     = useState(3);
   const [showCreate, setShowCreate]       = useState(false);
@@ -193,6 +195,30 @@ export default function MonthlyPnLTab() {
       setEditing(false);
     } catch { toast.error("儲存失敗"); }
     finally { setSaving(false); }
+  };
+
+  const downloadTemplate = () => {
+    if (!selectedId) return;
+    window.open(apiUrl(`/monthly-pnl/${selectedId}/template`), "_blank");
+  };
+
+  const importFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedId) return;
+    e.target.value = "";
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(apiUrl(`/monthly-pnl/${selectedId}/import`), { method: "POST", body: fd }).then(x => x.json());
+      if (r.ok) {
+        toast.success(`匯入完成：填入 ${r.filled} 個欄位`);
+        await loadReport(selectedId);
+      } else {
+        toast.error(r.error ?? "匯入失敗");
+      }
+    } catch { toast.error("匯入時發生錯誤"); }
+    finally { setImporting(false); }
   };
 
   const autoFill = async () => {
@@ -342,6 +368,23 @@ export default function MonthlyPnLTab() {
           <Zap className={`w-3.5 h-3.5 mr-1.5 ${autofilling ? "animate-pulse" : ""}`} />
           {autofilling ? "抓取中..." : "自動填入運輸收入"}
         </Button>
+
+        <Button size="sm" variant="outline" onClick={downloadTemplate} disabled={!selectedId}>
+          <Download className="w-3.5 h-3.5 mr-1.5" />
+          下載範本
+        </Button>
+
+        <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing || editing}>
+          <Upload className={`w-3.5 h-3.5 mr-1.5 ${importing ? "animate-pulse" : ""}`} />
+          {importing ? "匯入中..." : "匯入 Excel"}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={importFile}
+        />
 
         {editing ? (
           <>
