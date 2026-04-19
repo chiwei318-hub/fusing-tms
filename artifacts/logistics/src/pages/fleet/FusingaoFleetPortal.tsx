@@ -1220,12 +1220,12 @@ export default function FusingaoFleetPortal() {
               </div>
             ) : (
               <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid #e5e7eb" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:14 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:16 }}>
                   <thead>
                     <tr style={{ background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)" }}>
                       {["路線編號","類型","車型","司機工號","出車時段","碼頭","站點數"].map(h => (
-                        <th key={h} style={{ padding:"10px 14px", textAlign:"left",
-                          color:"#fff", fontWeight:600, fontSize:13, whiteSpace:"nowrap" }}>{h}</th>
+                        <th key={h} style={{ padding:"12px 16px", textAlign:"left",
+                          color:"#fff", fontWeight:600, fontSize:15, whiteSpace:"nowrap" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1242,34 +1242,34 @@ export default function FusingaoFleetPortal() {
                       return (
                         <tr key={r.id} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb",
                           borderBottom:"1px solid #f3f4f6" }}>
-                          <td style={{ padding:"9px 14px", fontWeight:700, color:"#1e3a8a", fontFamily:"monospace", fontSize:14 }}>
+                          <td style={{ padding:"11px 16px", fontWeight:700, color:"#1e3a8a", fontFamily:"monospace", fontSize:16 }}>
                             {r.route_no}
                           </td>
-                          <td style={{ padding:"9px 14px" }}>
-                            <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                          <td style={{ padding:"11px 16px" }}>
+                            <span style={{ padding:"4px 12px", borderRadius:20, fontSize:15,
                               background:tc.bg, color:tc.color, fontWeight:600 }}>
                               {r.route_type || "—"}
                             </span>
                           </td>
-                          <td style={{ padding:"9px 14px", fontSize:13, color:"#374151" }}>
+                          <td style={{ padding:"11px 16px", fontSize:15, color:"#374151" }}>
                             {r.vehicle_type || "—"}
                           </td>
-                          <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:13, color:"#0284c7" }}>
+                          <td style={{ padding:"11px 16px", fontFamily:"monospace", fontSize:15, color:"#0284c7" }}>
                             {r.shopee_driver_id || <span style={{ color:"#9ca3af" }}>—</span>}
                           </td>
-                          <td style={{ padding:"9px 14px" }}>
+                          <td style={{ padding:"11px 16px" }}>
                             {r.departure_time
-                              ? <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                              ? <span style={{ padding:"4px 12px", borderRadius:20, fontSize:15,
                                   background:"#dbeafe", color:"#1e40af", fontWeight:600 }}>
                                   {r.departure_time}
                                 </span>
                               : <span style={{ color:"#9ca3af" }}>—</span>}
                           </td>
-                          <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:13 }}>
+                          <td style={{ padding:"11px 16px", fontFamily:"monospace", fontSize:15 }}>
                             {r.dock_no || "—"}
                           </td>
-                          <td style={{ padding:"9px 14px" }}>
-                            <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                          <td style={{ padding:"11px 16px" }}>
+                            <span style={{ padding:"4px 12px", borderRadius:20, fontSize:15,
                               background:"#f0fdf4", color:"#15803d", fontWeight:600 }}>
                               {r.stop_count} 站
                             </span>
@@ -1279,7 +1279,7 @@ export default function FusingaoFleetPortal() {
                     })}
                   </tbody>
                 </table>
-                <div style={{ padding:"8px 14px", fontSize:13, color:"#9ca3af", borderTop:"1px solid #f3f4f6" }}>
+                <div style={{ padding:"10px 16px", fontSize:14, color:"#9ca3af", borderTop:"1px solid #f3f4f6" }}>
                   共 {schedRoutes.length} 條路線
                 </div>
               </div>
