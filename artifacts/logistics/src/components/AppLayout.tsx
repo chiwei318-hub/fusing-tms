@@ -33,10 +33,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      {/* pt-20 offsets the fixed GlobalHeader */}
-      <SidebarContent className="pt-20">
+      {/* pt-11 offsets the fixed GlobalHeader */}
+      <SidebarContent className="pt-11">
         <SidebarGroup className="mt-3">
-          <SidebarGroupLabel className="text-xs uppercase tracking-widest text-sidebar-foreground/40 font-semibold px-4 mb-1">
+          <SidebarGroupLabel className="text-xs uppercase tracking-wide text-sidebar-foreground/40 font-semibold px-3 mb-1">
             功能選單
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -54,7 +54,7 @@ export function AppSidebar() {
                     >
                       <Link
                         href={item.href}
-                        className="flex items-center gap-3 px-4 py-2.5 transition-colors"
+                        className="flex items-center gap-2 px-3 py-2 transition-colors"
                       >
                         <item.icon className="w-4 h-4" />
                         <span className="font-medium text-sm">{item.name}</span>
@@ -74,7 +74,7 @@ export function AppSidebar() {
               <SidebarMenuButton asChild tooltip="回首頁功能表">
                 <Link
                   href="/"
-                  className="flex items-center gap-3 px-4 py-2.5 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
                 >
                   <Home className="w-4 h-4" />
                   <span className="font-medium text-sm">回首頁功能表</span>
@@ -93,7 +93,7 @@ export function AppSidebar() {
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const style = {
-    "--sidebar-width": "15rem",
+    "--sidebar-width": "9.5rem",
     "--sidebar-width-icon": "3.5rem",
   } as React.CSSProperties;
 
