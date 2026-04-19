@@ -67,6 +67,7 @@ const FormImportTab        = lazy(() => import("./admin/FormImportTab"));
 const SheetSyncTab         = lazy(() => import("./admin/SheetSyncTab"));
 const ShopeeBillingTab     = lazy(() => import("./admin/ShopeeBillingTab"));
 const PnLTab               = lazy(() => import("./admin/PnLTab"));
+const MonthlyPnLTab        = lazy(() => import("./admin/MonthlyPnLTab"));
 const CashFlowTab          = lazy(() => import("./admin/CashFlowTab"));
 const OpenApiTab           = lazy(() => import("./admin/OpenApiTab"));
 const AtomsWebhookTab      = lazy(() => import("./admin/AtomsWebhookTab"));
@@ -1665,6 +1666,7 @@ export default function Admin() {
                     { value: "sheetsync",   icon: <RefreshCw className="w-3.5 h-3.5 text-violet-500" />,            label: "自動同步" },
                     { value: "shopeebilling", icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,        label: "月結對帳匯入" },
                     { value: "pnl",           icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,          label: "盈虧分析" },
+                    { value: "monthly-pnl",   icon: <span className="text-sm leading-none">📊</span>,                   label: "月度損益表" },
                     { value: "backhaul",    icon: <span className="text-sm leading-none">🔄</span>,                 label: "空車撮合" },
                     { value: "strategickpi", icon: <Target className="w-3.5 h-3.5 text-yellow-500" />,             label: "戰略KPI" },
                     { value: "carpool",     icon: <Car className="w-3.5 h-3.5" />,                                  label: "拼車" },
@@ -4002,6 +4004,15 @@ export default function Admin() {
         {/* ===== 盈虧分析 TAB ===== */}
         <TabsContent value="pnl" className="outline-none">
           <PnLTab />
+        </TabsContent>
+
+        {/* ===== 月度損益表 TAB ===== */}
+        <TabsContent value="monthly-pnl" className="outline-none h-[calc(100vh-160px)]">
+          <TabErrorBoundary>
+            <Suspense fallback={<div className="p-8 text-center text-muted-foreground">載入中...</div>}>
+              <MonthlyPnLTab />
+            </Suspense>
+          </TabErrorBoundary>
         </TabsContent>
 
         {/* ===== 空車撮合 ROI TAB ===== */}
