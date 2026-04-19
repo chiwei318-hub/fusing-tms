@@ -1,28 +1,19 @@
-import "leaflet/dist/leaflet.css";
-import { useMemo, useState, useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow, OverlayView } from "@react-google-maps/api";
 import {
   Truck, Phone, Package, Clock, Signal, SignalZero, RefreshCw,
-  Navigation, CheckCircle, Circle, AlertCircle, Filter,
+  Navigation, CheckCircle, AlertCircle, Filter, MapPin, Layers,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDriversData } from "@/hooks/use-drivers";
 import { useOrdersData } from "@/hooks/use-orders";
 import type { Driver, Order } from "@workspace/api-client-react";
 
-// Fix leaflet default icon issue in bundlers
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
-});
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
-// ─── Taiwan city anchors ────────────────────────────────────────────────────
+// ─── Taiwan city anchors (fallback simulated positions) ─────────────────────
 const CITY_ANCHORS = [
   { lat: 25.046, lng: 121.517, name: "台北" },
   { lat: 25.010, lng: 121.467, name: "新北" },
@@ -40,72 +31,24 @@ const CITY_ANCHORS = [
   { lat: 22.755, lng: 121.144, name: "台東" },
 ];
 
-// Deterministic pseudo-random from driver id
 function pseudoRand(seed: number, offset = 0): number {
   const x = Math.sin(seed * 9301 + offset * 49297 + 233) * 10000;
   return x - Math.floor(x);
 }
 
-function getDriverPosition(driver: Driver): [number, number] {
+function getDriverPosition(driver: Driver): google.maps.LatLngLiteral {
   const anchorIdx = driver.id % CITY_ANCHORS.length;
   const anchor = CITY_ANCHORS[anchorIdx];
-  // Small jitter within ~5 km
   const latJitter = (pseudoRand(driver.id, 1) - 0.5) * 0.08;
   const lngJitter = (pseudoRand(driver.id, 2) - 0.5) * 0.08;
-  return [anchor.lat + latJitter, anchor.lng + lngJitter];
+  return { lat: anchor.lat + latJitter, lng: anchor.lng + lngJitter };
 }
 
 function getCityForDriver(driver: Driver): string {
   return CITY_ANCHORS[driver.id % CITY_ANCHORS.length].name;
 }
 
-// ─── Custom marker icons ────────────────────────────────────────────────────
-function createDriverIcon(status: string): L.DivIcon {
-  const colors: Record<string, string> = {
-    available: "#16a34a",
-    busy: "#F97316",
-    offline: "#94a3b8",
-  };
-  const color = colors[status] ?? "#94a3b8";
-  const pulse = status === "busy" ? `
-    <div style="position:absolute;top:-4px;left:-4px;width:44px;height:44px;border-radius:50%;
-      border:2px solid ${color};opacity:0.4;animation:pulse-ring 1.5s ease-out infinite;"></div>
-  ` : "";
-
-  return L.divIcon({
-    className: "",
-    html: `
-      <style>
-        @keyframes pulse-ring {
-          0% { transform: scale(0.8); opacity: 0.6; }
-          100% { transform: scale(1.4); opacity: 0; }
-        }
-      </style>
-      <div style="position:relative;width:36px;height:36px;">
-        ${pulse}
-        <div style="
-          width:36px;height:36px;border-radius:50%;
-          background:${color};border:3px solid white;
-          box-shadow:0 2px 8px rgba(0,0,0,0.3);
-          display:flex;align-items:center;justify-content:center;
-          position:relative;z-index:1;
-        ">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-            fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3"/>
-            <rect x="9" y="11" width="14" height="10" rx="2"/>
-            <circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-          </svg>
-        </div>
-      </div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -20],
-  });
-}
-
-// ─── Status helpers ─────────────────────────────────────────────────────────
+// ─── Status config ───────────────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
   available: "空車待命",
   busy: "運送中",
@@ -124,6 +67,12 @@ const STATUS_DOT: Record<string, string> = {
   offline: "bg-slate-400",
   on_leave: "bg-purple-400",
 };
+const STATUS_MARKER_COLOR: Record<string, string> = {
+  available: "#16a34a",
+  busy: "#F97316",
+  offline: "#94a3b8",
+  on_leave: "#a855f7",
+};
 
 function estimateETA(order: Order): string {
   if (!order.createdAt) return "未知";
@@ -134,30 +83,63 @@ function estimateETA(order: Order): string {
   return `約 ${remaining} 分鐘`;
 }
 
-// ─── Auto-fit map to all markers ────────────────────────────────────────────
-function MapFitter({ positions }: { positions: [number, number][] }) {
-  const map = useMap();
-  const fitted = useRef(false);
-  useEffect(() => {
-    if (!fitted.current && positions.length > 0) {
-      fitted.current = true;
-      const bounds = L.latLngBounds(positions);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [positions, map]);
-  return null;
+// ─── Custom SVG marker icon ──────────────────────────────────────────────────
+function makeMarkerIcon(status: string): google.maps.Icon {
+  const color = STATUS_MARKER_COLOR[status] ?? "#94a3b8";
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+      <circle cx="20" cy="20" r="17" fill="${color}" stroke="white" stroke-width="3"
+        style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))"/>
+      <g transform="translate(11,11)" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M1 10H0a1 1 0 01-1-1V2A1 1 0 010 1h8a1 1 0 011 1v2"/>
+        <rect x="5" y="6" width="10" height="7" rx="1.5"/>
+        <circle cx="7" cy="13" r="1"/><circle cx="13" cy="13" r="1"/>
+      </g>
+    </svg>`;
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(40, 40),
+    anchor: new google.maps.Point(20, 20),
+  };
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────
+// ─── Map style: clean light ──────────────────────────────────────────────────
+const MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "simplified" }] },
+  { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#bfdbfe" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#f8fafc" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#fcd34d" }] },
+];
+
+const MAP_STYLE_SATELLITE: google.maps.MapTypeStyle[] = [];
+
+const MAP_OPTIONS_BASE: google.maps.MapOptions = {
+  disableDefaultUI: false,
+  zoomControl: true,
+  mapTypeControl: false,
+  streetViewControl: false,
+  fullscreenControl: true,
+  gestureHandling: "greedy",
+};
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function FleetMapTab() {
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    language: "zh-TW",
+    region: "TW",
+  });
+
   const { data: drivers = [], refetch: refetchDrivers } = useDriversData();
   const { data: orders = [], refetch: refetchOrders } = useOrdersData();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const markerRefs = useRef<Record<number, L.Marker>>({});
+  const [mapType, setMapType] = useState<"roadmap" | "satellite">("roadmap");
+  const mapRef = useRef<google.maps.Map | null>(null);
 
-  // Auto-refresh every 30 seconds
   useEffect(() => {
     const t = setInterval(() => {
       refetchDrivers();
@@ -173,7 +155,6 @@ export default function FleetMapTab() {
     setLastRefresh(new Date());
   };
 
-  // Map driver → active order
   const driverOrderMap = useMemo(() => {
     const map: Record<number, Order> = {};
     for (const o of orders as Order[]) {
@@ -184,15 +165,9 @@ export default function FleetMapTab() {
     return map;
   }, [orders]);
 
-  const filteredDrivers = useMemo(() => {
-    return (drivers as Driver[]).filter(d =>
-      statusFilter === "all" || d.status === statusFilter
-    );
-  }, [drivers, statusFilter]);
-
-  const positions: [number, number][] = useMemo(
-    () => (drivers as Driver[]).map(d => getDriverPosition(d)),
-    [drivers]
+  const filteredDrivers = useMemo(() =>
+    (drivers as Driver[]).filter(d => statusFilter === "all" || d.status === statusFilter),
+    [drivers, statusFilter]
   );
 
   const stats = useMemo(() => ({
@@ -202,10 +177,35 @@ export default function FleetMapTab() {
     offline: (drivers as Driver[]).filter(d => d.status === "offline").length,
   }), [drivers]);
 
-  function openMarkerPopup(driverId: number) {
-    setSelectedDriverId(driverId);
-    const m = markerRefs.current[driverId];
-    if (m) m.openPopup();
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+    // Fit to Taiwan
+    const bounds = new google.maps.LatLngBounds();
+    (drivers as Driver[]).forEach(d => bounds.extend(getDriverPosition(d)));
+    if ((drivers as Driver[]).length > 0) map.fitBounds(bounds, 60);
+    else map.setCenter({ lat: 23.9, lng: 120.9 });
+  }, [drivers]);
+
+  const selectedDriver = useMemo(() =>
+    selectedDriverId ? (drivers as Driver[]).find(d => d.id === selectedDriverId) ?? null : null,
+    [drivers, selectedDriverId]
+  );
+
+  const focusDriver = (driver: Driver) => {
+    setSelectedDriverId(driver.id);
+    if (mapRef.current) {
+      mapRef.current.panTo(getDriverPosition(driver));
+      mapRef.current.setZoom(14);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center h-64 rounded-xl border bg-red-50 text-red-600 text-sm gap-2">
+        <AlertCircle className="w-5 h-5" />
+        Google Maps 載入失敗：{loadError.message}
+      </div>
+    );
   }
 
   return (
@@ -215,16 +215,23 @@ export default function FleetMapTab() {
         <div>
           <h2 className="text-xl font-black text-primary flex items-center gap-2">
             <Navigation className="w-5 h-5" /> 車隊即時地圖
+            <span className="text-xs font-normal bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-1">Google Maps</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             最後更新：{lastRefresh.toLocaleTimeString("zh-TW")}・每 30 秒自動更新
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            className={`h-8 gap-1 text-xs ${mapType === "satellite" ? "bg-slate-800 text-white border-slate-700" : ""}`}
+            onClick={() => setMapType(v => v === "roadmap" ? "satellite" : "roadmap")}
+          >
+            <Layers className="w-3 h-3" /> {mapType === "roadmap" ? "衛星圖" : "道路圖"}
+          </Button>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8 w-32 text-xs">
-              <Filter className="w-3 h-3 mr-1" />
-              <SelectValue />
+              <Filter className="w-3 h-3 mr-1" /><SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部司機</SelectItem>
@@ -264,51 +271,71 @@ export default function FleetMapTab() {
 
       {/* Map + Sidebar */}
       <div className="flex gap-3 h-[560px]">
-        {/* Leaflet Map */}
+        {/* Google Map */}
         <div className="flex-1 rounded-xl overflow-hidden border shadow-sm">
-          <MapContainer
-            center={[23.9, 120.9]}
-            zoom={7}
-            style={{ width: "100%", height: "100%" }}
-            zoomControl={true}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MapFitter positions={positions} />
-            {(drivers as Driver[]).map(driver => {
-              const pos = getDriverPosition(driver);
-              const activeOrder = driverOrderMap[driver.id];
-              const icon = createDriverIcon(driver.status ?? "offline");
-              return (
-                <Marker
-                  key={driver.id}
-                  position={pos}
-                  icon={icon}
-                  ref={(m) => { if (m) markerRefs.current[driver.id] = m; }}
-                  eventHandlers={{ click: () => setSelectedDriverId(driver.id) }}
-                >
-                  <Popup minWidth={240}>
-                    <div className="text-sm space-y-2 py-1">
+          {!isLoaded ? (
+            <div className="w-full h-full flex items-center justify-center bg-muted/30">
+              <div className="text-center space-y-2">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-sm text-muted-foreground">載入 Google Maps 中...</p>
+              </div>
+            </div>
+          ) : (
+            <GoogleMap
+              mapContainerStyle={{ width: "100%", height: "100%" }}
+              center={{ lat: 23.9, lng: 120.9 }}
+              zoom={7}
+              options={{
+                ...MAP_OPTIONS_BASE,
+                mapTypeId: mapType,
+                styles: mapType === "roadmap" ? MAP_STYLE : MAP_STYLE_SATELLITE,
+              }}
+              onLoad={onMapLoad}
+            >
+              {filteredDrivers.map(driver => {
+                const pos = getDriverPosition(driver);
+                const activeOrder = driverOrderMap[driver.id];
+                return (
+                  <Marker
+                    key={driver.id}
+                    position={pos}
+                    icon={makeMarkerIcon(driver.status ?? "offline")}
+                    title={driver.name ?? ""}
+                    onClick={() => setSelectedDriverId(driver.id)}
+                    zIndex={driver.status === "busy" ? 10 : driver.status === "available" ? 5 : 1}
+                  />
+                );
+              })}
+
+              {/* InfoWindow for selected driver */}
+              {selectedDriver && (() => {
+                const pos = getDriverPosition(selectedDriver);
+                const activeOrder = driverOrderMap[selectedDriver.id];
+                return (
+                  <InfoWindow
+                    position={pos}
+                    onCloseClick={() => setSelectedDriverId(null)}
+                    options={{ pixelOffset: new google.maps.Size(0, -24) }}
+                  >
+                    <div className="text-sm space-y-2 min-w-[220px] py-1 font-sans">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-base">{driver.name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLOR[driver.status ?? "offline"]}`}>
-                          {STATUS_LABEL[driver.status ?? "offline"]}
+                        <span className="font-bold text-base text-gray-900">{selectedDriver.name}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLOR[selectedDriver.status ?? "offline"]}`}>
+                          {STATUS_LABEL[selectedDriver.status ?? "offline"]}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
                         <div className="flex items-center gap-1">
-                          <Truck className="w-3 h-3 shrink-0" />
-                          <span className="font-mono font-bold uppercase">{driver.licensePlate}</span>
+                          <Truck className="w-3 h-3 shrink-0 text-gray-400" />
+                          <span className="font-mono font-bold uppercase">{selectedDriver.licensePlate}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 shrink-0" />
-                          <span>{driver.phone}</span>
+                          <Phone className="w-3 h-3 shrink-0 text-gray-400" />
+                          <span>{selectedDriver.phone}</span>
                         </div>
                         <div className="col-span-2 flex items-center gap-1">
-                          <Package className="w-3 h-3 shrink-0" />
-                          <span>{driver.vehicleType}</span>
+                          <Package className="w-3 h-3 shrink-0 text-gray-400" />
+                          <span>{selectedDriver.vehicleType}</span>
                         </div>
                       </div>
                       {activeOrder ? (
@@ -317,16 +344,16 @@ export default function FleetMapTab() {
                             <Package className="w-3 h-3" /> 訂單 #{activeOrder.id}
                           </div>
                           <div className="text-xs text-gray-600 truncate">
-                            📍 {activeOrder.pickupAddress?.slice(0, 18)}…
+                            📍 {activeOrder.pickupAddress?.slice(0, 20)}…
                           </div>
                           <div className="text-xs text-gray-600 truncate">
-                            🏁 {activeOrder.deliveryAddress?.slice(0, 18)}…
+                            🏁 {activeOrder.deliveryAddress?.slice(0, 20)}…
                           </div>
                           <div className="flex items-center gap-1 text-xs text-orange-600 font-semibold">
                             <Clock className="w-3 h-3" /> 預估到達：{estimateETA(activeOrder)}
                           </div>
                         </div>
-                      ) : driver.status === "available" ? (
+                      ) : selectedDriver.status === "available" ? (
                         <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-xs text-green-700 font-medium">
                           ✅ 空車待命，可接新訂單
                         </div>
@@ -336,14 +363,14 @@ export default function FleetMapTab() {
                         </div>
                       )}
                       <div className="text-[10px] text-gray-400 flex items-center gap-1">
-                        <Signal className="w-3 h-3" /> {getCityForDriver(driver)}
+                        <Signal className="w-3 h-3" /> {getCityForDriver(selectedDriver)}
                       </div>
                     </div>
-                  </Popup>
-                </Marker>
-              );
-            })}
-          </MapContainer>
+                  </InfoWindow>
+                );
+              })()}
+            </GoogleMap>
+          )}
         </div>
 
         {/* Driver sidebar */}
@@ -352,9 +379,7 @@ export default function FleetMapTab() {
             司機列表 ({filteredDrivers.length})
           </div>
           {filteredDrivers.length === 0 && (
-            <div className="text-xs text-muted-foreground text-center py-8">
-              無符合條件的司機
-            </div>
+            <div className="text-xs text-muted-foreground text-center py-8">無符合條件的司機</div>
           )}
           {filteredDrivers.map(driver => {
             const activeOrder = driverOrderMap[driver.id];
@@ -362,7 +387,7 @@ export default function FleetMapTab() {
             return (
               <button
                 key={driver.id}
-                onClick={() => openMarkerPopup(driver.id)}
+                onClick={() => focusDriver(driver)}
                 className={`w-full text-left rounded-xl border p-3 transition-all shadow-sm hover:shadow-md ${
                   isSelected
                     ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -401,12 +426,17 @@ export default function FleetMapTab() {
           <span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> 空車待命
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" /> 運送中（含脈衝動畫）
+          <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" /> 運送中
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-slate-400 inline-block" /> 離線
         </span>
-        <span className="ml-auto text-[10px]">位置為模擬資料，實際導入 GPS 後自動同步</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-purple-400 inline-block" /> 休假中
+        </span>
+        <span className="ml-auto text-[10px] flex items-center gap-1">
+          <MapPin className="w-3 h-3" /> 位置為模擬資料，實際導入 GPS 後自動同步
+        </span>
       </div>
     </div>
   );
