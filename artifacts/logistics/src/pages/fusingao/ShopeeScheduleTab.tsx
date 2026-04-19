@@ -133,9 +133,9 @@ export default function ShopeeScheduleTab() {
         ].map(c => (
           <div key={c.label} style={{ flex: 1, minWidth: 140, padding: "14px 16px", borderRadius: 10,
             background: c.bg, border: `1px solid ${c.border}` }}>
-            <div style={{ fontSize: 22 }}>{c.icon}</div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: c.text, lineHeight: 1.2 }}>{c.val.toLocaleString()}</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{c.label}</div>
+            <div style={{ fontSize: 24 }}>{c.icon}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: c.text, lineHeight: 1.2 }}>{c.val.toLocaleString()}</div>
+            <div style={{ fontSize: 14, color: "#6b7280", marginTop: 4 }}>{c.label}</div>
           </div>
         ))}
       </div>
@@ -147,10 +147,10 @@ export default function ShopeeScheduleTab() {
         <button onClick={handleImport} disabled={importing}
           style={{ padding: "8px 18px", background: importing ? "#9ca3af" : "#1d4ed8",
             color: "#fff", border: "none", borderRadius: 8, cursor: importing ? "default" : "pointer",
-            fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+            fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
           {importing ? "⏳ 匯入中…" : "📥 重新匯入 Excel"}
         </button>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>
+        <div style={{ fontSize: 13, color: "#6b7280" }}>
           自動刷新 每 {POLL_MS / 1000} 秒 &nbsp;·&nbsp; 最後更新：{lastRefresh.toLocaleTimeString("zh-TW")}
         </div>
         {importMsg && (
@@ -167,10 +167,10 @@ export default function ShopeeScheduleTab() {
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
         {/* 週別 */}
         <div>
-          <label style={{ fontSize: 12, color: "#6b7280", marginRight: 6 }}>週別</label>
+          <label style={{ fontSize: 14, color: "#6b7280", marginRight: 6 }}>週別</label>
           <select value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}
-            style={{ padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 6,
-              fontSize: 13, background: "#fff" }}>
+            style={{ padding: "7px 12px", border: "1px solid #d1d5db", borderRadius: 6,
+              fontSize: 14, background: "#fff" }}>
             {weeks.map(w => (
               <option key={w.week_label} value={w.week_label}>
                 {w.week_label}（{w.route_count} 路線）
@@ -186,7 +186,7 @@ export default function ShopeeScheduleTab() {
                 borderColor: typeFilter === t ? "#1d4ed8" : "#d1d5db",
                 background: typeFilter === t ? "#1d4ed8" : "#fff",
                 color: typeFilter === t ? "#fff" : "#374151",
-                borderRadius: 20, fontSize: 12, cursor: "pointer", fontWeight: typeFilter === t ? 600 : 400 }}>
+                borderRadius: 20, fontSize: 14, cursor: "pointer", fontWeight: typeFilter === t ? 600 : 400 }}>
               {t}
             </button>
           ))}
@@ -194,10 +194,10 @@ export default function ShopeeScheduleTab() {
         {/* 司機搜尋 */}
         <input value={driverFilter} onChange={e => setDriverFilter(e.target.value)}
           placeholder="🔍 搜尋司機工號…"
-          style={{ padding: "6px 12px", border: "1px solid #d1d5db", borderRadius: 6,
-            fontSize: 13, width: 160 }} />
-        <button onClick={loadRoutes} style={{ padding: "6px 14px", background: "#f3f4f6",
-          border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
+          style={{ padding: "7px 12px", border: "1px solid #d1d5db", borderRadius: 6,
+            fontSize: 14, width: 180 }} />
+        <button onClick={loadRoutes} style={{ padding: "7px 16px", background: "#f3f4f6",
+          border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
           🔄 刷新
         </button>
       </div>
@@ -221,12 +221,12 @@ export default function ShopeeScheduleTab() {
             </div>
 
             <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e5e7eb" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)" }}>
                     {["路線編號", "車型", "司機工號", "司機姓名", "出車時段", "碼頭", "站點數", "操作"].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left",
-                        color: "#fff", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>
+                      <th key={h} style={{ padding: "11px 16px", textAlign: "left",
+                        color: "#fff", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>
                         {h}
                       </th>
                     ))}
@@ -240,48 +240,48 @@ export default function ShopeeScheduleTab() {
                         transition: "background 0.15s" }}
                         onMouseEnter={e => (e.currentTarget.style.background = "#eff6ff")}
                         onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "#fff" : "#f9fafb")}>
-                        <td style={{ padding: "8px 14px", fontWeight: 700, color: "#1e3a8a" }}>
+                        <td style={{ padding: "10px 16px", fontWeight: 700, color: "#1e3a8a", fontSize: 14 }}>
                           {r.route_no}
                         </td>
-                        <td style={{ padding: "8px 14px" }}>
-                          <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11,
+                        <td style={{ padding: "10px 16px" }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 13,
                             background: "#f3f4f6", color: "#374151" }}>
                             {r.vehicle_type || "—"}
                           </span>
                         </td>
-                        <td style={{ padding: "8px 14px", fontFamily: "monospace",
+                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 14,
                           color: r.shopee_driver_id ? "#0284c7" : "#9ca3af" }}>
                           {r.shopee_driver_id || "—"}
                         </td>
-                        <td style={{ padding: "8px 14px", color: "#374151" }}>
+                        <td style={{ padding: "10px 16px", color: "#374151", fontSize: 14 }}>
                           {r.driver_name || <span style={{ color: "#9ca3af" }}>—</span>}
                           {r.driver_phone && (
-                            <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>
+                            <span style={{ fontSize: 13, color: "#6b7280", marginLeft: 6 }}>
                               {r.driver_phone}
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: "8px 14px" }}>
+                        <td style={{ padding: "10px 16px" }}>
                           {r.departure_time ? (
-                            <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11,
+                            <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 13,
                               background: "#dbeafe", color: "#1e40af", fontWeight: 600 }}>
                               {r.departure_time}
                             </span>
                           ) : <span style={{ color: "#9ca3af" }}>—</span>}
                         </td>
-                        <td style={{ padding: "8px 14px", fontFamily: "monospace", fontSize: 12 }}>
+                        <td style={{ padding: "10px 16px", fontFamily: "monospace", fontSize: 14 }}>
                           {r.dock_no || "—"}
                         </td>
-                        <td style={{ padding: "8px 14px" }}>
-                          <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11,
+                        <td style={{ padding: "10px 16px" }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 13,
                             background: "#f0fdf4", color: "#15803d", fontWeight: 600 }}>
                             {r.stop_count} 站
                           </span>
                         </td>
-                        <td style={{ padding: "8px 14px" }}>
+                        <td style={{ padding: "10px 16px" }}>
                           <button onClick={() => loadStops(r.id)}
-                            style={{ padding: "4px 12px", border: "1px solid #d1d5db",
-                              borderRadius: 6, fontSize: 12, cursor: "pointer",
+                            style={{ padding: "5px 14px", border: "1px solid #d1d5db",
+                              borderRadius: 6, fontSize: 13, cursor: "pointer",
                               background: expandedId === r.id ? "#1d4ed8" : "#fff",
                               color: expandedId === r.id ? "#fff" : "#374151",
                               fontWeight: expandedId === r.id ? 600 : 400 }}>
@@ -298,24 +298,24 @@ export default function ShopeeScheduleTab() {
                               <div style={{ padding: 12, color: "#9ca3af" }}>⏳ 載入站點…</div>
                             ) : (
                               <div>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: "#0284c7",
-                                  padding: "10px 0 6px" }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#0284c7",
+                                  padding: "10px 0 8px" }}>
                                   📍 路線站點（共 {stops.length} 站）
                                 </div>
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                   {stops.map(s => (
                                     <div key={s.id} style={{ display: "flex", alignItems: "center",
-                                      gap: 6, padding: "4px 10px",
+                                      gap: 6, padding: "5px 12px",
                                       background: s.is_ndd ? "#fdf4ff" : "#fff",
                                       border: `1px solid ${s.is_ndd ? "#e9d5ff" : "#e5e7eb"}`,
-                                      borderRadius: 8, fontSize: 12 }}>
-                                      <span style={{ color: "#9ca3af", fontSize: 11, minWidth: 20,
+                                      borderRadius: 8, fontSize: 13 }}>
+                                      <span style={{ color: "#9ca3af", fontSize: 12, minWidth: 22,
                                         textAlign: "center", fontWeight: 700 }}>
                                         {s.stop_order}
                                       </span>
                                       <span style={{ color: "#111827" }}>{s.store_name}</span>
                                       {s.is_ndd && (
-                                        <span style={{ fontSize: 10, padding: "1px 5px",
+                                        <span style={{ fontSize: 12, padding: "2px 6px",
                                           background: "#ede9fe", color: "#6d28d9", borderRadius: 4 }}>
                                           日配
                                         </span>
@@ -324,7 +324,7 @@ export default function ShopeeScheduleTab() {
                                   ))}
                                 </div>
                                 {stops[0]?.store_address && (
-                                  <div style={{ marginTop: 8, fontSize: 11, color: "#6b7280" }}>
+                                  <div style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>
                                     首站地址：{stops[0].store_address}
                                   </div>
                                 )}
