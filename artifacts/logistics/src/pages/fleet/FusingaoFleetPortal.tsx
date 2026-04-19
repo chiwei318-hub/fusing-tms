@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Truck, LogOut, RefreshCw, CheckCircle2, Clock, Package,
   DollarSign, ChevronDown, ChevronRight, Zap, Download,
@@ -88,7 +88,7 @@ const DEFAULT_SUB_FORM: SubAccountForm = {
   shopee_driver_id: "", role: "driver", fleet_driver_id: "",
 };
 
-type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement" | "dispatch" | "sub-accounts";
+type PortalTab = "available" | "mine" | "billing" | "drivers" | "settlement" | "dispatch" | "sub-accounts" | "schedule";
 
 const fmt = (n: number | string) => `NT$ ${Math.round(Number(n)).toLocaleString()}`;
 
@@ -117,6 +117,50 @@ export default function FusingaoFleetPortal() {
 
   // ── Quick add driver state (from home) ───────────────────────────────────
   const [quickDriverForm, setQuickDriverForm] = useState(false);
+
+  // ── Schedule tab state ────────────────────────────────────────────────────
+  interface SchedWeek { week_label: string; route_count: number; total_stops: number; imported_at: string; }
+  interface SchedRoute {
+    id: number; route_no: string; route_type: string; vehicle_type: string;
+    shopee_driver_id: string; departure_time: string; dock_no: string; stop_count: number;
+  }
+  const [schedWeeks, setSchedWeeks]     = useState<SchedWeek[]>([]);
+  const [schedSelWeek, setSchedSelWeek] = useState("");
+  const [schedRoutes, setSchedRoutes]   = useState<SchedRoute[]>([]);
+  const [schedLoading, setSchedLoading] = useState(false);
+  const [schedImporting, setSchedImporting] = useState(false);
+  const [schedImportMsg, setSchedImportMsg] = useState("");
+  const schedFileRef = useRef<HTMLInputElement>(null);
+
+  const loadSchedWeeks = useCallback(async () => {
+    const d = await fetch(fapi("/shopee-schedules/weeks")).then(x => x.json()).catch(() => ({ ok: false }));
+    if (d.ok) { setSchedWeeks(d.weeks ?? []); if (d.weeks?.length) setSchedSelWeek(d.weeks[0].week_label); }
+  }, []); // eslint-disable-line
+
+  const loadSchedRoutes = useCallback(async (week: string) => {
+    if (!week) return;
+    setSchedLoading(true);
+    try {
+      const d = await fetch(fapi(`/shopee-schedules?week=${encodeURIComponent(week)}&limit=500`)).then(x => x.json());
+      if (d.ok) setSchedRoutes(d.routes ?? []);
+    } finally { setSchedLoading(false); }
+  }, []); // eslint-disable-line
+
+  useEffect(() => { if (tab === "schedule") loadSchedWeeks(); }, [tab]); // eslint-disable-line
+  useEffect(() => { if (schedSelWeek) loadSchedRoutes(schedSelWeek); }, [schedSelWeek]); // eslint-disable-line
+
+  const importSchedExcel = async (file: File) => {
+    setSchedImporting(true); setSchedImportMsg("");
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const d = await fetch(fapi("/shopee-schedules/import"), { method: "POST", body: fd }).then(x => x.json());
+      if (d.ok) {
+        setSchedImportMsg(`✅ 匯入完成：${d.routes ?? 0} 條路線、${d.stops ?? 0} 站點`);
+        await loadSchedWeeks();
+      } else { setSchedImportMsg(`❌ ${d.error ?? "匯入失敗"}`); }
+    } catch (e: any) { setSchedImportMsg(`❌ ${e.message}`); }
+    finally { setSchedImporting(false); if (schedFileRef.current) schedFileRef.current.value = ""; }
+  };
 
   const [available, setAvailable] = useState<RouteItem[]>([]);
   const [mine, setMine]           = useState<RouteItem[]>([]);
@@ -668,6 +712,7 @@ export default function FusingaoFleetPortal() {
             { id:"mine",          label:`📦 我的任務 (${mine.length})` },
             { id:"billing",       label:"💰 月結帳單" },
             { id:"drivers",       label:`👤 旗下司機 (${drivers.length})` },
+            { id:"schedule",      label:`📅 蝦皮班表${schedWeeks.length > 0 ? ` (${schedWeeks.length}週)` : ""}` },
             { id:"settlement",    label:"📊 結算分析" },
             { id:"sub-accounts",  label:`🔑 子帳號${subAccounts.length > 0 ? ` (${subAccounts.length})` : ""}` },
           ] as { id: PortalTab; label: string }[]).map(t => (
@@ -1063,6 +1108,153 @@ export default function FusingaoFleetPortal() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* ─── 蝦皮班表 tab ─── */}
+        {tab === "schedule" && (
+          <div className="space-y-3">
+            {/* 工具列 */}
+            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap",
+              padding:"12px 16px", background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10 }}>
+              {/* 週別選擇 */}
+              <select
+                value={schedSelWeek}
+                onChange={e => setSchedSelWeek(e.target.value)}
+                style={{ padding:"7px 12px", border:"1px solid #d1d5db", borderRadius:8,
+                  fontSize:14, background:"#fff", maxWidth:240 }}>
+                {schedWeeks.length === 0
+                  ? <option value="">— 尚無班表資料 —</option>
+                  : schedWeeks.map(w => (
+                      <option key={w.week_label} value={w.week_label}>
+                        {w.week_label}（{w.route_count} 路線）
+                      </option>
+                    ))}
+              </select>
+              <button
+                onClick={() => loadSchedRoutes(schedSelWeek)}
+                disabled={schedLoading}
+                style={{ padding:"7px 14px", border:"1px solid #d1d5db", borderRadius:8,
+                  fontSize:13, cursor:"pointer", background:"#fff" }}>
+                🔄 刷新
+              </button>
+              {/* 隱藏 file input */}
+              <input ref={schedFileRef} type="file" accept=".xlsx,.xls" style={{ display:"none" }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) importSchedExcel(f); }} />
+              <button
+                onClick={() => schedFileRef.current?.click()}
+                disabled={schedImporting}
+                style={{ padding:"7px 16px", border:"none", borderRadius:8,
+                  fontSize:14, fontWeight:600, cursor: schedImporting ? "default" : "pointer",
+                  background: schedImporting ? "#9ca3af" : "#1d4ed8", color:"#fff",
+                  display:"flex", alignItems:"center", gap:6 }}>
+                📥 {schedImporting ? "匯入中…" : "匯入班表 Excel"}
+              </button>
+              {schedImportMsg && (
+                <div style={{ fontSize:13, padding:"6px 12px", borderRadius:6,
+                  background: schedImportMsg.startsWith("✅") ? "#f0fdf4" : "#fef2f2",
+                  color: schedImportMsg.startsWith("✅") ? "#166534" : "#dc2626",
+                  border:`1px solid ${schedImportMsg.startsWith("✅") ? "#bbf7d0" : "#fecaca"}` }}>
+                  {schedImportMsg}
+                </div>
+              )}
+            </div>
+
+            {/* 統計摘要 */}
+            {schedWeeks.length > 0 && (() => {
+              const cw = schedWeeks.find(w => w.week_label === schedSelWeek);
+              if (!cw) return null;
+              return (
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  {[
+                    { icon:"📋", label:"路線數", val: cw.route_count, color:"#2563eb", bg:"#eff6ff" },
+                    { icon:"🏪", label:"站點總數", val: cw.total_stops, color:"#7c3aed", bg:"#faf5ff" },
+                    { icon:"📦", label:"顯示中", val: schedRoutes.length, color:"#ea580c", bg:"#fff7ed" },
+                  ].map(s => (
+                    <div key={s.label} style={{ flex:1, minWidth:120, padding:"12px 14px",
+                      background:s.bg, borderRadius:10, border:`1px solid ${s.color}22` }}>
+                      <div style={{ fontSize:20 }}>{s.icon}</div>
+                      <div style={{ fontSize:24, fontWeight:700, color:s.color }}>{s.val.toLocaleString()}</div>
+                      <div style={{ fontSize:13, color:"#6b7280" }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* 路線表格 */}
+            {schedLoading ? (
+              <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>⏳ 載入中…</div>
+            ) : schedRoutes.length === 0 ? (
+              <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>
+                {schedWeeks.length === 0 ? "尚未匯入班表，請點「匯入班表 Excel」" : "此週無路線資料"}
+              </div>
+            ) : (
+              <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid #e5e7eb" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:14 }}>
+                  <thead>
+                    <tr style={{ background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)" }}>
+                      {["路線編號","類型","車型","司機工號","出車時段","碼頭","站點數"].map(h => (
+                        <th key={h} style={{ padding:"10px 14px", textAlign:"left",
+                          color:"#fff", fontWeight:600, fontSize:13, whiteSpace:"nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedRoutes.map((r, i) => {
+                      const typeColor: Record<string,{bg:string;color:string}> = {
+                        "WH NDD":  { bg:"#ede9fe", color:"#6d28d9" },
+                        "快速到貨":{ bg:"#dcfce7", color:"#15803d" },
+                        "流水線":  { bg:"#dbeafe", color:"#1e40af" },
+                        "NDD":     { bg:"#fef3c7", color:"#b45309" },
+                        "一般":    { bg:"#f3f4f6", color:"#374151" },
+                      };
+                      const tc = typeColor[r.route_type] ?? { bg:"#f3f4f6", color:"#374151" };
+                      return (
+                        <tr key={r.id} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb",
+                          borderBottom:"1px solid #f3f4f6" }}>
+                          <td style={{ padding:"9px 14px", fontWeight:700, color:"#1e3a8a", fontFamily:"monospace", fontSize:14 }}>
+                            {r.route_no}
+                          </td>
+                          <td style={{ padding:"9px 14px" }}>
+                            <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                              background:tc.bg, color:tc.color, fontWeight:600 }}>
+                              {r.route_type || "—"}
+                            </span>
+                          </td>
+                          <td style={{ padding:"9px 14px", fontSize:13, color:"#374151" }}>
+                            {r.vehicle_type || "—"}
+                          </td>
+                          <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:13, color:"#0284c7" }}>
+                            {r.shopee_driver_id || <span style={{ color:"#9ca3af" }}>—</span>}
+                          </td>
+                          <td style={{ padding:"9px 14px" }}>
+                            {r.departure_time
+                              ? <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                                  background:"#dbeafe", color:"#1e40af", fontWeight:600 }}>
+                                  {r.departure_time}
+                                </span>
+                              : <span style={{ color:"#9ca3af" }}>—</span>}
+                          </td>
+                          <td style={{ padding:"9px 14px", fontFamily:"monospace", fontSize:13 }}>
+                            {r.dock_no || "—"}
+                          </td>
+                          <td style={{ padding:"9px 14px" }}>
+                            <span style={{ padding:"3px 10px", borderRadius:20, fontSize:13,
+                              background:"#f0fdf4", color:"#15803d", fontWeight:600 }}>
+                              {r.stop_count} 站
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ padding:"8px 14px", fontSize:13, color:"#9ca3af", borderTop:"1px solid #f3f4f6" }}>
+                  共 {schedRoutes.length} 條路線
+                </div>
+              </div>
+            )}
           </div>
         )}
 
