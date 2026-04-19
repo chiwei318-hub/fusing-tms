@@ -92,18 +92,96 @@ jobsRouter.get("/jobs", async (req, res) => {
 
 /**
  * GET /api/get-task
- * FlutterFlow 專用端點：回傳最新一筆待派送任務（格式對應 FastAPI 版本）
+ * ATOMS 司機 App 輪詢端點：回傳被指派給該司機的最新一筆蝦皮派車任務
  *
  * Query params:
- *   driver_id - 指定司機 ID，只回傳該司機被指派的任務（選填）
- *   order_id  - 直接查詢指定訂單（選填）
+ *   atoms_account - 旗下司機的 ATOMS 帳號（優先，用 fleet_drivers.atoms_account 篩選）
+ *   driver_id     - 一般司機 ID（選填，兼容舊格式）
+ *   order_id      - 直接查詢指定訂單（選填）
  *
- * 回傳 FlutterFlow 直接可用的扁平結構（無巢狀物件）
+ * 回傳 ATOMS App 直接可用的扁平結構
  */
 jobsRouter.get("/get-task", async (req, res) => {
   try {
-    const { driver_id, order_id } = req.query as Record<string, string>;
+    const { driver_id, order_id, atoms_account } = req.query as Record<string, string>;
 
+    // ── 優先用 atoms_account 查旗下司機指派的蝦皮路線 ──────────────────
+    if (atoms_account) {
+      // 找到這個 atoms_account 對應的 fleet_driver
+      const driverRes = await pool.query(
+        `SELECT id, name, phone FROM fleet_drivers WHERE atoms_account = $1 AND is_active = true LIMIT 1`,
+        [atoms_account]
+      );
+      if (driverRes.rows.length === 0) {
+        return res.json({
+          order_id: null, customer_name: null, address: null,
+          temp_type: null, contact_phone: null, lat: null, lng: null,
+          status: "找不到司機帳號", note: null,
+        });
+      }
+      const fleetDriver = driverRes.rows[0] as any;
+
+      // 找到該司機被指派、尚未完成的蝦皮路線
+      const taskRes = await pool.query(`
+        SELECT
+          o.id              AS order_id,
+          o.route_id,
+          o.station_count,
+          o.dispatch_dock,
+          o.route_prefix,
+          o.notes,
+          o.status,
+          o.fleet_grabbed_at,
+          o.is_cold_chain,
+          o.fusingao_fleet_id,
+          pr.service_type
+        FROM orders o
+        LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+        WHERE o.fleet_driver_id = $1
+          AND o.status NOT IN ('cancelled', 'delivered')
+          AND o.fleet_completed_at IS NULL
+        ORDER BY o.fleet_grabbed_at DESC NULLS LAST, o.created_at DESC
+        LIMIT 1
+      `, [fleetDriver.id]);
+
+      if (taskRes.rows.length === 0) {
+        return res.json({
+          order_id: null, customer_name: null, address: null,
+          temp_type: "常溫", contact_phone: null, lat: null, lng: null,
+          status: "無待派任務", note: null,
+        });
+      }
+
+      const r = taskRes.rows[0] as any;
+      const stationDesc = r.station_count ? `共 ${r.station_count} 站` : "";
+      const dockDesc    = r.dispatch_dock ? `碼頭：${r.dispatch_dock}` : "";
+      const note = [
+        r.route_id   ? `路線：${r.route_id}` : "",
+        dockDesc,
+        stationDesc,
+        r.notes ?? "",
+      ].filter(Boolean).join("｜");
+
+      return res.json({
+        order_id:      r.order_id,
+        customer_name: r.service_type ?? "蝦皮電商配送",
+        address:       r.route_id ?? "",
+        temp_type:     r.is_cold_chain ? "冷藏 2-8°C" : "常溫",
+        contact_phone: fleetDriver.phone ?? "",
+        lat:           null,
+        lng:           null,
+        status:        r.status ?? "pending",
+        note,
+        // 額外欄位（ATOMS 可選用）
+        route_id:      r.route_id,
+        station_count: r.station_count,
+        dock:          r.dispatch_dock,
+        driver_name:   fleetDriver.name,
+        driver_phone:  fleetDriver.phone,
+      });
+    }
+
+    // ── 舊格式：一般訂單 driver_id / order_id 查詢 ────────────────────
     const conditions: string[] = ["o.status NOT IN ('cancelled', 'delivered')"];
     const params: unknown[] = [];
 
@@ -124,6 +202,9 @@ jobsRouter.get("/get-task", async (req, res) => {
         o.delivery_address    AS address,
         o.is_cold_chain,
         o.cargo_description,
+        o.route_id,
+        o.station_count,
+        o.dispatch_dock,
         o.status,
         o.notes,
         o.pickup_time,
@@ -137,35 +218,36 @@ jobsRouter.get("/get-task", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.json({
-        order_id:      null,
-        customer_name: null,
-        address:       null,
-        temp_type:     null,
-        contact_phone: null,
-        lat:           null,
-        lng:           null,
-        status:        "無待派任務",
-        note:          null,
+        order_id: null, customer_name: null, address: null,
+        temp_type: null, contact_phone: null, lat: null, lng: null,
+        status: "無待派任務", note: null,
       });
     }
 
     const r = result.rows[0] as any;
+    const tempTypeMap: Record<string, string> = { true: "冷藏 2-8°C", false: "常溫" };
 
-    const tempTypeMap: Record<string, string> = {
-      true:  "冷藏 2-8°C",
-      false: "常溫",
-    };
+    // 如果是蝦皮路線（有 route_id），組合 note 格式
+    let note = r.notes ?? r.cargo_description ?? "";
+    if (r.route_id) {
+      const parts = [
+        `路線：${r.route_id}`,
+        r.dispatch_dock ? `碼頭：${r.dispatch_dock}` : "",
+        r.station_count ? `共 ${r.station_count} 站` : "",
+      ].filter(Boolean);
+      note = parts.join("｜") + (note ? "\n" + note : "");
+    }
 
     res.json({
       order_id:      r.order_id,
       customer_name: r.customer_name ?? "",
-      address:       r.address ?? "",
+      address:       r.route_id ?? r.address ?? "",
       temp_type:     tempTypeMap[String(r.is_cold_chain)] ?? "常溫",
       contact_phone: r.contact_phone ?? "",
       lat:           null,
       lng:           null,
       status:        r.status ?? "",
-      note:          r.notes ?? r.cargo_description ?? "",
+      note,
     });
   } catch (err) {
     console.error("[get-task] error:", err);
