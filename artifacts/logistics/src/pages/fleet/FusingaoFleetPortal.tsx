@@ -110,6 +110,14 @@ export default function FusingaoFleetPortal() {
   const [loading, setLoading]   = useState(false);
   const [grabbingId, setGrabbingId] = useState<number | null>(null);
 
+  // ── Grab-with-driver modal state ──────────────────────────────────────────
+  const [grabModalRoute, setGrabModalRoute] = useState<RouteItem | null>(null);
+  const [grabDriverId, setGrabDriverId]     = useState<string>("none");
+  const [grabVehicle, setGrabVehicle]       = useState("");
+
+  // ── Quick add driver state (from home) ───────────────────────────────────
+  const [quickDriverForm, setQuickDriverForm] = useState(false);
+
   const [available, setAvailable] = useState<RouteItem[]>([]);
   const [mine, setMine]           = useState<RouteItem[]>([]);
   const [months, setMonths]       = useState<MonthRow[]>([]);
@@ -175,18 +183,38 @@ export default function FusingaoFleetPortal() {
 
   const handleLogout = () => { logout(); setLocation("/"); };
 
-  const grab = async (routeId: number) => {
+  // Open grab modal (loads drivers list first if needed)
+  const openGrabModal = (r: RouteItem) => {
+    if (drivers.length === 0) loadDrivers();
+    setGrabModalRoute(r);
+    setGrabDriverId("none");
+    setGrabVehicle("");
+  };
+
+  const grab = async () => {
+    if (!grabModalRoute) return;
+    const routeId = grabModalRoute.id;
     if (grabbingId) return;
     setGrabbingId(routeId);
     try {
+      // Find selected driver info
+      const selDriver = grabDriverId !== "none"
+        ? drivers.find(d => String(d.id) === grabDriverId)
+        : null;
       const res = await fetch(fapi(`/fusingao/routes/${routeId}/grab`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fleetId }),
+        body: JSON.stringify({
+          fleetId,
+          driverId: selDriver ? selDriver.id : null,
+          driverName: selDriver ? selDriver.name : null,
+          vehiclePlate: grabVehicle || (selDriver?.vehicle_plate ?? null),
+        }),
       });
       const d = await res.json();
       if (!d.ok) throw new Error(d.error);
       toast({ title: "搶單成功！路線已加入我的任務" });
+      setGrabModalRoute(null);
       await load();
       setTab("mine");
     } catch (err: any) {
@@ -221,7 +249,8 @@ export default function FusingaoFleetPortal() {
     if (d.ok) setDrivers(d.drivers ?? []);
   }, [fleetId]); // eslint-disable-line
 
-  useEffect(() => { if (tab === "drivers") loadDrivers(); }, [tab]); // eslint-disable-line
+  // Load drivers when tab changes to "drivers", or on mount for grab modal
+  useEffect(() => { if (tab === "drivers" || !isSubAccount) loadDrivers(); }, [tab]); // eslint-disable-line
 
   const loadSettlement = useCallback(async () => {
     if (!fleetId) return;
@@ -498,8 +527,8 @@ export default function FusingaoFleetPortal() {
             {showGrab ? (
               <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                 disabled={!!grabbingId}
-                onClick={e => { e.stopPropagation(); grab(r.id); }}>
-                <Zap className="h-3.5 w-3.5 mr-1" />{grabbingId === r.id ? "搶中…" : "搶單"}
+                onClick={e => { e.stopPropagation(); openGrabModal(r); }}>
+                <Zap className="h-3.5 w-3.5 mr-1" />搶車
               </Button>
             ) : (
               <div>
@@ -607,6 +636,26 @@ export default function FusingaoFleetPortal() {
             </CardContent></Card>
           ))}
         </div>
+
+        {/* Quick actions (fleet owners only) */}
+        {!isSubAccount && (
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-xs"
+              onClick={() => {
+                setEditingDriver(null);
+                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" });
+                setQuickDriverForm(true);
+              }}>
+              <UserPlus className="h-3.5 w-3.5 mr-1" />新增旗下司機
+            </Button>
+            {drivers.length > 0 && (
+              <Button size="sm" variant="outline" className="h-8 text-xs"
+                onClick={() => setTab("drivers")}>
+                <User className="h-3.5 w-3.5 mr-1" />管理旗下司機（{drivers.length} 人）
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-x-0.5 gap-y-0 border-b bg-white rounded-t-lg px-2 pt-1.5">
@@ -1451,6 +1500,207 @@ export default function FusingaoFleetPortal() {
           </div>
         )}
       </div>
+
+      {/* ══ Grab modal: 搶車時選司機 ══════════════════════════════════════════ */}
+      {grabModalRoute && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 50,
+          background: "rgba(0,0,0,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "16px",
+        }}
+          onClick={() => { if (!grabbingId) setGrabModalRoute(null); }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden",
+          }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#ea580c,#f97316)", padding: "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Zap style={{ color: "#fff", width: 20, height: 20 }} />
+                <div>
+                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>搶車確認</div>
+                  <div style={{ color: "#fed7aa", fontSize: 12 }}>
+                    路線 {grabModalRoute.routeId} ・{grabModalRoute.stations} 站
+                    {grabModalRoute.dock ? ` ・碼頭 ${grabModalRoute.dock}` : ""}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "20px" }}>
+              {/* 選司機 */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+                  指派給旗下司機（選填）
+                </label>
+                <select
+                  value={grabDriverId}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setGrabDriverId(v);
+                    if (v !== "none") {
+                      const drv = drivers.find(d => String(d.id) === v);
+                      if (drv?.vehicle_plate) setGrabVehicle(drv.vehicle_plate);
+                    } else {
+                      setGrabVehicle("");
+                    }
+                  }}
+                  style={{ width: "100%", padding: "9px 12px", border: "1px solid #d1d5db",
+                    borderRadius: 8, fontSize: 14, background: "#fff", outline: "none" }}>
+                  <option value="none">— 暫不指派 —</option>
+                  {drivers.filter(d => d.is_active).map(d => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}{d.vehicle_plate ? ` (${d.vehicle_plate})` : ""}{d.vehicle_type ? ` · ${d.vehicle_type}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {drivers.filter(d => d.is_active).length === 0 && (
+                  <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>
+                    尚無旗下司機，可在「旗下司機」tab 新增後再搶車
+                  </p>
+                )}
+              </div>
+
+              {/* 車牌 */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+                  車牌號碼（選填）
+                </label>
+                <input
+                  value={grabVehicle}
+                  onChange={e => setGrabVehicle(e.target.value)}
+                  placeholder="例：ABC-1234"
+                  style={{ width: "100%", padding: "9px 12px", border: "1px solid #d1d5db",
+                    borderRadius: 8, fontSize: 14, boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* 站點預覽 */}
+              {grabModalRoute.stopList.length > 0 && (
+                <div style={{ marginBottom: 20, padding: "12px", background: "#f9fafb",
+                  borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>
+                    配送站點（{grabModalRoute.stations} 站）
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {grabModalRoute.stopList.slice(0, 12).map((s, i) => (
+                      <span key={i} style={{ fontSize: 11, padding: "2px 8px", background: "#fff",
+                        border: "1px solid #e5e7eb", borderRadius: 20, color: "#374151" }}>
+                        {i + 1}. {s}
+                      </span>
+                    ))}
+                    {grabModalRoute.stopList.length > 12 && (
+                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                        …還有 {grabModalRoute.stopList.length - 12} 站
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 按鈕 */}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  disabled={!!grabbingId}
+                  onClick={() => setGrabModalRoute(null)}
+                  style={{ flex: 1, padding: "10px", border: "1px solid #d1d5db", borderRadius: 8,
+                    fontSize: 14, cursor: "pointer", background: "#fff", color: "#374151" }}>
+                  取消
+                </button>
+                <button
+                  disabled={!!grabbingId}
+                  onClick={grab}
+                  style={{ flex: 2, padding: "10px", border: "none", borderRadius: 8,
+                    fontSize: 14, fontWeight: 700, cursor: grabbingId ? "default" : "pointer",
+                    background: grabbingId ? "#9ca3af" : "#ea580c", color: "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Zap style={{ width: 16, height: 16 }} />
+                  {grabbingId ? "搶車中…" : "確認搶車"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Quick Add Driver modal ════════════════════════════════════════════ */}
+      {quickDriverForm && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 50,
+          background: "rgba(0,0,0,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "16px",
+        }}
+          onClick={() => setQuickDriverForm(false)}>
+          <div style={{
+            background: "#fff", borderRadius: 16, width: "100%", maxWidth: 400,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden",
+          }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ background: "linear-gradient(135deg,#1d4ed8,#2563eb)", padding: "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <UserPlus style={{ color: "#fff", width: 20, height: 20 }} />
+                <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>快速新增司機</div>
+              </div>
+            </div>
+            <div style={{ padding: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>
+                    姓名 <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input className="w-full border rounded px-2 py-1.5 text-sm"
+                    value={driverForm.name}
+                    onChange={e => setDriverForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="司機姓名" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>電話</label>
+                  <input className="w-full border rounded px-2 py-1.5 text-sm"
+                    value={driverForm.phone}
+                    onChange={e => setDriverForm(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="09XXXXXXXX" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>車牌號碼</label>
+                  <input className="w-full border rounded px-2 py-1.5 text-sm"
+                    value={driverForm.vehicle_plate}
+                    onChange={e => setDriverForm(p => ({ ...p, vehicle_plate: e.target.value }))}
+                    placeholder="ABC-1234" />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>車型</label>
+                  <select className="w-full border rounded px-2 py-1.5 text-sm bg-white"
+                    value={driverForm.vehicle_type}
+                    onChange={e => setDriverForm(p => ({ ...p, vehicle_type: e.target.value }))}>
+                    {["一般", "貨車", "廂型", "機車"].map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setQuickDriverForm(false)}
+                  style={{ flex: 1, padding: "10px", border: "1px solid #d1d5db", borderRadius: 8,
+                    fontSize: 14, cursor: "pointer", background: "#fff", color: "#374151" }}>
+                  取消
+                </button>
+                <button
+                  onClick={async () => {
+                    await saveDriver();
+                    setQuickDriverForm(false);
+                  }}
+                  style={{ flex: 2, padding: "10px", border: "none", borderRadius: 8,
+                    fontSize: 14, fontWeight: 700, cursor: "pointer",
+                    background: "#2563eb", color: "#fff" }}>
+                  儲存司機
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

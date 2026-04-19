@@ -37,6 +37,9 @@ async function ensureFusingaoFleetColumns() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_grabbed_at TIMESTAMPTZ`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_completed_at TIMESTAMPTZ`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_type TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_driver_id INTEGER`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_driver_name TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_vehicle_plate TEXT`,
   ];
   for (const s of fleetOrderCols) {
     try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
@@ -453,7 +456,9 @@ fusingaoRouter.get("/fleets/:id/routes", async (req, res) => {
         o.id, o.status, o.notes, o.completed_at, o.driver_payment_status,
         o.created_at, o.fleet_grabbed_at, o.fleet_completed_at,
         o.route_id, o.route_prefix, o.station_count, o.dispatch_dock, o.shopee_driver_id,
-        sd.name AS driver_name, sd.vehicle_plate,
+        o.fleet_driver_id, o.fleet_driver_name, o.fleet_vehicle_plate,
+        sd.name AS driver_name,
+        COALESCE(o.fleet_vehicle_plate, sd.vehicle_plate) AS vehicle_plate,
         pr.rate_per_trip AS shopee_rate,
         COALESCE(f.rate_override, pr.rate_per_trip) AS fleet_rate,
         pr.service_type
@@ -530,18 +535,26 @@ fusingaoRouter.get("/available", async (req, res) => {
   }
 });
 
-// POST /fusingao/routes/:id/grab — fleet grabs a route
+// POST /fusingao/routes/:id/grab — fleet grabs a route (with optional driver assignment)
 fusingaoRouter.post("/routes/:id/grab", async (req, res) => {
   try {
     const { id } = req.params;
-    const { fleetId } = req.body as { fleetId: number };
+    const { fleetId, driverId, driverName, vehiclePlate } = req.body as {
+      fleetId: number;
+      driverId?: number | null;
+      driverName?: string | null;
+      vehiclePlate?: string | null;
+    };
     if (!fleetId) return res.status(400).json({ ok: false, error: "缺少 fleetId" });
     // Atomic grab: only succeed if not already grabbed
     const result = await db.execute(sql`
       UPDATE orders SET
-        fusingao_fleet_id = ${fleetId},
-        fleet_grabbed_at  = NOW(),
-        updated_at        = NOW()
+        fusingao_fleet_id   = ${fleetId},
+        fleet_grabbed_at    = NOW(),
+        fleet_driver_id     = ${driverId ?? null},
+        fleet_driver_name   = ${driverName ?? null},
+        fleet_vehicle_plate = ${vehiclePlate ?? null},
+        updated_at          = NOW()
       WHERE id = ${Number(id)}
         AND route_id IS NOT NULL
         AND fusingao_fleet_id IS NULL
