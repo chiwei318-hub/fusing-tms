@@ -494,3 +494,175 @@ monthlyPnlRouter.post("/:id/import", upload.single("file"), async (req: any, res
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+// ─── 從 Google 試算表 URL 解析 Sheet ID ──────────────────────────────────────
+function extractGSheetId(url: string): string | null {
+  const m = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+// ─── 富詠收支明細帳 → P&L 對照 ────────────────────────────────────────────────
+const GSHEET_EXPENSE_MAP: Record<string, string> = {
+  "油費儲值": "fuel",
+  "水電費":   "utilities",
+  "交際費":   "entertainment",
+  "記帳費":   "labor",
+  "電信費":   "telecom",
+  "FB廣告費": "facebook_ads",
+  "租金支出": "rent",
+};
+
+// 罰單：只計「公司費用」（排除代付款/代收代付）
+function isFineCompanyExpense(note: string): boolean {
+  const n = String(note ?? "").trim();
+  return n === "" || n.toLowerCase().includes("公司費用");
+}
+
+// ─── POST /monthly-pnl/:id/import-gsheet — 從 Google 試算表匯入 ──────────────
+monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { url, filter_month } = req.body as { url: string; filter_month?: string };
+
+    if (!url) return res.status(400).json({ error: "請提供 Google 試算表網址" });
+
+    const sheetId = extractGSheetId(url);
+    if (!sheetId) return res.status(400).json({ error: "無法解析 Google 試算表 ID，請確認網址格式" });
+
+    // ── 從 DB 取得月報 ──────────────────────────────────────────────────────
+    const rpt = await db.execute(sql`SELECT data, roc_year, month FROM monthly_pnl_reports WHERE id = ${id}`);
+    if (!rpt.rows.length) return res.status(404).json({ error: "月報不存在" });
+
+    const reportRow  = rpt.rows[0] as any;
+    const data: any  = JSON.parse(JSON.stringify(reportRow.data));
+    const customers: string[] = data.customers ?? DEFAULT_CUSTOMERS;
+    const drivers:   string[] = data.drivers   ?? DEFAULT_DRIVERS;
+
+    // 預設 filter_month 用月報的民國年月（e.g., "115.3"）
+    const targetMonth = filter_month ?? `${reportRow.roc_year}.${reportRow.month}`;
+
+    // ── 下載 Google 試算表 ──────────────────────────────────────────────────
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+    const resp = await fetch(exportUrl, { redirect: "follow" });
+    if (!resp.ok) {
+      return res.status(400).json({ error: `無法下載試算表（HTTP ${resp.status}），請確認試算表已設為「任何人可檢視」` });
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+
+    // ── 解析 XLSX ──────────────────────────────────────────────────────────
+    const wb   = XLSX.read(buf, { type: "buffer" });
+    const wsn  = wb.SheetNames[0];
+    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[wsn], { header: 1, defval: "" });
+
+    // 過濾目標月份（月份欄支援數字或字串格式）
+    const matchMonth = (v: any) => {
+      const s = String(v).trim();
+      // 115.3 或 115.03 或純數字 115.3
+      const [yr, mo] = targetMonth.split(".");
+      const moNum    = parseInt(mo);
+      return s === targetMonth || s === `${yr}.${String(moNum).padStart(2,"0")}` ||
+             parseFloat(s) === parseFloat(targetMonth);
+    };
+
+    const monthRows = rows.slice(2).filter(r => matchMonth(r[1]));
+    if (!monthRows.length) {
+      return res.json({ ok: false, error: `找不到「${targetMonth}」月份的資料，試算表內月份列表：${[...new Set(rows.slice(2).map(r=>String(r[1]).trim()).filter(Boolean))].join(", ")}` });
+    }
+
+    // 輔助：在客戶清單裡尋找描述中包含的客戶名稱
+    const findCustomer = (desc: string): string => {
+      for (const c of customers) {
+        if (c !== "其他" && desc.includes(c)) return c;
+      }
+      return "其他";
+    };
+
+    // 輔助：在司機清單裡尋找描述中包含的司機名稱（忽略括號內別名）
+    const driverAliases = Object.fromEntries(
+      drivers.map(d => [d.replace(/\(.*?\)/g, "").trim(), d])
+    );
+    const findDriver = (desc: string): string => {
+      for (const [alias, full] of Object.entries(driverAliases)) {
+        if (desc.includes(alias)) return full;
+      }
+      // 沒在清單裡的外包，直接用描述裡「支付」後到「月」前的文字
+      const m = desc.match(/^支付(.+?)(?:\d+月|運費|$)/);
+      return m ? m[1].trim() : desc.replace(/^支付/, "").trim();
+    };
+
+    const stats = { income: 0, driver: 0, expense: 0, fine: 0, skipped: 0 };
+
+    // 先歸零各項目（避免疊加到舊資料）
+    for (const c of customers) data.transport_income[c] = 0;
+    for (const k of Object.keys(data.expenses ?? {})) data.expenses[k] = 0;
+    data.parking_income = 0;
+    data.misc_income    = 0;
+    for (const d of drivers) {
+      for (const c of customers) {
+        if (data.driver_costs[d]) data.driver_costs[d][c] = 0;
+      }
+    }
+
+    for (const r of monthRows) {
+      const cat  = String(r[2] ?? "").trim();
+      const desc = String(r[4] ?? "").trim();
+      const inc  = parseFloat(String(r[5] ?? "0").replace(/,/g, "")) || 0;
+      const exp  = parseFloat(String(r[6] ?? "0").replace(/,/g, "")) || 0;
+      const note = String(r[8] ?? "").trim();
+
+      if (cat === "運費收入" && inc > 0) {
+        const cust = findCustomer(desc);
+        data.transport_income[cust] = (data.transport_income[cust] ?? 0) + inc;
+        stats.income++;
+
+      } else if (cat === "支付外包" && exp > 0) {
+        const drv = findDriver(desc);
+        if (!data.driver_costs[drv]) data.driver_costs[drv] = {};
+        // 總額填入「其他」欄（無法從明細帳拆分到客戶）
+        data.driver_costs[drv]["其他"] = (data.driver_costs[drv]["其他"] ?? 0) + exp;
+        // 若不在預設司機清單，加入 drivers
+        if (!data.drivers.includes(drv)) data.drivers.push(drv);
+        stats.driver++;
+
+      } else if (GSHEET_EXPENSE_MAP[cat] && exp > 0) {
+        const key = GSHEET_EXPENSE_MAP[cat];
+        data.expenses[key] = (data.expenses[key] ?? 0) + exp;
+        stats.expense++;
+
+      } else if (cat === "罰單" && exp > 0 && isFineCompanyExpense(note)) {
+        data.expenses["fines"] = (data.expenses["fines"] ?? 0) + exp;
+        stats.fine++;
+
+      } else if (cat === "靠行收入" && inc > 0) {
+        data.parking_income = (data.parking_income ?? 0) + inc;
+
+      } else {
+        stats.skipped++;
+      }
+    }
+
+    const totalFilled = stats.income + stats.driver + stats.expense + stats.fine;
+
+    await db.execute(sql`
+      UPDATE monthly_pnl_reports
+      SET data = ${JSON.stringify(data)}::jsonb, updated_at = NOW()
+      WHERE id = ${id}
+    `);
+
+    res.json({
+      ok:          true,
+      target_month: targetMonth,
+      rows_scanned: monthRows.length,
+      filled:      totalFilled,
+      breakdown: {
+        運費收入:  stats.income,
+        司機運費:  stats.driver,
+        費用:     stats.expense,
+        罰單:     stats.fine,
+        忽略:     stats.skipped,
+      },
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});

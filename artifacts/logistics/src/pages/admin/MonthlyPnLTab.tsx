@@ -131,7 +131,10 @@ export default function MonthlyPnLTab() {
   const [editing, setEditing]       = useState(false);
   const [saving, setSaving]         = useState(false);
   const [autofilling, setAutofilling] = useState(false);
-  const [importing, setImporting]   = useState(false);
+  const [importing, setImporting]         = useState(false);
+  const [gsheetUrl, setGsheetUrl]         = useState("");
+  const [gsheetLoading, setGsheetLoading] = useState(false);
+  const [showGsheet, setShowGsheet]       = useState(false);
   const [activeTab, setActiveTab]   = useState<"pnl" | "adj">("pnl");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [createRocYear, setCreateRocYear] = useState(115);
@@ -219,6 +222,29 @@ export default function MonthlyPnLTab() {
       }
     } catch { toast.error("匯入時發生錯誤"); }
     finally { setImporting(false); }
+  };
+
+  const importFromGSheet = async () => {
+    if (!selectedId || !gsheetUrl.trim()) return;
+    setGsheetLoading(true);
+    try {
+      const r = await fetch(apiUrl(`/monthly-pnl/${selectedId}/import-gsheet`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: gsheetUrl.trim() }),
+      }).then(x => x.json());
+      if (r.ok) {
+        const b = r.breakdown ?? {};
+        toast.success(
+          `試算表匯入完成（${r.target_month}月）：運費收入 ${b.運費收入} 筆、司機 ${b.司機運費} 筆、費用 ${b.費用 + b.罰單} 筆`
+        );
+        await loadReport(selectedId);
+        setShowGsheet(false);
+      } else {
+        toast.error(r.error ?? "匯入失敗");
+      }
+    } catch { toast.error("匯入時發生錯誤"); }
+    finally { setGsheetLoading(false); }
   };
 
   const autoFill = async () => {
@@ -386,6 +412,17 @@ export default function MonthlyPnLTab() {
           onChange={importFile}
         />
 
+        <Button
+          size="sm"
+          variant={showGsheet ? "default" : "outline"}
+          onClick={() => setShowGsheet(v => !v)}
+          disabled={editing}
+          className={showGsheet ? "bg-green-600 hover:bg-green-700" : ""}
+        >
+          <span className="mr-1.5 text-base leading-none">🔗</span>
+          Google 試算表
+        </Button>
+
         {editing ? (
           <>
             <Button size="sm" onClick={save} disabled={saving} className="bg-green-600 hover:bg-green-700">
@@ -409,6 +446,42 @@ export default function MonthlyPnLTab() {
           列印
         </Button>
       </div>
+
+      {/* ── Google 試算表匯入面板 ── */}
+      {showGsheet && (
+        <div className="border-b bg-green-50 px-4 py-3 flex items-start gap-3 flex-wrap">
+          <div className="flex-1 min-w-64">
+            <p className="text-xs font-semibold text-green-800 mb-1">從 Google 試算表（收支明細帳）自動匯入</p>
+            <p className="text-xs text-green-700 mb-2">
+              試算表需設為「任何人可檢視」。系統將依月報月份過濾當月資料，自動填入運費收入、司機外包費用及各項費用。
+            </p>
+            <div className="flex gap-2 items-center flex-wrap">
+              <input
+                type="url"
+                value={gsheetUrl}
+                onChange={e => setGsheetUrl(e.target.value)}
+                placeholder="貼上 Google 試算表網址…"
+                className="flex-1 min-w-64 text-sm border border-green-300 rounded px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                onKeyDown={e => { if (e.key === "Enter") importFromGSheet(); }}
+              />
+              <Button
+                size="sm"
+                onClick={importFromGSheet}
+                disabled={gsheetLoading || !gsheetUrl.trim()}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {gsheetLoading
+                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />匯入中...</>
+                  : <><span className="mr-1.5">📥</span>開始匯入</>
+                }
+              </Button>
+            </div>
+            <p className="text-xs text-green-600 mt-1.5">
+              ⚠️ 匯入會清空本月所有已填資料後重新填入，請確認後再執行。
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── 子頁籤 ── */}
       <div className="flex border-b bg-white px-4 gap-1">
