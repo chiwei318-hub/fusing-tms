@@ -1739,17 +1739,16 @@ export default function Admin() {
                   <span className={`text-[10px] font-bold ${labelColor} text-center leading-tight whitespace-pre-line`}>{label}</span>
                 </div>
                 {/* 功能按鈕網格 */}
-                <TabsList className="flex-1 h-auto bg-transparent p-2">
-                  <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(5.5rem, 1fr))" }}>
-                    {items.map(t => (
-                      <TabsTrigger key={t.value} value={t.value}
-                        className="flex items-center justify-start gap-1.5 text-xs px-2.5 py-1.5 rounded-lg w-full">
-                        <span className="shrink-0">{t.icon}</span>
-                        <span className="truncate">{t.label}</span>
-                      </TabsTrigger>
-                    ))}
-                    {extra}
-                  </div>
+                <TabsList className="flex-1 h-auto bg-transparent p-2 gap-1"
+                  style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(5.5rem, 1fr))" }}>
+                  {items.map(t => (
+                    <TabsTrigger key={t.value} value={t.value}
+                      className="flex items-center justify-start gap-1.5 text-xs px-2.5 py-1.5 rounded-lg w-full">
+                      <span className="shrink-0">{t.icon}</span>
+                      <span className="truncate">{t.label}</span>
+                    </TabsTrigger>
+                  ))}
+                  {extra}
                 </TabsList>
               </div>
             ))}
