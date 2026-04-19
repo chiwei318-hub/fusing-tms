@@ -1279,6 +1279,85 @@ function parseAffiliatedVehicleFormat(
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 格式 10：富詠運輸靠行車個人帳（游志玄 / KLK-0087 型態）
+//   — Row0: "富詠運輸靠行車115.N月 明細"（月份在標題中，不含"明細"直接相連）
+//   — Row1: "車號：XXXX(車主：姓名)"
+//   — 單一工作表（以車牌為名），欄位: [項次, 日期, 費用支出明細, 收入, 支出, 餘額, 備註]
+//   — 輸出：misc_income[靠行費-車主] += 每月支出合計（富詠向車主收取的費用）
+// ═══════════════════════════════════════════════════════════════════════════════
+function parsePersonalAffiliationLedger(
+  wb: XLSX.WorkBook,
+  data: any,
+  rocYear: number,
+  month: number,
+): { format: string; rows_scanned: number; stats: any; extra?: any } | null {
+  const sn0 = wb.SheetNames[0];
+  const allRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sn0], { header: 1, defval: "" });
+  const r0 = String(allRows[0]?.[0] ?? "");
+  const r1 = String(allRows[1]?.[0] ?? "");
+
+  // 偵測：含「富詠運輸靠行車」且 row1 含「車主：」
+  if (!r0.includes("富詠運輸靠行車") || !r1.includes("車主：")) return null;
+  // 排除格式9（"靠行車明細"相連，不含月份在中間）
+  if (r0.includes("靠行車明細")) return null;
+
+  // 從 row1 提取車號和車主姓名
+  const vehicleMatch = r1.match(/車號[：:]\s*([A-Z0-9\-]+)/);
+  const ownerMatch   = r1.match(/車主[：:]\s*([^\)]+)\)/);
+  const vehicle = vehicleMatch?.[1]?.trim() ?? sn0;
+  const owner   = ownerMatch?.[1]?.trim() ?? "未知車主";
+
+  // 用 靠行費(N月) 描述找出本月份，驗證是否匹配
+  let detectedMonth = 0;
+  for (const r of allRows.slice(2)) {
+    const desc = String(r[2] ?? "").trim();
+    const mm = desc.match(/靠行費[（(](\d+)月[）)]/);
+    if (mm) { detectedMonth = parseInt(mm[1]); break; }
+  }
+  if (detectedMonth && detectedMonth !== month) return null;
+
+  // 嘗試從標題抓年份 "115.N月"
+  const ymTitle = r0.match(/(\d{3})\.(\d{1,2})月/);
+  if (ymTitle) {
+    const yr = parseInt(ymTitle[1]);
+    if (yr !== rocYear) return null;
+  }
+
+  // 累計所有「支出」欄（col4）= 富詠向車主收取的金額
+  let totalCollected = 0;
+  let affiliationFee = 0;
+  let fuelRecovery   = 0;
+  let endBalance     = 0;
+  const breakdown: Record<string, number> = {};
+
+  for (const r of allRows.slice(2)) {
+    const desc = String(r[2] ?? "").trim();
+    const exp  = parseFloat(String(r[4] ?? "0").replace(/,/g, "")) || 0;
+    const bal  = parseFloat(String(r[5] ?? "0").replace(/,/g, "")) || 0;
+    if (bal > 0) endBalance = bal;
+    if (exp <= 0) continue;
+    totalCollected += exp;
+    if (desc.includes("靠行費")) affiliationFee += exp;
+    else if (desc.includes("燃料費") || desc.includes("油費")) fuelRecovery += exp;
+    else breakdown[desc] = (breakdown[desc] ?? 0) + exp;
+  }
+
+  // 寫入 misc_income
+  if (!data.misc_income) data.misc_income = {};
+  if (!data._affiliation_ledger_imported) data._affiliation_ledger_imported = {};
+  const key = `靠行費-${owner}`;
+  data.misc_income[key] = totalCollected;
+  data._affiliation_ledger_imported[key] = { vehicle, owner, totalCollected, affiliationFee, fuelRecovery, endBalance };
+
+  return {
+    format: "靠行車個人帳",
+    rows_scanned: allRows.length,
+    stats: { income: 1, driver: 0, expense: 0, skipped: 0 },
+    extra: { vehicle, owner, affiliationFee, fuelRecovery, totalCollected, endBalance, breakdown },
+  };
+}
+
 // ─── 輔助：從 Google Drive 資料夾頁面抓取試算表 ID ───────────────────────────
 async function fetchFolderFileIds(folderId: string): Promise<string[]> {
   const html = await fetch(`https://drive.google.com/drive/folders/${folderId}`, {
@@ -1368,22 +1447,28 @@ monthlyPnlRouter.post("/:id/import-gsheet", async (req, res) => {
       // 格式6：油卡消費明細，疊加 fuel 費用（冪等）
       result = parseFuelCardFormat(wb, data, rocYear, month);
     } else {
-      // 嘗試格式9：靠行車明細（蝦皮/福星高月結算）
+      // 嘗試格式9：靠行車明細（蝦皮/福星高月結算，楊忠祥型）
       const affiliatedResult = parseAffiliatedVehicleFormat(wb, data, rocYear, month);
       if (affiliatedResult) {
         result = affiliatedResult;
       } else {
-        // 嘗試格式8：運費請款單（向客戶收費）
-        const invoiceResult = parseFreightInvoiceFormat(wb, data, customers, rocYear, month);
-        if (invoiceResult) {
-          result = invoiceResult;
+        // 嘗試格式10：靠行車個人帳（游志玄型，單車滾動餘額）
+        const personalLedger = parsePersonalAffiliationLedger(wb, data, rocYear, month);
+        if (personalLedger) {
+          result = personalLedger;
         } else {
-          // 嘗試格式7：外車運費對帳單（司機付款）
-          const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
-          if (slipResult) {
-            result = slipResult;
+          // 嘗試格式8：運費請款單（向客戶收費）
+          const invoiceResult = parseFreightInvoiceFormat(wb, data, customers, rocYear, month);
+          if (invoiceResult) {
+            result = invoiceResult;
           } else {
-            result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
+            // 嘗試格式7：外車運費對帳單（司機付款）
+            const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
+            if (slipResult) {
+              result = slipResult;
+            } else {
+              result = parseCashflowFormat(wb, data, customers, drivers, targetMonth);
+            }
           }
         }
       }
@@ -1456,23 +1541,28 @@ monthlyPnlRouter.post("/:id/import-gfolder", async (req, res) => {
 
         const wb = XLSX.read(buf, { type: "buffer" });
 
-        // 嘗試各格式（格式9 → 8 → 7 → 6）
+        // 嘗試各格式（格式9 → 10 → 8 → 7 → 6）
         const affRes = parseAffiliatedVehicleFormat(wb, data, rocYear, month);
         if (affRes) {
           results.push({ fileId: fileId.slice(0, 12) + "…", format: "靠行車明細", ...affRes.extra });
         } else {
-          const invoiceRes = parseFreightInvoiceFormat(wb, data, customers, rocYear, month);
-          if (invoiceRes) {
-            results.push({ fileId: fileId.slice(0, 12) + "…", format: "運費請款單", ...invoiceRes.extra });
+          const personalLedger = parsePersonalAffiliationLedger(wb, data, rocYear, month);
+          if (personalLedger) {
+            results.push({ fileId: fileId.slice(0, 12) + "…", format: "靠行車個人帳", ...personalLedger.extra });
           } else {
-            const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
-            if (slipResult) {
-              results.push({ fileId: fileId.slice(0, 12) + "…", format: "外車運費對帳單", ...slipResult.extra });
+            const invoiceRes = parseFreightInvoiceFormat(wb, data, customers, rocYear, month);
+            if (invoiceRes) {
+              results.push({ fileId: fileId.slice(0, 12) + "…", format: "運費請款單", ...invoiceRes.extra });
             } else {
-              const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" })[0] ?? [];
-              if (hdr.some((h: any) => String(h).includes("虛擬帳號") || String(h).includes("車牌號碼"))) {
-                const fuel = parseFuelCardFormat(wb, data, rocYear, month);
-                results.push({ fileId: fileId.slice(0, 12) + "…", format: fuel.format, ...fuel.extra });
+              const slipResult = parseDriverSlipFormat(wb, data, drivers, rocYear, month);
+              if (slipResult) {
+                results.push({ fileId: fileId.slice(0, 12) + "…", format: "外車運費對帳單", ...slipResult.extra });
+              } else {
+                const hdr: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" })[0] ?? [];
+                if (hdr.some((h: any) => String(h).includes("虛擬帳號") || String(h).includes("車牌號碼"))) {
+                  const fuel = parseFuelCardFormat(wb, data, rocYear, month);
+                  results.push({ fileId: fileId.slice(0, 12) + "…", format: fuel.format, ...fuel.extra });
+                }
               }
             }
           }
