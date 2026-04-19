@@ -46,6 +46,35 @@ async function ensureFusingaoFleetColumns() {
     await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_account TEXT`));
     await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_password TEXT`));
     await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS employee_id TEXT`));
+    // Salary calculation fields
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS base_salary NUMERIC(10,2) NOT NULL DEFAULT 0`));
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS per_trip_bonus NUMERIC(10,2) NOT NULL DEFAULT 0`));
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS meal_allowance NUMERIC(10,2) NOT NULL DEFAULT 0`));
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS other_deduction NUMERIC(10,2) NOT NULL DEFAULT 0`));
+    console.log("[FleetDriverSalary] salary columns ensured");
+  } catch { /* already exists */ }
+  // Monthly driver payroll records table
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS fleet_driver_payroll (
+        id              SERIAL PRIMARY KEY,
+        fleet_id        INTEGER NOT NULL,
+        driver_id       INTEGER NOT NULL REFERENCES fleet_drivers(id) ON DELETE CASCADE,
+        month           VARCHAR(7) NOT NULL,
+        completed_trips INTEGER NOT NULL DEFAULT 0,
+        base_salary     NUMERIC(10,2) NOT NULL DEFAULT 0,
+        per_trip_bonus  NUMERIC(10,2) NOT NULL DEFAULT 0,
+        meal_allowance  NUMERIC(10,2) NOT NULL DEFAULT 0,
+        other_deduction NUMERIC(10,2) NOT NULL DEFAULT 0,
+        net_salary      NUMERIC(10,2) GENERATED ALWAYS AS (base_salary + completed_trips * per_trip_bonus + meal_allowance - other_deduction) STORED,
+        note            TEXT,
+        locked          BOOLEAN NOT NULL DEFAULT false,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(driver_id, month)
+      )
+    `));
+    console.log("[FleetDriverPayroll] payroll table ensured");
   } catch { /* already exists */ }
   for (const s of fleetOrderCols) {
     try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
@@ -665,6 +694,7 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
         fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
         fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
         fd.atoms_account, fd.employee_id,
+        fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction,
         COUNT(o.id)                                                  AS total_routes,
         COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL)  AS completed_routes,
         COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings
@@ -676,7 +706,8 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
       WHERE fd.fleet_id = ${Number(id)}
       GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
                fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
-               fd.atoms_account, fd.employee_id
+               fd.atoms_account, fd.employee_id,
+               fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction
       ORDER BY fd.is_active DESC, fd.employee_id NULLS LAST, fd.name
     `);
     res.json({ ok: true, drivers: rows.rows });
@@ -743,11 +774,12 @@ async function pushFleetRouteToAtoms(orderId: number, driverName: string | null,
 fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id,
+            base_salary, per_trip_bonus, meal_allowance, other_deduction } = req.body;
     if (!name) return res.status(400).json({ ok: false, error: "司機姓名為必填" });
     const [row] = await db.execute(sql`
-      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id)
-      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null}, ${atoms_account??null}, ${atoms_password??null}, ${employee_id??null})
+      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password, employee_id, base_salary, per_trip_bonus, meal_allowance, other_deduction)
+      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null}, ${atoms_account??null}, ${atoms_password??null}, ${employee_id??null}, ${Number(base_salary)||0}, ${Number(per_trip_bonus)||0}, ${Number(meal_allowance)||0}, ${Number(other_deduction)||0})
       RETURNING *
     `).then(r => r.rows as any[]);
     res.json({ ok: true, driver: row });
@@ -818,25 +850,113 @@ fusingaoRouter.post("/fleets/:id/import-schedule-drivers", async (req, res) => {
   }
 });
 
+// GET /fusingao/fleets/:id/payroll — list monthly payroll records
+fusingaoRouter.get("/fleets/:id/payroll", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.query as Record<string,string>;
+    const cond = month ? `AND p.month = '${month}'` : "";
+    const rows = await pool.query(`
+      SELECT p.*, fd.name AS driver_name, fd.employee_id
+      FROM fleet_driver_payroll p
+      JOIN fleet_drivers fd ON fd.id = p.driver_id
+      WHERE p.fleet_id = $1 ${cond}
+      ORDER BY p.month DESC, fd.employee_id ASC NULLS LAST, fd.name ASC
+    `, [Number(id)]);
+    res.json({ ok: true, records: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/payroll — generate/save monthly payroll
+// 根據當月完成趟數 + 司機薪資設定，產生或更新月薪資記錄
+fusingaoRouter.post("/fleets/:id/payroll", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month } = req.body as { month: string };
+    if (!month) return res.status(400).json({ ok: false, error: "month 為必填（格式 YYYY-MM）" });
+
+    // Get all active drivers for this fleet
+    const drivers = await pool.query(
+      `SELECT id, name, employee_id, base_salary, per_trip_bonus, meal_allowance, other_deduction FROM fleet_drivers WHERE fleet_id=$1 AND is_active=true`,
+      [Number(id)]
+    );
+
+    const records: any[] = [];
+    for (const d of drivers.rows as any[]) {
+      // Count completed trips this month (fleet_completed_at IS NOT NULL within month)
+      const tripRes = await pool.query(`
+        SELECT COUNT(*) AS cnt
+        FROM orders
+        WHERE fleet_driver_id = $1
+          AND fleet_completed_at IS NOT NULL
+          AND TO_CHAR(fleet_completed_at AT TIME ZONE 'Asia/Taipei', 'YYYY-MM') = $2
+      `, [d.id, month]);
+      const completedTrips = parseInt(tripRes.rows[0]?.cnt ?? "0", 10);
+
+      // Upsert payroll record
+      const r = await pool.query(`
+        INSERT INTO fleet_driver_payroll (fleet_id, driver_id, month, completed_trips, base_salary, per_trip_bonus, meal_allowance, other_deduction)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (driver_id, month) DO UPDATE SET
+          completed_trips = EXCLUDED.completed_trips,
+          base_salary     = EXCLUDED.base_salary,
+          per_trip_bonus  = EXCLUDED.per_trip_bonus,
+          meal_allowance  = EXCLUDED.meal_allowance,
+          other_deduction = EXCLUDED.other_deduction,
+          updated_at      = NOW()
+        RETURNING *
+      `, [Number(id), d.id, month, completedTrips, d.base_salary||0, d.per_trip_bonus||0, d.meal_allowance||0, d.other_deduction||0]);
+      records.push({ ...r.rows[0], driver_name: d.name, employee_id: d.employee_id });
+    }
+    res.json({ ok: true, month, records });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/fleets/:id/payroll/:recordId — update single payroll record
+fusingaoRouter.put("/fleets/:id/payroll/:recordId", async (req, res) => {
+  try {
+    const { recordId } = req.params;
+    const { completed_trips, base_salary, per_trip_bonus, meal_allowance, other_deduction, note, locked } = req.body;
+    const r = await pool.query(`
+      UPDATE fleet_driver_payroll SET
+        completed_trips = $1, base_salary = $2, per_trip_bonus = $3,
+        meal_allowance = $4, other_deduction = $5, note = $6, locked = $7, updated_at = NOW()
+      WHERE id = $8 RETURNING *
+    `, [completed_trips, base_salary, per_trip_bonus, meal_allowance, other_deduction, note??null, locked??false, Number(recordId)]);
+    res.json({ ok: true, record: r.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // PUT /fusingao/fleets/:id/drivers/:driverId
 fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
   try {
     const { id, driverId } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active, atoms_account, atoms_password, employee_id } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active, atoms_account, atoms_password, employee_id,
+            base_salary, per_trip_bonus, meal_allowance, other_deduction } = req.body;
     await db.execute(sql`
       UPDATE fleet_drivers SET
-        name           = ${name},
-        phone          = ${phone??null},
-        id_number      = ${id_number??null},
-        vehicle_plate  = ${vehicle_plate??null},
-        vehicle_type   = ${vehicle_type??"一般"},
-        line_id        = ${line_id??null},
-        notes          = ${notes??null},
-        is_active      = ${is_active??true},
-        atoms_account  = ${atoms_account??null},
-        atoms_password = ${atoms_password??null},
-        employee_id    = ${employee_id??null},
-        updated_at     = NOW()
+        name            = ${name},
+        phone           = ${phone??null},
+        id_number       = ${id_number??null},
+        vehicle_plate   = ${vehicle_plate??null},
+        vehicle_type    = ${vehicle_type??"一般"},
+        line_id         = ${line_id??null},
+        notes           = ${notes??null},
+        is_active       = ${is_active??true},
+        atoms_account   = ${atoms_account??null},
+        atoms_password  = ${atoms_password??null},
+        employee_id     = ${employee_id??null},
+        base_salary     = ${Number(base_salary)||0},
+        per_trip_bonus  = ${Number(per_trip_bonus)||0},
+        meal_allowance  = ${Number(meal_allowance)||0},
+        other_deduction = ${Number(other_deduction)||0},
+        updated_at      = NOW()
       WHERE id = ${Number(driverId)} AND fleet_id = ${Number(id)}
     `);
     res.json({ ok: true });

@@ -256,6 +256,52 @@ jobsRouter.get("/get-task", async (req, res) => {
 });
 
 /**
+ * POST /api/complete-task
+ * ATOMS 司機 App 回報任務完成
+ * Body: { atoms_account: string, order_id: number } 或 { atoms_account: string }（自動用最近任務）
+ */
+jobsRouter.post("/complete-task", async (req, res) => {
+  try {
+    const { atoms_account, order_id } = req.body as { atoms_account?: string; order_id?: number };
+    if (!atoms_account) return res.status(400).json({ ok: false, error: "atoms_account 為必填" });
+
+    // Find fleet driver by atoms_account
+    const driverRes = await pool.query(
+      `SELECT id, name FROM fleet_drivers WHERE atoms_account = $1 AND is_active = true LIMIT 1`,
+      [atoms_account]
+    );
+    if (driverRes.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "找不到司機帳號" });
+    }
+    const driver = driverRes.rows[0] as any;
+
+    // Find order: by order_id or most recent assigned unfinished
+    let orderId = order_id;
+    if (!orderId) {
+      const latest = await pool.query(`
+        SELECT id FROM orders
+        WHERE fleet_driver_id = $1 AND fleet_completed_at IS NULL AND status NOT IN ('cancelled','delivered')
+        ORDER BY fleet_grabbed_at DESC NULLS LAST, created_at DESC LIMIT 1
+      `, [driver.id]);
+      if (latest.rows.length === 0) {
+        return res.json({ ok: false, error: "找不到待完成任務" });
+      }
+      orderId = (latest.rows[0] as any).id;
+    }
+
+    // Mark complete
+    await pool.query(`
+      UPDATE orders SET fleet_completed_at = NOW(), status = 'delivered', updated_at = NOW()
+      WHERE id = $1 AND fleet_driver_id = $2
+    `, [orderId, driver.id]);
+
+    res.json({ ok: true, order_id: orderId, driver_name: driver.name, completed_at: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+/**
  * GET /api/get-task/sample
  * 固定回傳示範任務（格式與 FastAPI 版本完全相同）
  */

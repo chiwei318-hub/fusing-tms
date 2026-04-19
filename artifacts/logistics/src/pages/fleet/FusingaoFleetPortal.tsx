@@ -38,6 +38,7 @@ interface FleetDriver {
   vehicle_plate: string | null; vehicle_type: string; is_active: boolean;
   total_routes: string; completed_routes: string; total_earnings: string;
   atoms_account: string | null; employee_id: string | null;
+  base_salary?: number; per_trip_bonus?: number; meal_allowance?: number; other_deduction?: number;
 }
 interface SettlementSummary {
   shopee_income: string; fleet_receive: string; commission_rate: string;
@@ -159,6 +160,46 @@ export default function FusingaoFleetPortal() {
     }
   }, [fleetId, importSelected, importNames, importSuggestions]); // eslint-disable-line
 
+  // ── Payroll state ──────────────────────────────────────────────────────────
+  interface PayrollRecord {
+    id: number; driver_id: number; driver_name: string; employee_id: string | null;
+    month: string; completed_trips: number; base_salary: number; per_trip_bonus: number;
+    meal_allowance: number; other_deduction: number; net_salary: number; locked: boolean; note: string | null;
+  }
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
+  const [payrollMonth, setPayrollMonth]     = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  });
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollMsg, setPayrollMsg]         = useState("");
+  const [showPayroll, setShowPayroll]       = useState(false);
+
+  const loadPayroll = useCallback(async (month: string) => {
+    if (!fleetId) return;
+    setPayrollLoading(true);
+    try {
+      const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/payroll?month=${encodeURIComponent(month)}`)).then(x => x.json());
+      if (d.ok) setPayrollRecords(d.records ?? []);
+    } finally { setPayrollLoading(false); }
+  }, [fleetId]); // eslint-disable-line
+
+  const generatePayroll = useCallback(async () => {
+    if (!fleetId) return;
+    setPayrollLoading(true); setPayrollMsg("");
+    const d = await fetch(fapi(`/fusingao/fleets/${fleetId}/payroll`), {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ month: payrollMonth }),
+    }).then(x => x.json());
+    setPayrollLoading(false);
+    if (d.ok) {
+      setPayrollMsg(`✅ 已產生 ${d.records?.length ?? 0} 筆薪資記錄`);
+      setPayrollRecords(d.records ?? []);
+    } else {
+      setPayrollMsg(`❌ ${d.error}`);
+    }
+  }, [fleetId, payrollMonth]); // eslint-disable-line
+
   // ── Schedule tab state ────────────────────────────────────────────────────
   interface SchedWeek { week_label: string; route_count: number; total_stops: number; imported_at: string; }
   interface SchedRoute {
@@ -214,7 +255,7 @@ export default function FusingaoFleetPortal() {
   const [drivers, setDrivers]         = useState<FleetDriver[]>([]);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [editingDriver, setEditingDriver]   = useState<FleetDriver | null>(null);
-  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" });
+  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" });
   const [assigningRoute, setAssigningRoute] = useState<number | null>(null);
 
   // ── Settlement state ───────────────────────────────────────────────────────
@@ -728,7 +769,7 @@ export default function FusingaoFleetPortal() {
             <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-xs"
               onClick={() => {
                 setEditingDriver(null);
-                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般", atoms_account: "", atoms_password: "", employee_id: "" });
+                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般", atoms_account: "", atoms_password: "", employee_id: "", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" });
                 setQuickDriverForm(true);
               }}>
               <UserPlus className="h-3.5 w-3.5 mr-1" />新增旗下司機
@@ -955,6 +996,37 @@ export default function FusingaoFleetPortal() {
                       </div>
                     </div>
                   </div>
+                  <div className="border-t pt-2 mt-1">
+                    <p className="text-xs font-semibold text-green-700 mb-1.5">💰 薪資試算設定</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">底薪（月）</p>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={driverForm.base_salary}
+                          onChange={e => setDriverForm(p => ({ ...p, base_salary: e.target.value }))} placeholder="0" min="0" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">每趟獎金</p>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={driverForm.per_trip_bonus}
+                          onChange={e => setDriverForm(p => ({ ...p, per_trip_bonus: e.target.value }))} placeholder="0" min="0" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">餐費補貼（月）</p>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={driverForm.meal_allowance}
+                          onChange={e => setDriverForm(p => ({ ...p, meal_allowance: e.target.value }))} placeholder="0" min="0" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">其他扣除（月）</p>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm" value={driverForm.other_deduction}
+                          onChange={e => setDriverForm(p => ({ ...p, other_deduction: e.target.value }))} placeholder="0" min="0" />
+                      </div>
+                    </div>
+                    {/* Real-time salary preview */}
+                    {(Number(driverForm.base_salary)||Number(driverForm.per_trip_bonus)||Number(driverForm.meal_allowance)) > 0 && (
+                      <div className="mt-2 bg-green-50 rounded px-3 py-2 text-xs text-green-800">
+                        試算（以完成趟數計）：底薪 {fmt(driverForm.base_salary||0)} ＋ 趟數×{fmt(driverForm.per_trip_bonus||0)} ＋ 餐費 {fmt(driverForm.meal_allowance||0)} − 扣除 {fmt(driverForm.other_deduction||0)}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" className="h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white" onClick={saveDriver}>
                       <Save className="h-3.5 w-3.5 mr-1" />儲存
@@ -970,7 +1042,7 @@ export default function FusingaoFleetPortal() {
             {!showDriverForm && (
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                  onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"" }); setShowDriverForm(true); }}>
+                  onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" }); setShowDriverForm(true); }}>
                   <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
                 </Button>
                 {schedWeeks.length > 0 && (
@@ -1009,9 +1081,27 @@ export default function FusingaoFleetPortal() {
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {d.phone ?? "—"} ・{d.vehicle_type}
-                          ・完成 {d.completed_routes}/{d.total_routes} 趟
+                          ・完成 <span className="font-semibold text-gray-700">{d.completed_routes}</span>/{d.total_routes} 趟
                           {Number(d.total_earnings) > 0 && ` ・ ${fmt(d.total_earnings)}`}
                         </p>
+                        {/* Salary preview if configured */}
+                        {Number(d.base_salary||0) > 0 || Number(d.per_trip_bonus||0) > 0 ? (
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5 font-semibold">
+                              💰 預估實領：{fmt(
+                                Number(d.base_salary||0) +
+                                Number(d.completed_routes||0) * Number(d.per_trip_bonus||0) +
+                                Number(d.meal_allowance||0) -
+                                Number(d.other_deduction||0)
+                              )}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              底薪{fmt(d.base_salary||0)} ＋{d.completed_routes}趟×{fmt(d.per_trip_bonus||0)}
+                              {Number(d.meal_allowance||0)>0 && ` ＋餐費${fmt(d.meal_allowance||0)}`}
+                              {Number(d.other_deduction||0)>0 && ` −扣${fmt(d.other_deduction||0)}`}
+                            </span>
+                          </div>
+                        ) : null}
                         {d.atoms_account && (
                           <span className="inline-flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 mt-1">
                             <span className="font-semibold">ATOMS</span> {d.atoms_account}
@@ -1020,7 +1110,7 @@ export default function FusingaoFleetPortal() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-orange-500"
-                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"", employee_id:d.employee_id??"" }); setShowDriverForm(true); }}>
+                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"", employee_id:d.employee_id??"", base_salary:String(d.base_salary??0), per_trip_bonus:String(d.per_trip_bonus??0), meal_allowance:String(d.meal_allowance??0), other_deduction:String(d.other_deduction??0) }); setShowDriverForm(true); }}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-gray-400 hover:text-gray-600"
@@ -1033,6 +1123,74 @@ export default function FusingaoFleetPortal() {
                 ))}
               </div>
             )}
+
+            {/* ── 月薪資匯入區塊 ── */}
+            <div className="border-t pt-3 mt-2">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-green-700 flex items-center gap-1.5">
+                  💰 月薪資計算
+                </p>
+                <button
+                  className="text-xs text-green-700 underline"
+                  onClick={() => { setShowPayroll(v => !v); if (!showPayroll) loadPayroll(payrollMonth); }}>
+                  {showPayroll ? "收起" : "展開"}
+                </button>
+              </div>
+              {showPayroll && (
+                <div className="space-y-3">
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <input type="month" className="border rounded px-2 py-1 text-sm"
+                      value={payrollMonth}
+                      onChange={e => { setPayrollMonth(e.target.value); loadPayroll(e.target.value); }} />
+                    <button
+                      disabled={payrollLoading}
+                      className="px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold disabled:opacity-50"
+                      onClick={generatePayroll}>
+                      {payrollLoading ? "計算中…" : "📊 產生/更新當月薪資"}
+                    </button>
+                    {payrollMsg && <span className="text-xs font-medium">{payrollMsg}</span>}
+                  </div>
+                  {payrollRecords.length > 0 && (
+                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-green-700 text-white">
+                            {["工號","姓名","完成趟數","底薪","趟數獎金","餐費","扣除","實領薪資"].map(h => (
+                              <th key={h} className="text-left px-3 py-2 font-semibold text-xs whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payrollRecords.map((r, i) => (
+                            <tr key={r.id} className={i%2===0?"bg-white":"bg-gray-50"}>
+                              <td className="px-3 py-2 font-mono text-xs text-gray-500">{r.employee_id || "—"}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-800">{r.driver_name}</td>
+                              <td className="px-3 py-2 text-center font-bold text-blue-700">{r.completed_trips}</td>
+                              <td className="px-3 py-2 text-right text-gray-600">{fmt(r.base_salary)}</td>
+                              <td className="px-3 py-2 text-right text-orange-600">{fmt(Number(r.completed_trips)*Number(r.per_trip_bonus))}</td>
+                              <td className="px-3 py-2 text-right text-gray-600">{fmt(r.meal_allowance)}</td>
+                              <td className="px-3 py-2 text-right text-red-500">{r.other_deduction > 0 ? `−${fmt(r.other_deduction)}` : "—"}</td>
+                              <td className="px-3 py-2 text-right font-bold text-green-700 text-base">{fmt(r.net_salary)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-green-50 border-t-2 border-green-200">
+                            <td colSpan={7} className="px-3 py-2 text-sm font-semibold text-gray-600">合計</td>
+                            <td className="px-3 py-2 text-right font-bold text-green-800 text-base">
+                              {fmt(payrollRecords.reduce((s,r) => s + Number(r.net_salary), 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                  {payrollRecords.length === 0 && !payrollLoading && (
+                    <div className="text-center py-6 text-gray-400 text-sm">尚無薪資記錄，請點「產生/更新當月薪資」</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -2087,6 +2245,35 @@ export default function FusingaoFleetPortal() {
                       value={driverForm.atoms_password}
                       onChange={e => setDriverForm(p => ({ ...p, atoms_password: e.target.value }))}
                       placeholder="ATOMS 登入密碼" />
+                  </div>
+                </div>
+              </div>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", marginBottom: 8 }}>💰 薪資試算設定</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>底薪（月）</label>
+                    <input type="number" className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.base_salary} placeholder="0" min="0"
+                      onChange={e => setDriverForm(p => ({ ...p, base_salary: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>每趟獎金</label>
+                    <input type="number" className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.per_trip_bonus} placeholder="0" min="0"
+                      onChange={e => setDriverForm(p => ({ ...p, per_trip_bonus: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>餐費補貼（月）</label>
+                    <input type="number" className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.meal_allowance} placeholder="0" min="0"
+                      onChange={e => setDriverForm(p => ({ ...p, meal_allowance: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>其他扣除（月）</label>
+                    <input type="number" className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.other_deduction} placeholder="0" min="0"
+                      onChange={e => setDriverForm(p => ({ ...p, other_deduction: e.target.value }))} />
                   </div>
                 </div>
               </div>
