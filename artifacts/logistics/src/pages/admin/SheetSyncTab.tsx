@@ -33,6 +33,7 @@ interface SyncConfig {
     errors?: number;
     warnings?: number;
     error?: string;
+    suggested_sync_type?: string;
   } | null;
   created_at: string;
 }
@@ -186,6 +187,15 @@ export default function SheetSyncTab() {
     load();
   }
 
+  async function fixSyncType(cfg: SyncConfig, newType: string) {
+    await fetch(apiUrl(`/sheet-sync/${cfg.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sync_type: newType }),
+    });
+    load();
+  }
+
   async function loadLogs(id: number) {
     if (logsId === id) { setLogsId(null); return; }
     setLogsId(id);
@@ -327,13 +337,36 @@ export default function SheetSyncTab() {
                       )}
                     </>
                   )}
-                  {lastResult?.error && (
+                </div>
+
+                {/* ── 格式建議横幅 ── */}
+                {cfg.last_sync_result?.suggested_sync_type && (() => {
+                  const sugLabel = SYNC_TYPE_LABELS[cfg.last_sync_result!.suggested_sync_type!] ?? cfg.last_sync_result!.suggested_sync_type;
+                  return (
+                    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span className="flex-1">
+                        系統偵測到此試算表格式為<strong className="mx-1">「{sugLabel}」</strong>，但目前設定為<strong className="mx-1">「{SYNC_TYPE_LABELS[cfg.sync_type] ?? cfg.sync_type}」</strong>，導致無法解析。
+                      </span>
+                      <Button
+                        size="sm"
+                        className="h-6 text-[11px] bg-amber-500 hover:bg-amber-600 text-white shrink-0"
+                        onClick={() => fixSyncType(cfg, cfg.last_sync_result!.suggested_sync_type!)}
+                      >
+                        一鍵改為「{sugLabel}」
+                      </Button>
+                    </div>
+                  );
+                })()}
+
+                {lastResult?.error && (
+                  <div className="flex items-center gap-4 text-[11px]">
                     <span className="flex items-center gap-1 text-red-500">
                       <AlertTriangle className="w-3 h-3" />
-                      {lastResult.error.slice(0, 60)}
+                      {lastResult.error.slice(0, 80)}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Inline run result */}
                 {runResult?.id === cfg.id && runResult.result && !runResult.result.error && (
@@ -344,7 +377,7 @@ export default function SheetSyncTab() {
                     }
                     <AlertDescription className={(runResult.result.warnings ?? 0) > 0 ? "text-amber-800" : "text-green-700"}>
                       <div>
-                        同步完成：新增 {runResult.result.inserted} 條路線，
+                        同步完成：新增 {runResult.result.inserted} {cfg.sync_type === "billing" ? "筆帳務" : cfg.sync_type === "班表欄位" || cfg.sync_type === "schedule" ? "筆班表" : "條路線"}，
                         略過重複 {runResult.result.duplicates}，
                         錯誤 {runResult.result.errors}，
                         警告 {runResult.result.warnings}
@@ -356,6 +389,22 @@ export default function SheetSyncTab() {
                           ))}
                         </ul>
                       )}
+                      {(runResult.result as any).suggested_sync_type && (() => {
+                        const sug = (runResult.result as any).suggested_sync_type as string;
+                        const sugLabel = SYNC_TYPE_LABELS[sug] ?? sug;
+                        return (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-amber-700">系統建議改為「{sugLabel}」格式：</span>
+                            <Button
+                              size="sm"
+                              className="h-5 text-[11px] px-2 bg-amber-500 hover:bg-amber-600 text-white"
+                              onClick={() => fixSyncType(cfg, sug)}
+                            >
+                              立即修正
+                            </Button>
+                          </div>
+                        );
+                      })()}
                     </AlertDescription>
                   </Alert>
                 )}

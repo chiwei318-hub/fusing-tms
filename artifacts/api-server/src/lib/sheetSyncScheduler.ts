@@ -540,6 +540,26 @@ async function syncSchedule(
   };
 }
 
+// ── Auto-detect: quick probe without DB writes ──────────────────────────────
+function probeRouteFormat(text: string): boolean {
+  const { routes, warnings } = parseRoutesCsv(text);
+  return routes.length > 0 || warnings.every(w => !w.includes("找不到表頭列"));
+}
+
+function probeBillingFormat(text: string): boolean {
+  const { rows, warnings } = parseBillingCsv(text);
+  return rows.length > 0 || warnings.every(w => !w.includes("找不到帳務表頭列"));
+}
+
+function probeScheduleFormat(text: string): boolean {
+  // If first non-empty line has date-like + 路線 keyword it's schedule
+  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/).find(l => l.trim()) ?? "";
+  const HEADER_KEYWORDS = ["路線編號", "route_no", "routeno", "日期", "date"];
+  const joined = firstLine.toLowerCase();
+  return HEADER_KEYWORDS.some(k => joined.includes(k.toLowerCase())) &&
+    /\d{4}[\/\-年]/.test(text.slice(0, 500));
+}
+
 // ── Core sync logic (shared between scheduler and manual /run) ─────────────
 export async function runSheetSync(
   cfg: {
@@ -557,6 +577,7 @@ export async function runSheetSync(
   errors: number;
   warnings: number;
   detail: object;
+  suggested_sync_type?: string;
 }> {
   // 1. Fetch CSV
   const fetchRes = await fetch(csvUrl);
@@ -570,34 +591,79 @@ export async function runSheetSync(
 
   // 2. Dispatch by sync_type
   const syncType = cfg.sync_type ?? "route";
-  const summary = syncType === "billing"
-    ? await syncBilling(cfg, text)
-    : syncType === "班表欄位" || syncType === "schedule"
-      ? await syncSchedule(cfg, text)
-      : await syncRoutes(cfg, text);
+  let summary: { inserted: number; duplicates: number; errors: number; warnings: number; detail: object };
 
-  // 3. Write log entry
+  if (syncType === "billing") {
+    summary = await syncBilling(cfg, text);
+  } else if (syncType === "班表欄位" || syncType === "schedule") {
+    summary = await syncSchedule(cfg, text);
+  } else {
+    summary = await syncRoutes(cfg, text);
+  }
+
+  // 3. Auto-detect fallback: if configured parser produced 0 results + header warning,
+  //    probe other formats and add a suggestion warning
+  let suggested_sync_type: string | undefined;
+  const detail = summary.detail as Record<string, unknown>;
+  const configuredFailed =
+    summary.inserted === 0 &&
+    summary.duplicates === 0 &&
+    summary.warnings > 0 &&
+    Array.isArray(detail.warnings) &&
+    (detail.warnings as string[]).some(w => w.includes("找不到") || w.includes("表頭"));
+
+  if (configuredFailed) {
+    if (syncType !== "billing" && probeBillingFormat(text)) {
+      suggested_sync_type = "billing";
+    } else if (syncType !== "schedule" && syncType !== "班表欄位" && probeScheduleFormat(text)) {
+      suggested_sync_type = "schedule";
+    } else if (syncType !== "route" && probeRouteFormat(text)) {
+      suggested_sync_type = "route";
+    }
+
+    if (suggested_sync_type) {
+      const LABEL: Record<string, string> = { route: "路線匯入", billing: "帳務趟次", schedule: "班表欄位" };
+      (detail.warnings as string[]).push(
+        `⚠️ 試算表格式不符「${syncType}」，系統偵測到此表可能為「${LABEL[suggested_sync_type] ?? suggested_sync_type}」格式，請到設定中將同步類型改為「${LABEL[suggested_sync_type] ?? suggested_sync_type}」後重試。`
+      );
+      summary = { ...summary, warnings: summary.warnings + 1 };
+    }
+  }
+
+  // 4. Write log entry
+  const logDetail = suggested_sync_type
+    ? { ...(summary.detail as object), suggested_sync_type }
+    : summary.detail;
+
   await pool.query(
     `INSERT INTO sheet_sync_logs (config_id, inserted, duplicates, errors, warnings, detail)
      VALUES ($1,$2,$3,$4,$5,$6)`,
-    [cfg.id, summary.inserted, summary.duplicates, summary.errors, summary.warnings, summary.detail]
+    [cfg.id, summary.inserted, summary.duplicates, summary.errors, summary.warnings, logDetail]
   );
 
-  // 4. Update last_sync_at + result on config
+  // 5. Update last_sync_at + result on config
+  const resultJson: Record<string, unknown> = {
+    inserted: summary.inserted,
+    duplicates: summary.duplicates,
+    errors: summary.errors,
+    warnings: summary.warnings,
+  };
+  if (suggested_sync_type) resultJson.suggested_sync_type = suggested_sync_type;
+
   await pool.query(
     `UPDATE sheet_sync_configs
      SET last_sync_at = NOW(),
          last_sync_result = $2,
          updated_at = NOW()
      WHERE id = $1`,
-    [cfg.id, { inserted: summary.inserted, duplicates: summary.duplicates, errors: summary.errors, warnings: summary.warnings }]
+    [cfg.id, resultJson]
   );
 
   console.log(
-    `[SheetSync] "${cfg.name}" (${syncType}) synced — inserted:${summary.inserted} dup:${summary.duplicates} err:${summary.errors} warn:${summary.warnings}`
+    `[SheetSync] "${cfg.name}" (${syncType}) synced — inserted:${summary.inserted} dup:${summary.duplicates} err:${summary.errors} warn:${summary.warnings}${suggested_sync_type ? ` [建議改用: ${suggested_sync_type}]` : ""}`
   );
 
-  return summary;
+  return { ...summary, suggested_sync_type };
 }
 
 // ── Scheduler: runs every minute, checks which configs are due ─────────────
