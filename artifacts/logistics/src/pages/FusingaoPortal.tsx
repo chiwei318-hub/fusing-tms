@@ -28,7 +28,6 @@ import VehicleTab from "./fusingao/VehicleTab";
 import FuelTab from "./fusingao/FuelTab";
 import DriverBonusTab from "./fusingao/DriverBonusTab";
 import TownshipTab from "./fusingao/TownshipTab";
-import LoanTab from "./fusingao/LoanTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +58,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "loan";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -92,7 +91,7 @@ const prefixColor: Record<string, string> = {
 export default function FusingaoPortal() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [tab, setTab]           = useState<PortalTab>("loan");
+  const [tab, setTab]           = useState<PortalTab>("control");
   const [loading, setLoading]   = useState(false);
   const [summary, setSummary]   = useState<Summary | null>(null);
   const [routes, setRoutes]     = useState<RouteItem[]>([]);
@@ -388,17 +387,6 @@ export default function FusingaoPortal() {
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
                   t.id===tab ? "border-blue-500 text-blue-600 bg-blue-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}>
-                {t.label}
-              </button>
-            ))}
-            <div className="border-r border-gray-200 mx-1 my-1" />
-            {([
-              { id:"loan",  label:"🏦 貸款管理" },
-            ] as { id: PortalTab; label: string }[]).map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  t.id===tab ? "border-purple-500 text-purple-600 bg-purple-50/50" : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 }`}>
                 {t.label}
               </button>
@@ -830,17 +818,6 @@ export default function FusingaoPortal() {
         {tab === "supplier" && (
           <div className="p-4">
             <SupplierTab />
-          </div>
-        )}
-
-        {/* ═══════════════ 貸款管理 ════════════════════════════════════════ */}
-        {tab === "loan" && (
-          <div className="p-4">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold flex items-center gap-2">🏦 貸款管理</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">車輛貸款、還款事件（未發生/已發生）、貸款統計分析</p>
-            </div>
-            <LoanTab />
           </div>
         )}
 
