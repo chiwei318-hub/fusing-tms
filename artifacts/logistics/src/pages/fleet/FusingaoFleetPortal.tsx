@@ -37,6 +37,7 @@ interface FleetDriver {
   id: number; fleet_id: number; name: string; phone: string | null;
   vehicle_plate: string | null; vehicle_type: string; is_active: boolean;
   total_routes: string; completed_routes: string; total_earnings: string;
+  atoms_account: string | null;
 }
 interface SettlementSummary {
   shopee_income: string; fleet_receive: string; commission_rate: string;
@@ -173,7 +174,7 @@ export default function FusingaoFleetPortal() {
   const [drivers, setDrivers]         = useState<FleetDriver[]>([]);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [editingDriver, setEditingDriver]   = useState<FleetDriver | null>(null);
-  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般" });
+  const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"" });
   const [assigningRoute, setAssigningRoute] = useState<number | null>(null);
 
   // ── Settlement state ───────────────────────────────────────────────────────
@@ -687,7 +688,7 @@ export default function FusingaoFleetPortal() {
             <Button size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white text-xs"
               onClick={() => {
                 setEditingDriver(null);
-                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" });
+                setDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般", atoms_account: "", atoms_password: "" });
                 setQuickDriverForm(true);
               }}>
               <UserPlus className="h-3.5 w-3.5 mr-1" />新增旗下司機
@@ -894,6 +895,21 @@ export default function FusingaoFleetPortal() {
                       </select>
                     </div>
                   </div>
+                  <div className="border-t pt-2 mt-1">
+                    <p className="text-xs font-semibold text-indigo-600 mb-1.5">ATOMS 帳號設定</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">ATOMS 帳號</p>
+                        <input className="w-full border rounded px-2 py-1 text-sm" value={driverForm.atoms_account}
+                          onChange={e => setDriverForm(p => ({ ...p, atoms_account: e.target.value }))} placeholder="ATOMS 登入帳號" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">ATOMS 密碼</p>
+                        <input type="password" className="w-full border rounded px-2 py-1 text-sm" value={driverForm.atoms_password}
+                          onChange={e => setDriverForm(p => ({ ...p, atoms_password: e.target.value }))} placeholder="（如需變更請輸入）" />
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" className="h-7 text-xs bg-orange-500 hover:bg-orange-600 text-white" onClick={saveDriver}>
                       <Save className="h-3.5 w-3.5 mr-1" />儲存
@@ -908,7 +924,7 @@ export default function FusingaoFleetPortal() {
 
             {!showDriverForm && (
               <Button size="sm" className="h-8 bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般" }); setShowDriverForm(true); }}>
+                onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"" }); setShowDriverForm(true); }}>
                 <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
               </Button>
             )}
@@ -940,10 +956,15 @@ export default function FusingaoFleetPortal() {
                           ・完成 {d.completed_routes}/{d.total_routes} 趟
                           {Number(d.total_earnings) > 0 && ` ・ ${fmt(d.total_earnings)}`}
                         </p>
+                        {d.atoms_account && (
+                          <span className="inline-flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 mt-1">
+                            <span className="font-semibold">ATOMS</span> {d.atoms_account}
+                          </span>
+                        )}
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-orange-500"
-                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type }); setShowDriverForm(true); }}>
+                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"" }); setShowDriverForm(true); }}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-gray-400 hover:text-gray-600"
@@ -1870,6 +1891,25 @@ export default function FusingaoFleetPortal() {
                     onChange={e => setDriverForm(p => ({ ...p, vehicle_type: e.target.value }))}>
                     {["一般", "貨車", "廂型", "機車"].map(v => <option key={v}>{v}</option>)}
                   </select>
+                </div>
+              </div>
+              <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", marginBottom: 8 }}>ATOMS 帳號設定（指派時自動傳送）</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>ATOMS 帳號</label>
+                    <input className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.atoms_account}
+                      onChange={e => setDriverForm(p => ({ ...p, atoms_account: e.target.value }))}
+                      placeholder="ATOMS 登入帳號" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 }}>ATOMS 密碼</label>
+                    <input type="password" className="w-full border rounded px-2 py-1.5 text-sm"
+                      value={driverForm.atoms_password}
+                      onChange={e => setDriverForm(p => ({ ...p, atoms_password: e.target.value }))}
+                      placeholder="ATOMS 登入密碼" />
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>

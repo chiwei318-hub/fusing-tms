@@ -41,6 +41,11 @@ async function ensureFusingaoFleetColumns() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_driver_name TEXT`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_vehicle_plate TEXT`,
   ];
+  // Add atoms_account to fleet_drivers if not exists
+  try {
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_account TEXT`));
+    await db.execute(sql.raw(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS atoms_password TEXT`));
+  } catch { /* already exists */ }
   for (const s of fleetOrderCols) {
     try { await db.execute(sql.raw(s)); } catch { /* already exists */ }
   }
@@ -546,13 +551,29 @@ fusingaoRouter.post("/routes/:id/grab", async (req, res) => {
       vehiclePlate?: string | null;
     };
     if (!fleetId) return res.status(400).json({ ok: false, error: "缺少 fleetId" });
+
+    // Look up driver's atoms_account and phone if driverId provided
+    let resolvedName = driverName ?? null;
+    let resolvedPhone: string | null = null;
+    let atomsAccount: string | null = null;
+    if (driverId) {
+      const dRow = await db.execute(sql`
+        SELECT name, phone, atoms_account FROM fleet_drivers WHERE id = ${driverId}
+      `).then(r => (r.rows as any[])[0]);
+      if (dRow) {
+        resolvedName  = resolvedName  ?? dRow.name;
+        resolvedPhone = dRow.phone ?? null;
+        atomsAccount  = dRow.atoms_account ?? null;
+      }
+    }
+
     // Atomic grab: only succeed if not already grabbed
     const result = await db.execute(sql`
       UPDATE orders SET
         fusingao_fleet_id   = ${fleetId},
         fleet_grabbed_at    = NOW(),
         fleet_driver_id     = ${driverId ?? null},
-        fleet_driver_name   = ${driverName ?? null},
+        fleet_driver_name   = ${resolvedName ?? null},
         fleet_vehicle_plate = ${vehiclePlate ?? null},
         updated_at          = NOW()
       WHERE id = ${Number(id)}
@@ -562,7 +583,13 @@ fusingaoRouter.post("/routes/:id/grab", async (req, res) => {
     `);
     if ((result.rows as any[]).length === 0)
       return res.status(409).json({ ok: false, error: "路線已被搶走，請選擇其他路線" });
-    res.json({ ok: true });
+
+    // Auto-push to ATOMS when driver is assigned
+    let atomsResult: any = { skipped: true };
+    if (driverId && (atomsAccount || resolvedName)) {
+      atomsResult = await pushFleetRouteToAtoms(Number(id), resolvedName, resolvedPhone, atomsAccount);
+    }
+    res.json({ ok: true, atoms: atomsResult });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -634,7 +661,9 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
     const { id } = req.params;
     const rows = await db.execute(sql`
       SELECT
-        fd.*,
+        fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
+        fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
+        fd.atoms_account,
         COUNT(o.id)                                                  AS total_routes,
         COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL)  AS completed_routes,
         COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings
@@ -645,7 +674,8 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
         ON pr.prefix = o.route_prefix
       WHERE fd.fleet_id = ${Number(id)}
       GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
-               fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at
+               fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
+               fd.atoms_account
       ORDER BY fd.is_active DESC, fd.name
     `);
     res.json({ ok: true, drivers: rows.rows });
@@ -654,15 +684,69 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
   }
 });
 
+// ── Helper: push a single route to ATOMS after fleet assigns a driver ──────
+async function pushFleetRouteToAtoms(orderId: number, driverName: string | null, driverPhone: string | null, atomsAccount: string | null) {
+  const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
+  if (!atomsUrl) return { ok: false, skipped: true, reason: "ATOMS_WEBHOOK_URL 未設定" };
+  try {
+    const rows = await db.execute(sql`
+      SELECT o.id, o.order_no, o.route_id, o.station_count, o.dispatch_dock,
+             o.notes, o.created_at, pr.service_type
+      FROM orders o
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE o.id = ${orderId}
+    `);
+    const o = (rows.rows as any[])[0];
+    if (!o) return { ok: false, reason: "訂單不存在" };
+    const callbackBase = process.env.ATOMS_CALLBACK_BASE_URL || process.env.APP_BASE_URL || "";
+    const callbackUrl  = `${callbackBase}/api/v1/webhook/atoms-accept`;
+    const now = new Date().toISOString();
+    const payload = {
+      event:        "order.assigned",
+      timestamp:    now,
+      callback_url: callbackUrl,
+      data: {
+        order_id:      o.id,
+        order_no:      o.order_no,
+        route_id:      o.route_id,
+        station_count: o.station_count,
+        dock:          o.dispatch_dock,
+        notes:         o.notes,
+        service_type:  o.service_type,
+        driver_name:   driverName,
+        driver_phone:  driverPhone,
+        atoms_account: atomsAccount,
+        broadcast_at:  now,
+        callback_url:  callbackUrl,
+      },
+    };
+    const r = await fetch(atomsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) {
+      await db.execute(sql`
+        UPDATE orders SET atoms_synced_at = NOW(), updated_at = NOW()
+        WHERE id = ${orderId} AND atoms_synced_at IS NULL
+      `);
+    }
+    return { ok: r.ok, statusCode: r.status };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+}
+
 // POST /fusingao/fleets/:id/drivers
 fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password } = req.body;
     if (!name) return res.status(400).json({ ok: false, error: "司機姓名為必填" });
     const [row] = await db.execute(sql`
-      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes)
-      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null})
+      INSERT INTO fleet_drivers (fleet_id, name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, atoms_account, atoms_password)
+      VALUES (${Number(id)}, ${name}, ${phone??null}, ${id_number??null}, ${vehicle_plate??null}, ${vehicle_type??"一般"}, ${line_id??null}, ${notes??null}, ${atoms_account??null}, ${atoms_password??null})
       RETURNING *
     `).then(r => r.rows as any[]);
     res.json({ ok: true, driver: row });
@@ -675,7 +759,7 @@ fusingaoRouter.post("/fleets/:id/drivers", async (req, res) => {
 fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
   try {
     const { id, driverId } = req.params;
-    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active } = req.body;
+    const { name, phone, id_number, vehicle_plate, vehicle_type, line_id, notes, is_active, atoms_account, atoms_password } = req.body;
     await db.execute(sql`
       UPDATE fleet_drivers SET
         name          = ${name},
@@ -686,6 +770,8 @@ fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
         line_id       = ${line_id??null},
         notes         = ${notes??null},
         is_active     = ${is_active??true},
+        atoms_account = ${atoms_account??null},
+        atoms_password = ${atoms_password??null},
         updated_at    = NOW()
       WHERE id = ${Number(driverId)} AND fleet_id = ${Number(id)}
     `);
@@ -704,7 +790,17 @@ fusingaoRouter.put("/routes/:id/assign-driver", async (req, res) => {
       UPDATE orders SET fleet_driver_id=${driverId??null}, updated_at=NOW()
       WHERE id=${Number(id)} AND fusingao_fleet_id=${fleetId}
     `);
-    res.json({ ok: true });
+    // Auto-push to ATOMS when driver is assigned
+    let atomsResult: any = { skipped: true };
+    if (driverId) {
+      const dRow = await db.execute(sql`
+        SELECT name, phone, atoms_account FROM fleet_drivers WHERE id = ${driverId}
+      `).then(r => (r.rows as any[])[0]);
+      if (dRow && (dRow.atoms_account || dRow.name)) {
+        atomsResult = await pushFleetRouteToAtoms(Number(id), dRow.name, dRow.phone ?? null, dRow.atoms_account ?? null);
+      }
+    }
+    res.json({ ok: true, atoms: atomsResult });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
