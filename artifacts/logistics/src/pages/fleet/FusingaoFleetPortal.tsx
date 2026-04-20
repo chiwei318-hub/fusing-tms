@@ -47,6 +47,17 @@ interface DriverSettlement {
   driver_name: string; vehicle_plate: string | null;
   route_count: string; completed_count: string; earnings: string;
 }
+interface DriverSuggestion { shopee_driver_id: string; vehicle_type: string; route_count: number; }
+interface MainDriver {
+  id: number; name: string; phone: string|null; license_plate: string|null;
+  vehicle_type: string; employee_id: string|null; driver_type: string; status: string;
+  already_imported: boolean;
+}
+interface PayrollRecord {
+  id: number; driver_id: number; driver_name: string; employee_id: string | null;
+  month: string; completed_trips: number; base_salary: number; per_trip_bonus: number;
+  meal_allowance: number; other_deduction: number; net_salary: number; locked: boolean; note: string | null;
+}
 
 interface DispatchOrder {
   id: number;
@@ -121,7 +132,6 @@ export default function FusingaoFleetPortal() {
   const [quickDriverForm, setQuickDriverForm] = useState(false);
 
   // ── Import drivers from schedule ─────────────────────────────────────────
-  interface DriverSuggestion { shopee_driver_id: string; vehicle_type: string; route_count: number; }
   const [importModal, setImportModal]           = useState(false);
   const [importSuggestions, setImportSuggestions] = useState<DriverSuggestion[]>([]);
   const [importSelected, setImportSelected]     = useState<Set<string>>(new Set());
@@ -161,11 +171,6 @@ export default function FusingaoFleetPortal() {
   }, [fleetId, importSelected, importNames, importSuggestions]); // eslint-disable-line
 
   // ── Import drivers from main driver list ─────────────────────────────────
-  interface MainDriver {
-    id: number; name: string; phone: string|null; license_plate: string|null;
-    vehicle_type: string; employee_id: string|null; driver_type: string; status: string;
-    already_imported: boolean;
-  }
   const [mainImportModal, setMainImportModal]       = useState(false);
   const [mainDrivers, setMainDrivers]               = useState<MainDriver[]>([]);
   const [mainImportQ, setMainImportQ]               = useState("");
@@ -205,11 +210,6 @@ export default function FusingaoFleetPortal() {
   }, [fleetId, mainImportSelected, mainImportQ, loadDrivers, searchMainDrivers]); // eslint-disable-line
 
   // ── Payroll state ──────────────────────────────────────────────────────────
-  interface PayrollRecord {
-    id: number; driver_id: number; driver_name: string; employee_id: string | null;
-    month: string; completed_trips: number; base_salary: number; per_trip_bonus: number;
-    meal_allowance: number; other_deduction: number; net_salary: number; locked: boolean; note: string | null;
-  }
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollMonth, setPayrollMonth]     = useState(() => {
     const now = new Date();
