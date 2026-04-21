@@ -1,5 +1,6 @@
 import streamlit as st
 import datetime
+import math
 
 st.set_page_config(page_title="富詠運輸系統", layout="wide")
 
@@ -21,10 +22,54 @@ BASE_FARE = {
     "冷鏈低溫車(3.5噸)":    3500,
 }
 
+# ── 車型附加費設定（對應 vehicleSurcharge.ts）──────────────────────────
+VEHICLE_CLASSES = {
+    "CLASS_A": {"label": "小型貨車（3.5噸）",  "multiplier": 1.0},
+    "CLASS_B": {"label": "中型貨車（8.5噸）",  "multiplier": 1.6},
+    "CLASS_C": {"label": "大型貨車（17噸）",   "multiplier": 2.8},
+    "CLASS_D": {"label": "聯結車（35噸）",      "multiplier": 4.2},
+}
+
+ADDON_OPTIONS = {
+    "tailgate":     {"label": "🔧 升降尾門",    "type": "fixed",      "value": 500},
+    "refrigerated": {"label": "❄️ 冷凍加成",    "type": "multiplier", "value": 1.5},
+    "gullwing":     {"label": "🚛 鷗翼車廂",    "type": "fixed",      "value": 300},
+    "crane":        {"label": "🏗️ 吊掛設備",    "type": "fixed",      "value": 800},
+    "helper":       {"label": "👷 助手隨車",    "type": "fixed",      "value": 600},
+    "night":        {"label": "🌙 夜間/假日",   "type": "fixed",      "value": 500},
+    "remote":       {"label": "🏔️ 偏遠山區",    "type": "fixed",      "value": 400},
+}
+
+def calculate_vehicle_surcharge(base_price, vehicle_class, selected_addons):
+    """對應後端 TypeScript vehicleSurcharge.ts 的計算邏輯"""
+    multiplier = VEHICLE_CLASSES[vehicle_class]["multiplier"]
+    adjusted = base_price * multiplier
+    breakdown = []
+    equipment_fee = 0
+
+    for key in selected_addons:
+        cfg = ADDON_OPTIONS[key]
+        if cfg["type"] == "multiplier":
+            before = adjusted
+            adjusted *= cfg["value"]
+            amount = round(adjusted - before)
+            breakdown.append({"label": cfg["label"], "amount": amount, "type": "multiplier"})
+        else:
+            equipment_fee += cfg["value"]
+            breakdown.append({"label": cfg["label"], "amount": cfg["value"], "type": "fixed"})
+
+    final = math.ceil(adjusted + equipment_fee)
+    return adjusted, equipment_fee, breakdown, final
+
+# ══════════════════════════════════════════════════════════════
 st.title("🚛 富詠運輸管理平台")
 st.markdown("---")
 
-tab_boss, tab_customer = st.tabs(["📊 老闆決策引擎", "🌐 客戶自助報價"])
+tab_boss, tab_customer, tab_surcharge = st.tabs([
+    "📊 老闆決策引擎",
+    "🌐 客戶自助報價",
+    "🚚 車型附加費試算",
+])
 
 # ═══════════════════════════════════════════════════════════
 # TAB 1：老闆決策引擎
@@ -135,3 +180,102 @@ with tab_customer:
 
     st.markdown("---")
     st.caption("富詠運輸：穩定獲利、專業可靠、自動化管理。")
+
+# ═══════════════════════════════════════════════════════════
+# TAB 3：車型附加費試算
+# ═══════════════════════════════════════════════════════════
+with tab_surcharge:
+    st.subheader("🚚 車型附加費精算器")
+    st.markdown("根據車型載重權重與設備加成，精準計算每筆訂單的最終報價。")
+
+    col_left, col_right = st.columns([1, 1])
+
+    with col_left:
+        st.markdown("#### 📋 基本設定")
+        base_price = st.number_input(
+            "基礎運費（元）",
+            min_value=100, max_value=500000, value=2500, step=100,
+            help="尚未套用車型加權的底價，通常為 3.5 噸基準價"
+        )
+
+        vehicle_class_key = st.selectbox(
+            "車型分級",
+            options=list(VEHICLE_CLASSES.keys()),
+            format_func=lambda k: VEHICLE_CLASSES[k]["label"],
+        )
+        vc = VEHICLE_CLASSES[vehicle_class_key]
+        st.info(f"📐 車型加權倍率：**×{vc['multiplier']}**　→　加權後底價 = **NT$ {int(base_price * vc['multiplier']):,}**")
+
+        st.markdown("#### ⚙️ 設備 & 情境附加")
+        selected_addons = []
+        for key, cfg in ADDON_OPTIONS.items():
+            checked = st.checkbox(
+                f"{cfg['label']}　{'（×1.5 倍乘）' if cfg['type'] == 'multiplier' else f'（+NT$ {cfg[\"value\"]:,}）'}",
+                key=f"addon_{key}"
+            )
+            if checked:
+                selected_addons.append(key)
+
+    with col_right:
+        st.markdown("#### 💰 試算結果")
+
+        adjusted_price, equipment_fee, breakdown, final_price = calculate_vehicle_surcharge(
+            base_price, vehicle_class_key, selected_addons
+        )
+
+        # 金額大字顯示
+        st.markdown(
+            f"<div style='background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;"
+            f"padding:20px;text-align:center;margin-bottom:16px;'>"
+            f"<p style='margin:0;color:#15803d;font-size:14px;font-weight:600;'>最終報價（含所有附加費）</p>"
+            f"<h1 style='margin:8px 0 0;color:#15803d;font-size:42px;'>"
+            f"NT$ {final_price:,}"
+            f"</h1></div>",
+            unsafe_allow_html=True
+        )
+
+        # 明細拆解
+        st.markdown("**📊 計算明細**")
+        rows = [
+            ("底價", base_price, "基準"),
+            (f"車型加權 ×{vc['multiplier']}", int(adjusted_price - base_price * vc["multiplier"]/vc["multiplier"] * 1 + base_price * vc["multiplier"]) - base_price, f"×{vc['multiplier']}"),
+        ]
+
+        detail_data = {
+            "項目": ["基礎運費", f"車型加權（×{vc['multiplier']}）"],
+            "金額（元）": [f"NT$ {base_price:,}", f"NT$ {int(base_price * vc['multiplier']):,}"],
+            "說明": ["底價", vc["label"]],
+        }
+        for item in breakdown:
+            detail_data["項目"].append(item["label"])
+            detail_data["金額（元）"].append(f"NT$ {item['amount']:,}")
+            detail_data["說明"].append("倍乘加成" if item["type"] == "multiplier" else "固定附加費")
+
+        detail_data["項目"].append("**最終報價**")
+        detail_data["金額（元）"].append(f"**NT$ {final_price:,}**")
+        detail_data["說明"].append("含全部附加費")
+
+        st.table(detail_data)
+
+        # 利潤試算延伸
+        st.markdown("---")
+        st.markdown("#### 📈 利潤快速試算")
+        quoted = st.number_input("客戶出價（元）", min_value=0, value=final_price + 500, step=100, key="surcharge_quote")
+        if quoted > 0:
+            profit_s = quoted - final_price
+            margin_s = (profit_s / quoted * 100) if quoted > 0 else 0
+            col_a, col_b = st.columns(2)
+            col_a.metric("預估毛利", f"NT$ {profit_s:,}", f"{margin_s:.1f}%")
+            if profit_s > 1500 and margin_s > 20:
+                col_b.success("🟢 建議接單")
+            elif profit_s > 0:
+                col_b.warning("🟡 勉強接單")
+            else:
+                col_b.error("🔴 必虧，拒接")
+
+    st.markdown("---")
+    st.markdown(
+        "**車型加權說明**：CLASS_A（3.5噸）×1.0 → CLASS_B（8.5噸）×1.6 → CLASS_C（17噸）×2.8 → CLASS_D（35噸）×4.2\n\n"
+        "冷凍加成為乘法疊加（加權後再乘以 1.5），其餘設備費為固定金額直接相加。"
+    )
+    st.caption("此計算邏輯與後端 API `/api/vehicle-surcharge/calculate` 完全同步。")
