@@ -209,8 +209,9 @@ with tab_surcharge:
         st.markdown("#### ⚙️ 設備 & 情境附加")
         selected_addons = []
         for key, cfg in ADDON_OPTIONS.items():
+            val_str = "（×1.5 倍乘）" if cfg["type"] == "multiplier" else f"（+NT$ {cfg['value']:,}）"
             checked = st.checkbox(
-                f"{cfg['label']}　{'（×1.5 倍乘）' if cfg['type'] == 'multiplier' else f'（+NT$ {cfg[\"value\"]:,}）'}",
+                f"{cfg['label']}　{val_str}",
                 key=f"addon_{key}"
             )
             if checked:
@@ -236,14 +237,11 @@ with tab_surcharge:
 
         # 明細拆解
         st.markdown("**📊 計算明細**")
-        rows = [
-            ("底價", base_price, "基準"),
-            (f"車型加權 ×{vc['multiplier']}", int(adjusted_price - base_price * vc["multiplier"]/vc["multiplier"] * 1 + base_price * vc["multiplier"]) - base_price, f"×{vc['multiplier']}"),
-        ]
-
+        weighted_base = int(base_price * vc["multiplier"])
+        weight_diff   = weighted_base - base_price
         detail_data = {
             "項目": ["基礎運費", f"車型加權（×{vc['multiplier']}）"],
-            "金額（元）": [f"NT$ {base_price:,}", f"NT$ {int(base_price * vc['multiplier']):,}"],
+            "金額（元）": [f"NT$ {base_price:,}", f"+NT$ {weight_diff:,} → NT$ {weighted_base:,}"],
             "說明": ["底價", vc["label"]],
         }
         for item in breakdown:

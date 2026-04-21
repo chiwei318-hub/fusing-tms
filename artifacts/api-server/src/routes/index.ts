@@ -97,6 +97,7 @@ import { platformRequirementsRouter } from "./platformRequirements";
 import { sheetsExportRouter } from "./sheetsExport";
 import { firebaseSyncRouter } from "./firebaseSync";
 import { freightQuoteRouter } from "./freightQuote";
+import { vehicleSurchargeRouter } from "./vehicleSurcharge";
 
 const router: IRouter = Router();
 
