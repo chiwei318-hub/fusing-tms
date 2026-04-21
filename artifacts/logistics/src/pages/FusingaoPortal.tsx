@@ -209,8 +209,9 @@ export default function FusingaoPortal() {
       const r = await fetch(apiUrl(`/fusingao/fleets/${id}/admin-access-token`), { method: "POST" });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error);
-      const hash = encodeURIComponent(JSON.stringify({ token: d.token, user: d.user }));
-      window.open(`/fleet#adminPreview=${hash}`, "_blank");
+      // Store in localStorage under a temp key; new tab picks it up immediately and clears it
+      localStorage.setItem("__admin_fleet_preview__", JSON.stringify({ token: d.token, user: d.user }));
+      window.open(`/fleet`, "_blank");
     } catch {
       toast({ title: "無法取得車隊存取憑證", variant: "destructive" });
     }

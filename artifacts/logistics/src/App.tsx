@@ -174,14 +174,14 @@ function FleetPortal() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith("#adminPreview=")) {
+    // Check for admin-preview temp token stored in localStorage by admin portal
+    const raw = localStorage.getItem("__admin_fleet_preview__");
+    if (raw) {
       try {
-        const raw = decodeURIComponent(hash.slice("#adminPreview=".length));
         const { token, user: fleetUser } = JSON.parse(raw);
         loginTemp(token, fleetUser);
-        window.history.replaceState(null, "", window.location.pathname);
       } catch { /* ignore parse errors */ }
+      localStorage.removeItem("__admin_fleet_preview__");
     }
     setChecked(true);
   }, []); // eslint-disable-line
