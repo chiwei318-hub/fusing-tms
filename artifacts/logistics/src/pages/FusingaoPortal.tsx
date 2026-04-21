@@ -118,7 +118,9 @@ export default function FusingaoPortal() {
     username: "", password: "", vehicle_types: "", notes: "", rate_override: "",
     commission_rate: "15", bank_account: "", bank_name: "",
   });
-  const [fleetDetails, setFleetDetails] = useState<Record<number, FleetDetail>>({});
+  const [fleetDetails, setFleetDetails]   = useState<Record<number, FleetDetail>>({});
+  const [resetPwFleet, setResetPwFleet]   = useState<number | null>(null);
+  const [resetPwValue, setResetPwValue]   = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -199,6 +201,32 @@ export default function FusingaoPortal() {
 
   const setFleetDetailTab = (id: number, t: "routes" | "drivers") =>
     setFleetDetails(prev => ({ ...prev, [id]: { ...prev[id], tab: t } }));
+
+  const doResetPassword = async (id: number, name: string) => {
+    if (!resetPwValue.trim()) return toast({ title: "請輸入新密碼", variant: "destructive" });
+    if (resetPwValue.length < 4) return toast({ title: "密碼至少 4 個字元", variant: "destructive" });
+    try {
+      const fleet = fleets.find(f => f.id === id)!;
+      await fetch(apiUrl(`/fusingao/fleets/${id}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fleet_name: fleet.fleet_name,
+          contact_name: fleet.contact_name,
+          contact_phone: fleet.contact_phone,
+          vehicle_types: fleet.vehicle_types,
+          notes: fleet.notes,
+          is_active: fleet.is_active,
+          password: resetPwValue,
+        }),
+      });
+      toast({ title: `✅ ${name} 密碼已重設` });
+      setResetPwFleet(null);
+      setResetPwValue("");
+    } catch {
+      toast({ title: "重設失敗", variant: "destructive" });
+    }
+  };
 
   const openNewFleet = () => {
     setEditingFleet(null);
@@ -788,6 +816,12 @@ export default function FusingaoPortal() {
                             {fleetDetails[f.id] ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             詳情
                           </Button>
+                          <Button variant="ghost" size="sm"
+                            className={`h-7 px-2 text-xs gap-1 ${resetPwFleet === f.id ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-amber-500"}`}
+                            onClick={() => { setResetPwFleet(resetPwFleet === f.id ? null : f.id); setResetPwValue(""); }}
+                            title="重設登入密碼">
+                            🔑 密碼
+                          </Button>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600"
                             onClick={() => openEditFleet(f)} title="編輯">
                             <Edit2 className="h-3.5 w-3.5" />
@@ -799,6 +833,29 @@ export default function FusingaoPortal() {
                         </div>
                       </div>
                     </div>
+                    {/* ── Inline password reset ── */}
+                    {resetPwFleet === f.id && (
+                      <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 flex items-center gap-2">
+                        <span className="text-xs text-amber-700 shrink-0">新密碼：</span>
+                        <input
+                          type="password"
+                          value={resetPwValue}
+                          onChange={e => setResetPwValue(e.target.value)}
+                          placeholder="輸入新密碼（至少4字元）"
+                          className="flex-1 h-7 px-2 border border-amber-200 rounded text-xs bg-white"
+                          onKeyDown={e => e.key === "Enter" && doResetPassword(f.id, f.fleet_name)}
+                          autoFocus
+                        />
+                        <Button size="sm" className="h-7 px-3 text-xs bg-amber-500 hover:bg-amber-600 text-white"
+                          onClick={() => doResetPassword(f.id, f.fleet_name)}>
+                          確認重設
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400"
+                          onClick={() => { setResetPwFleet(null); setResetPwValue(""); }}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
                     {/* ── Fleet Detail Expansion ── */}
                     {fleetDetails[f.id] && (
                       <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
