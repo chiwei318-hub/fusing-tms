@@ -169,24 +169,34 @@ function AdminPortal() {
   );
 }
 
-function FleetPortal() {
-  const { user, loginTemp } = useAuth();
-  const [checked, setChecked] = useState(false);
+// Auto-login for admin "進入管理" — reads token from URL query param ?t=<base64>
+function FleetAutoLogin() {
+  const { loginTemp } = useAuth();
+  const [, navigate] = useLocation();
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    // Check for admin-preview temp token stored in localStorage by admin portal
-    const raw = localStorage.getItem("__admin_fleet_preview__");
-    if (raw) {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("t");
+    if (t) {
       try {
+        const raw = decodeURIComponent(escape(atob(t)));
         const { token, user: fleetUser } = JSON.parse(raw);
         loginTemp(token, fleetUser);
-      } catch { /* ignore parse errors */ }
-      localStorage.removeItem("__admin_fleet_preview__");
+      } catch { /* bad payload, will fall through to login */ }
     }
-    setChecked(true);
+    // Clear the token from the URL then go to fleet portal
+    window.history.replaceState(null, "", "/fleet");
+    navigate("/fleet");
+    setDone(true);
   }, []); // eslint-disable-line
 
-  if (!checked) return null;
+  if (!done) return <div className="min-h-screen bg-gradient-to-br from-slate-900 to-orange-900 flex items-center justify-center"><span className="text-white text-sm">正在驗證身份…</span></div>;
+  return null;
+}
+
+function FleetPortal() {
+  const { user } = useAuth();
   if (!user || (user.role !== "fusingao_fleet" && user.role !== "fleet_sub")) {
     return <Redirect to="/login/fleet" />;
   }
@@ -272,6 +282,9 @@ function AppRouter() {
   }
   if (location.startsWith("/fleet/report/")) {
     return <PublicFleetReport />;
+  }
+  if (location.startsWith("/fleet/auto-login")) {
+    return <FleetAutoLogin />;
   }
   if (location.startsWith("/fleet")) {
     return <FleetPortal />;
