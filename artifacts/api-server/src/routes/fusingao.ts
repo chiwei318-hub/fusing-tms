@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
+import { signJwt } from "../lib/jwt.js";
 
 function hashPw(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -474,6 +475,22 @@ fusingaoRouter.put("/fleets/:id", async (req, res) => {
       WHERE id = ${Number(id)}
     `);
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/admin-access-token — generate fleet session for admin preview
+fusingaoRouter.post("/fleets/:id/admin-access-token", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [fleet] = await db.execute(sql`
+      SELECT id, fleet_name, username, is_active FROM fusingao_fleets WHERE id = ${Number(id)}
+    `).then(r => r.rows as any[]);
+    if (!fleet) return res.status(404).json({ ok: false, error: "Fleet not found" });
+    const token = signJwt({ role: "fusingao_fleet" as any, id: fleet.id, name: fleet.fleet_name, username: fleet.username, fleetId: fleet.id } as any);
+    const user = { id: fleet.id, role: "fusingao_fleet", name: fleet.fleet_name, username: fleet.username, fleetId: fleet.id };
+    res.json({ ok: true, token, user });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -1026,6 +1043,17 @@ fusingaoRouter.put("/fleets/:id/drivers/:driverId", async (req, res) => {
         updated_at      = NOW()
       WHERE id = ${Number(driverId)} AND fleet_id = ${Number(id)}
     `);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// DELETE /fusingao/fleets/:id/drivers/:driverId
+fusingaoRouter.delete("/fleets/:id/drivers/:driverId", async (req, res) => {
+  try {
+    const { id, driverId } = req.params;
+    await db.execute(sql`DELETE FROM fleet_drivers WHERE id=${Number(driverId)} AND fleet_id=${Number(id)}`);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });

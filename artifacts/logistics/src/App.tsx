@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -170,7 +170,23 @@ function AdminPortal() {
 }
 
 function FleetPortal() {
-  const { user } = useAuth();
+  const { user, loginTemp } = useAuth();
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith("#adminPreview=")) {
+      try {
+        const raw = decodeURIComponent(hash.slice("#adminPreview=".length));
+        const { token, user: fleetUser } = JSON.parse(raw);
+        loginTemp(token, fleetUser);
+        window.history.replaceState(null, "", window.location.pathname);
+      } catch { /* ignore parse errors */ }
+    }
+    setChecked(true);
+  }, []); // eslint-disable-line
+
+  if (!checked) return null;
   if (!user || (user.role !== "fusingao_fleet" && user.role !== "fleet_sub")) {
     return <Redirect to="/login/fleet" />;
   }

@@ -121,6 +121,8 @@ export default function FusingaoPortal() {
   const [fleetDetails, setFleetDetails]   = useState<Record<number, FleetDetail>>({});
   const [resetPwFleet, setResetPwFleet]   = useState<number | null>(null);
   const [resetPwValue, setResetPwValue]   = useState("");
+  const [addDriverFleet, setAddDriverFleet] = useState<number | null>(null);
+  const [addDriverForm, setAddDriverForm]   = useState({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,6 +203,53 @@ export default function FusingaoPortal() {
 
   const setFleetDetailTab = (id: number, t: "routes" | "drivers") =>
     setFleetDetails(prev => ({ ...prev, [id]: { ...prev[id], tab: t } }));
+
+  const enterFleetManagement = async (id: number) => {
+    try {
+      const r = await fetch(apiUrl(`/fusingao/fleets/${id}/admin-access-token`), { method: "POST" });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      const hash = encodeURIComponent(JSON.stringify({ token: d.token, user: d.user }));
+      window.open(`/fleet#adminPreview=${hash}`, "_blank");
+    } catch {
+      toast({ title: "無法取得車隊存取憑證", variant: "destructive" });
+    }
+  };
+
+  const doAddDriver = async (fleetId: number) => {
+    if (!addDriverForm.name.trim()) return toast({ title: "請填寫司機姓名", variant: "destructive" });
+    try {
+      const r = await fetch(apiUrl(`/fusingao/fleets/${fleetId}/drivers`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...addDriverForm }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      toast({ title: `✅ 已新增司機：${addDriverForm.name}` });
+      setAddDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" });
+      setAddDriverFleet(null);
+      // Refresh driver list
+      const dr = await fetch(apiUrl(`/fusingao/fleets/${fleetId}/drivers`)).then(x => x.json());
+      setFleetDetails(prev => ({ ...prev, [fleetId]: { ...prev[fleetId], drivers: dr.drivers ?? [] } }));
+    } catch (err: any) {
+      toast({ title: `新增失敗：${err.message}`, variant: "destructive" });
+    }
+  };
+
+  const doDeleteDriver = async (fleetId: number, driverId: number, driverName: string) => {
+    if (!window.confirm(`確定要移除司機「${driverName}」？`)) return;
+    try {
+      await fetch(apiUrl(`/fusingao/fleets/${fleetId}/drivers/${driverId}`), { method: "DELETE" });
+      toast({ title: `已移除 ${driverName}` });
+      setFleetDetails(prev => ({
+        ...prev,
+        [fleetId]: { ...prev[fleetId], drivers: prev[fleetId].drivers.filter(d => d.id !== driverId) },
+      }));
+    } catch {
+      toast({ title: "移除失敗", variant: "destructive" });
+    }
+  };
 
   const doResetPassword = async (id: number, name: string) => {
     if (!resetPwValue.trim()) return toast({ title: "請輸入新密碼", variant: "destructive" });
@@ -808,18 +857,22 @@ export default function FusingaoPortal() {
                             <span><DollarSign className="h-3 w-3 inline mr-1 text-blue-400"/>應付 {fmt(f.fleet_payout)}</span>
                           </div>
                         </div>
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                          <Button size="sm"
+                            className="h-7 px-2 text-xs gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                            onClick={() => enterFleetManagement(f.id)}
+                            title="以管理員身份進入車隊操作介面">
+                            <LayoutDashboard className="h-3 w-3" />進入管理
+                          </Button>
                           <Button variant="ghost" size="sm"
                             className={`h-7 px-2 text-xs gap-1 ${fleetDetails[f.id] ? "text-orange-600 bg-orange-50" : "text-gray-400 hover:text-orange-500"}`}
-                            onClick={() => toggleFleetDetail(f.id)}
-                            title="查看路線與司機詳情">
+                            onClick={() => toggleFleetDetail(f.id)}>
                             {fleetDetails[f.id] ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             詳情
                           </Button>
                           <Button variant="ghost" size="sm"
                             className={`h-7 px-2 text-xs gap-1 ${resetPwFleet === f.id ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-amber-500"}`}
-                            onClick={() => { setResetPwFleet(resetPwFleet === f.id ? null : f.id); setResetPwValue(""); }}
-                            title="重設登入密碼">
+                            onClick={() => { setResetPwFleet(resetPwFleet === f.id ? null : f.id); setResetPwValue(""); }}>
                             🔑 密碼
                           </Button>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600"
@@ -900,22 +953,67 @@ export default function FusingaoPortal() {
 
                             {/* Drivers list */}
                             {fleetDetails[f.id].tab === "drivers" && (
-                              fleetDetails[f.id].drivers.length === 0 ? (
-                                <p className="text-xs text-gray-400 py-2">尚無司機資料</p>
-                              ) : (
-                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                                  {fleetDetails[f.id].drivers.map(d => (
-                                    <div key={d.id} className="flex items-center gap-3 bg-white rounded border border-gray-100 px-3 py-2 text-xs">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${d.is_active ? "bg-green-400" : "bg-gray-300"}`} />
-                                      <span className="font-medium text-gray-700">{d.name}</span>
-                                      {d.vehicle_plate && <span className="font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{d.vehicle_plate}</span>}
-                                      {d.vehicle_type && <span className="text-gray-400">{d.vehicle_type}</span>}
-                                      {d.phone && <span className="text-gray-400">{d.phone}</span>}
-                                      <span className="ml-auto text-gray-400 shrink-0">完成 {d.completed_routes}/{d.total_routes}</span>
+                              <div>
+                                {/* Add driver button */}
+                                {addDriverFleet !== f.id && (
+                                  <button
+                                    onClick={() => { setAddDriverFleet(f.id); setAddDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" }); }}
+                                    className="mb-2 flex items-center gap-1 text-xs px-3 py-1.5 rounded border border-dashed border-orange-300 text-orange-500 hover:bg-orange-50 transition-colors">
+                                    <Plus className="h-3 w-3" />新增司機
+                                  </button>
+                                )}
+                                {/* Inline add form */}
+                                {addDriverFleet === f.id && (
+                                  <div className="mb-3 p-3 bg-white rounded border border-orange-200 space-y-2">
+                                    <p className="text-xs font-medium text-orange-700">新增司機</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {[
+                                        { key: "name", placeholder: "姓名 *" },
+                                        { key: "phone", placeholder: "電話" },
+                                        { key: "vehicle_plate", placeholder: "車牌號碼" },
+                                      ].map(field => (
+                                        <input key={field.key} type="text" placeholder={field.placeholder}
+                                          value={(addDriverForm as any)[field.key]}
+                                          onChange={e => setAddDriverForm(p => ({ ...p, [field.key]: e.target.value }))}
+                                          className="h-7 px-2 border border-gray-200 rounded text-xs" />
+                                      ))}
+                                      <select value={addDriverForm.vehicle_type}
+                                        onChange={e => setAddDriverForm(p => ({ ...p, vehicle_type: e.target.value }))}
+                                        className="h-7 px-2 border border-gray-200 rounded text-xs bg-white">
+                                        {["一般","小發財","1.75噸","3.5噸","8.5噸","冷藏","冷凍"].map(t => <option key={t}>{t}</option>)}
+                                      </select>
                                     </div>
-                                  ))}
-                                </div>
-                              )
+                                    <div className="flex gap-2">
+                                      <Button size="sm" className="h-7 px-3 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                                        onClick={() => doAddDriver(f.id)}>確認新增</Button>
+                                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                                        onClick={() => setAddDriverFleet(null)}>取消</Button>
+                                    </div>
+                                  </div>
+                                )}
+                                {fleetDetails[f.id].drivers.length === 0 ? (
+                                  <p className="text-xs text-gray-400 py-2">尚無司機，點上方按鈕新增</p>
+                                ) : (
+                                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                                    {fleetDetails[f.id].drivers.map(d => (
+                                      <div key={d.id} className="flex items-center gap-3 bg-white rounded border border-gray-100 px-3 py-2 text-xs group">
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${d.is_active ? "bg-green-400" : "bg-gray-300"}`} />
+                                        <span className="font-medium text-gray-700">{d.name}</span>
+                                        {d.vehicle_plate && <span className="font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{d.vehicle_plate}</span>}
+                                        {d.vehicle_type && <span className="text-gray-400">{d.vehicle_type}</span>}
+                                        {d.phone && <span className="text-gray-400">{d.phone}</span>}
+                                        <span className="ml-auto text-gray-400 shrink-0">完成 {d.completed_routes}/{d.total_routes}</span>
+                                        <button
+                                          onClick={() => doDeleteDriver(f.id, d.id, d.name)}
+                                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity ml-1"
+                                          title="移除司機">
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </>
                         )}

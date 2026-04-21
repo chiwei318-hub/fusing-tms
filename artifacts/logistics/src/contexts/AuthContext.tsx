@@ -21,6 +21,7 @@ interface AuthCtxValue {
   user: AuthUser | null;
   token: string | null;
   login: (token: string, user: AuthUser) => void;
+  loginTemp: (token: string, user: AuthUser) => void;
   logout: () => void;
   isLoggedIn: boolean;
 }
@@ -50,6 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
   }, []);
 
+  // loginTemp: update React state only (does NOT write to localStorage — preserves existing session)
+  const loginTemp = useCallback((newToken: string, newUser: AuthUser) => {
+    setToken(newToken);
+    setUser(newUser);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
@@ -58,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoggedIn: !!user }}>
+    <AuthContext.Provider value={{ user, token, login, loginTemp, logout, isLoggedIn: !!user }}>
       {children}
     </AuthContext.Provider>
   );
