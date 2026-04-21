@@ -1704,7 +1704,12 @@ export default function Admin() {
                   { value: "payrollcost",   icon: <span className="text-sm leading-none">💼</span>,               label: "薪資結算" },
                   { value: "laborpension",  icon: <span className="text-sm leading-none">🏦</span>,               label: "勞退提撥" },
                 ] as { value: string; icon: React.ReactNode; label: string }[],
-                extra: null as React.ReactNode,
+                extra: (
+                  <a href="/calculator" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium transition-colors">
+                    <span className="text-sm leading-none">🧮</span><span>麒巍精算器</span>
+                  </a>
+                ),
               },
               {
                 label: "系統\n管理",
