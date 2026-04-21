@@ -58,6 +58,11 @@ interface PayrollRecord {
   month: string; completed_trips: number; base_salary: number; per_trip_bonus: number;
   meal_allowance: number; other_deduction: number; net_salary: number; locked: boolean; note: string | null;
 }
+interface SchedWeek { week_label: string; route_count: number; total_stops: number; imported_at: string; }
+interface SchedRoute {
+  id: number; route_no: string; route_type: string; vehicle_type: string;
+  shopee_driver_id: string; departure_time: string; dock_no: string; stop_count: number;
+}
 
 interface DispatchOrder {
   id: number;
