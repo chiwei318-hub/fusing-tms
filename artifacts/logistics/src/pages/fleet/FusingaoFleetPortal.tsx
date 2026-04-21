@@ -250,11 +250,6 @@ export default function FusingaoFleetPortal() {
   }, [fleetId, payrollMonth]); // eslint-disable-line
 
   // ── Schedule tab state ────────────────────────────────────────────────────
-  interface SchedWeek { week_label: string; route_count: number; total_stops: number; imported_at: string; }
-  interface SchedRoute {
-    id: number; route_no: string; route_type: string; vehicle_type: string;
-    shopee_driver_id: string; departure_time: string; dock_no: string; stop_count: number;
-  }
   const [schedWeeks, setSchedWeeks]     = useState<SchedWeek[]>([]);
   const [schedSelWeek, setSchedSelWeek] = useState("");
   const [schedRoutes, setSchedRoutes]   = useState<SchedRoute[]>([]);
