@@ -66,6 +66,13 @@ interface FleetRow {
   created_at: string; total_routes: string; completed_routes: string; billed_routes: string;
   fleet_payout: string;
 }
+interface FleetDriver {
+  id: number; name: string; phone: string | null; vehicle_plate: string | null;
+  vehicle_type: string | null; is_active: boolean; total_routes: string; completed_routes: string;
+}
+interface FleetDetail {
+  routes: RouteItem[]; drivers: FleetDriver[]; loading: boolean; tab: "routes" | "drivers";
+}
 
 const fmt = (n: number | string) => `NT$ ${Math.round(Number(n)).toLocaleString()}`;
 
@@ -111,6 +118,7 @@ export default function FusingaoPortal() {
     username: "", password: "", vehicle_types: "", notes: "", rate_override: "",
     commission_rate: "15", bank_account: "", bank_name: "",
   });
+  const [fleetDetails, setFleetDetails] = useState<Record<number, FleetDetail>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,6 +175,30 @@ export default function FusingaoPortal() {
   }, []); // eslint-disable-line
 
   useEffect(() => { if (tab === "fleets") loadFleets(); }, [tab]); // eslint-disable-line
+
+  const toggleFleetDetail = async (id: number) => {
+    if (fleetDetails[id]) {
+      setFleetDetails(prev => { const n = { ...prev }; delete n[id]; return n; });
+      return;
+    }
+    setFleetDetails(prev => ({ ...prev, [id]: { routes: [], drivers: [], loading: true, tab: "routes" } }));
+    try {
+      const [r, d] = await Promise.all([
+        fetch(apiUrl(`/fusingao/fleets/${id}/routes`)).then(x => x.json()),
+        fetch(apiUrl(`/fusingao/fleets/${id}/drivers`)).then(x => x.json()),
+      ]);
+      setFleetDetails(prev => ({
+        ...prev,
+        [id]: { routes: r.routes ?? [], drivers: d.drivers ?? [], loading: false, tab: "routes" },
+      }));
+    } catch {
+      toast({ title: "載入車隊詳情失敗", variant: "destructive" });
+      setFleetDetails(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  };
+
+  const setFleetDetailTab = (id: number, t: "routes" | "drivers") =>
+    setFleetDetails(prev => ({ ...prev, [id]: { ...prev[id], tab: t } }));
 
   const openNewFleet = () => {
     setEditingFleet(null);
@@ -749,11 +781,13 @@ export default function FusingaoPortal() {
                           </div>
                         </div>
                         <div className="flex gap-1 shrink-0">
-                          <a href={`/fleet`} target="_blank" rel="noreferrer"
-                            className="h-7 w-7 flex items-center justify-center rounded border text-gray-400 hover:text-orange-500 hover:border-orange-300 text-xs"
-                            title="開啟車隊入口預覽">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
+                          <Button variant="ghost" size="sm"
+                            className={`h-7 px-2 text-xs gap-1 ${fleetDetails[f.id] ? "text-orange-600 bg-orange-50" : "text-gray-400 hover:text-orange-500"}`}
+                            onClick={() => toggleFleetDetail(f.id)}
+                            title="查看路線與司機詳情">
+                            {fleetDetails[f.id] ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            詳情
+                          </Button>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-blue-600"
                             onClick={() => openEditFleet(f)} title="編輯">
                             <Edit2 className="h-3.5 w-3.5" />
@@ -765,6 +799,71 @@ export default function FusingaoPortal() {
                         </div>
                       </div>
                     </div>
+                    {/* ── Fleet Detail Expansion ── */}
+                    {fleetDetails[f.id] && (
+                      <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+                        {fleetDetails[f.id].loading ? (
+                          <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />載入中…
+                          </div>
+                        ) : (
+                          <>
+                            {/* Sub-tab switcher */}
+                            <div className="flex gap-1 mb-3">
+                              <button
+                                onClick={() => setFleetDetailTab(f.id, "routes")}
+                                className={`text-xs px-3 py-1 rounded-full border transition-colors ${fleetDetails[f.id].tab === "routes" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}>
+                                路線 ({fleetDetails[f.id].routes.length})
+                              </button>
+                              <button
+                                onClick={() => setFleetDetailTab(f.id, "drivers")}
+                                className={`text-xs px-3 py-1 rounded-full border transition-colors ${fleetDetails[f.id].tab === "drivers" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-500 border-gray-200 hover:border-orange-300"}`}>
+                                司機 ({fleetDetails[f.id].drivers.length})
+                              </button>
+                            </div>
+
+                            {/* Routes list */}
+                            {fleetDetails[f.id].tab === "routes" && (
+                              fleetDetails[f.id].routes.length === 0 ? (
+                                <p className="text-xs text-gray-400 py-2">尚無路線資料</p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                                  {fleetDetails[f.id].routes.map(r => (
+                                    <div key={r.id} className="flex items-center gap-2 bg-white rounded border border-gray-100 px-3 py-2 text-xs">
+                                      {statusBadge(r)}
+                                      <span className="font-mono text-gray-600">{r.routeId || `#${r.id}`}</span>
+                                      {r.route_od && <span className="text-gray-500 truncate max-w-[140px]">{r.route_od}</span>}
+                                      {r.driver_name && <span className="text-blue-500">👤 {r.driver_name}</span>}
+                                      {r.shopee_rate != null && <span className="ml-auto text-emerald-600 font-medium shrink-0">NT$ {r.shopee_rate.toLocaleString()}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            )}
+
+                            {/* Drivers list */}
+                            {fleetDetails[f.id].tab === "drivers" && (
+                              fleetDetails[f.id].drivers.length === 0 ? (
+                                <p className="text-xs text-gray-400 py-2">尚無司機資料</p>
+                              ) : (
+                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                                  {fleetDetails[f.id].drivers.map(d => (
+                                    <div key={d.id} className="flex items-center gap-3 bg-white rounded border border-gray-100 px-3 py-2 text-xs">
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${d.is_active ? "bg-green-400" : "bg-gray-300"}`} />
+                                      <span className="font-medium text-gray-700">{d.name}</span>
+                                      {d.vehicle_plate && <span className="font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{d.vehicle_plate}</span>}
+                                      {d.vehicle_type && <span className="text-gray-400">{d.vehicle_type}</span>}
+                                      {d.phone && <span className="text-gray-400">{d.phone}</span>}
+                                      <span className="ml-auto text-gray-400 shrink-0">完成 {d.completed_routes}/{d.total_routes}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>
