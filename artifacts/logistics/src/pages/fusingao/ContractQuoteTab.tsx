@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Search, X, RefreshCw, Edit, Trash2, Copy,
   FileText, CheckCircle2, Clock, Ban, ChevronRight,
-  DollarSign, Truck, MapPin, Calendar
+  DollarSign, Truck, MapPin, Calendar, Upload, Download,
+  AlertCircle
 } from "lucide-react";
 
 const API = import.meta.env.BASE_URL + "api";
@@ -434,6 +435,20 @@ function fmtDate(s?: string | null) {
   return s.slice(0,10).replace(/-/g,"/");
 }
 
+interface ImportRow {
+  customerName: string; title: string; validFrom: string; validTo: string;
+  routeFrom: string; routeTo: string; vehicleType: string; cargoType: string;
+  unit: string; unitPrice: string; minCharge: string; itemNotes: string;
+}
+
+const UNIT_MAP: Record<string, string> = {
+  "趟": "per_trip", "次": "per_trip", "公里": "per_km", "km": "per_km",
+  "噸": "per_ton", "ton": "per_ton", "立方": "per_cbm", "cbm": "per_cbm",
+  "天": "per_day", "day": "per_day", "小時": "per_hour", "hr": "per_hour",
+  "per_trip": "per_trip", "per_km": "per_km", "per_ton": "per_ton",
+  "per_cbm": "per_cbm", "per_day": "per_day", "per_hour": "per_hour",
+};
+
 export default function ContractQuoteTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -445,6 +460,10 @@ export default function ContractQuoteTab() {
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContractQuote | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ["customers-for-quote-filter"],
@@ -513,6 +532,147 @@ export default function ContractQuoteTab() {
     });
   }
 
+  async function handleExportExcel() {
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("客戶報價");
+
+      const headers = [
+        "客戶名稱","報價標題","生效起日","生效迄日",
+        "起點","迄點","車型","貨品類別","計費單位","單價","最低收費","備註"
+      ];
+      const colWidths = [18,24,14,14,18,18,14,16,12,12,12,20];
+      ws.addRow(headers);
+      const hr = ws.getRow(1);
+      hr.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+      hr.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+      hr.alignment = { horizontal: "center", vertical: "middle" };
+      hr.height = 22;
+      headers.forEach((_, i) => { ws.getColumn(i + 1).width = colWidths[i]; });
+
+      const UNIT_LABEL: Record<string, string> = {
+        per_trip:"趟", per_km:"公里", per_ton:"噸", per_cbm:"立方",
+        per_day:"天", per_hour:"小時",
+      };
+      const allQuotes = await fetch(`${API}/contract-quotes`).then(r => r.json()).then(d => Array.isArray(d) ? d : []);
+      for (const q of allQuotes) {
+        const detail = await fetch(`${API}/contract-quotes/${q.id}`).then(r => r.json());
+        const items: any[] = detail.items || [];
+        const customerLabel = q.customer_short_name ?? q.customer_name_resolved ?? q.customer_name ?? "";
+        if (items.length === 0) {
+          ws.addRow([customerLabel, q.title, q.valid_from?.slice(0,10)||"", q.valid_to?.slice(0,10)||"",
+            "", "", "", "", "", "", "", q.notes||""]);
+        } else {
+          for (const item of items) {
+            ws.addRow([
+              customerLabel, q.title,
+              q.valid_from?.slice(0,10)||"", q.valid_to?.slice(0,10)||"",
+              item.route_from||"", item.route_to||"",
+              item.vehicle_type||"", item.cargo_type||"",
+              UNIT_LABEL[item.unit] ?? item.unit ?? "趟",
+              item.unit_price ?? "", item.min_charge ?? "",
+              item.notes||""
+            ]);
+          }
+        }
+      }
+      ws.eachRow((row, rIdx) => {
+        if (rIdx === 1) return;
+        row.eachCell(cell => {
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE2E8F0" } },
+            bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+            left: { style: "thin", color: { argb: "FFE2E8F0" } },
+            right: { style: "thin", color: { argb: "FFE2E8F0" } },
+          };
+        });
+        if (rIdx % 2 === 0) {
+          row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+        }
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      a.download = `客戶合約報價_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      toast({ title: "Excel 已匯出", description: `共 ${allQuotes.length} 份報價單` });
+    } catch (e: any) {
+      toast({ title: "匯出失敗", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      const rows: ImportRow[] = [];
+      const UNIT_LABEL: Record<string, string> = {
+        "趟":"per_trip","次":"per_trip","公里":"per_km","km":"per_km",
+        "噸":"per_ton","ton":"per_ton","立方":"per_cbm","cbm":"per_cbm",
+        "天":"per_day","day":"per_day","小時":"per_hour","hr":"per_hour",
+      };
+      ws.eachRow((row, idx) => {
+        if (idx === 1) return;
+        const v = (col: number) => {
+          const cell = row.getCell(col);
+          const val = cell.value;
+          if (val === null || val === undefined) return "";
+          if (typeof val === "object" && "text" in (val as any)) return String((val as any).text);
+          if (val instanceof Date) return val.toISOString().slice(0, 10);
+          return String(val).trim();
+        };
+        const customerName = v(1);
+        if (!customerName) return;
+        const rawUnit = v(9).toLowerCase();
+        const unit = UNIT_LABEL[rawUnit] || UNIT_MAP[rawUnit] || "per_trip";
+        rows.push({
+          customerName, title: v(2), validFrom: v(3), validTo: v(4),
+          routeFrom: v(5), routeTo: v(6), vehicleType: v(7), cargoType: v(8),
+          unit, unitPrice: v(10), minCharge: v(11), itemNotes: v(12),
+        });
+      });
+      if (rows.length === 0) {
+        toast({ title: "無可匯入資料", description: "Excel 內容為空或格式不符", variant: "destructive" });
+        return;
+      }
+      setImportRows(rows);
+      setShowImportModal(true);
+    } catch (e: any) {
+      toast({ title: "解析失敗", description: e.message, variant: "destructive" });
+    }
+  }
+
+  async function handleBulkImport() {
+    setImportLoading(true);
+    try {
+      const res = await fetch(`${API}/contract-quotes/bulk-import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: importRows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast({
+        title: `匯入完成！新增 ${data.inserted} 份報價單`,
+        description: data.errors?.length ? `${data.errors.length} 筆略過` : undefined,
+      });
+      setShowImportModal(false);
+      setImportRows([]);
+      qc.invalidateQueries({ queryKey: ["contract-quotes"] });
+    } catch (e: any) {
+      toast({ title: "匯入失敗", description: e.message, variant: "destructive" });
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
 
@@ -550,8 +710,14 @@ export default function ContractQuoteTab() {
               onClick={() => setShowForm(true)}>
               <Plus className="w-3 h-3" /> 新增報價單
             </Button>
-            <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1.5">
-              <FileText className="w-3 h-3" /> 匯出 Excel
+            <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => fileRef.current?.click()}>
+              <Upload className="w-3 h-3" /> 匯入 Excel
+            </Button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
+            <Button size="sm" variant="outline" className="h-8 px-3 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              onClick={handleExportExcel}>
+              <Download className="w-3 h-3" /> 匯出 Excel
             </Button>
           </div>
         </div>
@@ -807,6 +973,61 @@ export default function ContractQuoteTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>取消</Button>
             <Button variant="destructive" onClick={handleDelete}>確認刪除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 匯入預覽 Modal ── */}
+      <Dialog open={showImportModal} onOpenChange={open => { if (!open) { setShowImportModal(false); setImportRows([]); } }}>
+        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-indigo-700">
+              <Upload className="w-4 h-4" />
+              Excel 匯入預覽
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            共讀取 <span className="font-bold mx-1">{importRows.length}</span> 筆資料列，確認後將依客戶名稱與報價標題分組新增報價單（狀態自動設為「已確認」）。
+          </div>
+
+          <div className="overflow-auto flex-1 border rounded-lg">
+            <table className="w-full text-xs min-w-[800px]">
+              <thead className="sticky top-0">
+                <tr style={{ background: "linear-gradient(90deg,#4f46e5,#4338ca)", color: "#fff" }}>
+                  {["客戶名稱","報價標題","生效起","生效迄","起點","迄點","車型","計費單位","單價","最低收費"].map(h => (
+                    <th key={h} className="p-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {importRows.map((r, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                    <td className="p-2 font-medium text-gray-800">{r.customerName || <span className="text-red-400">（空）</span>}</td>
+                    <td className="p-2 text-gray-700">{r.title||"─"}</td>
+                    <td className="p-2 text-gray-500 font-mono">{r.validFrom||"─"}</td>
+                    <td className="p-2 text-gray-500 font-mono">{r.validTo||"─"}</td>
+                    <td className="p-2 text-gray-600">{r.routeFrom||"─"}</td>
+                    <td className="p-2 text-gray-600">{r.routeTo||"─"}</td>
+                    <td className="p-2 text-gray-600">{r.vehicleType||"─"}</td>
+                    <td className="p-2 text-gray-600">{r.unit||"趟"}</td>
+                    <td className="p-2 font-semibold text-emerald-700">{r.unitPrice ? `$${r.unitPrice}` : "─"}</td>
+                    <td className="p-2 text-gray-600">{r.minCharge ? `$${r.minCharge}` : "─"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowImportModal(false); setImportRows([]); }} disabled={importLoading}>
+              取消
+            </Button>
+            <Button className="bg-indigo-600 hover:bg-indigo-700 gap-1.5" onClick={handleBulkImport} disabled={importLoading}>
+              <Upload className="w-3.5 h-3.5" />
+              {importLoading ? "匯入中..." : `確認匯入 ${importRows.length} 筆`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

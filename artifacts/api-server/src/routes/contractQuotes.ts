@@ -83,6 +83,52 @@ router.get("/contract-quotes", async (req, res) => {
   }
 });
 
+// ─── GET /api/contract-quotes/lookup ─────────────────────────────────────────
+// Must be before /:id route so "lookup" is not parsed as an ID
+
+router.get("/contract-quotes/lookup", async (req, res) => {
+  try {
+    const { customerName, vehicleType, fromAddress, toAddress } = req.query as Record<string, string>;
+    if (!customerName) return res.status(400).json({ error: "customerName required" });
+
+    const params: any[] = [`%${customerName}%`];
+    let q = `
+      SELECT qi.id, qi.route_from, qi.route_to, qi.vehicle_type, qi.cargo_type,
+             qi.unit, qi.unit_price, qi.min_charge, qi.notes,
+             cq.id AS quote_id, cq.quote_no, cq.title,
+             cq.valid_from, cq.valid_to,
+             COALESCE(c.short_name, c.name, cq.customer_name) AS customer_label
+      FROM customer_contract_quote_items qi
+      JOIN customer_contract_quotes cq ON qi.quote_id = cq.id
+      LEFT JOIN customers c ON cq.customer_id = c.id
+      WHERE cq.status = 'confirmed'
+        AND (cq.valid_to IS NULL OR cq.valid_to >= CURRENT_DATE)
+        AND (
+          c.name ILIKE $1
+          OR c.short_name ILIKE $1
+          OR cq.customer_name ILIKE $1
+        )
+    `;
+    if (vehicleType && vehicleType !== "all") {
+      params.push(`%${vehicleType}%`);
+      q += ` AND (qi.vehicle_type = '' OR qi.vehicle_type IS NULL OR qi.vehicle_type ILIKE $${params.length})`;
+    }
+    if (fromAddress) {
+      params.push(`%${fromAddress}%`);
+      q += ` AND (qi.route_from = '' OR qi.route_from IS NULL OR qi.route_from ILIKE $${params.length})`;
+    }
+    if (toAddress) {
+      params.push(`%${toAddress}%`);
+      q += ` AND (qi.route_to = '' OR qi.route_to IS NULL OR qi.route_to ILIKE $${params.length})`;
+    }
+    q += ` ORDER BY cq.valid_to DESC NULLS LAST, qi.sort_order LIMIT 20`;
+    const r = await pool.query(q, params);
+    return res.json(r.rows);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── GET /api/contract-quotes/:id ─────────────────────────────────────────────
 
 router.get("/contract-quotes/:id", async (req, res) => {
@@ -256,6 +302,81 @@ router.post("/contract-quotes/:id/clone", async (req, res) => {
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }
+});
+
+// ─── POST /api/contract-quotes/bulk-import ───────────────────────────────────
+// Accept array of rows from Excel import and create quotes grouped by quoteTitle
+
+router.post("/contract-quotes/bulk-import", async (req, res) => {
+  const { rows } = req.body as { rows: any[] };
+  if (!Array.isArray(rows) || rows.length === 0)
+    return res.status(400).json({ error: "rows required" });
+
+  // Group rows by quote identity (quoteNo if provided, else customerName+title combination)
+  const groups = new Map<string, any[]>();
+  for (const row of rows) {
+    const key = row.quoteNo || `${row.customerName || ""}__${row.title || ""}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+
+  let inserted = 0;
+  const errors: string[] = [];
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const [, groupRows] of groups) {
+      const first = groupRows[0];
+      const customerName = (first.customerName || "").trim();
+      const title = (first.title || "").trim() || customerName || "匯入報價單";
+      if (!customerName) { errors.push(`略過無客戶名稱列`); continue; }
+
+      // Resolve customer_id by name or short_name
+      let customerId: number | null = null;
+      const cr = await client.query(
+        `SELECT id FROM customers WHERE name ILIKE $1 OR short_name ILIKE $1 LIMIT 1`,
+        [customerName]
+      );
+      if (cr.rows.length) customerId = cr.rows[0].id;
+
+      const quoteNo = await nextQuoteNo();
+      const validFrom = first.validFrom || null;
+      const validTo = first.validTo || null;
+      try {
+        const qr = await client.query(
+          `INSERT INTO customer_contract_quotes
+             (quote_no, customer_id, customer_name, title, status, valid_from, valid_to, notes, created_by)
+           VALUES ($1,$2,$3,$4,'confirmed',$5,$6,$7,$8) RETURNING id`,
+          [quoteNo, customerId, customerName, title, validFrom, validTo,
+           first.notes || null, "Excel匯入"]
+        );
+        const quoteId = qr.rows[0].id;
+        let sortOrder = 1;
+        for (const row of groupRows) {
+          await client.query(
+            `INSERT INTO customer_contract_quote_items
+               (quote_id, route_from, route_to, vehicle_type, cargo_type, unit, unit_price, min_charge, notes, sort_order)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [quoteId,
+             row.routeFrom || null, row.routeTo || null,
+             row.vehicleType || null, row.cargoType || null,
+             row.unit || "趟", parseFloat(row.unitPrice) || 0,
+             parseFloat(row.minCharge) || 0, row.itemNotes || null, sortOrder++]
+          );
+        }
+        inserted++;
+      } catch (e: any) {
+        errors.push(`${customerName}: ${e.message}`);
+      }
+    }
+    await client.query("COMMIT");
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    return res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+  return res.json({ inserted, errors });
 });
 
 // ─── GET /api/suppliers ───────────────────────────────────────────────────────

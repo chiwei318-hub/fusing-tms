@@ -3,7 +3,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   MapPin, User, Package as PackageIcon, FileText, CheckCircle2,
-  Truck, Calendar, Clock, Weight, Ruler, Info,
+  Truck, Calendar, Clock, Weight, Ruler, Info, Tag, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -16,8 +16,10 @@ import { TaiwanAddressInput } from "@/components/TaiwanAddressInput";
 import { SmartDatePicker } from "@/components/SmartDatePicker";
 import { useCreateOrderMutation } from "@/hooks/use-orders";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+
+const API = import.meta.env.BASE_URL + "api";
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 const BODY_TYPES = [
@@ -127,11 +129,25 @@ function CheckToggle({ checked, onChange, label, desc }: {
   );
 }
 
+interface ContractRate {
+  id: number; route_from: string; route_to: string; vehicle_type: string;
+  unit: string; unit_price: number; min_charge: number; notes: string;
+  quote_no: string; title: string; valid_to: string | null; customer_label: string;
+}
+
+const UNIT_LABEL: Record<string, string> = {
+  per_trip:"趟", per_km:"公里/趟", per_ton:"噸", per_cbm:"立方米",
+  per_day:"天", per_hour:"小時",
+};
+
 export default function OrderForm() {
   const { mutateAsync: createOrder, isPending } = useCreateOrderMutation();
   const { toast } = useToast();
   const [successOrderId, setSuccessOrderId] = useState<number | null>(null);
   const [showDimensions, setShowDimensions] = useState(false);
+  const [contractRates, setContractRates] = useState<ContractRate[]>([]);
+  const [showRates, setShowRates] = useState(true);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderFormSchema),
@@ -147,10 +163,36 @@ export default function OrderForm() {
     },
   });
 
-  const watchWeight    = useWatch({ control: form.control, name: "cargoWeight" });
-  const watchTonnage   = useWatch({ control: form.control, name: "vehicleTonnage" });
-  const watchBodyType  = useWatch({ control: form.control, name: "vehicleBodyType" });
+  const watchWeight       = useWatch({ control: form.control, name: "cargoWeight" });
+  const watchTonnage      = useWatch({ control: form.control, name: "vehicleTonnage" });
+  const watchBodyType     = useWatch({ control: form.control, name: "vehicleBodyType" });
+  const watchCustomerName = useWatch({ control: form.control, name: "customerName" });
+  const watchPickupAddr   = useWatch({ control: form.control, name: "pickupAddress" });
+  const watchDeliveryAddr = useWatch({ control: form.control, name: "deliveryAddress" });
   const recommended    = useRecommendedTonnage(watchWeight);
+
+  useEffect(() => {
+    if (!watchCustomerName || watchCustomerName.length < 2) {
+      setContractRates([]);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const vehicleType = [watchBodyType, watchTonnage].filter(Boolean).join("") || "";
+        const params = new URLSearchParams({ customerName: watchCustomerName });
+        if (vehicleType) params.set("vehicleType", vehicleType);
+        if (watchPickupAddr) params.set("fromAddress", watchPickupAddr.slice(0, 30));
+        if (watchDeliveryAddr) params.set("toAddress", watchDeliveryAddr.slice(0, 30));
+        const res = await fetch(`${API}/contract-quotes/lookup?${params}`);
+        if (res.ok) {
+          const data = await res.json();
+          setContractRates(Array.isArray(data) ? data : []);
+        }
+      } catch { setContractRates([]); }
+    }, 600);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [watchCustomerName, watchBodyType, watchTonnage, watchPickupAddr, watchDeliveryAddr]);
   const selectedTonnageInfo = TONNAGE_OPTIONS.find(t => t.value === watchTonnage);
   const weightWarning = useMemo(() => {
     if (!watchWeight || !selectedTonnageInfo) return null;
@@ -511,6 +553,65 @@ export default function OrderForm() {
                   </div>
                 </div>
               </div>
+
+              {/* ─ 客戶合約報價參考 ─ */}
+              {contractRates.length > 0 && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowRates(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-emerald-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-700">
+                      <Tag className="w-3.5 h-3.5" />
+                      客戶合約報價參考
+                      <span className="bg-emerald-200 text-emerald-800 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                        {contractRates.length} 筆符合
+                      </span>
+                    </div>
+                    {showRates
+                      ? <ChevronUp className="w-3.5 h-3.5 text-emerald-600" />
+                      : <ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                  </button>
+                  {showRates && (
+                    <div className="px-4 pb-3 space-y-2">
+                      <p className="text-[11px] text-emerald-600">以下為此客戶已確認的合約報價，可作為報價參考：</p>
+                      {contractRates.map(r => (
+                        <div key={r.id} className="bg-white border border-emerald-100 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {r.route_from && <span className="text-xs font-medium text-gray-700">{r.route_from}</span>}
+                              {r.route_from && r.route_to && <span className="text-gray-400 text-xs">→</span>}
+                              {r.route_to && <span className="text-xs font-medium text-gray-700">{r.route_to}</span>}
+                              {!r.route_from && !r.route_to && <span className="text-xs text-gray-400">全路線適用</span>}
+                              {r.vehicle_type && (
+                                <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded font-medium">
+                                  {r.vehicle_type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] text-gray-400 font-mono">{r.quote_no}</span>
+                              {r.valid_to && (
+                                <span className="text-[10px] text-gray-400">效期至 {r.valid_to.slice(0,10)}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-sm font-bold text-emerald-700">
+                              ${Number(r.unit_price).toLocaleString()}
+                              <span className="text-[10px] font-normal text-gray-500 ml-0.5">/{UNIT_LABEL[r.unit] ?? r.unit}</span>
+                            </div>
+                            {r.min_charge > 0 && (
+                              <div className="text-[10px] text-gray-400">最低 ${Number(r.min_charge).toLocaleString()}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ─ 取貨資訊 ─ */}
               <div className="space-y-4 bg-orange-50/60 border border-orange-100 rounded-xl p-4">
