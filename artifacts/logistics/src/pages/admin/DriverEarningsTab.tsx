@@ -123,6 +123,13 @@ export default function DriverEarningsTab() {
   const [driverSearchQ, setDriverSearchQ] = useState("");
   const [driverFleetFilter, setDriverFleetFilter] = useState<string>("全部");
   const [driverOwnerFilter, setDriverOwnerFilter] = useState<string>("全部");
+  const [importPreview, setImportPreview] = useState<{
+    rows: any[];
+    fileName: string;
+    fleetBreakdown: { fleet: string; count: number }[];
+    noFleetCount: number;
+  } | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
 
   const loadEarnings = useCallback(async () => {
     setLoading(true);
@@ -401,10 +408,36 @@ export default function DriverEarningsTab() {
 
       if (rows.length === 0) return toast({ title: "沒有讀到任何資料", variant: "destructive" });
 
+      // Build fleet breakdown for preview
+      const fleetCountMap = new Map<string, number>();
+      let noFleetCount = 0;
+      for (const r of rows) {
+        const f = r.fleet_name?.trim() || "";
+        if (f) {
+          fleetCountMap.set(f, (fleetCountMap.get(f) ?? 0) + 1);
+        } else {
+          noFleetCount++;
+        }
+      }
+      const fleetBreakdown = Array.from(fleetCountMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([fleet, count]) => ({ fleet, count }));
+
+      // Show preview dialog instead of importing directly
+      setImportPreview({ rows, fileName: file.name, fleetBreakdown, noFleetCount });
+    } catch (err: any) {
+      toast({ title: `讀取 Excel 錯誤：${err.message}`, variant: "destructive" });
+    }
+  };
+
+  const doImport = async () => {
+    if (!importPreview) return;
+    setImportLoading(true);
+    try {
       const r = await fetch(apiUrl("/driver-earnings/shopee-drivers/import"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows }),
+        body: JSON.stringify({ rows: importPreview.rows }),
       }).then(x => x.json());
 
       if (r.ok) {
@@ -417,6 +450,7 @@ export default function DriverEarningsTab() {
             ? r.fleet_details.map((d: any) => `${d.shopee_id} → ${d.fleet_name}`).join("、")
             : undefined,
         });
+        setImportPreview(null);
         await loadShopeeDrivers();
         await loadEarnings();
       } else {
@@ -424,6 +458,8 @@ export default function DriverEarningsTab() {
       }
     } catch (err: any) {
       toast({ title: `匯入錯誤：${err.message}`, variant: "destructive" });
+    } finally {
+      setImportLoading(false);
     }
   };
 
@@ -1015,6 +1051,135 @@ export default function DriverEarningsTab() {
           })()}
         </div>
       )}
+
+      {/* ── Import Preview Confirmation Dialog ─── */}
+      <Dialog open={!!importPreview} onOpenChange={(o) => { if (!o && !importLoading) setImportPreview(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <span className="text-2xl">📋</span>
+              確認匯入司機名單
+            </DialogTitle>
+          </DialogHeader>
+
+          {importPreview && (
+            <div className="space-y-4 text-sm">
+              {/* File info */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-center gap-3">
+                <span className="text-2xl">📂</span>
+                <div>
+                  <p className="font-medium text-blue-800 text-xs">{importPreview.fileName}</p>
+                  <p className="text-blue-600 text-xs mt-0.5">
+                    共 <span className="font-bold text-lg text-blue-700">{importPreview.rows.length}</span> 筆司機資料
+                  </p>
+                </div>
+              </div>
+
+              {/* Warning if large */}
+              {importPreview.rows.length > 50 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700 flex items-start gap-2">
+                  <span className="text-base mt-0.5">⚠️</span>
+                  <span>資料量較大（{importPreview.rows.length} 筆），請確認來源正確後再執行匯入，避免重複或錯誤資料進入系統。</span>
+                </div>
+              )}
+
+              {/* Fleet breakdown */}
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-2">車隊分配預覽</p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-gray-500">
+                        <th className="text-left px-3 py-2">所屬車隊</th>
+                        <th className="text-right px-3 py-2">司機數</th>
+                        <th className="text-center px-3 py-2">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.fleetBreakdown.map(({ fleet, count }) => (
+                        <tr key={fleet} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium text-indigo-700">{fleet}</td>
+                          <td className="px-3 py-2 text-right font-bold">{count} 人</td>
+                          <td className="px-3 py-2 text-center">
+                            <Badge className="bg-green-100 text-green-700 text-[10px] border-0">自動加入車隊</Badge>
+                          </td>
+                        </tr>
+                      ))}
+                      {importPreview.noFleetCount > 0 && (
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-400">（未指定車隊）</td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-400">{importPreview.noFleetCount} 人</td>
+                          <td className="px-3 py-2 text-center">
+                            <Badge className="bg-gray-100 text-gray-500 text-[10px] border-0">僅加入司機名單</Badge>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  ＊車隊名稱需與系統建立的車隊完全一致才會自動分配；若已存在則更新資料
+                </p>
+              </div>
+
+              {/* Sample preview */}
+              {importPreview.rows.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">
+                    資料預覽（前 {Math.min(5, importPreview.rows.length)} 筆）
+                  </p>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b text-gray-500">
+                          <th className="text-left px-2 py-1.5">工號</th>
+                          <th className="text-left px-2 py-1.5">姓名</th>
+                          <th className="text-left px-2 py-1.5">車隊</th>
+                          <th className="text-center px-2 py-1.5">身份</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.rows.slice(0, 5).map((r, i) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="px-2 py-1.5 font-mono text-blue-700 font-bold">{r.shopee_id}</td>
+                            <td className="px-2 py-1.5 text-gray-700">{r.name || <span className="text-gray-300">—</span>}</td>
+                            <td className="px-2 py-1.5 text-gray-600">{r.fleet_name || <span className="text-gray-300">—</span>}</td>
+                            <td className="px-2 py-1.5 text-center">
+                              {r.is_own_driver
+                                ? <Badge className="bg-green-100 text-green-700 text-[10px] border-0">自有</Badge>
+                                : <Badge className="bg-orange-100 text-orange-700 text-[10px] border-0">外包</Badge>}
+                            </td>
+                          </tr>
+                        ))}
+                        {importPreview.rows.length > 5 && (
+                          <tr>
+                            <td colSpan={4} className="px-2 py-1.5 text-center text-gray-400 text-[10px]">
+                              ⋯ 另有 {importPreview.rows.length - 5} 筆
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 mt-2">
+            <Button variant="outline" size="sm" className="text-xs"
+              onClick={() => setImportPreview(null)} disabled={importLoading}>
+              取消
+            </Button>
+            <Button size="sm" className="text-xs bg-blue-600 hover:bg-blue-700 min-w-[100px]"
+              onClick={doImport} disabled={importLoading}>
+              {importLoading
+                ? <><span className="animate-spin mr-1">⏳</span>匯入中…</>
+                : `確認匯入 ${importPreview?.rows.length ?? 0} 筆`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── ShopeeDriver New/Edit Dialog ─── */}
       <Dialog open={!!driverDialog} onOpenChange={(o) => { if (!o) setDriverDialog(null); }}>
