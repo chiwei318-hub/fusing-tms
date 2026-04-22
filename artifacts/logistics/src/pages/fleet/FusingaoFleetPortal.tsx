@@ -212,7 +212,7 @@ export default function FusingaoFleetPortal() {
     } else {
       setMainImportMsg(`❌ ${d.error}`);
     }
-  }, [fleetId, mainImportSelected, mainImportQ, loadDrivers, searchMainDrivers]); // eslint-disable-line
+  }, [fleetId, mainImportSelected, mainImportQ, searchMainDrivers]); // eslint-disable-line
 
   // ── Payroll state ──────────────────────────────────────────────────────────
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
