@@ -408,7 +408,15 @@ export default function DriverEarningsTab() {
       }).then(x => x.json());
 
       if (r.ok) {
-        toast({ title: `匯入成功：${r.inserted} 筆` });
+        const fleetMsg = r.fleet_assigned > 0
+          ? `，自動分配 ${r.fleet_assigned} 人至對應車隊`
+          : "";
+        toast({
+          title: `匯入成功：${r.inserted} 筆${fleetMsg}`,
+          description: r.fleet_assigned > 0
+            ? r.fleet_details.map((d: any) => `${d.shopee_id} → ${d.fleet_name}`).join("、")
+            : undefined,
+        });
         await loadShopeeDrivers();
         await loadEarnings();
       } else {

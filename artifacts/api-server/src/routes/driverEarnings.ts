@@ -211,7 +211,7 @@ driverEarningsRouter.post("/shopee-drivers", async (req, res) => {
   }
 });
 
-// POST /driver-earnings/shopee-drivers/import — bulk upsert from Excel
+// POST /driver-earnings/shopee-drivers/import — bulk upsert from Excel + auto-assign to fleet_drivers
 // NOTE: must be before /:shopee_id to avoid routing conflict
 driverEarningsRouter.post("/shopee-drivers/import", async (req, res) => {
   try {
@@ -221,9 +221,21 @@ driverEarningsRouter.post("/shopee-drivers/import", async (req, res) => {
     }> };
     if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ ok: false, error: "rows 必填" });
 
+    // Pre-load all existing fleets (id, fleet_name) for fast matching
+    const fleetsRes = await db.execute(sql`SELECT id, fleet_name FROM fusingao_fleets WHERE is_active = true`);
+    const fleetMap = new Map<string, number>(); // fleet_name → fleet_id
+    for (const f of fleetsRes.rows as any[]) {
+      if (f.fleet_name) fleetMap.set(String(f.fleet_name).trim(), Number(f.id));
+    }
+
     let inserted = 0;
+    let fleet_assigned = 0;
+    const fleet_details: Array<{ shopee_id: string; fleet_name: string }> = [];
+
     for (const r of rows) {
       if (!r.shopee_id) continue;
+
+      // 1. Upsert into shopee_drivers
       await db.execute(sql`
         INSERT INTO shopee_drivers (shopee_id, name, vehicle_plate, vehicle_type, fleet_name, is_own_driver, notes)
         VALUES (${r.shopee_id}, ${r.name ?? null}, ${r.vehicle_plate ?? null}, ${r.vehicle_type ?? null},
@@ -238,8 +250,40 @@ driverEarningsRouter.post("/shopee-drivers/import", async (req, res) => {
               updated_at    = NOW()
       `);
       inserted++;
+
+      // 2. Auto-assign to fleet_drivers if fleet_name matches an existing fleet
+      const trimmedFleet = r.fleet_name?.trim();
+      if (trimmedFleet && fleetMap.has(trimmedFleet)) {
+        const fleetId = fleetMap.get(trimmedFleet)!;
+        // Check if already exists in fleet_drivers for this fleet
+        const existing = await db.execute(sql`
+          SELECT id FROM fleet_drivers
+          WHERE fleet_id = ${fleetId} AND employee_id = ${r.shopee_id}
+          LIMIT 1
+        `);
+        if ((existing.rows as any[]).length === 0) {
+          // Insert new fleet_drivers record
+          await db.execute(sql`
+            INSERT INTO fleet_drivers (fleet_id, name, vehicle_plate, vehicle_type, employee_id, is_active)
+            VALUES (${fleetId}, ${r.name ?? null}, ${r.vehicle_plate ?? null}, ${r.vehicle_type ?? null},
+                    ${r.shopee_id}, true)
+          `);
+          fleet_assigned++;
+          fleet_details.push({ shopee_id: r.shopee_id, fleet_name: trimmedFleet });
+        } else {
+          // Update existing fleet_drivers record with latest info
+          await db.execute(sql`
+            UPDATE fleet_drivers
+            SET name          = COALESCE(${r.name ?? null}, name),
+                vehicle_plate = COALESCE(${r.vehicle_plate ?? null}, vehicle_plate),
+                vehicle_type  = COALESCE(${r.vehicle_type ?? null}, vehicle_type)
+            WHERE fleet_id = ${fleetId} AND employee_id = ${r.shopee_id}
+          `);
+        }
+      }
     }
-    res.json({ ok: true, inserted });
+
+    res.json({ ok: true, inserted, fleet_assigned, fleet_details });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
