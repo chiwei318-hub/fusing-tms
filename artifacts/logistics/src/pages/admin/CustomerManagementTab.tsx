@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
   Building2, Phone, MapPin, Star, AlertTriangle, Plus, Trash2,
   Download, Search, X, RefreshCw, Edit, UserX, CheckCircle2,
   CreditCard, FileText, Package, Clock, TrendingUp, Users, Zap,
-  Upload, FileSpreadsheet, CheckCircle, XCircle,
+  Upload, FileSpreadsheet, CheckCircle, XCircle, Tag, DollarSign,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -83,6 +83,25 @@ function LevelBadge({ level }: { level: string }) {
 
 // ─── Customer Form Dialog ─────────────────────────────────────────────────────
 
+interface PriceRow {
+  routeFrom: string; routeTo: string; vehicleType: string;
+  unit: string; unitPrice: string; minCharge: string; notes: string;
+}
+
+const EMPTY_PRICE_ROW: PriceRow = {
+  routeFrom: "", routeTo: "", vehicleType: "",
+  unit: "per_trip", unitPrice: "", minCharge: "", notes: "",
+};
+
+const UNIT_OPTIONS = [
+  { value: "per_trip", label: "趟" },
+  { value: "per_km",   label: "公里" },
+  { value: "per_ton",  label: "噸" },
+  { value: "per_cbm",  label: "立方" },
+  { value: "per_day",  label: "天" },
+  { value: "per_hour", label: "小時" },
+];
+
 function CustomerFormDialog({ customer, onClose, onSave }: {
   customer: Customer | null; onClose: () => void; onSave: () => void;
 }) {
@@ -113,8 +132,46 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
     orderNoPrefix: customer?.order_no_prefix ?? "",
   });
   const [loading, setLoading] = useState(false);
+  const [priceRows, setPriceRows] = useState<PriceRow[]>([{ ...EMPTY_PRICE_ROW }]);
+  const [existingQuoteId, setExistingQuoteId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!customer?.id) return;
+    fetch(`${API}/contract-quotes?customerId=${customer.id}&validOnly=1`)
+      .then(r => r.json())
+      .then(async (quotes: any[]) => {
+        if (!Array.isArray(quotes) || quotes.length === 0) return;
+        const firstQuote = quotes[0];
+        setExistingQuoteId(firstQuote.id);
+        const detail = await fetch(`${API}/contract-quotes/${firstQuote.id}`).then(r => r.json());
+        if (detail.items?.length) {
+          setPriceRows(detail.items.map((item: any) => ({
+            routeFrom: item.route_from || "",
+            routeTo: item.route_to || "",
+            vehicleType: item.vehicle_type || "",
+            unit: item.unit || "per_trip",
+            unitPrice: String(item.unit_price || ""),
+            minCharge: String(item.min_charge || ""),
+            notes: item.notes || "",
+          })));
+        }
+      })
+      .catch(() => {});
+  }, [customer?.id]);
 
   function f(k: keyof typeof form, v: any) { setForm(prev => ({ ...prev, [k]: v })); }
+
+  function updatePriceRow(idx: number, field: keyof PriceRow, val: string) {
+    setPriceRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+
+  function addPriceRow() {
+    setPriceRows(prev => [...prev, { ...EMPTY_PRICE_ROW }]);
+  }
+
+  function removePriceRow(idx: number) {
+    setPriceRows(prev => prev.filter((_, i) => i !== idx));
+  }
 
   async function submit() {
     setLoading(true);
@@ -128,7 +185,55 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast({ title: isNew ? "客戶已建立" : "資料已更新" });
+
+      const savedName = form.name;
+      const savedId = isNew ? (data as any).id : customer!.id;
+      const validPriceRows = priceRows.filter(r => r.unitPrice && parseFloat(r.unitPrice) > 0);
+
+      if (validPriceRows.length > 0) {
+        if (existingQuoteId) {
+          // Update existing quote's items via PUT
+          const currentQuote = await fetch(`${API}/contract-quotes/${existingQuoteId}`).then(r => r.json());
+          const items = validPriceRows.map((r, idx) => ({
+            routeFrom: r.routeFrom, routeTo: r.routeTo, vehicleType: r.vehicleType,
+            cargoType: "", unit: r.unit,
+            unitPrice: parseFloat(r.unitPrice) || 0, minCharge: parseFloat(r.minCharge) || 0,
+            notes: r.notes, sortOrder: idx,
+          }));
+          const pr = await fetch(`${API}/contract-quotes/${existingQuoteId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerId: savedId,
+              customerName: savedName,
+              title: currentQuote.title || `${savedName} 固定報價`,
+              status: "confirmed",
+              quoteDate: currentQuote.quote_date || new Date().toISOString().slice(0, 10),
+              validFrom: currentQuote.valid_from || "",
+              validTo: currentQuote.valid_to || "",
+              items,
+            }),
+          });
+          if (!pr.ok) throw new Error((await pr.json()).error);
+        } else {
+          // Create new confirmed quote via bulk-import
+          const rows = validPriceRows.map(r => ({
+            customerName: savedName, title: `${savedName} 固定報價`,
+            validFrom: "", validTo: "",
+            routeFrom: r.routeFrom, routeTo: r.routeTo,
+            vehicleType: r.vehicleType, cargoType: "",
+            unit: r.unit, unitPrice: r.unitPrice,
+            minCharge: r.minCharge, itemNotes: r.notes, notes: "",
+          }));
+          const pr = await fetch(`${API}/contract-quotes/bulk-import`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows }),
+          });
+          if (!pr.ok) throw new Error((await pr.json()).error);
+        }
+      }
+
+      toast({ title: isNew ? "客戶已建立" : "資料已更新", description: validPriceRows.length > 0 ? `同時儲存 ${validPriceRows.length} 筆固定報價` : undefined });
       onSave();
     } catch (e: any) {
       toast({ title: "操作失敗", description: e.message, variant: "destructive" });
@@ -293,6 +398,90 @@ function CustomerFormDialog({ customer, onClose, onSave }: {
               <Textarea className="mt-1 text-sm" rows={3} value={form.notes} onChange={e => f("notes", e.target.value)} />
             </div>
           </div>
+        </div>
+
+        {/* ── 固定報價 ── */}
+        <div className="border-t pt-4 mt-1">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Tag className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">固定報價（合約運費）</span>
+              <span className="text-[10px] text-muted-foreground font-normal">下單時自動帶入，空白單價列不儲存</span>
+            </div>
+            <Button type="button" size="sm" variant="outline"
+              className="h-7 px-2.5 text-xs gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              onClick={addPriceRow}>
+              <Plus className="w-3 h-3" /> 新增一列
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white">
+                  {["起點","迄點","車型","計費單位","單價（元）","最低收費（元）","備註",""].map(h => (
+                    <th key={h} className="px-2 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {priceRows.map((row, idx) => (
+                  <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="px-1.5 py-1.5">
+                      <Input className="h-7 text-xs border-gray-200 w-24" placeholder="例：台北" value={row.routeFrom}
+                        onChange={e => updatePriceRow(idx, "routeFrom", e.target.value)} />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <Input className="h-7 text-xs border-gray-200 w-24" placeholder="例：台中" value={row.routeTo}
+                        onChange={e => updatePriceRow(idx, "routeTo", e.target.value)} />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <Input className="h-7 text-xs border-gray-200 w-24" placeholder="例：廂型3.5T" value={row.vehicleType}
+                        onChange={e => updatePriceRow(idx, "vehicleType", e.target.value)} />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <Select value={row.unit} onValueChange={v => updatePriceRow(idx, "unit", v)}>
+                        <SelectTrigger className="h-7 text-xs border-gray-200 w-20"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {UNIT_OPTIONS.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <Input className="h-7 text-xs border-gray-200 w-24 pl-5 font-semibold text-emerald-700"
+                          type="number" min="0" placeholder="0" value={row.unitPrice}
+                          onChange={e => updatePriceRow(idx, "unitPrice", e.target.value)} />
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <Input className="h-7 text-xs border-gray-200 w-24 pl-5" type="number" min="0" placeholder="0"
+                          value={row.minCharge} onChange={e => updatePriceRow(idx, "minCharge", e.target.value)} />
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <Input className="h-7 text-xs border-gray-200 w-28" placeholder="備註（選填）" value={row.notes}
+                        onChange={e => updatePriceRow(idx, "notes", e.target.value)} />
+                    </td>
+                    <td className="px-1.5 py-1.5 text-center">
+                      <button type="button" onClick={() => removePriceRow(idx)}
+                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {priceRows.length === 0 && (
+                  <tr><td colSpan={8} className="py-4 text-center text-xs text-gray-400">尚未設定固定報價，點「新增一列」開始新增</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            ＊ 儲存後報價自動設為「已確認」狀態，可在「報價管理」中檢視及調整。
+          </p>
         </div>
 
         <DialogFooter>
