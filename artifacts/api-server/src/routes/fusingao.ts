@@ -934,6 +934,67 @@ fusingaoRouter.post("/fleets/:id/import-main-drivers", async (req, res) => {
   }
 });
 
+// GET /fusingao/fleets/:id/available-shopee-drivers — search shopee_drivers for import
+fusingaoRouter.get("/fleets/:id/available-shopee-drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { q } = req.query as Record<string,string>;
+    const qParam = q ? `%${q}%` : "%";
+    const rows = await pool.query(`
+      SELECT sd.shopee_id, sd.name, sd.vehicle_plate, sd.vehicle_type, sd.fleet_name, sd.is_own_driver, sd.notes
+      FROM shopee_drivers sd
+      WHERE sd.name ILIKE $1
+         OR sd.shopee_id ILIKE $1
+      ORDER BY sd.shopee_id ASC
+      LIMIT 200
+    `, [qParam]);
+    // Mark already imported (by employee_id matching shopee_id)
+    const existingRes = await pool.query(
+      `SELECT employee_id FROM fleet_drivers WHERE fleet_id=$1 AND employee_id IS NOT NULL`,
+      [Number(id)]
+    );
+    const existingIds = new Set(existingRes.rows.map((r: any) => r.employee_id));
+    const drivers = rows.rows.map((d: any) => ({
+      ...d,
+      already_imported: existingIds.has(d.shopee_id),
+    }));
+    res.json({ ok: true, drivers });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/import-shopee-drivers — batch import from shopee_drivers table
+fusingaoRouter.post("/fleets/:id/import-shopee-drivers", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { shopee_ids } = req.body as { shopee_ids: string[] };
+    if (!shopee_ids?.length) return res.status(400).json({ ok: false, error: "shopee_ids 不可為空" });
+
+    const placeholders = shopee_ids.map((_: any, i: number) => `$${i+1}`).join(",");
+    const driverRows = await pool.query(
+      `SELECT shopee_id, name, vehicle_plate, vehicle_type FROM shopee_drivers WHERE shopee_id = ANY(ARRAY[${placeholders}]::text[])`,
+      shopee_ids
+    );
+    let inserted = 0;
+    for (const d of driverRows.rows as any[]) {
+      const exists = await pool.query(
+        `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND employee_id=$2`,
+        [Number(id), d.shopee_id]
+      );
+      if (exists.rows.length > 0) continue;
+      await pool.query(`
+        INSERT INTO fleet_drivers (fleet_id, name, vehicle_plate, vehicle_type, employee_id, is_active)
+        VALUES ($1,$2,$3,$4,$5,true)
+      `, [Number(id), d.name ?? null, d.vehicle_plate ?? null, d.vehicle_type ?? "一般", d.shopee_id]);
+      inserted++;
+    }
+    res.json({ ok: true, inserted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/fleets/:id/payroll — list monthly payroll records
 fusingaoRouter.get("/fleets/:id/payroll", async (req, res) => {
   try {
