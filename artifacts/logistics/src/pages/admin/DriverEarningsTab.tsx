@@ -119,6 +119,11 @@ export default function DriverEarningsTab() {
   const [deletingDriverId, setDeletingDriverId] = useState<string | null>(null);
   const driverImportRef = useRef<HTMLInputElement>(null);
 
+  // Driver filter state
+  const [driverSearchQ, setDriverSearchQ] = useState("");
+  const [driverFleetFilter, setDriverFleetFilter] = useState<string>("全部");
+  const [driverOwnerFilter, setDriverOwnerFilter] = useState<string>("全部");
+
   const loadEarnings = useCallback(async () => {
     setLoading(true);
     try {
@@ -832,6 +837,90 @@ export default function DriverEarningsTab() {
             <span className="ml-auto text-xs text-gray-400">{shopeeDrivers.length} 名司機</span>
           </div>
 
+          {/* Filter bar */}
+          {(() => {
+            const fleetNames = Array.from(new Set(
+              shopeeDrivers.map(d => d.fleet_name?.trim()).filter(Boolean) as string[]
+            )).sort();
+            const filteredDrivers = shopeeDrivers.filter(sd => {
+              const q = driverSearchQ.toLowerCase();
+              const matchQ = !q || (sd.shopee_id?.toLowerCase().includes(q)) || (sd.name?.toLowerCase().includes(q));
+              const matchFleet = driverFleetFilter === "全部"
+                || (driverFleetFilter === "(未分類)" ? !sd.fleet_name?.trim() : sd.fleet_name?.trim() === driverFleetFilter);
+              const matchOwner = driverOwnerFilter === "全部"
+                || (driverOwnerFilter === "自有" && sd.is_own_driver)
+                || (driverOwnerFilter === "外包" && !sd.is_own_driver);
+              return matchQ && matchFleet && matchOwner;
+            });
+
+            return (
+              <>
+                {/* Search + owner filter row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[160px]">
+                    <input
+                      className="w-full border border-gray-200 rounded-lg text-xs px-3 py-1.5 pl-7 outline-none focus:border-blue-400"
+                      placeholder="搜尋工號 / 姓名…"
+                      value={driverSearchQ}
+                      onChange={e => setDriverSearchQ(e.target.value)}
+                    />
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[11px]">🔍</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {(["全部","自有","外包"] as const).map(v => (
+                      <button key={v}
+                        onClick={() => setDriverOwnerFilter(v)}
+                        className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors
+                          ${driverOwnerFilter === v
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"}`}>
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-gray-400 ml-auto">
+                    顯示 {filteredDrivers.length} / {shopeeDrivers.length} 名
+                  </span>
+                </div>
+
+                {/* Fleet chips */}
+                {fleetNames.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="text-xs text-gray-400 mr-1">車隊：</span>
+                    <button
+                      onClick={() => setDriverFleetFilter("全部")}
+                      className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors
+                        ${driverFleetFilter === "全部"
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300"}`}>
+                      全部車隊 ({shopeeDrivers.length})
+                    </button>
+                    {fleetNames.map(fn => {
+                      const count = shopeeDrivers.filter(d => d.fleet_name?.trim() === fn).length;
+                      return (
+                        <button key={fn}
+                          onClick={() => setDriverFleetFilter(fn)}
+                          className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors
+                            ${driverFleetFilter === fn
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}>
+                          {fn} ({count})
+                        </button>
+                      );
+                    })}
+                    {shopeeDrivers.filter(d => !d.fleet_name?.trim()).length > 0 && (
+                      <button
+                        onClick={() => setDriverFleetFilter("(未分類)")}
+                        className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors
+                          ${driverFleetFilter === "(未分類)"
+                            ? "bg-gray-500 text-white border-gray-500"
+                            : "bg-white text-gray-400 border-gray-200 hover:border-gray-400"}`}>
+                        未分類 ({shopeeDrivers.filter(d => !d.fleet_name?.trim()).length})
+                      </button>
+                    )}
+                  </div>
+                )}
+
           {/* Table */}
           <Card>
             <CardContent className="p-0">
@@ -844,14 +933,14 @@ export default function DriverEarningsTab() {
                       <th className="text-left px-3 py-2">車號（車牌）</th>
                       <th className="text-left px-3 py-2">車型</th>
                       <th className="text-left px-3 py-2">所屬車隊</th>
-                      <th className="text-center px-3 py-2">自家司機</th>
+                      <th className="text-center px-3 py-2">身份</th>
                       <th className="text-left px-3 py-2">備註</th>
                       <th className="text-right px-3 py-2">跑單數</th>
                       <th className="px-3 py-2 w-20 text-center">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {shopeeDrivers.map((sd) => (
+                    {filteredDrivers.map((sd) => (
                       <tr key={sd.shopee_id} className="border-b hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono font-bold text-blue-700">{sd.shopee_id}</td>
                         <td className="px-3 py-2 text-gray-700 font-medium">
@@ -870,8 +959,8 @@ export default function DriverEarningsTab() {
                         <td className="px-3 py-2 text-gray-600">{sd.fleet_name || <span className="text-gray-300">—</span>}</td>
                         <td className="px-3 py-2 text-center">
                           {sd.is_own_driver
-                            ? <Badge className="bg-green-100 text-green-700 text-[10px] border-0">自家</Badge>
-                            : <span className="text-gray-300">—</span>}
+                            ? <Badge className="bg-green-100 text-green-700 text-[10px] border-0">自有</Badge>
+                            : <Badge className="bg-orange-100 text-orange-700 text-[10px] border-0">外包</Badge>}
                         </td>
                         <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate" title={sd.notes ?? undefined}>
                           {sd.notes || <span className="text-gray-300">—</span>}
@@ -897,10 +986,10 @@ export default function DriverEarningsTab() {
                         </td>
                       </tr>
                     ))}
-                    {shopeeDrivers.length === 0 && (
+                    {filteredDrivers.length === 0 && (
                       <tr>
                         <td colSpan={9} className="px-3 py-8 text-center text-gray-400">
-                          尚無司機資料，請點「新增司機」或「匯入 Excel」
+                          {shopeeDrivers.length === 0 ? "尚無司機資料，請點「新增司機」或「匯入 Excel」" : "沒有符合篩選條件的司機"}
                         </td>
                       </tr>
                     )}
@@ -910,9 +999,12 @@ export default function DriverEarningsTab() {
             </CardContent>
           </Card>
 
-          <p className="text-xs text-gray-400">
-            💡 Excel 匯入欄位：工號、姓名、車號、車型、車隊、自家司機（是/否）、備註（支援中英文表頭，可覆蓋更新）
-          </p>
+              <p className="text-xs text-gray-400">
+                💡 Excel 匯入欄位：工號、姓名、車號、車型、車隊、自家司機（是/否）、備註（支援中英文表頭，可覆蓋更新）
+              </p>
+            </>
+          );
+          })()}
         </div>
       )}
 
