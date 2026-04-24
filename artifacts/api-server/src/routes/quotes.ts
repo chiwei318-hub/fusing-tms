@@ -152,6 +152,74 @@ quotesRouter.patch("/quotes/:token", async (req, res) => {
   }
 });
 
+// ── 車型預設費率表（可被前端 /pricing/vehicle-rates 覆寫） ─────────────────────
+const VEHICLE_PRESETS: Record<string, { mpg: number; maintRate: number; depreRate: number; driverPay: number }> = {
+  "1.75T": { mpg: 10.0, maintRate: 2.0,  depreRate: 3.0,  driverPay: 800  },
+  "3.5T":  { mpg: 7.0,  maintRate: 3.5,  depreRate: 4.8,  driverPay: 1200 },
+  "11T":   { mpg: 4.5,  maintRate: 6.0,  depreRate: 6.75, driverPay: 2000 },
+  "26T":   { mpg: 2.8,  maintRate: 10.0, depreRate: 11.25,driverPay: 3000 },
+};
+
+// POST /api/quotes/net-profit — 精準淨利計算（對應 calculateNetProfit 函式）
+// Body: { orderData: { distance, quote, driverPay? }, vehicleData: { mpg, maintRate, depreRate }, fuelPrice? }
+// 或:   { orderData: { distance, quote, vehicleType? }, fuelPrice? }  ← 使用預設費率
+quotesRouter.post("/quotes/net-profit", (req, res) => {
+  const { orderData, vehicleData: rawVehicle, fuelPrice = 28.5 } = req.body ?? {};
+
+  if (!orderData?.distance) {
+    return res.status(400).json({ error: "需要 orderData.distance" });
+  }
+
+  const { distance, quote = 0, driverPay, vehicleType } = orderData;
+
+  // 取得車型參數：優先 body 傳入，否則用 preset
+  const preset = VEHICLE_PRESETS[vehicleType ?? "3.5T"] ?? VEHICLE_PRESETS["3.5T"];
+  const vd = { ...preset, ...(rawVehicle ?? {}) };
+  const { mpg, maintRate, depreRate } = vd;
+  const dp = driverPay ?? vd.driverPay;
+
+  if (!mpg || mpg <= 0) {
+    return res.status(400).json({ error: "vehicleData.mpg 必須大於 0" });
+  }
+
+  // ── calculateNetProfit 核心公式（忠實移植） ─────────────────────────────────
+  const variableCost       = (distance * fuelPrice) / mpg;   // 油費
+  const maintenanceBuffer  = distance * maintRate;            // 維修緩衝
+  const depreciation       = distance * depreRate;            // 每km折舊
+  const totalCost          = variableCost + maintenanceBuffer + depreciation + dp;
+  const netProfit          = quote - totalCost;
+  const marginPct          = quote > 0 ? (netProfit / quote) * 100 : 0;
+
+  // 最低建議報價（目標 20% 利潤率）
+  const minQuote20 = totalCost / 0.80;
+
+  const verdict =
+    marginPct >= 20 && netProfit > 1500 ? "accept"
+    : netProfit > 0                     ? "marginal"
+    :                                     "reject";
+
+  return res.json({
+    ok: true,
+    netProfit:   Math.round(netProfit),
+    totalCost:   Math.round(totalCost),
+    marginPct:   Math.round(marginPct * 10) / 10,
+    minQuote20:  Math.round(minQuote20),
+    verdict,
+    breakdown: {
+      variableCost:      Math.round(variableCost),
+      maintenanceBuffer: Math.round(maintenanceBuffer),
+      depreciation:      Math.round(depreciation),
+      driverPay:         Math.round(dp),
+    },
+    inputs: { distance, fuelPrice, mpg, maintRate, depreRate, driverPay: dp },
+  });
+});
+
+// GET /api/quotes/net-profit/presets — 車型預設費率（供前端使用）
+quotesRouter.get("/quotes/net-profit/presets", (_req, res) => {
+  return res.json({ ok: true, presets: VEHICLE_PRESETS });
+});
+
 // GET /api/pricing/vehicle-rates — get per-vehicle rate cards (public read)
 quotesRouter.get("/pricing/vehicle-rates", async (req, res) => {
   try {

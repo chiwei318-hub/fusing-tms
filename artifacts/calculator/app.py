@@ -5,10 +5,11 @@ import math
 st.set_page_config(page_title="富詠運輸系統", layout="wide")
 
 TRUCK_TYPES = {
-    "1.75噸(小發財)":    {"fuel_eff": 10.0, "wear_cost": 2.0,  "wage_base": 800},
-    "3.5噸(堅達)":       {"fuel_eff": 7.0,  "wear_cost": 3.5,  "wage_base": 1200},
-    "11噸(大貨車)":      {"fuel_eff": 4.5,  "wear_cost": 6.0,  "wage_base": 2000},
-    "26噸(聯結車/鷗翼)": {"fuel_eff": 2.8,  "wear_cost": 10.0, "wage_base": 3000},
+    #  fuel_eff = km/L,  wear_cost = 維修保養元/km,  depreRate = 每km折舊元,  wage_base = 日薪
+    "1.75噸(小發財)":    {"fuel_eff": 10.0, "wear_cost": 2.0,  "depreRate": 3.00,  "wage_base": 800},
+    "3.5噸(堅達)":       {"fuel_eff": 7.0,  "wear_cost": 3.5,  "depreRate": 4.80,  "wage_base": 1200},
+    "11噸(大貨車)":      {"fuel_eff": 4.5,  "wear_cost": 6.0,  "depreRate": 6.75,  "wage_base": 2000},
+    "26噸(聯結車/鷗翼)": {"fuel_eff": 2.8,  "wear_cost": 10.0, "depreRate": 11.25, "wage_base": 3000},
 }
 
 REGIONS = ["基隆市", "台北市", "新北市", "桃園市", "新竹縣市", "苗栗縣",
@@ -289,6 +290,15 @@ with tab_profit:
         "報價不能只看里程——變動成本（油耗、維修）與固定成本（折舊、保險、牌照稅）都必須量化進去。"
     )
 
+    # ── 計算模式切換 ─────────────────────────────────────────────────────────
+    calc_mode = st.radio(
+        "計算模式",
+        ["📅 月攤提法（完整財務模型）", "🏎️ 每公里費率法（快速精算）"],
+        horizontal=True, key="p_mode",
+        help="月攤提法：依車輛購置成本、折舊年限、保費精算。每公里費率法：用 depreRate 直接乘里程，適合快速報價。"
+    )
+    use_per_km = calc_mode.startswith("🏎️")
+
     # ── 第一區：車型 & 里程 & 油價 ─────────────────────────────────────────
     st.markdown("#### 🚛 基本行程設定")
     bc1, bc2, bc3 = st.columns(3)
@@ -301,10 +311,8 @@ with tab_profit:
 
     tcfg = TRUCK_TYPES[p_truck]
 
-    # ── 第二區：固定成本設定（每月攤提） ────────────────────────────────────
+    # ── 第二區：固定成本設定（依模式分流） ──────────────────────────────────
     st.markdown("---")
-    st.markdown("#### 🏢 固定成本設定（每月攤提至每趟）")
-    st.caption("折舊、保險、牌照稅為月固定支出，依本月趟次均攤至每一趟。")
 
     FIXED_DEFAULTS = {
         "1.75噸(小發財)":    {"vp": 800_000,   "dep": 8,  "ins": 30_000,  "lic": 6_000,  "trips": 25},
@@ -314,18 +322,49 @@ with tab_profit:
     }
     fd = FIXED_DEFAULTS[p_truck]
 
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        vehicle_price  = st.number_input("車輛取得成本（元）",   value=fd["vp"],  step=100_000, key="p_vp")
-        dep_years      = st.number_input("折舊年限（年）",        value=fd["dep"], min_value=1,  max_value=20, key="p_dy")
-        residual_pct   = st.slider("殘值比例（%）", 0, 40, 10, key="p_res") / 100
-    with fc2:
-        annual_ins     = st.number_input("年保險費（元）",        value=fd["ins"], step=5_000, key="p_ins")
-        annual_lic     = st.number_input("年牌照稅/燃料稅（元）", value=fd["lic"], step=1_000, key="p_lic")
-    with fc3:
-        monthly_trips  = st.number_input("本月預估趟次",          value=fd["trips"], min_value=1, max_value=200, key="p_trips")
-        monthly_other  = st.number_input("其他月固定費用（元）",  value=0, step=500, key="p_other",
-                                          help="如停車費、管理費等月固定支出")
+    if use_per_km:
+        # ── 模式 B：每公里費率法 ─────────────────────────────────────────────
+        st.markdown("#### 🏎️ 每公里費率設定")
+        st.caption("直接以元/km 計算，公式：`variableCost = distance × fuelPrice ÷ mpg`  `depreciation = distance × depreRate`")
+        km1, km2, km3 = st.columns(3)
+        with km1:
+            p_maint_rate = st.number_input(
+                "維修保養費率（元/km）", value=float(tcfg["wear_cost"]), step=0.5, key="p_mrate",
+                help="maintRate：每公里維修保養緩衝費")
+        with km2:
+            p_depre_rate = st.number_input(
+                "每公里折舊率（元/km）", value=float(tcfg["depreRate"]), step=0.25, key="p_drate",
+                help="depreRate：依車輛殘值與年公里數推算，系統預設已填入")
+        with km3:
+            st.info(
+                f"📐 **{p_truck} 車型預設**\n\n"
+                f"- 油耗：{tcfg['fuel_eff']} km/L\n"
+                f"- 維修：{tcfg['wear_cost']} 元/km\n"
+                f"- 折舊：{tcfg['depreRate']} 元/km"
+            )
+        # 讓月攤提法的變數有安全預設值
+        vehicle_price = fd["vp"]; dep_years = fd["dep"]; residual_pct = 0.10
+        annual_ins = fd["ins"]; annual_lic = fd["lic"]
+        monthly_trips = fd["trips"]; monthly_other = 0
+    else:
+        # ── 模式 A：月攤提法 ─────────────────────────────────────────────────
+        st.markdown("#### 🏢 固定成本設定（每月攤提至每趟）")
+        st.caption("折舊、保險、牌照稅為月固定支出，依本月趟次均攤至每一趟。")
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            vehicle_price  = st.number_input("車輛取得成本（元）",   value=fd["vp"],  step=100_000, key="p_vp")
+            dep_years      = st.number_input("折舊年限（年）",        value=fd["dep"], min_value=1,  max_value=20, key="p_dy")
+            residual_pct   = st.slider("殘值比例（%）", 0, 40, 10, key="p_res") / 100
+        with fc2:
+            annual_ins     = st.number_input("年保險費（元）",        value=fd["ins"], step=5_000, key="p_ins")
+            annual_lic     = st.number_input("年牌照稅/燃料稅（元）", value=fd["lic"], step=1_000, key="p_lic")
+        with fc3:
+            monthly_trips  = st.number_input("本月預估趟次",          value=fd["trips"], min_value=1, max_value=200, key="p_trips")
+            monthly_other  = st.number_input("其他月固定費用（元）",  value=0, step=500, key="p_other",
+                                              help="如停車費、管理費等月固定支出")
+        # 讓每公里法的變數有安全預設值
+        p_maint_rate = tcfg["wear_cost"]
+        p_depre_rate = tcfg["depreRate"]
 
     # ── 第三區：人工成本 ─────────────────────────────────────────────────────
     st.markdown("---")
@@ -339,26 +378,37 @@ with tab_profit:
         wait_rate      = st.number_input("等候費率（元/小時）",   value=200, step=50, key="p_wrate")
 
     # ══════════════════════════════════════════════════
-    # 核心公式計算
+    # 核心公式計算（依模式分流）
     # ══════════════════════════════════════════════════
 
-    # 1. 變動成本
-    fuel_cost_p    = (p_fuel * p_distance) / tcfg["fuel_eff"]   # 油費 = 油價 × 距離 / 油耗
-    wear_cost_p    = tcfg["wear_cost"] * p_distance              # 維修折耗 = 每km費率 × 距離
-    variable_total = fuel_cost_p + wear_cost_p
+    # 1. 油費（兩種模式相同）
+    fuel_cost_p = (p_fuel * p_distance) / tcfg["fuel_eff"]   # variableCost = distance × fuelPrice / mpg
 
-    # 2. 固定成本（月→趟攤提）
-    depreciable    = vehicle_price * (1 - residual_pct)
-    monthly_dep    = depreciable / (dep_years * 12)
-    monthly_ins_m  = annual_ins / 12
-    monthly_lic_m  = annual_lic / 12
-    fixed_per_trip = (monthly_dep + monthly_ins_m + monthly_lic_m + monthly_other) / monthly_trips
+    if use_per_km:
+        # ── 模式 B：每公里費率法（忠實移植 calculateNetProfit） ─────────────
+        maintenance_buffer = p_distance * p_maint_rate        # maintenanceBuffer = distance × maintRate
+        depreciation_km    = p_distance * p_depre_rate        # depreciation      = distance × depreRate
+        variable_total     = fuel_cost_p + maintenance_buffer
+        fixed_per_trip     = depreciation_km                  # 折舊即固定欄位（每km法）
+        wear_cost_p        = maintenance_buffer               # 對齊顯示變數
+        monthly_dep = monthly_ins_m = monthly_lic_m = 0      # 月攤提在此模式為 0
+    else:
+        # ── 模式 A：月攤提法（完整財務模型） ─────────────────────────────────
+        wear_cost_p    = tcfg["wear_cost"] * p_distance
+        variable_total = fuel_cost_p + wear_cost_p
+        depreciable    = vehicle_price * (1 - residual_pct)
+        monthly_dep    = depreciable / (dep_years * 12)
+        monthly_ins_m  = annual_ins / 12
+        monthly_lic_m  = annual_lic / 12
+        fixed_per_trip = (monthly_dep + monthly_ins_m + monthly_lic_m + monthly_other) / monthly_trips
+        maintenance_buffer = wear_cost_p
+        depreciation_km    = 0
 
     # 3. 人工成本
-    labor_cost     = driver_daily + (wait_hours * wait_rate)
+    labor_cost = driver_daily + (wait_hours * wait_rate)
 
     # 4. 總成本
-    total_cost     = variable_total + fixed_per_trip + labor_cost
+    total_cost = variable_total + fixed_per_trip + labor_cost
 
     # ── 結果顯示 ─────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -375,25 +425,39 @@ with tab_profit:
         st.metric("油費",
                   f"NT$ {fuel_cost_p:,.0f}",
                   f"{p_distance}km ÷ {tcfg['fuel_eff']}L/km × {p_fuel}元")
-        st.metric("維修折耗",
-                  f"NT$ {wear_cost_p:,.0f}",
-                  f"{tcfg['wear_cost']}元/km × {p_distance}km")
+        if use_per_km:
+            st.metric("維修保養",
+                      f"NT$ {maintenance_buffer:,.0f}",
+                      f"maintRate {p_maint_rate}元/km × {p_distance}km")
+        else:
+            st.metric("維修折耗",
+                      f"NT$ {wear_cost_p:,.0f}",
+                      f"{tcfg['wear_cost']}元/km × {p_distance}km")
         st.metric("小計", f"NT$ {variable_total:,.0f}")
 
     with r2:
         st.markdown(
             "<div style='background:#2d1b69;border-radius:12px;padding:16px 18px 8px;border:1px solid #7c3aed;'>"
-            "<div style='color:#c4b5fd;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;'>🏢 固定成本攤提（每趟）</div>"
+            "<div style='color:#c4b5fd;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;'>🏢 折舊攤提</div>"
             "</div>", unsafe_allow_html=True
         )
-        st.metric("折舊攤提",
-                  f"NT$ {monthly_dep/monthly_trips:,.0f}",
-                  f"月折舊 {monthly_dep:,.0f} ÷ {monthly_trips} 趟")
-        st.metric("保險攤提",  f"NT$ {monthly_ins_m/monthly_trips:,.0f}")
-        st.metric("牌照稅攤提", f"NT$ {monthly_lic_m/monthly_trips:,.0f}")
-        if monthly_other > 0:
-            st.metric("其他攤提", f"NT$ {monthly_other/monthly_trips:,.0f}")
-        st.metric("小計", f"NT$ {fixed_per_trip:,.0f}")
+        if use_per_km:
+            # 模式 B：每km折舊
+            st.metric("每公里折舊",
+                      f"NT$ {depreciation_km:,.0f}",
+                      f"depreRate {p_depre_rate}元/km × {p_distance}km")
+            st.metric("小計", f"NT$ {fixed_per_trip:,.0f}")
+            st.caption("使用每公里費率法，保險/牌照稅已含於 depreRate 中")
+        else:
+            # 模式 A：月攤提法
+            st.metric("折舊攤提",
+                      f"NT$ {monthly_dep/monthly_trips:,.0f}",
+                      f"月折舊 {monthly_dep:,.0f} ÷ {monthly_trips} 趟")
+            st.metric("保險攤提",  f"NT$ {monthly_ins_m/monthly_trips:,.0f}")
+            st.metric("牌照稅攤提", f"NT$ {monthly_lic_m/monthly_trips:,.0f}")
+            if monthly_other > 0:
+                st.metric("其他攤提", f"NT$ {monthly_other/monthly_trips:,.0f}")
+            st.metric("小計", f"NT$ {fixed_per_trip:,.0f}")
 
     with r3:
         st.markdown(
