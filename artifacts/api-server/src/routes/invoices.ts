@@ -445,6 +445,65 @@ invoicesRouter.post("/invoices/smtp-test", async (req, res) => {
   return res.json(result);
 });
 
+// POST /api/invoices/issue — 財務儀表板快速開立發票（簡化版）
+invoicesRouter.post("/invoices/issue", async (req, res) => {
+  try {
+    const {
+      order_no, customer_name, customer_tax_id,
+      amount,
+    } = req.body as {
+      order_no?: string; customer_name?: string; customer_tax_id?: string;
+      amount?: number;
+    };
+    if (!amount || amount <= 0)
+      return res.status(400).json({ error: "金額必須大於 0" });
+    if (!customer_name)
+      return res.status(400).json({ error: "客戶名稱必填" });
+
+    const tax_amount   = Math.round(amount * 0.05);
+    const total_amount = amount + tax_amount;
+    const invoice_number = generateInvoiceNumber();
+
+    // 查 order_id（若有帶 order_no）
+    let order_id: number | null = null;
+    if (order_no) {
+      const hit = await db.execute(sql`SELECT id FROM orders WHERE order_no = ${order_no} LIMIT 1`);
+      if (hit.rows.length) order_id = (hit.rows[0] as any).id;
+    }
+
+    const r = await db.execute(sql`
+      INSERT INTO invoices
+        (order_id, buyer_name, buyer_tax_id, amount, tax_amount, total_amount,
+         invoice_number, invoice_date, status)
+      VALUES
+        (${order_id}, ${customer_name}, ${customer_tax_id ?? null},
+         ${Math.round(amount)}, ${tax_amount}, ${total_amount},
+         ${invoice_number}, TO_CHAR(CURRENT_DATE,'YYYY-MM-DD'), 'issued')
+      RETURNING id, invoice_number, amount, tax_amount, total_amount, status
+    `);
+    return res.json(r.rows[0]);
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? "開立失敗" });
+  }
+});
+
+// POST /api/invoices/:id/void-post — 前端 POST 作廢（PATCH alias）
+invoicesRouter.post("/invoices/:id/void-post", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await db.execute(sql`
+      UPDATE invoices
+         SET status = 'voided', voided_at = NOW(), notes = COALESCE(notes, '手動作廢')
+       WHERE id = ${id}
+      RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "找不到發票" });
+    return res.json(r.rows[0]);
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? "作廢失敗" });
+  }
+});
+
 // PUT /api/invoices/smtp-config — 儲存 SMTP 設定並清除快取
 invoicesRouter.put("/invoices/smtp-config", async (req, res) => {
   try {
