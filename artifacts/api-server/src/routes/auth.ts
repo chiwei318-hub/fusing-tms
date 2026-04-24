@@ -174,6 +174,39 @@ router.post("/auth/login/driver", async (req, res) => {
   }
 });
 
+// ── POST /login/driver — 手機號碼登入別名（FlutterFlow / 外部 App 用）────────
+router.post("/login/driver", async (req, res) => {
+  try {
+    const { phone, password } = req.body as { phone: string; password: string };
+    if (!phone || !password) {
+      return res.status(400).json({ error: "請提供手機號碼與密碼" });
+    }
+    const normalized = normalizePhone(phone.trim());
+    const [driver] = await db.select().from(driversTable)
+      .where(sql`replace(replace(${driversTable.phone},' ',''),'-','') = ${normalized}`);
+
+    if (!driver) return res.status(401).json({ error: "帳號或密碼不正確" });
+
+    // 相容明文與 salt:hash 兩種格式
+    const valid = driver.password
+      ? (driver.password.includes(":")
+          ? checkPassword(password, driver.password)
+          : driver.password === password)
+      : false;
+
+    if (!valid) return res.status(401).json({ error: "帳號或密碼不正確" });
+
+    const token = signJwt({ role: "driver", id: driver.id, name: driver.name, phone: driver.phone });
+    return res.json({
+      token,
+      user: { id: driver.id, role: "driver", name: driver.name, phone: driver.phone },
+    });
+  } catch (err) {
+    req.log?.error?.({ err }, "driver phone-login failed");
+    res.status(500).json({ error: "登入失敗，請稍後再試" });
+  }
+});
+
 // ── POST /auth/login/fleet ── (Fusingao sub-contractor fleet + sub-accounts) ─
 router.post("/auth/login/fleet", async (req, res) => {
   try {
