@@ -25,6 +25,7 @@ import AdminHome from "./admin/AdminHome";
 const VehicleTypeTab       = lazy(() => import("./admin/VehicleTypeTab"));
 const ReportCenter         = lazy(() => import("./admin/ReportCenter"));
 const FinanceReportsTab    = lazy(() => import("./admin/FinanceReportsTab"));
+const FinanceDashboard     = lazy(() => import("./admin/FinanceDashboard"));
 const SmartDispatchTab     = lazy(() => import("./admin/SmartDispatchTab"));
 const DispatchOptimizerTab = lazy(() => import("./admin/DispatchOptimizerTab"));
 const FranchiseHubTab      = lazy(() => import("./admin/FranchiseHubTab"));
@@ -1685,6 +1686,7 @@ export default function Admin() {
                 accent: "bg-emerald-50 border-emerald-100",
                 labelColor: "text-emerald-700",
                 items: [
+                  { value: "finance",         icon: <span className="text-sm leading-none">💹</span>,             label: "財務結算" },
                   { value: "finance-reports", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,      label: "財務報表" },
                   { value: "shopeebilling",   icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,   label: "月結對帳匯入" },
                   { value: "pnl",             icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,       label: "盈虧分析" },
@@ -4119,6 +4121,11 @@ export default function Admin() {
         {/* ===== 縣市鄉鎮 TAB ===== */}
         <TabsContent value="township" className="outline-none">
           <GloryTownshipTab />
+        </TabsContent>
+
+        {/* ===== 財務結算 TAB ===== */}
+        <TabsContent value="finance" style={{ height: "calc(100vh - 120px)", overflow: "hidden" }} className="outline-none">
+          <FinanceDashboard />
         </TabsContent>
       </Tabs>
       </Suspense>
