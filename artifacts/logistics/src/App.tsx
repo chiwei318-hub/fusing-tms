@@ -161,11 +161,7 @@ function AdminPortal() {
             <Route path="/report" component={OrderReport} />
             <Route path="/fees" component={Fees} />
             <Route path="/admin" component={Admin} />
-            <Route path="/dispatch" component={() => (
-              <div style={{ height: "calc(100dvh - 80px)", overflow: "hidden" }}>
-                <DispatchCenter />
-              </div>
-            )} />
+            <Route path="/dispatch" component={DispatchCenter} />
             <Route path="/fusingao" component={FusingaoPortal} />
             <Route component={NotFound} />
           </Switch>
