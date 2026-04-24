@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isToday, format, formatDistanceToNow } from "date-fns";
 import { zhTW } from "date-fns/locale";
 import { apiUrl } from "@/lib/api";
+import { useGpsTracking } from "@/hooks/useGpsTracking";
 
 interface RatingPerf {
   stats: {
@@ -50,6 +51,13 @@ export default function DriverHome() {
     const iv = setInterval(ping, 30_000);
     return () => clearInterval(iv);
   }, [token]);
+
+  // GPS 自動啟動：登入後立即開始，卸載時停止
+  useEffect(() => {
+    if (user?.id) startTracking();
+    return () => stopTracking();
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { data: drivers, isLoading } = useDriversData();
   const driver = drivers?.find(d => d.id === user?.id);
 
@@ -68,9 +76,20 @@ export default function DriverHome() {
   const [vehiclePerf, setVehiclePerf] = useState<VehiclePerf | null>(null);
   const [driverProfile, setDriverProfile] = useState<any | null>(null);
 
-  // GPS state
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [locationStatus, setLocationStatus] = useState<"idle" | "success" | "error">("idle");
+  // GPS 自動追蹤（useGpsTracking 每 20 秒上報一次）
+  const {
+    isTracking,
+    lastPosition,
+    error: gpsError,
+    startTracking,
+    stopTracking,
+  } = useGpsTracking(user?.id, user?.name ?? "");
+
+  // 相容舊 UI（不需改動後面的 JSX）
+  const locationLoading = isTracking && !lastPosition;
+  const locationStatus: "idle" | "success" | "error" = gpsError
+    ? "error"
+    : lastPosition ? "success" : "idle";
 
   // 搶單大廳：可搶訂單數（每 30 秒輪詢）
   const [grabCount, setGrabCount] = useState<number | null>(null);

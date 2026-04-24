@@ -1,290 +1,464 @@
-import { Link } from "wouter";
-import { format, isToday } from "date-fns";
-import { zhTW } from "date-fns/locale";
-import { Truck, MapPin, Package, Clock, ChevronRight, User, CheckCircle, Zap, Navigation, TrendingUp } from "lucide-react";
-import { useListOrders } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useDriversData } from "@/hooks/use-drivers";
+/**
+ * DriverTasks.tsx — 強化版
+ * 任務卡片：取貨 → 運送中 → 完成，一步一步引導
+ * 導航按鈕：直接開啟 Google Maps
+ * 簽收：直接確認或附帶備注
+ * 等待計時：抵達後開始計時
+ * API: POST /orders/:id/driver-action  action=checkin|complete
+ */
+
+import { useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
+import { useListOrders } from "@workspace/api-client-react";
+import { useDriversData } from "@/hooks/use-drivers";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow, isToday } from "date-fns";
+import { zhTW } from "date-fns/locale";
+import { apiUrl } from "@/lib/api";
 
-type Tab = "active" | "done";
+// ── 型別 ──────────────────────────────────────────────────────────────────────
+type TaskTab = "active" | "done";
 
-const STATUS_META: Record<string, { label: string; bg: string; text: string }> = {
-  assigned:   { label: "待取貨", bg: "bg-blue-100",   text: "text-blue-700" },
-  in_transit: { label: "運送中", bg: "bg-orange-100", text: "text-orange-700" },
-  delivered:  { label: "已完成", bg: "bg-emerald-100",text: "text-emerald-700" },
-  cancelled:  { label: "已取消", bg: "bg-gray-100",   text: "text-gray-500" },
-  pending:    { label: "待派車", bg: "bg-yellow-100", text: "text-yellow-700" },
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  assigned:   { label: "待取貨", color: "#f59e0b", bg: "rgba(245,158,11,.15)" },
+  in_transit: { label: "運送中", color: "#3b82f6", bg: "rgba(59,130,246,.15)" },
+  delivered:  { label: "已送達", color: "#10b981", bg: "rgba(16,185,129,.15)" },
+  cancelled:  { label: "已取消", color: "#ef4444", bg: "rgba(239,68,68,.15)" },
+  pending:    { label: "待確認", color: "#94a3b8", bg: "rgba(148,163,184,.12)" },
 };
 
-export default function DriverTasks() {
-  const [tab, setTab] = useState<Tab>("active");
-  const { user } = useAuth();
-  const { data: drivers } = useDriversData();
-  const selectedDriver = drivers?.find(d => d.id === user?.id);
+// 下一步動作（對應 driver-action API）
+const NEXT_ACTION: Record<string, { label: string; action: string; icon: string; color: string; bg: string }> = {
+  assigned:   { label: "抵達取貨點", action: "checkin",  icon: "📦", color: "#f59e0b", bg: "#3f2a00" },
+  in_transit: { label: "確認送達",   action: "complete", icon: "✅", color: "#10b981", bg: "#064e3b" },
+};
 
-  const { data: orders, isLoading } = useListOrders(
-    user?.id ? { driverId: user.id } : undefined,
-    { query: { enabled: !!user?.id, refetchInterval: 20000 } }
+// ── API ───────────────────────────────────────────────────────────────────────
+async function driverAction(orderId: number, action: string, extra?: Record<string, unknown>) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(apiUrl(`/orders/${orderId}/driver-action`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function openGoogleMaps(address: string) {
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+  window.open(url, "_blank");
+}
+
+// ── 主元件 ────────────────────────────────────────────────────────────────────
+export default function DriverTasks() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: drivers } = useDriversData();
+  const selectedDriver = drivers?.find((d: any) => d.id === user?.id);
+
+  const [tab,         setTab]         = useState<TaskTab>("active");
+  const [expandedId,  setExpandedId]  = useState<number | null>(null);
+  const [confirmId,   setConfirmId]   = useState<number | null>(null);
+  const [waitStart,   setWaitStart]   = useState<Record<number, Date>>({});
+
+  // ── 資料 ────────────────────────────────────────────────────────────────────
+  const { data: rawOrders } = useListOrders(
+    user?.id ? { driverId: user.id } as any : undefined,
+    { query: { enabled: !!user?.id, refetchInterval: 20_000 } }
   );
 
-  if (!user?.id) {
-    return (
-      <div className="text-center py-16 space-y-4">
-        <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto">
-          <User className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="font-bold text-foreground text-lg">請先選擇身份</p>
-          <p className="text-sm text-muted-foreground mt-1">返回首頁選擇您的司機帳號</p>
-        </div>
-        <Link href="/driver">
-          <div className="mt-2 inline-flex items-center px-6 py-3 rounded-xl bg-orange-500 text-white text-sm font-bold gap-2 shadow-lg shadow-orange-500/30">
-            <User className="w-4 h-4" /> 選擇帳號
-          </div>
-        </Link>
-      </div>
-    );
-  }
+  const orders = (rawOrders ?? []) as any[];
 
-  const allOrders = orders ?? [];
-  const activeOrders = allOrders
-    .filter(o => o.status === "assigned" || o.status === "in_transit")
-    .sort((a, b) => {
-      if (a.status === "in_transit" && b.status !== "in_transit") return -1;
-      if (a.status !== "in_transit" && b.status === "in_transit") return 1;
-      return 0;
-    });
+  const activeOrders = orders
+    .filter(o => ["assigned", "in_transit"].includes(o.status))
+    .sort((a: any, b: any) => (a.status === "in_transit" ? -1 : b.status === "in_transit" ? 1 : 0));
 
-  const doneOrders = allOrders
-    .filter(o => o.status === "delivered" || o.status === "cancelled")
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const doneOrders = orders
+    .filter((o: any) => ["delivered", "cancelled"].includes(o.status))
+    .sort((a: any, b: any) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
 
-  const todayDone = doneOrders.filter(o => o.status === "delivered" && isToday(new Date(o.updatedAt)));
-  const todayEarnings = todayDone.reduce((sum, o) => sum + (o.totalFee ?? 0), 0);
-  const weekDone = doneOrders.filter(o => o.status === "delivered").slice(0, 30);
-  const weekEarnings = weekDone.reduce((sum, o) => sum + (o.totalFee ?? 0), 0);
+  const todayDone = doneOrders.filter((o: any) =>
+    o.status === "delivered" && o.updatedAt && isToday(new Date(o.updatedAt))
+  );
+  const todayEarnings = todayDone.reduce((s: number, o: any) => s + (o.driverPay ?? o.totalFee ?? 0), 0);
+  const urgentOrder = activeOrders[0] ?? null;
 
-  const displayOrders = tab === "active" ? activeOrders : doneOrders;
+  // ── Mutation ─────────────────────────────────────────────────────────────────
+  const actionMut = useMutation({
+    mutationFn: ({ orderId, action, extra }: { orderId: number; action: string; extra?: Record<string, unknown> }) =>
+      driverAction(orderId, action, extra),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      if (vars.action === "checkin") {
+        setWaitStart(prev => ({ ...prev, [vars.orderId]: new Date() }));
+        toast({ title: "📦 已到達取貨點，開始計時" });
+      } else if (vars.action === "complete") {
+        toast({ title: "✅ 已確認送達" });
+        setConfirmId(null);
+      }
+    },
+    onError: (e: Error) => toast({ title: "更新失敗", description: e.message, variant: "destructive" }),
+  });
 
+  const handleNextStep = useCallback((order: any) => {
+    const next = NEXT_ACTION[order.status];
+    if (!next) return;
+    if (next.action === "complete") {
+      setConfirmId(order.id);
+    } else {
+      actionMut.mutate({ orderId: order.id, action: next.action });
+    }
+  }, []);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      {/* Header with driver name */}
-      <div className="flex items-center justify-between">
+    <div style={S.root}>
+
+      {/* Header */}
+      <div style={S.header}>
         <div>
-          <h1 className="text-xl font-black text-foreground">任務中心</h1>
-          {selectedDriver && (
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {selectedDriver.name} · {selectedDriver.licensePlate}
-            </p>
-          )}
+          <div style={S.title}>{selectedDriver?.name ?? user?.name ?? "司機"}</div>
+          <div style={S.sub}>任務管理</div>
         </div>
-        {activeOrders.length > 0 && (
-          <span className="inline-flex items-center gap-1 bg-orange-500 text-white text-xs font-black px-2.5 py-1 rounded-full animate-pulse">
-            <Zap className="w-3 h-3" /> {activeOrders.length} 任務中
-          </span>
+        <div style={S.statRow}>
+          <MiniStat label="進行中"   value={activeOrders.length}   color="#f59e0b" />
+          <MiniStat label="今日完成" value={todayDone.length}       color="#10b981" />
+          <MiniStat label="今日收入" value={`$${todayEarnings.toLocaleString()}`} color="#60a5fa" />
+        </div>
+      </div>
+
+      {/* 最急任務橫幅 */}
+      {urgentOrder && (
+        <div
+          style={{
+            ...S.urgentBanner,
+            background: urgentOrder.status === "in_transit"
+              ? "linear-gradient(135deg,#1e3a5f,#1e293b)"
+              : "linear-gradient(135deg,#3f2a00,#1e293b)",
+          }}
+          onClick={() => setExpandedId(urgentOrder.id)}
+        >
+          <div style={{ fontSize: 22 }}>
+            {urgentOrder.status === "in_transit" ? "🚛" : "📦"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#f8fafc" }}>
+              {urgentOrder.status === "in_transit" ? "運送中" : "待取貨"} · #{urgentOrder.id}
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {urgentOrder.status === "in_transit"
+                ? (urgentOrder.deliveryAddress ?? urgentOrder.delivery_address)
+                : (urgentOrder.pickupAddress   ?? urgentOrder.pickup_address)}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", flexShrink: 0 }}>展開 ›</div>
+        </div>
+      )}
+
+      {/* Tab 列 */}
+      <div style={S.tabBar}>
+        {(["active", "done"] as TaskTab[]).map(t => (
+          <div key={t} onClick={() => setTab(t)} style={{
+            ...S.tab,
+            color:        tab === t ? "#f59e0b" : "#475569",
+            borderBottom: `2px solid ${tab === t ? "#f59e0b" : "transparent"}`,
+          }}>
+            {t === "active" ? `進行中 · ${activeOrders.length}` : `已完成 · ${doneOrders.length}`}
+          </div>
+        ))}
+      </div>
+
+      {/* 任務列表 */}
+      <div style={S.list}>
+        {tab === "active" && (
+          <>
+            {activeOrders.length === 0 && <Empty>目前沒有進行中任務</Empty>}
+            {activeOrders.map((order: any) => (
+              <TaskCard
+                key={order.id}
+                order={order}
+                expanded={expandedId === order.id}
+                onToggle={() => setExpandedId(expandedId === order.id ? null : order.id)}
+                onNavigate={() => openGoogleMaps(
+                  order.status === "in_transit"
+                    ? (order.deliveryAddress ?? order.delivery_address ?? "")
+                    : (order.pickupAddress   ?? order.pickup_address   ?? "")
+                )}
+                onNextStep={() => handleNextStep(order)}
+                waitStart={waitStart[order.id]}
+                isUpdating={actionMut.isPending && (actionMut.variables as any)?.orderId === order.id}
+              />
+            ))}
+          </>
+        )}
+        {tab === "done" && (
+          <>
+            {doneOrders.length === 0 && <Empty>還沒有完成的任務</Empty>}
+            {doneOrders.map((order: any) => <DoneCard key={order.id} order={order} />)}
+          </>
         )}
       </div>
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-3 text-center">
-          <Zap className="w-4 h-4 text-orange-500 mx-auto mb-1" />
-          <p className="text-2xl font-black text-orange-600">{activeOrders.length}</p>
-          <p className="text-xs text-orange-500 font-medium">進行中</p>
-        </div>
-        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 text-center">
-          <CheckCircle className="w-4 h-4 text-emerald-600 mx-auto mb-1" />
-          <p className="text-2xl font-black text-emerald-700">{todayDone.length}</p>
-          <p className="text-xs text-emerald-600 font-medium">今日完成</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 text-center">
-          <TrendingUp className="w-4 h-4 text-blue-600 mx-auto mb-1" />
-          <p className="text-sm font-black text-blue-700 leading-tight">
-            {todayEarnings > 0 ? `$${todayEarnings.toLocaleString()}` : "—"}
-          </p>
-          <p className="text-xs text-blue-600 font-medium">今日收入</p>
-        </div>
-      </div>
-
-      {/* Today active banner */}
-      {activeOrders.length > 0 && (
-        <Link href={`/driver/tasks/${activeOrders[0].id}`}>
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:from-orange-600 hover:to-orange-700 transition-all shadow-lg shadow-orange-500/30">
-            <div className="relative">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                {activeOrders[0].status === "in_transit"
-                  ? <Navigation className="w-5 h-5 text-white" />
-                  : <Package className="w-5 h-5 text-white" />}
-              </div>
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-white rounded-full border-2 border-orange-500 animate-pulse" />
+      {/* 確認送達 Modal */}
+      {confirmId && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6, color: "#f8fafc" }}>✅ 確認送達</div>
+            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>
+              請確認貨物已交付收件人，此操作完成後不可撤銷。
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-black text-white text-sm">
-                {activeOrders[0].status === "in_transit" ? "🚛 運送中 — 前往送貨地點" : "📦 待取貨 — 前往取貨地點"}
-              </p>
-              <p className="text-orange-100 text-xs mt-0.5 truncate">
-                訂單 #{activeOrders[0].id} · {activeOrders[0].pickupAddress}
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-white/80 shrink-0" />
+            <button
+              style={{ ...S.actionBtn, background: "#064e3b", color: "#4ade80", marginBottom: 10 }}
+              disabled={actionMut.isPending}
+              onClick={() => actionMut.mutate({ orderId: confirmId, action: "complete" })}
+            >
+              {actionMut.isPending ? "處理中…" : "✅ 確認已送達"}
+            </button>
+            <button
+              style={{ ...S.actionBtn, background: "#1e293b", color: "#64748b" }}
+              onClick={() => setConfirmId(null)}
+            >
+              取消
+            </button>
           </div>
-        </Link>
-      )}
-
-      {/* Tabs */}
-      <div className="flex bg-muted p-1 rounded-xl gap-1">
-        <button
-          onClick={() => setTab("active")}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-            tab === "active"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          進行中
-          {activeOrders.length > 0 && (
-            <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs
-              ${tab === "active" ? "bg-orange-500 text-white" : "bg-muted-foreground/20 text-muted-foreground"}`}>
-              {activeOrders.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab("done")}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-            tab === "done"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          歷史紀錄
-          {tab === "done" && doneOrders.length > 0 && (
-            <span className="ml-1.5 text-xs text-muted-foreground font-normal">({doneOrders.length})</span>
-          )}
-        </button>
-      </div>
-
-      {/* Weekly earnings in done tab */}
-      {tab === "done" && weekDone.length > 0 && (
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-4 text-white">
-          <p className="text-emerald-200 text-xs font-bold uppercase tracking-wide mb-1">最近完成總收入</p>
-          <p className="text-3xl font-black">NT${weekEarnings.toLocaleString()}</p>
-          <p className="text-emerald-200 text-xs mt-1">{weekDone.length} 筆完成訂單 · 點訂單查看詳情</p>
-        </div>
-      )}
-
-      {/* Order list */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
-        </div>
-      ) : displayOrders.length === 0 ? (
-        <div className="text-center py-16 bg-card rounded-2xl border">
-          {tab === "active" ? (
-            <>
-              <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <Truck className="w-8 h-8 text-muted-foreground/50" />
-              </div>
-              <p className="font-bold text-foreground">目前沒有進行中任務</p>
-              <p className="text-sm text-muted-foreground mt-1">等待後台指派訂單給您</p>
-              <Link href="/driver/grab">
-                <div className="mt-4 inline-flex items-center gap-2 bg-orange-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-orange-500/30">
-                  <Zap className="w-4 h-4" /> 前往搶單中心
-                </div>
-              </Link>
-            </>
-          ) : (
-            <>
-              <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <CheckCircle className="w-8 h-8 text-muted-foreground/50" />
-              </div>
-              <p className="font-bold text-foreground">尚無歷史紀錄</p>
-              <p className="text-sm text-muted-foreground mt-1">完成第一筆訂單後將顯示於此</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {displayOrders.map(order => {
-            const isActive = order.status === "assigned" || order.status === "in_transit";
-            const isInTransit = order.status === "in_transit";
-            const meta = STATUS_META[order.status] ?? STATUS_META.pending;
-            return (
-              <Link key={order.id} href={`/driver/tasks/${order.id}`}>
-                <Card className={`border-2 cursor-pointer active:scale-[0.98] transition-all shadow-sm
-                  ${isInTransit ? "border-orange-300 bg-orange-50/60 dark:bg-orange-950/20 shadow-orange-100" :
-                    order.status === "assigned" ? "border-blue-200 bg-blue-50/30 dark:bg-blue-950/10" :
-                    order.status === "delivered" ? "border-emerald-100 bg-card" :
-                    "border-border bg-card opacity-70"}`}>
-                  <CardContent className="p-4">
-                    {/* Top row */}
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-black text-foreground">#{order.id}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${meta.bg} ${meta.text}`}>
-                            {meta.label}
-                          </span>
-                          {isInTransit && (
-                            <span className="flex items-center gap-1 text-xs text-orange-600 font-bold animate-pulse">
-                              <Navigation className="w-3 h-3" /> 進行中
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {order.pickupDate
-                            ? `${order.pickupDate} ${order.pickupTime ?? ""}`
-                            : format(new Date(order.createdAt), "MM/dd HH:mm", { locale: zhTW })}
-                        </p>
-                      </div>
-                      {order.totalFee != null && (
-                        <div className="text-right shrink-0">
-                          <span className="font-black text-orange-600">NT${order.totalFee.toLocaleString()}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Route with vertical line */}
-                    <div className="relative pl-5 space-y-1 mb-3">
-                      <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-blue-400 to-orange-400" />
-                      <div className="flex gap-2 items-center">
-                        <div className="absolute left-[3px] w-2 h-2 rounded-full bg-blue-500 border-2 border-background" />
-                        <span className="text-sm text-foreground line-clamp-1">
-                          {order.pickupContactName ? `${order.pickupContactName}｜` : ""}{order.pickupAddress}
-                        </span>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <div className="absolute left-[3px] w-2 h-2 rounded-full bg-orange-500 border-2 border-background" style={{ bottom: "0" }} />
-                        <span className="text-sm text-foreground line-clamp-1">
-                          {order.deliveryContactName ? `${order.deliveryContactName}｜` : ""}{order.deliveryAddress}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bottom row */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Package className="w-3 h-3 shrink-0" />
-                        <span className="truncate max-w-[200px]">
-                          {order.cargoDescription}{order.cargoQuantity ? ` · ${order.cargoQuantity}` : ""}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <span>詳情</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
         </div>
       )}
     </div>
   );
 }
+
+// ── 子元件 ────────────────────────────────────────────────────────────────────
+
+function TaskCard({ order, expanded, onToggle, onNavigate, onNextStep, waitStart, isUpdating }: {
+  order: any; expanded: boolean; onToggle: () => void;
+  onNavigate: () => void; onNextStep: () => void;
+  waitStart?: Date; isUpdating: boolean;
+}) {
+  const meta   = STATUS_META[order.status] ?? STATUS_META.pending;
+  const action = NEXT_ACTION[order.status];
+  const pickupAddr   = order.pickupAddress   ?? order.pickup_address   ?? "";
+  const deliveryAddr = order.deliveryAddress ?? order.delivery_address ?? "";
+  const targetAddr   = order.status === "in_transit" ? deliveryAddr : pickupAddr;
+
+  return (
+    <div style={{ ...S.card, border: `1px solid ${expanded ? "#334155" : "#1e293b"}` }}>
+      {/* 標頭 */}
+      <div onClick={onToggle} style={{ padding: "14px 16px", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 20,
+            fontWeight: 700, background: meta.bg, color: meta.color }}>
+            {meta.label}
+          </span>
+          <span style={{ fontSize: 12, color: "#475569", fontFamily: "monospace" }}>
+            #{order.id}
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "#334155" }}>
+            {expanded ? "▲" : "▼"}
+          </span>
+        </div>
+        <div style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600, marginBottom: 4 }}>
+          {targetAddr}
+        </div>
+        {order.cargoName && (
+          <div style={{ fontSize: 11, color: "#475569" }}>
+            {order.cargoName}
+            {order.cargoWeight ? ` · ${order.cargoWeight} kg` : ""}
+          </div>
+        )}
+      </div>
+
+      {/* 展開詳情 */}
+      {expanded && (
+        <div style={{ padding: "0 16px 14px", borderTop: "1px solid #1e293b" }}>
+          <div style={{ margin: "12px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+            <AddrRow icon="📍" label="取貨" addr={pickupAddr} />
+            <div style={{ width: 1, height: 12, background: "#334155", marginLeft: 10 }} />
+            <AddrRow icon="🏁" label="送達" addr={deliveryAddr} />
+          </div>
+
+          {(order.deliveryContactName ?? order.customerPhone) && (
+            <div style={{ ...S.infoBox, marginBottom: 10 }}>
+              {order.deliveryContactName && (
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>👤 {order.deliveryContactName}</div>
+              )}
+              {order.customerPhone && (
+                <a href={`tel:${order.customerPhone}`}
+                  style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none" }}>
+                  📞 {order.customerPhone}
+                </a>
+              )}
+            </div>
+          )}
+
+          {order.notes && (
+            <div style={{ ...S.infoBox, color: "#94a3b8", fontSize: 12, marginBottom: 10 }}>
+              📝 {order.notes}
+            </div>
+          )}
+
+          {waitStart && order.status === "in_transit" && (
+            <WaitTimer startTime={waitStart} />
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button style={{ ...S.actionBtn, flex: 1, background: "#172554", color: "#60a5fa" }}
+              onClick={onNavigate}>
+              🗺️ 導航
+            </button>
+            {action && (
+              <button
+                style={{ ...S.actionBtn, flex: 2, background: action.bg, color: action.color,
+                  opacity: isUpdating ? 0.6 : 1 }}
+                disabled={isUpdating}
+                onClick={onNextStep}
+              >
+                {isUpdating ? "處理中…" : `${action.icon} ${action.label}`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoneCard({ order }: { order: any }) {
+  const meta = STATUS_META[order.status] ?? STATUS_META.delivered;
+  const deliveryAddr = order.deliveryAddress ?? order.delivery_address ?? "";
+  const pay = order.driverPay ?? order.totalFee;
+  return (
+    <div style={{ ...S.card, opacity: 0.75 }}>
+      <div style={{ padding: "12px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20,
+            fontWeight: 700, background: meta.bg, color: meta.color }}>
+            {meta.label}
+          </span>
+          <span style={{ fontSize: 11, color: "#334155", fontFamily: "monospace" }}>#{order.id}</span>
+          {pay != null && (
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "#4ade80", fontWeight: 700 }}>
+              +${Number(pay).toLocaleString()}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: "#475569" }}>{deliveryAddr}</div>
+        {order.updatedAt && (
+          <div style={{ fontSize: 11, color: "#334155", marginTop: 4 }}>
+            {formatDistanceToNow(new Date(order.updatedAt), { addSuffix: true, locale: zhTW })}
+          </div>
+        )}
+        {order.signaturePhotoUrl && (
+          <div style={{ fontSize: 11, color: "#10b981", marginTop: 4 }}>✓ 已簽收</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddrRow({ icon, label, addr }: { icon: string; label: string; addr: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>
+      <div>
+        <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase",
+          letterSpacing: "0.08em", marginBottom: 1 }}>{label}</div>
+        <div style={{ fontSize: 12, color: "#94a3b8" }}>{addr}</div>
+      </div>
+    </div>
+  );
+}
+
+function WaitTimer({ startTime }: { startTime: Date }) {
+  const [now, setNow] = useState(new Date());
+  useState(() => {
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  });
+  const mins = Math.floor((now.getTime() - startTime.getTime()) / 60_000);
+  return (
+    <div style={{ ...S.infoBox, color: mins > 30 ? "#f87171" : "#94a3b8",
+      fontSize: 12, marginBottom: 10 }}>
+      ⏱ 等待中 {mins} 分鐘{mins > 30 ? " · 請聯絡客戶" : ""}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: string | number; color: string }) {
+  return (
+    <div style={{ textAlign: "center", padding: "0 12px", borderRight: "1px solid #1e293b" }}>
+      <div style={{ fontSize: 18, fontWeight: 900, color }}>{value}</div>
+      <div style={{ fontSize: 10, color: "#334155" }}>{label}</div>
+    </div>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: "40px 16px", textAlign: "center", color: "#334155", fontSize: 13 }}>
+      {children}
+    </div>
+  );
+}
+
+// ── 樣式 ──────────────────────────────────────────────────────────────────────
+const S: Record<string, React.CSSProperties> = {
+  root: {
+    display: "flex", flexDirection: "column", height: "100%",
+    background: "#060d1a", color: "#e2e8f0",
+    fontFamily: "'Noto Sans TC','PingFang TC',system-ui,sans-serif",
+  },
+  header: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "14px 16px", background: "#08111f",
+    borderBottom: "1px solid #1e293b", flexShrink: 0,
+  },
+  title: { fontSize: 16, fontWeight: 900, color: "#f8fafc" },
+  sub:   { fontSize: 11, color: "#334155", marginTop: 2 },
+  statRow: { display: "flex", alignItems: "center" },
+  urgentBanner: {
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "12px 16px", cursor: "pointer",
+    borderBottom: "1px solid #1e293b", flexShrink: 0,
+  },
+  tabBar: {
+    display: "flex", background: "#08111f",
+    borderBottom: "1px solid #1e293b", flexShrink: 0,
+  },
+  tab: {
+    flex: 1, textAlign: "center", padding: "10px",
+    fontSize: 13, fontWeight: 600, cursor: "pointer",
+    transition: "color .15s",
+  },
+  list:  { flex: 1, overflowY: "auto", padding: "10px" },
+  card: {
+    background: "#0a1628", borderRadius: 12,
+    marginBottom: 8, overflow: "hidden",
+    border: "1px solid #1e293b",
+  },
+  infoBox: {
+    background: "#0c1523", borderRadius: 8,
+    padding: "8px 12px", lineHeight: 1.6,
+  },
+  actionBtn: {
+    width: "100%", padding: "10px", borderRadius: 9,
+    border: "none", fontSize: 13, fontWeight: 700,
+    cursor: "pointer", fontFamily: "inherit",
+    transition: "opacity .15s",
+  },
+  overlay: {
+    position: "fixed", inset: 0, zIndex: 500,
+    background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)",
+    display: "flex", alignItems: "flex-end", justifyContent: "center",
+  },
+  modal: {
+    background: "#0d1626", borderRadius: "16px 16px 0 0",
+    padding: "24px 20px 48px", width: "100%", maxWidth: 480,
+    border: "1px solid #1e293b", borderBottom: "none",
+  },
+};
