@@ -65,10 +65,11 @@ def calculate_vehicle_surcharge(base_price, vehicle_class, selected_addons):
 st.title("🚛 富詠運輸管理平台")
 st.markdown("---")
 
-tab_boss, tab_customer, tab_surcharge = st.tabs([
+tab_boss, tab_customer, tab_surcharge, tab_profit = st.tabs([
     "📊 老闆決策引擎",
     "🌐 客戶自助報價",
     "🚚 車型附加費試算",
+    "📐 精準淨利計算",
 ])
 
 # ═══════════════════════════════════════════════════════════
@@ -277,3 +278,214 @@ with tab_surcharge:
         "冷凍加成為乘法疊加（加權後再乘以 1.5），其餘設備費為固定金額直接相加。"
     )
     st.caption("此計算邏輯與後端 API `/api/vehicle-surcharge/calculate` 完全同步。")
+
+# ═══════════════════════════════════════════════════════════
+# TAB 4：精準淨利計算引擎
+# ═══════════════════════════════════════════════════════════
+with tab_profit:
+    st.subheader("📐 精準淨利計算引擎")
+    st.markdown(
+        "> **核心公式**：`Total Cost = (油費單價 × 距離 ÷ 油耗效率)` + `(每公里折舊維修費 × 距離)` + `司機工資`\n\n"
+        "報價不能只看里程——變動成本（油耗、維修）與固定成本（折舊、保險、牌照稅）都必須量化進去。"
+    )
+
+    # ── 第一區：車型 & 里程 & 油價 ─────────────────────────────────────────
+    st.markdown("#### 🚛 基本行程設定")
+    bc1, bc2, bc3 = st.columns(3)
+    with bc1:
+        p_truck    = st.selectbox("派遣車型", list(TRUCK_TYPES.keys()), key="p_truck")
+    with bc2:
+        p_distance = st.number_input("總里程（km，去程+回程）", value=150.0, min_value=1.0, step=5.0, key="p_dist")
+    with bc3:
+        p_fuel     = st.number_input("今日油價（元/升）", value=28.5, min_value=10.0, step=0.5, key="p_fuel")
+
+    tcfg = TRUCK_TYPES[p_truck]
+
+    # ── 第二區：固定成本設定（每月攤提） ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🏢 固定成本設定（每月攤提至每趟）")
+    st.caption("折舊、保險、牌照稅為月固定支出，依本月趟次均攤至每一趟。")
+
+    FIXED_DEFAULTS = {
+        "1.75噸(小發財)":    {"vp": 800_000,   "dep": 8,  "ins": 30_000,  "lic": 6_000,  "trips": 25},
+        "3.5噸(堅達)":       {"vp": 1_500_000, "dep": 8,  "ins": 50_000,  "lic": 12_000, "trips": 20},
+        "11噸(大貨車)":      {"vp": 3_000_000, "dep": 10, "ins": 90_000,  "lic": 30_000, "trips": 15},
+        "26噸(聯結車/鷗翼)": {"vp": 5_000_000, "dep": 10, "ins": 150_000, "lic": 60_000, "trips": 12},
+    }
+    fd = FIXED_DEFAULTS[p_truck]
+
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        vehicle_price  = st.number_input("車輛取得成本（元）",   value=fd["vp"],  step=100_000, key="p_vp")
+        dep_years      = st.number_input("折舊年限（年）",        value=fd["dep"], min_value=1,  max_value=20, key="p_dy")
+        residual_pct   = st.slider("殘值比例（%）", 0, 40, 10, key="p_res") / 100
+    with fc2:
+        annual_ins     = st.number_input("年保險費（元）",        value=fd["ins"], step=5_000, key="p_ins")
+        annual_lic     = st.number_input("年牌照稅/燃料稅（元）", value=fd["lic"], step=1_000, key="p_lic")
+    with fc3:
+        monthly_trips  = st.number_input("本月預估趟次",          value=fd["trips"], min_value=1, max_value=200, key="p_trips")
+        monthly_other  = st.number_input("其他月固定費用（元）",  value=0, step=500, key="p_other",
+                                          help="如停車費、管理費等月固定支出")
+
+    # ── 第三區：人工成本 ─────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 👷 人工成本")
+    lc1, lc2, lc3 = st.columns(3)
+    with lc1:
+        driver_daily   = st.number_input("司機日薪（元）",        value=tcfg["wage_base"], step=100, key="p_wage")
+    with lc2:
+        wait_hours     = st.number_input("等候時間（小時）",      value=1.5, min_value=0.0, step=0.5, key="p_wait")
+    with lc3:
+        wait_rate      = st.number_input("等候費率（元/小時）",   value=200, step=50, key="p_wrate")
+
+    # ══════════════════════════════════════════════════
+    # 核心公式計算
+    # ══════════════════════════════════════════════════
+
+    # 1. 變動成本
+    fuel_cost_p    = (p_fuel * p_distance) / tcfg["fuel_eff"]   # 油費 = 油價 × 距離 / 油耗
+    wear_cost_p    = tcfg["wear_cost"] * p_distance              # 維修折耗 = 每km費率 × 距離
+    variable_total = fuel_cost_p + wear_cost_p
+
+    # 2. 固定成本（月→趟攤提）
+    depreciable    = vehicle_price * (1 - residual_pct)
+    monthly_dep    = depreciable / (dep_years * 12)
+    monthly_ins_m  = annual_ins / 12
+    monthly_lic_m  = annual_lic / 12
+    fixed_per_trip = (monthly_dep + monthly_ins_m + monthly_lic_m + monthly_other) / monthly_trips
+
+    # 3. 人工成本
+    labor_cost     = driver_daily + (wait_hours * wait_rate)
+
+    # 4. 總成本
+    total_cost     = variable_total + fixed_per_trip + labor_cost
+
+    # ── 結果顯示 ─────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("💡 精準成本分析")
+
+    r1, r2, r3 = st.columns(3)
+
+    with r1:
+        st.markdown(
+            "<div style='background:#1e3a5f;border-radius:12px;padding:16px 18px 8px;border:1px solid #2563eb;'>"
+            "<div style='color:#93c5fd;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;'>🔄 變動成本（每趟）</div>"
+            "</div>", unsafe_allow_html=True
+        )
+        st.metric("油費",
+                  f"NT$ {fuel_cost_p:,.0f}",
+                  f"{p_distance}km ÷ {tcfg['fuel_eff']}L/km × {p_fuel}元")
+        st.metric("維修折耗",
+                  f"NT$ {wear_cost_p:,.0f}",
+                  f"{tcfg['wear_cost']}元/km × {p_distance}km")
+        st.metric("小計", f"NT$ {variable_total:,.0f}")
+
+    with r2:
+        st.markdown(
+            "<div style='background:#2d1b69;border-radius:12px;padding:16px 18px 8px;border:1px solid #7c3aed;'>"
+            "<div style='color:#c4b5fd;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;'>🏢 固定成本攤提（每趟）</div>"
+            "</div>", unsafe_allow_html=True
+        )
+        st.metric("折舊攤提",
+                  f"NT$ {monthly_dep/monthly_trips:,.0f}",
+                  f"月折舊 {monthly_dep:,.0f} ÷ {monthly_trips} 趟")
+        st.metric("保險攤提",  f"NT$ {monthly_ins_m/monthly_trips:,.0f}")
+        st.metric("牌照稅攤提", f"NT$ {monthly_lic_m/monthly_trips:,.0f}")
+        if monthly_other > 0:
+            st.metric("其他攤提", f"NT$ {monthly_other/monthly_trips:,.0f}")
+        st.metric("小計", f"NT$ {fixed_per_trip:,.0f}")
+
+    with r3:
+        st.markdown(
+            "<div style='background:#1a3a2a;border-radius:12px;padding:16px 18px 8px;border:1px solid #16a34a;'>"
+            "<div style='color:#86efac;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;'>👷 人工成本</div>"
+            "</div>", unsafe_allow_html=True
+        )
+        st.metric("司機日薪", f"NT$ {driver_daily:,.0f}")
+        st.metric("等候費",   f"NT$ {wait_hours*wait_rate:,.0f}", f"{wait_hours}h × {wait_rate}元/h")
+        st.metric("小計",     f"NT$ {labor_cost:,.0f}")
+
+    st.markdown("---")
+
+    # ── 總成本大字 + 最低報價反推 ────────────────────────────────────────────
+    tot1, tot2 = st.columns(2)
+
+    with tot1:
+        st.markdown(
+            f"<div style='background:#0f172a;border:2px solid #475569;border-radius:16px;"
+            f"padding:24px;text-align:center;'>"
+            f"<div style='color:#94a3b8;font-size:13px;font-weight:700;'>📊 精準總成本</div>"
+            f"<div style='color:#f8fafc;font-size:44px;font-weight:900;margin:10px 0;'>NT$ {total_cost:,.0f}</div>"
+            f"<div style='color:#64748b;font-size:11px;'>"
+            f"變動 {variable_total:,.0f} ＋ 固定 {fixed_per_trip:,.0f} ＋ 人工 {labor_cost:,.0f}"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
+
+    with tot2:
+        target_margin = st.slider("目標利潤率（%）", 5, 60, 20, key="p_margin") / 100
+        min_quote     = total_cost / (1 - target_margin)
+        st.markdown(
+            f"<div style='background:#0f172a;border:2px solid #22c55e;border-radius:16px;"
+            f"padding:24px;text-align:center;'>"
+            f"<div style='color:#86efac;font-size:13px;font-weight:700;'>"
+            f"✅ 最低建議報價（含 {target_margin*100:.0f}% 利潤）</div>"
+            f"<div style='color:#22c55e;font-size:44px;font-weight:900;margin:10px 0;'>NT$ {min_quote:,.0f}</div>"
+            f"<div style='color:#4ade80;font-size:12px;'>低於此價必虧，從此起算加碼談判</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # ── 客戶出價 → 淨利即時分析 ─────────────────────────────────────────────
+    st.markdown("#### 💬 客戶出價 → 淨利即時分析")
+    quoted_p = st.number_input(
+        "客戶出價（元）", value=int(min_quote * 1.05), step=500, key="p_quoted"
+    )
+
+    profit_p   = quoted_p - total_cost
+    margin_p   = (profit_p / quoted_p * 100) if quoted_p > 0 else 0
+    cost_ratio = (total_cost / quoted_p * 100) if quoted_p > 0 else 100
+
+    pa, pb, pc, pd = st.columns(4)
+    pa.metric("客戶出價", f"NT$ {quoted_p:,}")
+    pb.metric("精準成本", f"NT$ {total_cost:,.0f}")
+    pc.metric("淨利金額", f"NT$ {profit_p:,.0f}", f"{margin_p:.1f}%",
+              delta_color="normal" if profit_p >= 0 else "inverse")
+
+    if margin_p >= 20 and profit_p > 1500:
+        pd.success(f"🟢 建議接單\n利潤率 {margin_p:.1f}%")
+    elif margin_p >= 10 and profit_p > 0:
+        pd.warning(f"🟡 勉強接單\n{margin_p:.1f}% 利潤")
+    elif profit_p > 0:
+        pd.warning(f"🟠 利潤偏低\n僅 {margin_p:.1f}%，需議價")
+    else:
+        pd.error(f"🔴 絕對拒接\n虧損 {abs(profit_p):,.0f} 元")
+
+    # 成本/利潤視覺化橫條
+    bar_cost   = max(0, min(int(cost_ratio), 100))
+    bar_profit = max(0, min(int(margin_p),   100 - bar_cost))
+    bar_gap    = max(0, 100 - bar_cost - bar_profit)
+    st.markdown(
+        f"<div style='width:100%;height:30px;border-radius:8px;overflow:hidden;"
+        f"display:flex;background:#1e293b;margin-top:12px;'>"
+        f"<div style='width:{bar_cost}%;background:#ef4444;display:flex;align-items:center;"
+        f"justify-content:center;color:#fff;font-size:11px;font-weight:700;'>{bar_cost:.0f}% 成本</div>"
+        f"<div style='width:{bar_profit}%;background:#22c55e;display:flex;align-items:center;"
+        f"justify-content:center;color:#fff;font-size:11px;font-weight:700;'>{bar_profit:.0f}% 利潤</div>"
+        f"<div style='width:{bar_gap}%;background:#334155;'></div>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown("---")
+    st.markdown(
+        "**公式明細**\n"
+        "- 油費 `= 油價 × 距離 ÷ 油耗效率（L/km）`\n"
+        "- 維修折耗 `= 每km費率 × 距離`\n"
+        "- 固定攤提 `= (月折舊 + 月保險 + 月牌照稅) ÷ 月趟次`\n"
+        "- 人工 `= 司機日薪 + 等候時數 × 等候費率`\n"
+        "- **最低報價** `= 總成本 ÷ (1 − 目標利潤率)`"
+    )
+    st.caption("每一分錢都要算清楚，利潤才能站穩。—— 富詠運輸自動化報價引擎 v2")
