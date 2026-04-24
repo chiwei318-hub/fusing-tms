@@ -9,9 +9,10 @@ driverEarningsRouter.get("/", async (req, res) => {
   try {
     const { from, to } = req.query as Record<string, string>;
 
-    let dateFilter = "";
-    if (from) dateFilter += ` AND o.created_at >= '${from}'`;
-    if (to)   dateFilter += ` AND o.created_at <= '${to} 23:59:59'`;
+    // 驗證日期格式（YYYY-MM-DD），防止 SQL 注入
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    const dateFrom = from && ISO_DATE.test(from) ? sql`AND o.created_at >= ${from}::date`       : sql``;
+    const dateTo   = to   && ISO_DATE.test(to)   ? sql`AND o.created_at <  ${to}::date + 1`     : sql``;
 
     const rows = await db.execute(sql`
       WITH parsed AS (
@@ -25,7 +26,8 @@ driverEarningsRouter.get("/", async (req, res) => {
           created_at
         FROM orders
         WHERE route_id IS NOT NULL
-        ${sql.raw(dateFilter)}
+        ${dateFrom}
+        ${dateTo}
       )
       SELECT
         COALESCE(p.shopee_id, '(未指派)') AS shopee_id,
@@ -60,7 +62,8 @@ driverEarningsRouter.get("/", async (req, res) => {
       FROM orders o
       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
       WHERE o.route_id IS NOT NULL
-      ${sql.raw(dateFilter)}
+      ${dateFrom}
+      ${dateTo}
     `);
 
     res.json({
