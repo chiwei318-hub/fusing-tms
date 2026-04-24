@@ -74,6 +74,13 @@ interface AISuggestion {
   suggested_driver_name: string;
   score: number;
   reason: string;
+  distance_km: number | null;
+}
+
+interface AISkipped {
+  route_item_id: number;
+  route_label: string;
+  reason: string;
 }
 
 // ── 常數 ──────────────────────────────────────────────────────────────────────
@@ -99,6 +106,7 @@ export default function DispatchCenter() {
   const [selectedRouteIds, setSelectedRouteIds] = useState<Set<number>>(new Set());
   const [assignTarget,     setAssignTarget]     = useState<{ routeId: number; dispatchId: number } | null>(null);
   const [aiSuggestions,    setAiSuggestions]    = useState<AISuggestion[]>([]);
+  const [aiSkipped,        setAiSkipped]        = useState<AISkipped[]>([]);
   const [showAiPanel,      setShowAiPanel]      = useState(false);
 
   // ── 查詢 ────────────────────────────────────────────────────────────────────
@@ -180,7 +188,11 @@ export default function DispatchCenter() {
       method: "POST",
       body: JSON.stringify({ route_item_ids: unassignedRoutes.map(r => r.id) }),
     }),
-    onSuccess: (data) => { setAiSuggestions(data.suggestions ?? []); setShowAiPanel(true); },
+    onSuccess: (data) => {
+      setAiSuggestions(data.suggestions ?? []);
+      setAiSkipped(data.skipped ?? []);
+      setShowAiPanel(true);
+    },
     onError: (e: Error) => toast({ title: "AI 建議失敗", description: e.message, variant: "destructive" }),
   });
 
@@ -347,10 +359,13 @@ export default function DispatchCenter() {
           <div style={S.modal} onClick={e => e.stopPropagation()}>
             <div style={S.modalHead}>
               <span style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>🤖 AI 派車建議</span>
-              <span style={{ fontSize: 12, color: "#475569" }}>{aiSuggestions.length} 條路線</span>
+              <span style={{ fontSize: 12, color: "#475569" }}>
+                {aiSuggestions.length} 筆可派
+                {aiSkipped.length > 0 && <span style={{ color: "#ef4444", marginLeft: 6 }}>· {aiSkipped.length} 筆超距</span>}
+              </span>
             </div>
 
-            {aiSuggestions.length === 0 ? (
+            {aiSuggestions.length === 0 && aiSkipped.length === 0 ? (
               <Muted>目前無可建議的路線（可能全部已指派或無可用司機）</Muted>
             ) : (
               <div style={{ overflowY: "auto", maxHeight: 360 }}>
@@ -362,16 +377,38 @@ export default function DispatchCenter() {
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{s.suggested_driver_name}</div>
-                      <div style={{ fontSize: 10, color: "#334155", marginTop: 2 }}>評分 {s.score}</div>
+                      <div style={{ fontSize: 10, color: "#334155", marginTop: 2 }}>
+                        評分 {s.score}
+                        {s.distance_km !== null && s.distance_km !== undefined &&
+                          <span style={{ marginLeft: 6, color: "#22d3ee" }}>{s.distance_km} km</span>
+                        }
+                      </div>
                     </div>
                   </div>
                 ))}
+
+                {aiSkipped.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, color: "#ef4444", fontWeight: 700, margin: "12px 0 6px", borderTop: "1px solid #1e293b", paddingTop: 10 }}>
+                      ⚠ 風控排除（20 km 內無可用司機，需人工調度）
+                    </div>
+                    {aiSkipped.map(s => (
+                      <div key={s.route_item_id} style={{ ...S.aiRow, opacity: 0.5, borderLeft: "3px solid #ef4444" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 12, color: "#94a3b8" }}>{s.route_label}</div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{s.reason}</div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#ef4444", fontWeight: 700 }}>人工調度</div>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <Btn color="#1e293b" textColor="#64748b" style={{ flex: 1 }}
-                onClick={() => { setShowAiPanel(false); setAiSuggestions([]); }}>
+                onClick={() => { setShowAiPanel(false); setAiSuggestions([]); setAiSkipped([]); }}>
                 取消
               </Btn>
               <Btn color="#4f46e5" style={{ flex: 2 }}

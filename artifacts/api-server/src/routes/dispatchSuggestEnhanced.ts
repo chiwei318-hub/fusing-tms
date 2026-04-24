@@ -64,49 +64,69 @@ dispatchSuggestEnhancedRouter.post("/dispatch-suggest/auto", async (req, res) =>
       return res.json({ suggestions: [], message: "目前無可用司機" });
     }
 
+    const MAX_DISPATCH_KM = 20; // 風控：超過此距離不自動指派
     const suggestions: any[] = [];
+    const skipped:     any[] = [];
     const assignedCount = new Map<number, number>();
 
     for (const route of routeItems) {
       if (route.assigned_driver_id) continue;
 
-      let best: { driver: any; score: number; reason: string } | null = null;
+      let best: { driver: any; score: number; reason: string; km: number | null } | null = null;
+      let geoAvailable = !!(route.pickup_lat && route.pickup_lng);
 
       for (const d of driverRows) {
         let score = 100;
         const reasons: string[] = [];
+        let km: number | null = null;
 
-        const todayPenalty = (d.today_routes + (assignedCount.get(d.id) ?? 0)) * 10;
-        score -= todayPenalty;
-        if (todayPenalty > 0) reasons.push(`今日已派 ${d.today_routes} 條`);
+        // ── 距離計算 + 風控截止 ────────────────────────────────────────────
+        if (geoAvailable && d.lat && d.lng) {
+          km = haversineKm(d.lat, d.lng, route.pickup_lat, route.pickup_lng);
 
-        if (d.lat && d.lng && route.pickup_lat && route.pickup_lng) {
-          const km = haversineKm(d.lat, d.lng, route.pickup_lat, route.pickup_lng);
-          score += Math.max(0, 50 - km * 2);
+          // 風控：超過 MAX_DISPATCH_KM 不納入候選
+          if (km > MAX_DISPATCH_KM) continue;
+
+          // 距離加分：每 km 扣 3 分，最高 +50（約 0 km 時）
+          score += Math.max(0, 50 - km * 3);
           reasons.push(`距取貨點 ${km.toFixed(1)} km`);
         }
 
-        if (d.rating) score += (d.rating - 3) * 5;
+        // ── 今日任務量懲罰 ────────────────────────────────────────────────
+        const todayLoad = d.today_routes + (assignedCount.get(d.id) ?? 0);
+        score -= todayLoad * 10;
+        if (todayLoad > 0) reasons.push(`今日已派 ${todayLoad} 條`);
+
+        // ── 評分加成 ──────────────────────────────────────────────────────
+        if (d.rating) {
+          const ratingBonus = (d.rating - 3) * 5;
+          score += ratingBonus;
+          if (ratingBonus > 0) reasons.push(`評分 ${Number(d.rating).toFixed(1)}`);
+        }
 
         if (!best || score > best.score) {
-          best = { driver: d, score, reason: reasons.join("、") || "綜合評估" };
+          best = { driver: d, score, reason: reasons.join("、") || "綜合評估", km };
         }
       }
 
       if (best) {
         suggestions.push({
-          route_item_id:          route.id,
-          route_label:            route.route_label,
-          suggested_driver_id:    best.driver.id,
-          suggested_driver_name:  best.driver.name,
-          score:                  Math.round(best.score),
-          reason:                 best.reason,
+          route_item_id:         route.id,
+          route_label:           route.route_label,
+          suggested_driver_id:   best.driver.id,
+          suggested_driver_name: best.driver.name,
+          score:                 Math.round(best.score),
+          reason:                best.reason,
+          distance_km:           best.km !== null ? Math.round(best.km * 10) / 10 : null,
         });
         assignedCount.set(best.driver.id, (assignedCount.get(best.driver.id) ?? 0) + 1);
+      } else {
+        // 所有司機都超過風控距離，記錄 skipped
+        skipped.push({ route_item_id: route.id, route_label: route.route_label, reason: `附近 ${MAX_DISPATCH_KM} km 內無可用司機` });
       }
     }
 
-    res.json({ suggestions });
+    res.json({ suggestions, skipped, max_dispatch_km: MAX_DISPATCH_KM });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
