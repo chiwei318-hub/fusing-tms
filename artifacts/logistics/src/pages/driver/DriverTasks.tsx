@@ -7,7 +7,7 @@
  * API: POST /orders/:id/driver-action  action=checkin|complete
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListOrders } from "@workspace/api-client-react";
 import { useDriversData } from "@/hooks/use-drivers";
@@ -376,10 +376,10 @@ function AddrRow({ icon, label, addr }: { icon: string; label: string; addr: str
 
 function WaitTimer({ startTime }: { startTime: Date }) {
   const [now, setNow] = useState(new Date());
-  useState(() => {
+  useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(t);
-  });
+  }, []);
   const mins = Math.floor((now.getTime() - startTime.getTime()) / 60_000);
   return (
     <div style={{ ...S.infoBox, color: mins > 30 ? "#f87171" : "#94a3b8",

@@ -122,12 +122,12 @@ export default function DispatchCenter() {
 
   // ── 衍生資料 ────────────────────────────────────────────────────────────────
   const pending          = orders.filter(o => o.status !== "assigned");
-  const unassignedRoutes = orders.flatMap(o => o.routes.filter(r => !r.assigned_driver_name));
+  const unassignedRoutes = orders.flatMap(o => (o.routes ?? []).filter(r => !r.assigned_driver_name));
   const availableDrivers = drivers.filter(d => d.status === "available");
   const busyDrivers      = drivers.filter(d => d.status === "busy");
   const focusOrder       = focusOrderId ? orders.find(o => o.id === focusOrderId) : null;
 
-  const mapRoutes: RoutePoint[] = (focusOrder ? focusOrder.routes : orders.flatMap(o => o.routes))
+  const mapRoutes: RoutePoint[] = (focusOrder ? (focusOrder.routes ?? []) : orders.flatMap(o => o.routes ?? []))
     .filter(r => r.pickup_lat)
     .map(r => ({
       routeLabel: r.route_label,
@@ -210,7 +210,7 @@ export default function DispatchCenter() {
         driverName:  driver.name,
       });
     }
-  }, [assignTarget, selectedRouteIds, isSelectingDriver]);
+  }, [assignTarget, selectedRouteIds, isSelectingDriver, assignMut, batchAssignMut]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
