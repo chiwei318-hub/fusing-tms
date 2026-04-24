@@ -1,19 +1,11 @@
 /**
- * DispatchCenter.tsx — 調度中心
- *
- * 互動邏輯：
- *  單筆派車  → 點路線「派車」→ 右側司機發光 → 點司機 → 完成
- *  批次派車  → 勾選多條路線  → 右側司機發光 → 點任一司機 → 全部完成
- *  AI 派車   → 點「🤖 AI 派車」→ 確認建議清單 → 一鍵套用
+ * DispatchCenter.tsx — v2 深夜指揮中心
+ * 設計哲學：少即是多 — 深色工業風 + 琥珀色系 accent
+ * 三欄：司機狀態牆 | 地圖 | 待派任務
  */
 
 import { useState, useCallback, lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
 import type { RoutePoint, DriverPosition } from "@/components/DispatchMap";
@@ -22,11 +14,25 @@ const DispatchMap = lazy(() =>
   import("@/components/DispatchMap").then(m => ({ default: m.DispatchMap }))
 );
 
+// ── API ───────────────────────────────────────────────────────────────────────
+async function apiFetch(path: string, opts?: RequestInit) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(apiUrl(path), {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts?.headers,
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 interface RouteItem {
   id: number;
   dispatch_order_id: number;
-  order_id?: number;
   route_label: string;
   route_date?: string;
   prefix?: string;
@@ -53,127 +59,107 @@ interface DispatchOrder {
 interface Driver {
   id: number;
   name: string;
-  phone?: string;
   vehicle_type?: string;
   license_plate?: string;
   status?: string;
+  rating?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
-interface AiSuggestion {
-  route_item_id:         number;
-  route_label:           string;
-  suggested_driver_id:   number;
+interface AISuggestion {
+  route_item_id: number;
+  route_label: string;
+  suggested_driver_id: number;
   suggested_driver_name: string;
-  score:                 number;
-  reason:                string;
+  score: number;
+  reason: string;
 }
 
 // ── 常數 ──────────────────────────────────────────────────────────────────────
-const STATUS_LABEL: Record<string, string> = {
-  sent: "已發送", acknowledged: "已確認", assigned: "已指派",
-};
-const STATUS_COLOR: Record<string, string> = {
-  sent:         "bg-amber-100 text-amber-800 border-amber-200",
-  acknowledged: "bg-blue-100 text-blue-800 border-blue-200",
-  assigned:     "bg-emerald-100 text-emerald-800 border-emerald-200",
+const statusMeta = {
+  sent:         { label: "待確認", color: "#f59e0b" },
+  acknowledged: { label: "確認中", color: "#3b82f6" },
+  assigned:     { label: "已完成", color: "#10b981" },
 };
 
-async function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem("token");
-  const res = await fetch(apiUrl(path), {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...opts?.headers,
-    },
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+const driverStatusMeta: Record<string, { label: string; dot: string }> = {
+  available: { label: "待命", dot: "#10b981" },
+  busy:      { label: "出勤", dot: "#f59e0b" },
+  off:       { label: "休息", dot: "#475569" },
+};
 
 // ── 主元件 ────────────────────────────────────────────────────────────────────
 export default function DispatchCenter() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  // 篩選
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchText,   setSearchText]   = useState("");
-  const [expandedId,   setExpandedId]   = useState<number | null>(null);
-
-  // 派車模式
-  const [mode, setMode] = useState<"idle" | "single" | "batch">("idle");
-  // 單筆：鎖定的 route + dispatch
-  const [pendingRoute,    setPendingRoute]    = useState<{ routeId: number; dispatchId: number } | null>(null);
-  // 批次：勾選的路線集合 { routeId → dispatchId }
-  const [batchMap,        setBatchMap]        = useState<Map<number, number>>(new Map());
-
-  // AI
-  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
-  const [aiLoading,     setAiLoading]     = useState(false);
-  const [aiReady,       setAiReady]       = useState(false); // 等待用戶確認後 apply
+  const [focusOrderId,     setFocusOrderId]     = useState<number | null>(null);
+  const [selectedRouteIds, setSelectedRouteIds] = useState<Set<number>>(new Set());
+  const [assignTarget,     setAssignTarget]     = useState<{ routeId: number; dispatchId: number } | null>(null);
+  const [aiSuggestions,    setAiSuggestions]    = useState<AISuggestion[]>([]);
+  const [showAiPanel,      setShowAiPanel]      = useState(false);
 
   // ── 查詢 ────────────────────────────────────────────────────────────────────
   const { data: orders = [], isLoading } = useQuery<DispatchOrder[]>({
     queryKey: ["dispatch-orders"],
-    queryFn:  () => apiFetch("/dispatch-orders"),
+    queryFn: () => apiFetch("/dispatch-orders"),
     refetchInterval: 30_000,
   });
 
   const { data: drivers = [] } = useQuery<Driver[]>({
-    queryKey: ["drivers-available"],
-    queryFn:  () => apiFetch("/drivers?status=available"),
+    queryKey: ["drivers"],
+    queryFn: () => apiFetch("/drivers"),
+    refetchInterval: 60_000,
   });
 
   const { data: driverPositions = [] } = useQuery<DriverPosition[]>({
     queryKey: ["driver-positions"],
-    queryFn:  () => apiFetch("/drivers/positions").catch(() => []),
+    queryFn: () => apiFetch("/drivers/positions").catch(() => []),
     refetchInterval: 15_000,
   });
 
-  // ── 篩選 ────────────────────────────────────────────────────────────────────
-  const filtered = orders.filter(o => {
-    if (statusFilter !== "all" && o.status !== statusFilter) return false;
-    if (searchText && !o.title.includes(searchText) && !o.fleet_name.includes(searchText)) return false;
-    return true;
-  });
+  // ── 衍生資料 ────────────────────────────────────────────────────────────────
+  const pending          = orders.filter(o => o.status !== "assigned");
+  const unassignedRoutes = orders.flatMap(o => o.routes.filter(r => !r.assigned_driver_name));
+  const availableDrivers = drivers.filter(d => d.status === "available");
+  const busyDrivers      = drivers.filter(d => d.status === "busy");
+  const focusOrder       = focusOrderId ? orders.find(o => o.id === focusOrderId) : null;
 
-  const expandedOrder = orders.find(o => o.id === expandedId) ?? null;
-
-  const mapRoutes: RoutePoint[] = (
-    expandedOrder ? expandedOrder.routes : orders.flatMap(o => o.routes)
-  )
-    .filter(r => r.pickup_lat && r.pickup_lng)
+  const mapRoutes: RoutePoint[] = (focusOrder ? focusOrder.routes : orders.flatMap(o => o.routes))
+    .filter(r => r.pickup_lat)
     .map(r => ({
       routeLabel: r.route_label,
       routeDate:  r.route_date,
       driverName: r.assigned_driver_name,
-      pickup:   r.pickup_lat   ? { lat: r.pickup_lat,   lng: r.pickup_lng!,   address: r.pickup_address ?? "" }   : undefined,
+      pickup:   r.pickup_lat   ? { lat: r.pickup_lat,   lng: r.pickup_lng!,   address: r.pickup_address   ?? "" } : undefined,
       delivery: r.delivery_lat ? { lat: r.delivery_lat, lng: r.delivery_lng!, address: r.delivery_address ?? "" } : undefined,
     }));
 
+  const isSelectingDriver = !!assignTarget || selectedRouteIds.size > 0;
+
   // ── Mutations ────────────────────────────────────────────────────────────────
-  const assignMutation = useMutation({
-    mutationFn: ({ dispatchId, routeItemId, driverId, driverName }:
-      { dispatchId: number; routeItemId: number; driverId: number; driverName: string }) =>
-      apiFetch(`/dispatch-orders/${dispatchId}/routes/${routeItemId}/assign`, {
-        method: "PUT",
-        body: JSON.stringify({ driver_id: driverId, driver_name: driverName }),
-      }),
+  const assignMut = useMutation({
+    mutationFn: ({ dispatchId, routeItemId, driverId, driverName }: {
+      dispatchId: number; routeItemId: number; driverId: number; driverName: string;
+    }) => apiFetch(`/dispatch-orders/${dispatchId}/routes/${routeItemId}/assign`, {
+      method: "PUT",
+      body: JSON.stringify({ driver_id: driverId, driver_name: driverName }),
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dispatch-orders"] });
-      toast({ title: "✅ 派車成功" });
-      cancelMode();
+      setAssignTarget(null);
+      toast({ title: "✅ 指派成功" });
     },
-    onError: (e: Error) => toast({ title: "❌ 指派失敗", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "指派失敗", description: e.message, variant: "destructive" }),
   });
 
-  const batchAssignMutation = useMutation({
-    mutationFn: async ({ entries, driverId, driverName }:
-      { entries: { dispatchId: number; routeId: number }[]; driverId: number; driverName: string }) => {
-      for (const { dispatchId, routeId } of entries) {
-        await apiFetch(`/dispatch-orders/${dispatchId}/routes/${routeId}/assign`, {
+  const batchAssignMut = useMutation({
+    mutationFn: async ({ driverId, driverName }: { driverId: number; driverName: string }) => {
+      for (const routeId of selectedRouteIds) {
+        const order = orders.find(o => o.routes.some(r => r.id === routeId));
+        if (!order) continue;
+        await apiFetch(`/dispatch-orders/${order.id}/routes/${routeId}/assign`, {
           method: "PUT",
           body: JSON.stringify({ driver_id: driverId, driver_name: driverName }),
         });
@@ -181,352 +167,514 @@ export default function DispatchCenter() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dispatch-orders"] });
-      toast({ title: `✅ 批次派車完成，共 ${batchMap.size} 條路線` });
-      cancelMode();
+      const count = selectedRouteIds.size;
+      setSelectedRouteIds(new Set());
+      toast({ title: `✅ 批次指派 ${count} 筆完成` });
     },
-    onError: (e: Error) => toast({ title: "❌ 批次失敗", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "批次失敗", description: e.message, variant: "destructive" }),
   });
 
-  // ── 互動處理 ─────────────────────────────────────────────────────────────────
+  const aiSuggestMut = useMutation({
+    mutationFn: () => apiFetch("/dispatch-suggest/auto", {
+      method: "POST",
+      body: JSON.stringify({ route_item_ids: unassignedRoutes.map(r => r.id) }),
+    }),
+    onSuccess: (data) => { setAiSuggestions(data.suggestions ?? []); setShowAiPanel(true); },
+    onError: (e: Error) => toast({ title: "AI 建議失敗", description: e.message, variant: "destructive" }),
+  });
 
-  const cancelMode = useCallback(() => {
-    setMode("idle");
-    setPendingRoute(null);
-    setBatchMap(new Map());
-    setAiSuggestions([]);
-    setAiReady(false);
-  }, []);
+  const aiApplyMut = useMutation({
+    mutationFn: () => apiFetch("/dispatch-suggest/apply", {
+      method: "POST",
+      body: JSON.stringify({ suggestions: aiSuggestions }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dispatch-orders"] });
+      setShowAiPanel(false);
+      setAiSuggestions([]);
+      toast({ title: `🤖 AI 自動派車完成，共 ${aiSuggestions.length} 筆` });
+    },
+    onError: (e: Error) => toast({ title: "套用失敗", description: e.message, variant: "destructive" }),
+  });
 
-  // 點「派車」按鈕 → 單筆模式
-  const startSingleAssign = useCallback((routeId: number, dispatchId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMode("single");
-    setPendingRoute({ routeId, dispatchId });
-    setBatchMap(new Map());
-  }, []);
-
-  // 批次模式：勾選/取消路線
-  const toggleBatchRoute = useCallback((routeId: number, dispatchId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setBatchMap(prev => {
-      const next = new Map(prev);
-      if (next.has(routeId)) next.delete(routeId);
-      else next.set(routeId, dispatchId);
-      return next;
-    });
-  }, []);
-
-  // 點司機卡片
   const handleDriverClick = useCallback((driver: Driver) => {
-    if (mode === "single" && pendingRoute) {
-      assignMutation.mutate({
-        dispatchId:  pendingRoute.dispatchId,
-        routeItemId: pendingRoute.routeId,
+    if (!isSelectingDriver) return;
+    if (selectedRouteIds.size > 0) {
+      batchAssignMut.mutate({ driverId: driver.id, driverName: driver.name });
+    } else if (assignTarget) {
+      assignMut.mutate({
+        dispatchId:  assignTarget.dispatchId,
+        routeItemId: assignTarget.routeId,
         driverId:    driver.id,
         driverName:  driver.name,
       });
-    } else if (mode === "batch" && batchMap.size > 0) {
-      const entries = Array.from(batchMap.entries()).map(([routeId, dispatchId]) => ({ routeId, dispatchId }));
-      batchAssignMutation.mutate({ entries, driverId: driver.id, driverName: driver.name });
     }
-  }, [mode, pendingRoute, batchMap]);
+  }, [assignTarget, selectedRouteIds, isSelectingDriver]);
 
-  // ── AI 派車 ──────────────────────────────────────────────────────────────────
-  const handleAiSuggest = async () => {
-    const unassignedIds = (expandedOrder?.routes ?? orders.flatMap(o => o.routes))
-      .filter(r => !r.assigned_driver_id)
-      .map(r => r.id);
-    if (!unassignedIds.length) { toast({ title: "所有路線已指派完畢" }); return; }
-    setAiLoading(true);
-    setAiReady(false);
-    setAiSuggestions([]);
-    try {
-      const { suggestions } = await apiFetch("/dispatch-suggest/auto", {
-        method: "POST",
-        body: JSON.stringify({ route_item_ids: unassignedIds }),
-      });
-      setAiSuggestions(suggestions ?? []);
-      setAiReady(true);
-      if (!suggestions?.length) toast({ title: "暫無建議（無可用司機）" });
-    } catch (e: any) {
-      toast({ title: "AI 建議失敗", description: e.message, variant: "destructive" });
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const handleAiApply = async () => {
-    try {
-      const { applied } = await apiFetch("/dispatch-suggest/apply", {
-        method: "POST",
-        body: JSON.stringify({ suggestions: aiSuggestions }),
-      });
-      qc.invalidateQueries({ queryKey: ["dispatch-orders"] });
-      toast({ title: `✅ AI 自動派車完成，套用 ${applied} 筆` });
-      setAiSuggestions([]);
-      setAiReady(false);
-    } catch (e: any) {
-      toast({ title: "套用失敗", description: e.message, variant: "destructive" });
-    }
-  };
-
-  // ── 狀態旗標 ─────────────────────────────────────────────────────────────────
-  const isAssigning  = mode === "single" || mode === "batch";
-  const isProcessing = assignMutation.isPending || batchAssignMutation.isPending;
-
-  // ── UI ───────────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full bg-slate-50" style={{ minHeight: 0 }}>
+    <div style={S.root}>
 
-      {/* ── 左：地圖 ── */}
-      <div className="flex-1 relative min-w-0">
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-full text-slate-400 text-sm">地圖載入中…</div>
-        }>
-          <DispatchMap routes={mapRoutes} drivers={driverPositions} height="100%" />
-        </Suspense>
-        {/* 圖例 */}
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur rounded-xl shadow-lg px-4 py-3 text-xs space-y-1.5 border border-slate-200 z-[1000]">
-          <div className="font-bold text-slate-600 mb-1">圖例</div>
-          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />取貨點</div>
-          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />送貨點</div>
-          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />司機位置</div>
-        </div>
-      </div>
-
-      {/* ── 中：派車單列表 ── */}
-      <div className="w-72 flex flex-col bg-white border-l border-slate-200 overflow-hidden">
-        {/* 頁頭 */}
-        <div className="px-4 py-3 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold text-slate-700">🗂 派車單</span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => {
-                  if (mode === "batch") cancelMode();
-                  else { setMode("batch"); setPendingRoute(null); }
-                }}
-                className={`text-xs px-2 py-1 rounded-md border font-medium transition-colors ${
-                  mode === "batch"
-                    ? "bg-amber-500 text-white border-amber-500"
-                    : "text-amber-700 border-amber-300 hover:bg-amber-50"
-                }`}
-              >
-                {mode === "batch" ? `✔ 已選 ${batchMap.size}` : "批次"}
-              </button>
-              <button
-                onClick={handleAiSuggest}
-                disabled={aiLoading}
-                className="text-xs px-2 py-1 rounded-md border border-violet-300 text-violet-700 hover:bg-violet-50 font-medium transition-colors disabled:opacity-50"
-              >
-                {aiLoading ? "…" : "🤖 AI"}
-              </button>
-            </div>
+      {/* 頂部狀態列 */}
+      <header style={S.header}>
+        <div>
+          <div style={S.title}>調度中心</div>
+          <div style={S.sub}>
+            {isLoading ? "載入中…" : `${pending.length} 張派車單 · ${unassignedRoutes.length} 條路線待派`}
           </div>
-          <Input placeholder="搜尋車隊/標題…" value={searchText}
-            onChange={e => setSearchText(e.target.value)} className="h-7 text-xs mb-1.5" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部狀態</SelectItem>
-              <SelectItem value="sent">已發送</SelectItem>
-              <SelectItem value="acknowledged">已確認</SelectItem>
-              <SelectItem value="assigned">已指派</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
-        {/* 派車單列表 */}
-        <div className="flex-1 overflow-y-auto">
-          {isLoading && <div className="flex items-center justify-center py-10 text-slate-400 text-xs">載入中…</div>}
-          {!isLoading && filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-              <div className="text-2xl mb-1">📭</div>
-              <div className="text-xs">沒有符合的派車單</div>
-            </div>
+        <div style={S.statRow}>
+          <StatPill label="待命" value={availableDrivers.length} color="#10b981" />
+          <StatPill label="出勤" value={busyDrivers.length}      color="#f59e0b" />
+          <StatPill label="待派" value={unassignedRoutes.length}  color="#ef4444" />
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          {selectedRouteIds.size > 0 && (
+            <Btn color="#1e293b" textColor="#94a3b8"
+              onClick={() => setSelectedRouteIds(new Set())}>
+              清除（{selectedRouteIds.size}）
+            </Btn>
           )}
-          {filtered.map(order => (
-            <div key={order.id}
-              className={`border-b border-slate-100 cursor-pointer transition-colors ${
-                expandedId === order.id ? "bg-blue-50" : "hover:bg-slate-50"
-              }`}
-              onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}
-            >
-              {/* 派車單標頭 */}
-              <div className="px-3 py-2.5 flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-slate-800 text-xs truncate">{order.title}</div>
-                  <div className="text-xs text-slate-400">{order.fleet_name}</div>
-                  {order.week_start && (
-                    <div className="text-xs text-slate-400">{order.week_start}～{order.week_end}</div>
-                  )}
-                </div>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium whitespace-nowrap ${STATUS_COLOR[order.status]}`}>
-                  {STATUS_LABEL[order.status]}
-                </span>
-              </div>
+          <Btn
+            color="#312e81"
+            disabled={unassignedRoutes.length === 0 || aiSuggestMut.isPending}
+            onClick={() => aiSuggestMut.mutate()}
+          >
+            {aiSuggestMut.isPending ? "分析中…" : "🤖 AI 派車"}
+          </Btn>
+        </div>
+      </header>
 
-              {/* 路線明細 */}
-              {expandedId === order.id && (
-                <div className="px-2 pb-2 space-y-1">
-                  {order.routes.map(route => {
-                    const inBatch    = batchMap.has(route.id);
-                    const isPending  = mode === "single" && pendingRoute?.routeId === route.id;
-                    const aiMatch    = aiSuggestions.find(s => s.route_item_id === route.id);
-                    const isAssigned = !!route.assigned_driver_name;
+      {/* 選司機橫幅 */}
+      {isSelectingDriver && (
+        <div style={S.banner}>
+          <span>
+            {selectedRouteIds.size > 0
+              ? `已選 ${selectedRouteIds.size} 條路線 — 點擊左側待命司機完成批次指派`
+              : "請點擊左側待命司機完成指派"}
+          </span>
+          <Btn color="rgba(255,255,255,.15)" textColor="#fde68a"
+            onClick={() => { setAssignTarget(null); setSelectedRouteIds(new Set()); }}>
+            ✕ 取消
+          </Btn>
+        </div>
+      )}
 
-                    return (
-                      <div key={route.id}
-                        className={`rounded-lg border px-2.5 py-2 text-xs transition-all ${
-                          isPending  ? "bg-blue-50 border-blue-400 ring-1 ring-blue-300"   :
-                          inBatch    ? "bg-amber-50 border-amber-400 ring-1 ring-amber-300" :
-                          aiMatch    ? "bg-violet-50 border-violet-300"                     :
-                          isAssigned ? "bg-emerald-50 border-emerald-200"                   :
-                                       "bg-slate-50 border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="font-semibold text-slate-700 truncate flex items-center gap-1">
-                            {mode === "batch" && !isAssigned && (
-                              <input type="checkbox"
-                                className="accent-amber-500 shrink-0"
-                                checked={inBatch}
-                                onClick={e => toggleBatchRoute(route.id, order.id, e)}
-                                readOnly
-                              />
-                            )}
-                            {route.prefix && <span className="text-slate-400">{route.prefix}</span>}
-                            {route.route_label}
-                          </div>
-                          {route.route_date && <span className="text-slate-400 whitespace-nowrap">{route.route_date}</span>}
-                        </div>
+      {/* 三欄主體 */}
+      <div style={S.body}>
 
-                        {isAssigned ? (
-                          <div className="mt-1 flex items-center gap-1 text-emerald-700">
-                            <span>🚛</span>
-                            <span className="font-semibold">{route.assigned_driver_name}</span>
-                          </div>
-                        ) : aiMatch ? (
-                          <div className="mt-1 text-violet-700">
-                            🤖 <span className="font-semibold">{aiMatch.suggested_driver_name}</span>
-                            <span className="text-slate-400 ml-1">({aiMatch.reason})</span>
-                          </div>
-                        ) : (
-                          <button
-                            className={`mt-1.5 text-xs font-semibold underline underline-offset-2 transition-colors ${
-                              isPending ? "text-blue-700" : "text-blue-500 hover:text-blue-700"
-                            }`}
-                            onClick={e => startSingleAssign(route.id, order.id, e)}
-                          >
-                            {isPending ? "📍 等待選擇司機…" : "＋ 派車"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  <div className="text-xs text-slate-400 text-right pt-0.5">
-                    已指派 {order.routes.filter(r => r.assigned_driver_name).length} / {order.routes.length}
-                  </div>
-                </div>
-              )}
-            </div>
+        {/* 左：司機牆 */}
+        <aside style={S.panel}>
+          <Label>待命 · {availableDrivers.length}</Label>
+          {availableDrivers.length === 0 && <Muted>目前無待命司機</Muted>}
+          {availableDrivers.map(d => (
+            <DriverCard key={d.id} driver={d} selectable={isSelectingDriver}
+              onClick={() => handleDriverClick(d)} />
           ))}
-        </div>
 
-        {/* 取消提示列 */}
-        {(isAssigning || aiReady) && (
-          <div className="px-3 py-2 bg-slate-100 border-t border-slate-200 flex items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">
-              {isAssigning ? "點右側司機完成指派" : `AI 建議 ${aiSuggestions.length} 筆`}
-            </span>
-            {aiReady && (
-              <button onClick={handleAiApply}
-                className="text-xs px-2.5 py-1 rounded-md bg-violet-600 text-white font-semibold hover:bg-violet-700 transition-colors">
-                一鍵套用
-              </button>
-            )}
-            <button onClick={cancelMode}
-              className="text-xs text-slate-400 hover:text-slate-600 underline">取消</button>
-          </div>
-        )}
-      </div>
-
-      {/* ── 右：司機列表 ── */}
-      <div className={`w-56 flex flex-col border-l overflow-hidden transition-colors duration-300 ${
-        isAssigning ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"
-      }`}>
-        {/* 標頭 */}
-        <div className={`px-3 py-3 border-b text-xs font-bold transition-colors ${
-          isAssigning ? "border-amber-200 text-amber-800 bg-amber-100" : "border-slate-100 text-slate-600"
-        }`}>
-          {isAssigning ? (
-            <span className="flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-              </span>
-              {mode === "batch" ? `選擇司機 → 指派 ${batchMap.size} 條路線` : "點擊司機完成指派"}
-            </span>
-          ) : "👤 待命司機"}
-        </div>
-
-        {/* 司機卡片 */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-          {drivers.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-300 text-xs">
-              <div className="text-2xl mb-1">🚫</div>
-              無待命司機
-            </div>
+          {busyDrivers.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "#0c1523", margin: "8px 0" }} />
+              <Label>出勤中 · {busyDrivers.length}</Label>
+              {busyDrivers.map(d => (
+                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}} />
+              ))}
+            </>
           )}
-          {drivers.map(driver => {
-            const aiMatch = aiSuggestions.find(s => s.suggested_driver_id === driver.id);
-            const clickable = isAssigning && !isProcessing;
+        </aside>
 
-            return (
-              <button
-                key={driver.id}
-                disabled={!clickable}
-                onClick={() => handleDriverClick(driver)}
-                className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all duration-200 ${
-                  clickable
-                    ? "cursor-pointer border-amber-400 bg-white shadow-md hover:bg-amber-500 hover:text-white hover:shadow-lg hover:scale-[1.02] active:scale-95 animate-pulse-subtle"
-                    : aiMatch
-                    ? "cursor-default border-violet-300 bg-violet-50"
-                    : "cursor-default border-slate-200 bg-white hover:bg-slate-50"
-                }`}
-                style={clickable ? { animation: "glow-pulse 1.8s ease-in-out infinite" } : undefined}
-              >
-                <div className="font-semibold text-sm truncate">{driver.name}</div>
-                {driver.vehicle_type && (
-                  <div className={`text-xs mt-0.5 truncate ${clickable ? "text-amber-600" : "text-slate-400"}`}>
-                    {driver.vehicle_type}
-                    {driver.license_plate && <span className="ml-1">· {driver.license_plate}</span>}
-                  </div>
-                )}
-                {aiMatch && (
-                  <div className="mt-1 text-xs text-violet-600 font-medium">
-                    🤖 {aiMatch.route_label} <span className="text-slate-400">({aiMatch.score}分)</span>
-                  </div>
-                )}
-              </button>
-            );
-          })}
+        {/* 中：地圖 */}
+        <div style={S.mapWrap}>
+          <Suspense fallback={
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              height: "100%", color: "#334155", fontSize: 13 }}>
+              地圖載入中…
+            </div>
+          }>
+            <DispatchMap routes={mapRoutes} drivers={driverPositions} height="100%" />
+          </Suspense>
+          {focusOrderId && (
+            <button style={S.mapClear} onClick={() => setFocusOrderId(null)}>✕ 顯示全部</button>
+          )}
+          {/* 圖例 */}
+          <div style={S.legend}>
+            <div style={S.legendTitle}>圖例</div>
+            <LegendDot color="#3b82f6" label="取貨點" />
+            <LegendDot color="#10b981" label="送貨點" />
+            <LegendDot color="#f59e0b" label="司機位置" />
+          </div>
         </div>
 
-        {/* 統計 */}
-        <div className="px-3 py-2 border-t border-slate-100 text-xs text-slate-400 text-center">
-          {drivers.length} 位待命
-        </div>
+        {/* 右：派車單 */}
+        <aside style={{ ...S.panel, borderLeft: "1px solid #1e293b", borderRight: "none" }}>
+          <Label style={{ padding: "14px 16px 8px" }}>
+            派車單 · {pending.length} 待處理
+          </Label>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {isLoading && <Muted>載入中…</Muted>}
+            {!isLoading && orders.length === 0 && <Muted>目前沒有派車單</Muted>}
+            {orders.map(order => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                focused={focusOrderId === order.id}
+                selectedRouteIds={selectedRouteIds}
+                onFocus={() => setFocusOrderId(focusOrderId === order.id ? null : order.id)}
+                onRouteSelect={id => {
+                  setSelectedRouteIds(prev => {
+                    const next = new Set(prev);
+                    next.has(id) ? next.delete(id) : next.add(id);
+                    return next;
+                  });
+                  setAssignTarget(null);
+                }}
+                onAssignRoute={id => {
+                  setAssignTarget({ routeId: id, dispatchId: order.id });
+                  setSelectedRouteIds(new Set());
+                }}
+              />
+            ))}
+          </div>
+        </aside>
       </div>
 
-      {/* 發光動畫 CSS */}
+      {/* AI 建議 Modal */}
+      {showAiPanel && (
+        <div style={S.overlay} onClick={() => { setShowAiPanel(false); setAiSuggestions([]); }}>
+          <div style={S.modal} onClick={e => e.stopPropagation()}>
+            <div style={S.modalHead}>
+              <span style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>🤖 AI 派車建議</span>
+              <span style={{ fontSize: 12, color: "#475569" }}>{aiSuggestions.length} 條路線</span>
+            </div>
+
+            {aiSuggestions.length === 0 ? (
+              <Muted>目前無可建議的路線（可能全部已指派或無可用司機）</Muted>
+            ) : (
+              <div style={{ overflowY: "auto", maxHeight: 360 }}>
+                {aiSuggestions.map(s => (
+                  <div key={s.route_item_id} style={S.aiRow}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "#e2e8f0" }}>{s.route_label}</div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{s.reason}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, color: "#f59e0b", fontSize: 13 }}>{s.suggested_driver_name}</div>
+                      <div style={{ fontSize: 10, color: "#334155", marginTop: 2 }}>評分 {s.score}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <Btn color="#1e293b" textColor="#64748b" style={{ flex: 1 }}
+                onClick={() => { setShowAiPanel(false); setAiSuggestions([]); }}>
+                取消
+              </Btn>
+              <Btn color="#4f46e5" style={{ flex: 2 }}
+                disabled={aiApplyMut.isPending || aiSuggestions.length === 0}
+                onClick={() => aiApplyMut.mutate()}>
+                {aiApplyMut.isPending ? "套用中…" : `一鍵套用全部 ${aiSuggestions.length} 筆`}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 發光動畫 */}
       <style>{`
-        @keyframes glow-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.4), 0 2px 8px rgba(0,0,0,.08); }
-          50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0.12), 0 4px 16px rgba(245,158,11,.25); }
+        @keyframes amber-glow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.3); }
+          50%       { box-shadow: 0 0 0 5px rgba(245,158,11,.08), 0 0 20px rgba(245,158,11,.15); }
+        }
+        .driver-selectable:hover {
+          background: rgba(245,158,11,.12) !important;
+          border-color: rgba(245,158,11,.5) !important;
         }
       `}</style>
     </div>
   );
 }
+
+// ── 小元件 ────────────────────────────────────────────────────────────────────
+
+function StatPill({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ padding: "0 18px", textAlign: "center", borderRight: "1px solid #1e293b" }}>
+      <div style={{ fontSize: 22, fontWeight: 900, color, fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{label}</div>
+    </div>
+  );
+}
+
+function Label({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{
+      padding: "10px 16px 4px", fontSize: 10, fontWeight: 700,
+      color: "#475569", textTransform: "uppercase", letterSpacing: "0.12em", ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function Muted({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ padding: "20px 16px", color: "#334155", fontSize: 12, textAlign: "center", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function Btn({ children, color, textColor = "#fff", disabled, onClick, style }: {
+  children: React.ReactNode; color: string; textColor?: string;
+  disabled?: boolean; onClick?: () => void; style?: React.CSSProperties;
+}) {
+  return (
+    <button disabled={disabled} onClick={onClick} style={{
+      padding: "7px 16px", borderRadius: 8, border: "none",
+      background: color, color: textColor, fontSize: 12, fontWeight: 700,
+      cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.4 : 1, fontFamily: "inherit",
+      transition: "opacity .15s, background .15s", ...style,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#64748b" }}>
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      {label}
+    </div>
+  );
+}
+
+function DriverCard({ driver, selectable, onClick }: {
+  driver: Driver; selectable: boolean; onClick: () => void;
+}) {
+  const meta = driverStatusMeta[driver.status ?? "off"];
+  return (
+    <div
+      className={selectable ? "driver-selectable" : ""}
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "10px 16px", cursor: selectable ? "pointer" : "default",
+        borderBottom: "1px solid #0c1523",
+        background: selectable ? "rgba(245,158,11,.04)" : "transparent",
+        transition: "background .12s, border-color .12s",
+        animation: selectable ? "amber-glow 2s ease-in-out infinite" : "none",
+        border: selectable ? "1px solid rgba(245,158,11,.15)" : "1px solid transparent",
+        borderRadius: selectable ? 8 : 0,
+        margin: selectable ? "2px 6px" : 0,
+      }}
+    >
+      <div style={{
+        width: 34, height: 34, borderRadius: 8, background: "#0d1626", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 13, fontWeight: 900, color: "#64748b",
+        border: selectable ? "1.5px solid #f59e0b55" : "1.5px solid #1e293b",
+        transition: "border-color .12s",
+      }}>
+        {driver.name[0]}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{driver.name}</div>
+        <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>
+          {driver.vehicle_type ?? "—"}
+          {driver.license_plate ? ` · ${driver.license_plate}` : ""}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ width: 5, height: 5, borderRadius: "50%", background: meta.dot }} />
+          <span style={{ fontSize: 10, color: meta.dot }}>{meta.label}</span>
+        </div>
+        {driver.rating != null && (
+          <span style={{ fontSize: 10, color: "#334155" }}>★ {Number(driver.rating).toFixed(1)}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ order, focused, selectedRouteIds, onFocus, onRouteSelect, onAssignRoute }: {
+  order: DispatchOrder; focused: boolean; selectedRouteIds: Set<number>;
+  onFocus: () => void; onRouteSelect: (id: number) => void; onAssignRoute: (id: number) => void;
+}) {
+  const meta     = statusMeta[order.status];
+  const assigned = order.routes.filter(r => r.assigned_driver_name).length;
+  const total    = order.routes.length;
+  const pct      = total > 0 ? (assigned / total) * 100 : 0;
+
+  return (
+    <div style={{ borderBottom: "1px solid #0c1523", background: focused ? "#0d1e38" : "transparent" }}>
+      <div onClick={onFocus} style={{ padding: "12px 16px", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: "#e2e8f0",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {order.title}
+            </div>
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{order.fleet_name}</div>
+          </div>
+          <span style={{
+            fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 700,
+            background: `${meta.color}1a`, color: meta.color, whiteSpace: "nowrap", flexShrink: 0,
+          }}>
+            {meta.label}
+          </span>
+        </div>
+
+        {/* 進度條 */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            fontSize: 10, color: "#334155", marginBottom: 4,
+          }}>
+            <span>指派進度</span>
+            <span style={{ color: pct === 100 ? "#10b981" : "#94a3b8" }}>{assigned}/{total}</span>
+          </div>
+          <div style={{ height: 2, background: "#1e293b", borderRadius: 1 }}>
+            <div style={{
+              height: "100%", borderRadius: 1, transition: "width .4s",
+              background: pct === 100 ? "#10b981" : "#f59e0b",
+              width: `${pct}%`,
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* 路線列表（展開） */}
+      {focused && (
+        <div style={{ padding: "0 10px 12px" }}>
+          {order.routes.map(r => {
+            const sel = selectedRouteIds.has(r.id);
+            return (
+              <div key={r.id} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 10px", borderRadius: 7, marginBottom: 3,
+                background: sel
+                  ? "#1c2e10"
+                  : r.assigned_driver_name ? "#091a12" : "#0c1523",
+                border: `1px solid ${sel
+                  ? "#4ade8060"
+                  : r.assigned_driver_name ? "#16653460" : "#1e293b"}`,
+                transition: "all .15s",
+              }}>
+                {!r.assigned_driver_name && (
+                  <input type="checkbox" checked={sel}
+                    onChange={() => onRouteSelect(r.id)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ accentColor: "#f59e0b", flexShrink: 0 }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8" }}>
+                    {r.prefix && <span style={{ color: "#334155" }}>{r.prefix} </span>}
+                    {r.route_label}
+                  </span>
+                  {r.route_date && (
+                    <span style={{ fontSize: 10, color: "#334155", marginLeft: 6 }}>{r.route_date}</span>
+                  )}
+                </div>
+                {r.assigned_driver_name ? (
+                  <span style={{ fontSize: 11, color: "#4ade80", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    ✓ {r.assigned_driver_name}
+                  </span>
+                ) : (
+                  <button
+                    onClick={e => { e.stopPropagation(); onAssignRoute(r.id); }}
+                    style={{
+                      fontSize: 11, padding: "3px 10px", borderRadius: 6,
+                      background: "#172554", color: "#60a5fa",
+                      border: "1px solid #1e40af", cursor: "pointer",
+                      fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap",
+                    }}
+                  >
+                    派車
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 樣式 ──────────────────────────────────────────────────────────────────────
+const S: Record<string, React.CSSProperties> = {
+  root: {
+    display: "flex", flexDirection: "column", height: "100%",
+    background: "#060d1a", color: "#e2e8f0",
+    fontFamily: "'Noto Sans TC','PingFang TC',system-ui,sans-serif",
+  },
+  header: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "0 20px", height: 58, flexShrink: 0,
+    background: "#08111f", borderBottom: "1px solid #1e293b",
+  },
+  title: { fontSize: 15, fontWeight: 900, letterSpacing: "0.06em", color: "#f8fafc" },
+  sub:   { fontSize: 11, color: "#334155", marginTop: 2 },
+  statRow: {
+    display: "flex", alignItems: "center",
+    borderLeft: "1px solid #1e293b", borderRight: "1px solid #1e293b",
+    padding: "0 8px",
+  },
+  banner: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "9px 20px", background: "#78350f",
+    borderBottom: "1px solid #92400e",
+    color: "#fde68a", fontSize: 13, fontWeight: 600, flexShrink: 0, gap: 12,
+  },
+  body: {
+    display: "grid", gridTemplateColumns: "250px 1fr 300px",
+    flex: 1, overflow: "hidden", minHeight: 0,
+  },
+  panel: {
+    display: "flex", flexDirection: "column",
+    background: "#08111f", borderRight: "1px solid #1e293b",
+    overflowY: "auto",
+  },
+  mapWrap: { position: "relative", overflow: "hidden" },
+  mapClear: {
+    position: "absolute", top: 10, left: 10, zIndex: 999,
+    background: "rgba(8,17,31,.92)", color: "#64748b",
+    border: "1px solid #1e293b", borderRadius: 7,
+    padding: "5px 12px", fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+  },
+  legend: {
+    position: "absolute", bottom: 16, left: 16, zIndex: 999,
+    background: "rgba(8,17,31,.88)", border: "1px solid #1e293b",
+    borderRadius: 10, padding: "10px 14px", display: "flex",
+    flexDirection: "column", gap: 6,
+  },
+  legendTitle: { fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 },
+  overlay: {
+    position: "fixed", inset: 0, zIndex: 500,
+    background: "rgba(0,0,0,.7)", backdropFilter: "blur(6px)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+  },
+  modal: {
+    background: "#0d1626", border: "1px solid #1e293b", borderRadius: 16,
+    padding: 24, width: "90%", maxWidth: 520,
+    maxHeight: "80vh", display: "flex", flexDirection: "column",
+    boxShadow: "0 40px 100px rgba(0,0,0,.8)",
+  },
+  modalHead: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    paddingBottom: 14, marginBottom: 4, borderBottom: "1px solid #1e293b",
+  },
+  aiRow: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "10px 0", borderBottom: "1px solid #0c1523", gap: 12,
+  },
+};
