@@ -100,6 +100,7 @@ import { freightQuoteRouter } from "./freightQuote";
 import { vehicleSurchargeRouter } from "./vehicleSurcharge";
 import { driverPositionsRouter } from "./driverPositions";
 import { dispatchSuggestEnhancedRouter } from "./dispatchSuggestEnhanced";
+import { taxPayrollRouter } from "./taxPayroll";
 
 const router: IRouter = Router();
 
@@ -219,5 +220,6 @@ router.use(firebaseSyncRouter);                                    // Firebase F
 router.use(freightQuoteRouter);                                    // 台灣貨運報價計算引擎
 router.use(vehicleSurchargeRouter);                                // 車型附加費計算引擎
 router.use(dispatchSuggestEnhancedRouter);                         // AI 智慧派車建議
+router.use("/tax", taxPayrollRouter);                              // 稅務合規薪資引擎
 
 export default router;
