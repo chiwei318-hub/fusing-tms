@@ -29,6 +29,7 @@ const PageFallback = () => (
 );
 
 const Admin              = lazy(() => import("@/pages/Admin"));
+const DispatchCenter     = lazy(() => import("@/pages/admin/DispatchCenter"));
 const EnterprisePortal   = lazy(() => import("@/pages/enterprise/EnterprisePortal"));
 const FusingaoPortal     = lazy(() => import("@/pages/FusingaoPortal"));
 const FusingaoFleetPortal= lazy(() => import("@/pages/fleet/FusingaoFleetPortal"));
@@ -160,6 +161,11 @@ function AdminPortal() {
             <Route path="/report" component={OrderReport} />
             <Route path="/fees" component={Fees} />
             <Route path="/admin" component={Admin} />
+            <Route path="/dispatch" component={() => (
+              <div style={{ height: "calc(100dvh - 80px)", overflow: "hidden" }}>
+                <DispatchCenter />
+              </div>
+            )} />
             <Route path="/fusingao" component={FusingaoPortal} />
             <Route component={NotFound} />
           </Switch>
