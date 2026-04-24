@@ -98,6 +98,8 @@ import { sheetsExportRouter } from "./sheetsExport";
 import { firebaseSyncRouter } from "./firebaseSync";
 import { freightQuoteRouter } from "./freightQuote";
 import { vehicleSurchargeRouter } from "./vehicleSurcharge";
+import { driverPositionsRouter } from "./driverPositions";
+import { dispatchSuggestEnhancedRouter } from "./dispatchSuggestEnhanced";
 
 const router: IRouter = Router();
 
@@ -121,6 +123,7 @@ router.use(orderImportRouter);
 router.use(routeImportRouter);
 router.use(formImportRouter);
 router.use(ordersRouter);
+router.use(driverPositionsRouter);         // GPS 位置（必須在 driversRouter 之前）
 router.use(driversRouter);
 router.use(lineRouter);
 router.use(customersRouter);
@@ -215,5 +218,6 @@ router.use(sheetsExportRouter);                                    // Google She
 router.use(firebaseSyncRouter);                                    // Firebase Firestore 雲端金庫同步
 router.use(freightQuoteRouter);                                    // 台灣貨運報價計算引擎
 router.use(vehicleSurchargeRouter);                                // 車型附加費計算引擎
+router.use(dispatchSuggestEnhancedRouter);                         // AI 智慧派車建議
 
 export default router;

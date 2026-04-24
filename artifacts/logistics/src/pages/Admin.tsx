@@ -61,6 +61,7 @@ const CostAnalysisTab      = lazy(() => import("./admin/CostAnalysisTab"));
 const DemandForecastTab    = lazy(() => import("./admin/DemandForecastTab").then(m => ({ default: m.DemandForecastTab })));
 const ZoneManagementTab    = lazy(() => import("./admin/ZoneManagementTab").then(m => ({ default: m.ZoneManagementTab })));
 const DailyOpsTab          = lazy(() => import("./admin/DailyOpsTab").then(m => ({ default: m.DailyOpsTab })));
+const DispatchCenter       = lazy(() => import("./admin/DispatchCenter"));
 const AutoRoutingTab       = lazy(() => import("./admin/AutoRoutingTab").then(m => ({ default: m.AutoRoutingTab })));
 const RouteImportTab       = lazy(() => import("./admin/RouteImportTab"));
 const FormImportTab        = lazy(() => import("./admin/FormImportTab"));
@@ -1662,6 +1663,7 @@ export default function Admin() {
                   { value: "strategickpi",   icon: <Target className="w-3.5 h-3.5 text-yellow-500" />,            label: "戰略KPI" },
                   { value: "carpool",        icon: <Car className="w-3.5 h-3.5 text-teal-600" />,                 label: "拼車" },
                   { value: "heatmap",        icon: <Map className="w-3.5 h-3.5 text-teal-500" />,                 label: "熱區圖" },
+                  { value: "dispatchchmap",  icon: <Map className="w-3.5 h-3.5 text-cyan-700" />,                label: "調度中心" },
                   { value: "fleetmap",       icon: <Navigation className="w-3.5 h-3.5 text-teal-600" />,          label: "車隊圖" },
                   { value: "vehicles",       icon: <Truck className="w-3.5 h-3.5 text-slate-500" />,              label: "車型庫" },
                   { value: "vehicle-mgmt",   icon: <Truck className="w-3.5 h-3.5 text-orange-500" />,             label: "車輛管理" },
@@ -3853,6 +3855,11 @@ export default function Admin() {
         {/* ===== 派單優化 TAB ===== */}
         <TabsContent value="dispatch" className="outline-none">
           <DispatchOptimizerTab />
+        </TabsContent>
+
+        {/* ===== 調度中心（地圖 + AI 派車）TAB ===== */}
+        <TabsContent value="dispatchchmap" className="outline-none p-0" style={{ height: "calc(100vh - 140px)" }}>
+          <DispatchCenter />
         </TabsContent>
 
         {/* ===== 加盟管理 TAB（整合審核/加盟主/清算）===== */}
