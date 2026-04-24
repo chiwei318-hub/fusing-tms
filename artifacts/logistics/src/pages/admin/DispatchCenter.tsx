@@ -14,6 +14,18 @@ const DispatchMap = lazy(() =>
   import("@/components/DispatchMap").then(m => ({ default: m.DispatchMap }))
 );
 
+// ── 工具：防禦性陣列解析 ──────────────────────────────────────────────────────
+// API 可能回傳 []、{ data:[] }、{ orders:[] }、{ drivers:[] } 等格式
+function toArray(v: unknown): any[] {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object") {
+    for (const key of ["data", "orders", "drivers", "items", "results", "routes"]) {
+      if (Array.isArray((v as any)[key])) return (v as any)[key];
+    }
+  }
+  return [];
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = localStorage.getItem("token");
@@ -65,6 +77,8 @@ interface Driver {
   rating?: number;
   latitude?: number;
   longitude?: number;
+  can_cold_chain?: boolean;
+  has_tailgate?: boolean;
 }
 
 interface AISuggestion {
@@ -91,10 +105,10 @@ const statusMeta = {
 };
 
 const driverStatusMeta: Record<string, { label: string; dot: string }> = {
-  available: { label: "待命",   dot: "#10b981" },
-  busy:      { label: "出勤",   dot: "#f59e0b" },
-  off:       { label: "休息",   dot: "#475569" },
-  offline:   { label: "離線",   dot: "#334155" },
+  available: { label: "待命", dot: "#10b981" },
+  busy:      { label: "出勤", dot: "#f59e0b" },
+  offline:   { label: "離線", dot: "#475569" },
+  off:       { label: "離線", dot: "#475569" }, // 相容舊值
 };
 
 // ── 主元件 ────────────────────────────────────────────────────────────────────
@@ -109,30 +123,34 @@ export default function DispatchCenter() {
   const [aiSkipped,        setAiSkipped]        = useState<AISkipped[]>([]);
   const [showAiPanel,      setShowAiPanel]      = useState(false);
 
-  // ── 查詢 ────────────────────────────────────────────────────────────────────
-  const { data: orders = [], isLoading } = useQuery<DispatchOrder[]>({
+  // ── 查詢（全部透過 toArray() 防禦性解析） ───────────────────────────────────
+  const { data: ordersRaw, isLoading } = useQuery({
     queryKey: ["dispatch-orders"],
-    queryFn: () => apiFetch("/dispatch-orders").then(r => r.orders ?? []),
+    queryFn:  () => apiFetch("/dispatch-orders"),
     refetchInterval: 30_000,
   });
+  const orders: DispatchOrder[] = toArray(ordersRaw);
 
-  const { data: drivers = [] } = useQuery<Driver[]>({
+  const { data: driversRaw } = useQuery({
     queryKey: ["drivers"],
-    queryFn: () => apiFetch("/drivers").then(r => Array.isArray(r) ? r : (r.drivers ?? [])),
+    queryFn:  () => apiFetch("/drivers"),
     refetchInterval: 60_000,
   });
+  const drivers: Driver[] = toArray(driversRaw);
 
-  const { data: driverPositions = [] } = useQuery<DriverPosition[]>({
+  const { data: positionsRaw } = useQuery({
     queryKey: ["driver-positions"],
-    queryFn: () => apiFetch("/drivers/positions").catch(() => []),
+    queryFn:  () => apiFetch("/drivers/positions").catch(() => []),
     refetchInterval: 15_000,
   });
+  const driverPositions: DriverPosition[] = toArray(positionsRaw);
 
   // ── 衍生資料 ────────────────────────────────────────────────────────────────
   const pending          = orders.filter(o => o.status !== "assigned");
   const unassignedRoutes = orders.flatMap(o => (o.routes ?? []).filter(r => !r.assigned_driver_name));
   const availableDrivers = drivers.filter(d => d.status === "available");
   const busyDrivers      = drivers.filter(d => d.status === "busy");
+  const offlineDrivers   = drivers.filter(d => d.status === "offline" || d.status === "off");
   const focusOrder       = focusOrderId ? orders.find(o => o.id === focusOrderId) : null;
 
   const mapRoutes: RoutePoint[] = (focusOrder ? (focusOrder.routes ?? []) : orders.flatMap(o => o.routes ?? []))
@@ -240,7 +258,8 @@ export default function DispatchCenter() {
         <div style={S.statRow}>
           <StatPill label="待命" value={availableDrivers.length} color="#10b981" />
           <StatPill label="出勤" value={busyDrivers.length}      color="#f59e0b" />
-          <StatPill label="待派" value={unassignedRoutes.length}  color="#ef4444" />
+          <StatPill label="離線" value={offlineDrivers.length}   color="#475569" />
+          <StatPill label="待派" value={unassignedRoutes.length} color="#ef4444" />
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
@@ -292,6 +311,16 @@ export default function DispatchCenter() {
               <div style={{ height: 1, background: "#0c1523", margin: "8px 0" }} />
               <Label>出勤中 · {busyDrivers.length}</Label>
               {busyDrivers.map(d => (
+                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}} />
+              ))}
+            </>
+          )}
+
+          {offlineDrivers.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "#0c1523", margin: "8px 0" }} />
+              <Label>離線 · {offlineDrivers.length}</Label>
+              {offlineDrivers.map(d => (
                 <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}} />
               ))}
             </>
@@ -522,7 +551,21 @@ function DriverCard({ driver, selectable, onClick }: {
         {driver.name[0]}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{driver.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{driver.name}</span>
+          {driver.can_cold_chain && (
+            <span title="具備冷鏈能力" style={{
+              fontSize: 10, background: "#0c2a4a", color: "#38bdf8",
+              borderRadius: 4, padding: "0 4px", border: "1px solid #0e4172",
+            }}>❄️</span>
+          )}
+          {driver.has_tailgate && (
+            <span title="具備尾門" style={{
+              fontSize: 10, background: "#1a1a0a", color: "#fbbf24",
+              borderRadius: 4, padding: "0 4px", border: "1px solid #713f12",
+            }}>🔧</span>
+          )}
+        </div>
         <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>
           {driver.vehicle_type ?? "—"}
           {driver.license_plate ? ` · ${driver.license_plate}` : ""}
