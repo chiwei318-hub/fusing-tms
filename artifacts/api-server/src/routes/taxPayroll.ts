@@ -132,6 +132,12 @@ export async function ensureTaxPayrollTables() {
     )
   `);
 
+  // ── fusingao_fleets 補充欄位 ──────────────────────────────────────────────
+  await db.execute(sql`
+    ALTER TABLE fusingao_fleets
+      ADD COLUMN IF NOT EXISTS has_tax_id BOOLEAN NOT NULL DEFAULT false
+  `);
+
   console.log("[TaxPayroll] tables ensured (driver_payroll / fleet_payables / platform_ledger / withholding_certificates)");
 }
 
@@ -431,22 +437,25 @@ taxPayrollRouter.post("/fleet-payables/calculate", async (req, res) => {
     if (!period || !/^\d{4}-\d{2}$/.test(period))
       return res.status(400).json({ ok: false, error: "period 必填（YYYY-MM）" });
 
-    // 從 fusingao 車隊結算資料計算
+    // 從 fusingao 車隊結算資料計算（直接走 orders.fusingao_fleet_id FK）
     const fleetData = await db.execute(sql`
       SELECT
         f.id AS fleet_id, f.fleet_name,
         COALESCE(f.has_tax_id, false) AS has_tax_id,
         COUNT(o.id) AS total_trips,
-        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip, 0)), 0) AS gross_amount
+        COALESCE(SUM(
+          COALESCE(f.rate_override,
+            (SELECT COALESCE(NULLIF(pr2.driver_pay_rate,0), pr2.rate_per_trip, 0)
+               FROM route_prefix_rates pr2
+              WHERE pr2.prefix = o.route_prefix LIMIT 1),
+            0)
+        ), 0) AS gross_amount
       FROM fusingao_fleets f
-      LEFT JOIN fleet_drivers fd ON fd.fleet_id = f.id
-      LEFT JOIN orders o ON o.shopee_driver_id = fd.employee_id
-        AND o.route_id IS NOT NULL
+      LEFT JOIN orders o ON o.fusingao_fleet_id = f.id
         AND TO_CHAR(o.created_at, 'YYYY-MM') = ${period}
-      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
       WHERE f.is_active = true
       GROUP BY f.id, f.fleet_name, f.has_tax_id
-      HAVING COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip, 0)), 0) > 0
+      HAVING COUNT(o.id) > 0
     `);
 
     let generated = 0;
