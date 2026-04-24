@@ -584,6 +584,98 @@ router.get("/orders/:id", async (req, res) => {
   }
 });
 
+// ── PUT /orders/:id/status ─────────────────────────────────────────────────
+// Driver App 專用：只更新狀態，帶 JWT 自動驗證是否為指派司機
+// 允許值（driver）：in_transit | delivered
+// 允許值（admin / 無 JWT）：pending | assigned | in_transit | delivered | cancelled
+router.put("/orders/:id/status", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "無效的訂單 id" });
+
+    const { status } = req.body as { status?: string };
+    const DRIVER_ALLOWED = ["in_transit", "delivered"] as const;
+    const ADMIN_ALLOWED  = ["pending", "assigned", "in_transit", "delivered", "cancelled"] as const;
+
+    // ── JWT 解析 ──────────────────────────────────────────────
+    let jwtRole: string | null = null;
+    let jwtDriverId: number | null = null;
+    const rawToken = extractBearerToken(req.headers.authorization);
+    if (rawToken) {
+      try {
+        const payload = verifyJwt(rawToken) as any;
+        jwtRole     = payload?.role ?? null;
+        jwtDriverId = payload?.role === "driver" ? parseInt(payload.id, 10) : null;
+      } catch (_) {}
+    }
+
+    // ── status 合法性驗證 ─────────────────────────────────────
+    const allowed = jwtRole === "driver" ? DRIVER_ALLOWED : ADMIN_ALLOWED;
+    if (!status || !(allowed as readonly string[]).includes(status)) {
+      return res.status(400).json({
+        error: `status 必須是：${allowed.join(" | ")}`,
+      });
+    }
+
+    // ── 取得訂單 ─────────────────────────────────────────────
+    const order = await fetchOrderWithDriver(id);
+    if (!order) return res.status(404).json({ error: "找不到訂單" });
+
+    // ── Driver：確認是被指派的司機 ────────────────────────────
+    if (jwtRole === "driver") {
+      if (order.driverId !== jwtDriverId) {
+        return res.status(403).json({ error: "此訂單未指派給你" });
+      }
+    }
+
+    // ── 更新 ─────────────────────────────────────────────────
+    const updates: Record<string, any> = {
+      status,
+      updatedAt: new Date(),
+    };
+    if (status === "in_transit" && !order.driverAcceptedAt) {
+      updates.driverAcceptedAt = new Date();
+    }
+
+    await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
+    const updated = await fetchOrderWithDriver(id);
+    res.json(updated);
+
+    // ── 完成後觸發（同 PATCH /orders/:id）────────────────────
+    if (status === "delivered" && updated?.id) {
+      setImmediate(() => autoIssueInvoice(updated.id, "admin_delivered").catch(() => {}));
+      setImmediate(() => autoCalculateSettlement(updated.id).catch(() => {}));
+    }
+
+    if (["in_transit", "delivered", "assigned"].includes(status) && updated) {
+      setImmediate(async () => {
+        try {
+          const customerRows = await db.select().from(customersTable)
+            .where(eq(customersTable.phone, updated.customerPhone)).limit(1);
+          const customer = customerRows[0];
+          if (customer) {
+            const notifMap: Record<string, { title: string; message: string }> = {
+              assigned:   { title: "司機已指派", message: `訂單 #${updated.id} 已指派司機，請保持聯絡。` },
+              in_transit: { title: "貨物運送中", message: `訂單 #${updated.id} 的貨物正在運送中，預計即將抵達。` },
+              delivered:  { title: "訂單已完成", message: `訂單 #${updated.id} 已完成交付，感謝您使用富詠運輸！` },
+            };
+            const notif = notifMap[status];
+            if (notif) {
+              await db.insert(customerNotificationsTable).values({
+                customerId: customer.id, orderId: updated.id,
+                type: `order_${status}`, ...notif,
+              });
+            }
+          }
+        } catch { /* silent */ }
+      });
+    }
+  } catch (err) {
+    req.log.error({ err }, "PUT /orders/:id/status failed");
+    res.status(500).json({ error: "更新狀態失敗" });
+  }
+});
+
 router.patch("/orders/:id", async (req, res) => {
   try {
     const { id } = UpdateOrderParams.parse(req.params);
