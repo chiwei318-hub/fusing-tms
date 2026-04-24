@@ -84,9 +84,10 @@ const statusMeta = {
 };
 
 const driverStatusMeta: Record<string, { label: string; dot: string }> = {
-  available: { label: "待命", dot: "#10b981" },
-  busy:      { label: "出勤", dot: "#f59e0b" },
-  off:       { label: "休息", dot: "#475569" },
+  available: { label: "待命",   dot: "#10b981" },
+  busy:      { label: "出勤",   dot: "#f59e0b" },
+  off:       { label: "休息",   dot: "#475569" },
+  offline:   { label: "離線",   dot: "#334155" },
 };
 
 // ── 主元件 ────────────────────────────────────────────────────────────────────
