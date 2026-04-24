@@ -33,6 +33,12 @@ export async function ensureDispatchOrdersTable() {
       assigned_at         TIMESTAMPTZ
     )
   `);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS pickup_address TEXT`);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS pickup_lat DOUBLE PRECISION`);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS pickup_lng DOUBLE PRECISION`);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS delivery_address TEXT`);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS delivery_lat DOUBLE PRECISION`);
+  await db.execute(sql`ALTER TABLE dispatch_order_routes ADD COLUMN IF NOT EXISTS delivery_lng DOUBLE PRECISION`);
 }
 
 // ── POST /dispatch-orders — platform creates & sends a dispatch order ─────────
@@ -83,7 +89,27 @@ dispatchOrdersRouter.get("/", async (req, res) => {
     const orders = await db.execute(sql`
       SELECT d.*,
         COUNT(r.id)::int AS route_count,
-        COUNT(r.assigned_driver_id)::int AS assigned_count
+        COUNT(r.assigned_driver_id)::int AS assigned_count,
+        COALESCE(
+          json_agg(json_build_object(
+            'id',                   r.id,
+            'dispatch_order_id',    r.dispatch_order_id,
+            'order_id',             r.order_id,
+            'route_label',          r.route_label,
+            'route_date',           r.route_date,
+            'prefix',               r.prefix,
+            'assigned_driver_id',   r.assigned_driver_id,
+            'assigned_driver_name', r.assigned_driver_name,
+            'assigned_at',          r.assigned_at,
+            'pickup_address',       r.pickup_address,
+            'pickup_lat',           r.pickup_lat,
+            'pickup_lng',           r.pickup_lng,
+            'delivery_address',     r.delivery_address,
+            'delivery_lat',         r.delivery_lat,
+            'delivery_lng',         r.delivery_lng
+          ) ORDER BY r.route_date, r.route_label) FILTER (WHERE r.id IS NOT NULL),
+          '[]'::json
+        ) AS routes
       FROM dispatch_orders d
       LEFT JOIN dispatch_order_routes r ON r.dispatch_order_id = d.id
       ${whereClause}

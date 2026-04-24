@@ -104,13 +104,13 @@ export default function DispatchCenter() {
   // ── 查詢 ────────────────────────────────────────────────────────────────────
   const { data: orders = [], isLoading } = useQuery<DispatchOrder[]>({
     queryKey: ["dispatch-orders"],
-    queryFn: () => apiFetch("/dispatch-orders"),
+    queryFn: () => apiFetch("/dispatch-orders").then(r => r.orders ?? []),
     refetchInterval: 30_000,
   });
 
   const { data: drivers = [] } = useQuery<Driver[]>({
     queryKey: ["drivers"],
-    queryFn: () => apiFetch("/drivers"),
+    queryFn: () => apiFetch("/drivers").then(r => Array.isArray(r) ? r : (r.drivers ?? [])),
     refetchInterval: 60_000,
   });
 
