@@ -9,7 +9,10 @@ TRUCK_TYPES = {
     "1.75噸(小發財)":    {"fuel_eff": 10.0, "wear_cost": 2.0,  "depreRate": 3.00,  "wage_base": 800},
     "3.5噸(堅達)":       {"fuel_eff": 7.0,  "wear_cost": 3.5,  "depreRate": 4.80,  "wage_base": 1200},
     "11噸(大貨車)":      {"fuel_eff": 4.5,  "wear_cost": 6.0,  "depreRate": 6.75,  "wage_base": 2000},
+    "17噸(大貨車)":      {"fuel_eff": 3.5,  "wear_cost": 8.0,  "depreRate": 9.00,  "wage_base": 2500},
     "26噸(聯結車/鷗翼)": {"fuel_eff": 2.8,  "wear_cost": 10.0, "depreRate": 11.25, "wage_base": 3000},
+    "35噸(聯結車)":      {"fuel_eff": 2.5,  "wear_cost": 12.0, "depreRate": 13.50, "wage_base": 3500},
+    "43噸(大聯結車)":    {"fuel_eff": 2.2,  "wear_cost": 14.0, "depreRate": 16.00, "wage_base": 4000},
 }
 
 REGIONS = ["基隆市", "台北市", "新北市", "桃園市", "新竹縣市", "苗栗縣",
@@ -318,7 +321,10 @@ with tab_profit:
         "1.75噸(小發財)":    {"vp": 800_000,   "dep": 8,  "ins": 30_000,  "lic": 6_000,  "trips": 25},
         "3.5噸(堅達)":       {"vp": 1_500_000, "dep": 8,  "ins": 50_000,  "lic": 12_000, "trips": 20},
         "11噸(大貨車)":      {"vp": 3_000_000, "dep": 10, "ins": 90_000,  "lic": 30_000, "trips": 15},
+        "17噸(大貨車)":      {"vp": 4_000_000, "dep": 10, "ins": 120_000, "lic": 45_000, "trips": 13},
         "26噸(聯結車/鷗翼)": {"vp": 5_000_000, "dep": 10, "ins": 150_000, "lic": 60_000, "trips": 12},
+        "35噸(聯結車)":      {"vp": 6_500_000, "dep": 10, "ins": 180_000, "lic": 80_000, "trips": 10},
+        "43噸(大聯結車)":    {"vp": 8_000_000, "dep": 10, "ins": 220_000, "lic": 100_000,"trips": 8 },
     }
     fd = FIXED_DEFAULTS[p_truck]
 

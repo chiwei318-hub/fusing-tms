@@ -154,10 +154,13 @@ quotesRouter.patch("/quotes/:token", async (req, res) => {
 
 // ── 車型預設費率表（可被前端 /pricing/vehicle-rates 覆寫） ─────────────────────
 const VEHICLE_PRESETS: Record<string, { mpg: number; maintRate: number; depreRate: number; driverPay: number }> = {
-  "1.75T": { mpg: 10.0, maintRate: 2.0,  depreRate: 3.0,  driverPay: 800  },
-  "3.5T":  { mpg: 7.0,  maintRate: 3.5,  depreRate: 4.8,  driverPay: 1200 },
-  "11T":   { mpg: 4.5,  maintRate: 6.0,  depreRate: 6.75, driverPay: 2000 },
-  "26T":   { mpg: 2.8,  maintRate: 10.0, depreRate: 11.25,driverPay: 3000 },
+  "1.75T": { mpg: 10.0, maintRate: 2.0,  depreRate: 3.00,  driverPay: 800  },
+  "3.5T":  { mpg: 7.0,  maintRate: 3.5,  depreRate: 4.80,  driverPay: 1200 },
+  "11T":   { mpg: 4.5,  maintRate: 6.0,  depreRate: 6.75,  driverPay: 2000 },
+  "17T":   { mpg: 3.5,  maintRate: 8.0,  depreRate: 9.00,  driverPay: 2500 },
+  "26T":   { mpg: 2.8,  maintRate: 10.0, depreRate: 11.25, driverPay: 3000 },
+  "35T":   { mpg: 2.5,  maintRate: 12.0, depreRate: 13.50, driverPay: 3500 },
+  "43T":   { mpg: 2.2,  maintRate: 14.0, depreRate: 16.00, driverPay: 4000 },
 };
 
 // POST /api/quotes/net-profit — 精準淨利計算（對應 calculateNetProfit 函式）
