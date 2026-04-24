@@ -294,7 +294,8 @@ function AppRouter() {
   if (
     location.startsWith("/admin") ||
     location.startsWith("/order") ||
-    location.startsWith("/fees")
+    location.startsWith("/fees") ||
+    location.startsWith("/dispatch")
   ) {
     return <AdminPortal />;
   }
