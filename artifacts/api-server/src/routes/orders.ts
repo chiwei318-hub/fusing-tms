@@ -25,6 +25,7 @@ import { autoIssueInvoice } from "../lib/autoInvoice.js";
 import { customersTable } from "@workspace/db";
 import { broadcastWebhook } from "./webhooks.js";
 import { autoCalculateSettlement } from "./franchiseSettlements.js";
+import { ensureOrderFinanceColumns, calcOrderFinance } from "./orderFinanceColumns.js";
 
 const router: IRouter = Router();
 
@@ -52,6 +53,7 @@ async function ensureOrderColumns() {
   console.log("[OrderMigration] orders column migration complete");
 }
 ensureOrderColumns().catch(console.error);
+ensureOrderFinanceColumns().catch(console.error);
 
 // ─── DB Trigger: auto-calculate order finance fields ──────────────────────────
 // cost_amount   = rate_per_trip（司機實領）
