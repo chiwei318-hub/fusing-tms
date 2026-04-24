@@ -28,11 +28,28 @@ import { autoCalculateSettlement } from "./franchiseSettlements.js";
 
 const router: IRouter = Router();
 
-// ─── DB Migration: ensure custom_field_values column ─────────────────────────
+// ─── DB Migration: ensure orders financial + misc columns ─────────────────────
 async function ensureOrderColumns() {
-  try {
-    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS custom_field_values TEXT`);
-  } catch { /* ignore */ }
+  const cols = [
+    // 原有
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS custom_field_values TEXT`,
+    // 成本與毛利
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS cost_amount      NUMERIC(10,2) DEFAULT 0`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS profit_amount    NUMERIC(10,2) DEFAULT 0`,
+    // 稅務
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS vat_amount       NUMERIC(10,2) DEFAULT 0`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS withholding_tax  NUMERIC(10,2) DEFAULT 0`,
+    // 發票
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_no       TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_date     DATE`,
+    // 車隊結算
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_payout     NUMERIC(10,2) DEFAULT 0`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS fleet_paid_at    TIMESTAMPTZ`,
+  ];
+  for (const sql of cols) {
+    try { await pool.query(sql); } catch { /* column already exists */ }
+  }
+  console.log("[OrderMigration] orders column migration complete");
 }
 ensureOrderColumns().catch(console.error);
 
