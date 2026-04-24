@@ -85,11 +85,17 @@ export default function DriverHome() {
     stopTracking,
   } = useGpsTracking(user?.id, user?.name ?? "");
 
-  // 相容舊 UI（不需改動後面的 JSX）
-  const locationLoading = isTracking && !lastPosition;
-  const locationStatus: "idle" | "success" | "error" = gpsError
-    ? "error"
-    : lastPosition ? "success" : "idle";
+  // 手動「更新位置」按鈕的獨立狀態
+  const [manualGpsLoading, setManualGpsLoading] = useState(false);
+  const [manualGpsStatus,  setManualGpsStatus]  = useState<"idle" | "success" | "error">("idle");
+
+  // 合併：auto-tracking 優先，手動操作結果次之
+  const locationLoading = isTracking && !lastPosition || manualGpsLoading;
+  const locationStatus: "idle" | "success" | "error" =
+    manualGpsStatus !== "idle" ? manualGpsStatus
+    : gpsError       ? "error"
+    : lastPosition   ? "success"
+    : "idle";
 
   // 搶單大廳：可搶訂單數（每 30 秒輪詢）
   const [grabCount, setGrabCount] = useState<number | null>(null);
@@ -110,9 +116,9 @@ export default function DriverHome() {
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   const shareLocation = useCallback(() => {
-    if (!navigator.geolocation) { setLocationStatus("error"); return; }
-    setLocationLoading(true);
-    setLocationStatus("idle");
+    if (!navigator.geolocation) { setManualGpsStatus("error"); return; }
+    setManualGpsLoading(true);
+    setManualGpsStatus("idle");
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -121,12 +127,12 @@ export default function DriverHome() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
           });
-          setLocationStatus("success");
+          setManualGpsStatus("success");
           fetchProfile();
-        } catch { setLocationStatus("error"); }
-        finally { setLocationLoading(false); }
+        } catch { setManualGpsStatus("error"); }
+        finally { setManualGpsLoading(false); }
       },
-      () => { setLocationLoading(false); setLocationStatus("error"); },
+      () => { setManualGpsLoading(false); setManualGpsStatus("error"); },
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [user?.id, fetchProfile]);
