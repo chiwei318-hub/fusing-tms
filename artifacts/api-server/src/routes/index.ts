@@ -101,6 +101,7 @@ import { vehicleSurchargeRouter } from "./vehicleSurcharge";
 import { driverPositionsRouter } from "./driverPositions";
 import { dispatchSuggestEnhancedRouter } from "./dispatchSuggestEnhanced";
 import { taxPayrollRouter } from "./taxPayroll";
+import { createFleetSystemRouter } from "./fleetSystem";
 
 const router: IRouter = Router();
 
@@ -221,5 +222,6 @@ router.use(freightQuoteRouter);                                    // 台灣貨�
 router.use(vehicleSurchargeRouter);                                // 車型附加費計算引擎
 router.use(dispatchSuggestEnhancedRouter);                         // AI 智慧派車建議
 router.use("/tax", taxPayrollRouter);                              // 稅務合規薪資引擎
+router.use("/fleet-system", createFleetSystemRouter());             // 車隊分類 + 損益系統
 
 export default router;
