@@ -2,19 +2,15 @@
  * affiliatedOwner.ts
  * 路徑：artifacts/api-server/src/routes/affiliatedOwner.ts
  *
- * 靠行車主管理 — 車輛掛靠在車隊下的個人車主
+ * 靠行車主帳號系統：
+ *   - 車主帳號管理（一個車主可有多台車、多個司機）
+ *   - 代收代付結算（富詠代收蝦皮款，算完撥給車主）
+ *   - 車主自管：新增車輛、設定司機薪資
+ *   - 月結單產生（車主版對帳單）
  *
- * 資料結構：
- *   affiliated_vehicle_owners  — 車主基本資料
- *   affiliated_owner_payouts   — 月結算快照（可重算）
- *
- * 車主月淨額公式：
- *   蝦皮趟次款
- *   × (1 - fusingao_commission_rate%)   福興高抽成
- *   × (1 - fleet_commission_rate%)      富詠抽成
- *   - monthly_affiliation_fee           掛靠費
- *   - penalties                         罰款
- *   = owner_net_pay
+ * 金流公式：
+ *   福興高→富詠：趟次總金額 × (1-7%) × 1.05(含稅) - 罰款 = 實際入帳
+ *   富詠→車主：各車主趟次金額 × (1-富詠%) - 掛靠費 - 司機薪資 = 車主實領
  */
 
 import { Router, Request, Response } from "express";
@@ -25,343 +21,515 @@ export function createAffiliatedOwnerRouter() {
 
   // ── 建表 ────────────────────────────────────────────────────
   async function ensureTables() {
-    // 靠行車主資料表
+    // 1. 靠行車主帳號表
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS affiliated_vehicle_owners (
-        id                    SERIAL PRIMARY KEY,
-        fleet_id              INTEGER NOT NULL REFERENCES fusingao_fleets(id) ON DELETE CASCADE,
-        name                  TEXT NOT NULL,
-        phone                 TEXT,
-        id_number             TEXT,
-        vehicle_plate         TEXT NOT NULL,
-        vehicle_type          TEXT DEFAULT '小貨車',
-        bank_name             TEXT,
-        bank_account          TEXT,
-        monthly_affiliation_fee NUMERIC(10,2) DEFAULT 0,
-        fusingao_commission_rate NUMERIC(5,2) DEFAULT 7,
-        fleet_commission_rate   NUMERIC(5,2) DEFAULT 15,
-        contract_start_date   DATE,
-        notes                 TEXT,
-        is_active             BOOLEAN NOT NULL DEFAULT true,
-        created_at            TIMESTAMPTZ DEFAULT NOW(),
-        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      CREATE TABLE IF NOT EXISTS affiliated_owners (
+        id                   SERIAL PRIMARY KEY,
+        owner_name           TEXT NOT NULL,
+        owner_phone          TEXT,
+        id_number            TEXT,
+        bank_name            TEXT,
+        bank_account         TEXT,
+        bank_branch          TEXT,
+        username             TEXT UNIQUE NOT NULL,
+        password_hash        TEXT NOT NULL,
+        affiliation_fee      NUMERIC(10,2) DEFAULT 3000,
+        platform_fee         NUMERIC(10,2) DEFAULT 0,
+        commission_rate      NUMERIC(5,2)  DEFAULT 15,
+        contract_start       DATE,
+        is_active            BOOLEAN DEFAULT TRUE,
+        notes                TEXT,
+        created_at           TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 
-    // 月結算快照表
+    // 2. 靠行車主的車輛
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS affiliated_owner_payouts (
-        id                      SERIAL PRIMARY KEY,
-        owner_id                INTEGER NOT NULL REFERENCES affiliated_vehicle_owners(id) ON DELETE CASCADE,
-        fleet_id                INTEGER NOT NULL,
-        period                  TEXT NOT NULL,
-        trip_count              INTEGER DEFAULT 0,
-        shopee_gross            NUMERIC(12,2) DEFAULT 0,
-        fusingao_commission_amt NUMERIC(12,2) DEFAULT 0,
-        fuying_commission_amt   NUMERIC(12,2) DEFAULT 0,
-        fusingao_income         NUMERIC(12,2) DEFAULT 0,
-        monthly_affiliation_fee NUMERIC(12,2) DEFAULT 0,
-        penalties               NUMERIC(12,2) DEFAULT 0,
-        owner_net_pay           NUMERIC(12,2) DEFAULT 0,
-        locked                  BOOLEAN DEFAULT false,
-        note                    TEXT,
-        created_at              TIMESTAMPTZ DEFAULT NOW(),
+      CREATE TABLE IF NOT EXISTS owner_vehicles (
+        id                SERIAL PRIMARY KEY,
+        owner_id          INTEGER NOT NULL REFERENCES affiliated_owners(id),
+        plate_no          TEXT NOT NULL,
+        vehicle_type      TEXT DEFAULT '小貨車',
+        vehicle_brand     TEXT,
+        year              INTEGER,
+        max_load_kg       NUMERIC(8,2),
+        insurance_expiry  DATE,
+        inspection_expiry DATE,
+        is_active         BOOLEAN DEFAULT TRUE,
+        notes             TEXT,
+        created_at        TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // 3. 靠行車主的司機
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS owner_drivers (
+        id            SERIAL PRIMARY KEY,
+        owner_id      INTEGER NOT NULL REFERENCES affiliated_owners(id),
+        driver_name   TEXT NOT NULL,
+        driver_phone  TEXT,
+        id_number     TEXT,
+        license_no    TEXT,
+        vehicle_id    INTEGER REFERENCES owner_vehicles(id),
+        pay_type      TEXT DEFAULT 'per_trip'
+          CHECK (pay_type IN ('per_trip','daily','monthly')),
+        base_pay      NUMERIC(10,2) DEFAULT 0,
+        per_trip_rate NUMERIC(8,2)  DEFAULT 0,
+        is_active     BOOLEAN DEFAULT TRUE,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // 4. 代收帳（富詠代收每筆款項明細）
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS owner_receivables (
+        id              SERIAL PRIMARY KEY,
+        owner_id        INTEGER NOT NULL REFERENCES affiliated_owners(id),
+        period          TEXT NOT NULL,
+        route_type      TEXT,
+        trip_count      INTEGER DEFAULT 0,
+        gross_amount    NUMERIC(12,2) DEFAULT 0,
+        fusingao_deduct NUMERIC(12,2) DEFAULT 0,
+        net_income      NUMERIC(12,2) DEFAULT 0,
+        penalty_amount  NUMERIC(12,2) DEFAULT 0,
+        bonus_amount    NUMERIC(12,2) DEFAULT 0,
+        source          TEXT DEFAULT 'fusingao',
+        note            TEXT,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // 5. 月結單（代收代付總表）
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS owner_monthly_statements (
+        id               SERIAL PRIMARY KEY,
+        owner_id         INTEGER NOT NULL REFERENCES affiliated_owners(id),
+        period           TEXT NOT NULL,
+        total_income     NUMERIC(12,2) DEFAULT 0,
+        affiliation_fee  NUMERIC(12,2) DEFAULT 0,
+        platform_fee     NUMERIC(12,2) DEFAULT 0,
+        driver_payroll   NUMERIC(12,2) DEFAULT 0,
+        vehicle_cost     NUMERIC(12,2) DEFAULT 0,
+        penalty_deduct   NUMERIC(12,2) DEFAULT 0,
+        total_deduct     NUMERIC(12,2) DEFAULT 0,
+        net_payout       NUMERIC(12,2) DEFAULT 0,
+        status           TEXT DEFAULT 'draft',
+        confirmed_at     TIMESTAMPTZ,
+        paid_at          TIMESTAMPTZ,
+        payment_ref      TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(owner_id, period)
       )
     `);
 
-    console.log("[AffiliatedOwner] 靠行車主表結構確認完成");
+    console.log("[AffiliatedOwner] 靠行車主系統表結構確認完成");
   }
   ensureTables().catch(console.error);
 
   // ════════════════════════════════════════════════════════════
-  // 車主 CRUD
+  // 靜態路由（必須在 /:ownerId 之前）
   // ════════════════════════════════════════════════════════════
 
-  // GET /affiliated-owners?fleet_id=&active=
-  router.get("/", async (req: Request, res: Response) => {
+  // GET /affiliated-owners — 列出所有車主（富詠管理員）
+  router.get("/", async (_req: Request, res: Response) => {
     try {
-      const { fleet_id, active } = req.query;
-      const params: any[] = [];
-      const conds: string[] = [];
-      if (fleet_id) { params.push(fleet_id); conds.push(`o.fleet_id = $${params.length}`); }
-      if (active !== undefined) {
-        params.push(active === "true");
-        conds.push(`o.is_active = $${params.length}`);
-      }
-      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const { rows } = await pool.query(`
         SELECT
           o.*,
-          f.fleet_name,
-          f.fleet_type,
-          (SELECT COUNT(*)::int FROM affiliated_owner_payouts p WHERE p.owner_id = o.id) AS payout_months
-        FROM affiliated_vehicle_owners o
-        JOIN fusingao_fleets f ON f.id = o.fleet_id
-        ${where}
-        ORDER BY o.fleet_id, o.name
+          COUNT(DISTINCT v.id)::int AS vehicle_count,
+          COUNT(DISTINCT d.id)::int AS driver_count
+        FROM affiliated_owners o
+        LEFT JOIN owner_vehicles v ON v.owner_id = o.id AND v.is_active = true
+        LEFT JOIN owner_drivers  d ON d.owner_id = o.id AND d.is_active = true
+        WHERE o.is_active = true
+        GROUP BY o.id
+        ORDER BY o.owner_name
+      `);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /affiliated-owners — 新增車主帳號（富詠管理員）
+  router.post("/", async (req: Request, res: Response) => {
+    try {
+      const {
+        owner_name, owner_phone, id_number,
+        bank_name, bank_account, bank_branch,
+        username, password,
+        affiliation_fee = 3000,
+        platform_fee    = 0,
+        commission_rate = 15,
+        contract_start, notes,
+      } = req.body;
+
+      if (!owner_name || !username || !password) {
+        return res.status(400).json({ error: "需要 owner_name, username, password" });
+      }
+
+      const crypto = await import("crypto");
+      const password_hash = crypto.createHash("sha256").update(password).digest("hex");
+
+      const { rows } = await pool.query(`
+        INSERT INTO affiliated_owners
+          (owner_name, owner_phone, id_number, bank_name, bank_account, bank_branch,
+           username, password_hash, affiliation_fee, platform_fee, commission_rate,
+           contract_start, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        RETURNING id, owner_name, username, affiliation_fee, commission_rate, created_at
+      `, [owner_name, owner_phone, id_number, bank_name, bank_account, bank_branch,
+          username, password_hash, affiliation_fee, platform_fee, commission_rate,
+          contract_start ?? null, notes ?? null]);
+
+      res.json(rows[0]);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /affiliated-owners/login — 車主登入
+  router.post("/login", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ error: "需要 username 與 password" });
+      }
+
+      const crypto = await import("crypto");
+      const password_hash = crypto.createHash("sha256").update(password).digest("hex");
+
+      const { rows } = await pool.query(`
+        SELECT id, owner_name, username, affiliation_fee, commission_rate, is_active
+        FROM affiliated_owners
+        WHERE username = $1 AND password_hash = $2 AND is_active = true
+      `, [username, password_hash]);
+
+      if (!rows.length) return res.status(401).json({ error: "帳號或密碼錯誤" });
+
+      const jwt = await import("jsonwebtoken");
+      const token = jwt.sign(
+        { id: rows[0].id, role: "affiliated_owner", name: rows[0].owner_name },
+        process.env.JWT_SECRET ?? "secret",
+        { expiresIn: "30d" }
+      );
+
+      res.json({ token, user: rows[0] });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET /affiliated-owners/all-statements — 富詠看所有車主月結單
+  router.get("/all-statements", async (req: Request, res: Response) => {
+    try {
+      const { period } = req.query;
+      const params: any[] = [];
+      const cond = period ? `WHERE s.period = $1` : "";
+      if (period) params.push(period);
+
+      const { rows } = await pool.query(`
+        SELECT
+          s.*,
+          o.owner_name, o.bank_name, o.bank_account,
+          o.affiliation_fee AS contract_fee
+        FROM owner_monthly_statements s
+        JOIN affiliated_owners o ON o.id = s.owner_id
+        ${cond}
+        ORDER BY s.period DESC, o.owner_name
       `, params);
       res.json(rows);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // GET /affiliated-owners/:id
-  router.get("/:id", async (req: Request, res: Response) => {
+  // ════════════════════════════════════════════════════════════
+  // 車輛管理（車主自管）
+  // ════════════════════════════════════════════════════════════
+
+  router.get("/:ownerId/vehicles", async (req: Request, res: Response) => {
     try {
+      const { rows } = await pool.query(
+        `SELECT * FROM owner_vehicles WHERE owner_id = $1 AND is_active = true ORDER BY plate_no`,
+        [req.params.ownerId]
+      );
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post("/:ownerId/vehicles", async (req: Request, res: Response) => {
+    try {
+      const { plate_no, vehicle_type, vehicle_brand, year,
+              max_load_kg, insurance_expiry, inspection_expiry, notes } = req.body;
+      if (!plate_no) return res.status(400).json({ error: "需要車牌號碼" });
+
       const { rows } = await pool.query(`
-        SELECT o.*, f.fleet_name, f.fleet_type
-        FROM affiliated_vehicle_owners o
-        JOIN fusingao_fleets f ON f.id = o.fleet_id
-        WHERE o.id = $1
-      `, [req.params.id]);
-      if (!rows.length) return res.status(404).json({ error: "找不到車主" });
+        INSERT INTO owner_vehicles
+          (owner_id, plate_no, vehicle_type, vehicle_brand, year,
+           max_load_kg, insurance_expiry, inspection_expiry, notes)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+      `, [req.params.ownerId, plate_no, vehicle_type ?? "小貨車", vehicle_brand ?? null,
+          year ?? null, max_load_kg ?? null,
+          insurance_expiry ?? null, inspection_expiry ?? null, notes ?? null]);
       res.json(rows[0]);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // POST /affiliated-owners — 新增靠行車主
-  router.post("/", async (req: Request, res: Response) => {
+  router.patch("/:ownerId/vehicles/:vehicleId", async (req: Request, res: Response) => {
+    try {
+      const { is_active, insurance_expiry, inspection_expiry, notes } = req.body;
+      const { rows } = await pool.query(`
+        UPDATE owner_vehicles SET
+          is_active         = COALESCE($1, is_active),
+          insurance_expiry  = COALESCE($2, insurance_expiry),
+          inspection_expiry = COALESCE($3, inspection_expiry),
+          notes             = COALESCE($4, notes)
+        WHERE id = $5 AND owner_id = $6
+        RETURNING *
+      `, [is_active ?? null, insurance_expiry ?? null, inspection_expiry ?? null,
+          notes ?? null, req.params.vehicleId, req.params.ownerId]);
+      if (!rows.length) return res.status(404).json({ error: "找不到車輛" });
+      res.json(rows[0]);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  // 司機管理（車主自管）
+  // ════════════════════════════════════════════════════════════
+
+  router.get("/:ownerId/drivers", async (req: Request, res: Response) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT d.*, v.plate_no, v.vehicle_type
+        FROM owner_drivers d
+        LEFT JOIN owner_vehicles v ON v.id = d.vehicle_id
+        WHERE d.owner_id = $1 AND d.is_active = true
+        ORDER BY d.driver_name
+      `, [req.params.ownerId]);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post("/:ownerId/drivers", async (req: Request, res: Response) => {
+    try {
+      const { driver_name, driver_phone, id_number, license_no,
+              vehicle_id, pay_type, base_pay, per_trip_rate } = req.body;
+      if (!driver_name) return res.status(400).json({ error: "需要司機姓名" });
+
+      const { rows } = await pool.query(`
+        INSERT INTO owner_drivers
+          (owner_id, driver_name, driver_phone, id_number, license_no,
+           vehicle_id, pay_type, base_pay, per_trip_rate)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+      `, [req.params.ownerId, driver_name, driver_phone ?? null, id_number ?? null,
+          license_no ?? null,
+          vehicle_id ? parseInt(vehicle_id) : null,
+          pay_type ?? "per_trip",
+          parseFloat(base_pay) || 0,
+          parseFloat(per_trip_rate) || 0]);
+      res.json(rows[0]);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.patch("/:ownerId/drivers/:driverId", async (req: Request, res: Response) => {
+    try {
+      const { vehicle_id, pay_type, base_pay, per_trip_rate, is_active } = req.body;
+      const { rows } = await pool.query(`
+        UPDATE owner_drivers SET
+          vehicle_id    = COALESCE($1, vehicle_id),
+          pay_type      = COALESCE($2, pay_type),
+          base_pay      = COALESCE($3, base_pay),
+          per_trip_rate = COALESCE($4, per_trip_rate),
+          is_active     = COALESCE($5, is_active)
+        WHERE id = $6 AND owner_id = $7
+        RETURNING *
+      `, [vehicle_id ?? null, pay_type ?? null,
+          base_pay != null ? parseFloat(base_pay) : null,
+          per_trip_rate != null ? parseFloat(per_trip_rate) : null,
+          is_active ?? null,
+          req.params.driverId, req.params.ownerId]);
+      if (!rows.length) return res.status(404).json({ error: "找不到司機" });
+      res.json(rows[0]);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  // 代收款明細（owner_receivables）
+  // ════════════════════════════════════════════════════════════
+
+  // GET /affiliated-owners/:ownerId/receivables?period=yyyy-MM
+  router.get("/:ownerId/receivables", async (req: Request, res: Response) => {
+    try {
+      const { period } = req.query;
+      const params: any[] = [req.params.ownerId];
+      const cond = period ? `AND period = $2` : "";
+      if (period) params.push(period);
+
+      const { rows } = await pool.query(`
+        SELECT * FROM owner_receivables
+        WHERE owner_id = $1 ${cond}
+        ORDER BY period DESC, created_at DESC
+      `, params);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /affiliated-owners/:ownerId/receivables — 新增代收明細（管理員）
+  router.post("/:ownerId/receivables", async (req: Request, res: Response) => {
     try {
       const {
-        fleet_id, name, phone, id_number, vehicle_plate, vehicle_type,
-        bank_name, bank_account,
-        monthly_affiliation_fee, fusingao_commission_rate, fleet_commission_rate,
-        contract_start_date, notes,
+        period, route_type, trip_count,
+        gross_amount, fusingao_deduct, net_income,
+        penalty_amount = 0, bonus_amount = 0, source = "fusingao", note,
       } = req.body;
-      if (!fleet_id || !name || !vehicle_plate) {
-        return res.status(400).json({ error: "缺少必要欄位：fleet_id / name / vehicle_plate" });
-      }
+      if (!period) return res.status(400).json({ error: "需要 period" });
+
       const { rows } = await pool.query(`
-        INSERT INTO affiliated_vehicle_owners (
-          fleet_id, name, phone, id_number, vehicle_plate, vehicle_type,
-          bank_name, bank_account,
-          monthly_affiliation_fee, fusingao_commission_rate, fleet_commission_rate,
-          contract_start_date, notes
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        INSERT INTO owner_receivables
+          (owner_id, period, route_type, trip_count,
+           gross_amount, fusingao_deduct, net_income,
+           penalty_amount, bonus_amount, source, note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING *
-      `, [
-        fleet_id, name, phone ?? null, id_number ?? null, vehicle_plate,
-        vehicle_type ?? "小貨車",
-        bank_name ?? null, bank_account ?? null,
-        monthly_affiliation_fee ?? 0,
-        fusingao_commission_rate ?? 7,
-        fleet_commission_rate ?? 15,
-        contract_start_date ?? null, notes ?? null,
-      ]);
+      `, [req.params.ownerId, period, route_type ?? null,
+          parseInt(trip_count) || 0,
+          parseFloat(gross_amount) || 0,
+          parseFloat(fusingao_deduct) || 0,
+          parseFloat(net_income) || 0,
+          parseFloat(penalty_amount) || 0,
+          parseFloat(bonus_amount) || 0,
+          source, note ?? null]);
       res.json(rows[0]);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // PATCH /affiliated-owners/:id — 更新車主資料
-  router.patch("/:id", async (req: Request, res: Response) => {
-    try {
-      const {
-        name, phone, id_number, vehicle_plate, vehicle_type,
-        bank_name, bank_account,
-        monthly_affiliation_fee, fusingao_commission_rate, fleet_commission_rate,
-        contract_start_date, notes, is_active,
-      } = req.body;
-      const { rows } = await pool.query(`
-        UPDATE affiliated_vehicle_owners SET
-          name                    = COALESCE($1,  name),
-          phone                   = COALESCE($2,  phone),
-          id_number               = COALESCE($3,  id_number),
-          vehicle_plate           = COALESCE($4,  vehicle_plate),
-          vehicle_type            = COALESCE($5,  vehicle_type),
-          bank_name               = COALESCE($6,  bank_name),
-          bank_account            = COALESCE($7,  bank_account),
-          monthly_affiliation_fee = COALESCE($8,  monthly_affiliation_fee),
-          fusingao_commission_rate= COALESCE($9,  fusingao_commission_rate),
-          fleet_commission_rate   = COALESCE($10, fleet_commission_rate),
-          contract_start_date     = COALESCE($11, contract_start_date),
-          notes                   = COALESCE($12, notes),
-          is_active               = COALESCE($13, is_active),
-          updated_at              = NOW()
-        WHERE id = $14
-        RETURNING *
-      `, [
-        name ?? null, phone ?? null, id_number ?? null, vehicle_plate ?? null,
-        vehicle_type ?? null, bank_name ?? null, bank_account ?? null,
-        monthly_affiliation_fee ?? null, fusingao_commission_rate ?? null,
-        fleet_commission_rate ?? null, contract_start_date ?? null,
-        notes ?? null, is_active ?? null,
-        req.params.id,
-      ]);
-      if (!rows.length) return res.status(404).json({ error: "找不到車主" });
-      res.json(rows[0]);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // DELETE /affiliated-owners/:id — 停用（軟刪除）
-  router.delete("/:id", async (req: Request, res: Response) => {
+  // DELETE /affiliated-owners/:ownerId/receivables/:id
+  router.delete("/:ownerId/receivables/:id", async (req: Request, res: Response) => {
     try {
       await pool.query(
-        `UPDATE affiliated_vehicle_owners SET is_active=false, updated_at=NOW() WHERE id=$1`,
-        [req.params.id]
+        `DELETE FROM owner_receivables WHERE id = $1 AND owner_id = $2`,
+        [req.params.id, req.params.ownerId]
       );
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // ════════════════════════════════════════════════════════════
-  // 月結算
+  // 月結單
   // ════════════════════════════════════════════════════════════
 
-  // POST /affiliated-owners/:id/payout/calculate — 計算單一車主月結
-  router.post("/:id/payout/calculate", async (req: Request, res: Response) => {
+  // POST /affiliated-owners/:ownerId/statement/calculate — 計算月結單
+  router.post("/:ownerId/statement/calculate", async (req: Request, res: Response) => {
     try {
-      const { period } = req.body as { period: string };
+      const { period } = req.body;
+      const ownerId = parseInt(req.params.ownerId);
       if (!period) return res.status(400).json({ error: "需要 period (yyyy-MM)" });
 
       const { rows: ownerRows } = await pool.query(
-        `SELECT * FROM affiliated_vehicle_owners WHERE id = $1`, [req.params.id]
+        `SELECT * FROM affiliated_owners WHERE id = $1`, [ownerId]
       );
       if (!ownerRows.length) return res.status(404).json({ error: "找不到車主" });
       const owner = ownerRows[0];
 
-      const { rows: lockedRows } = await pool.query(
-        `SELECT locked FROM affiliated_owner_payouts WHERE owner_id=$1 AND period=$2`,
-        [owner.id, period]
-      );
-      if (lockedRows[0]?.locked) {
-        return res.status(409).json({ error: "此月結算已鎖定，無法重算" });
-      }
-
-      const [year, month] = period.split("-").map(Number);
-      const startDate = `${period}-01`;
-      const endDate   = new Date(year, month, 0).toISOString().slice(0,10);
-
-      const fusingaoRate = parseFloat(owner.fusingao_commission_rate) || 7;
-      const fleetRate    = parseFloat(owner.fleet_commission_rate)    || 15;
-
-      // 蝦皮趟次款（從 dispatch_order_routes，過濾車牌）
-      const { rows: tripRows } = await pool.query(`
+      // 代收款合計（來自 owner_receivables）
+      const { rows: recvRows } = await pool.query(`
         SELECT
-          COUNT(dr.id)::int AS trip_count,
-          COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip, 0)), 0) AS shopee_gross,
-          COALESCE(SUM(
-            COALESCE(f.rate_override, pr.rate_per_trip, 0) * ($4 / 100.0)
-          ), 0) AS fusingao_commission_amt,
-          COALESCE(SUM(
-            COALESCE(f.rate_override, pr.rate_per_trip, 0)
-            * (1 - $4 / 100.0) * ($5 / 100.0)
-          ), 0) AS fuying_commission_amt,
-          COALESCE(SUM(
-            COALESCE(f.rate_override, pr.rate_per_trip, 0)
-            * (1 - $4 / 100.0) * (1 - $5 / 100.0)
-          ), 0) AS fusingao_income
-        FROM dispatch_order_routes dr
-        JOIN dispatch_orders do_ ON do_.id = dr.dispatch_order_id
-        LEFT JOIN route_prefix_rates pr ON pr.prefix = dr.route_label
-        LEFT JOIN fusingao_fleets f ON f.id = do_.fleet_id
-        JOIN fleet_drivers fd ON fd.id = dr.assigned_driver_id
-        WHERE do_.fleet_id = $1
-          AND fd.vehicle_plate = $2
-          AND dr.assigned_at BETWEEN $3 AND $6
-          AND dr.assigned_driver_id IS NOT NULL
-      `, [owner.fleet_id, owner.vehicle_plate, startDate, fusingaoRate, fleetRate, endDate]);
+          COALESCE(SUM(net_income), 0)     AS total_income,
+          COALESCE(SUM(penalty_amount), 0) AS total_penalty
+        FROM owner_receivables
+        WHERE owner_id = $1 AND period = $2
+      `, [ownerId, period]);
+      const totalIncome  = parseFloat(recvRows[0]?.total_income)  || 0;
+      const penaltyDeduct = parseFloat(recvRows[0]?.total_penalty) || 0;
 
-      const tripCount          = tripRows[0]?.trip_count           || 0;
-      const shopeeGross        = parseFloat(tripRows[0]?.shopee_gross        ?? "0") || 0;
-      const fusingaoCommAmt    = parseFloat(tripRows[0]?.fusingao_commission_amt ?? "0") || 0;
-      const fuyingCommAmt      = parseFloat(tripRows[0]?.fuying_commission_amt  ?? "0") || 0;
-      const fusingaoIncome     = parseFloat(tripRows[0]?.fusingao_income     ?? "0") || 0;
+      // 司機薪資（從 owner_drivers 查 per_trip / base_pay）
+      // per_trip: 需要搭配實際趟次；此處簡化為 base_pay 月薪加總
+      // 如有精確趟次薪資，可透過 driver_payroll 表延伸
+      let driverPayroll = 0;
+      try {
+        const { rows: drRows } = await pool.query(`
+          SELECT
+            COALESCE(SUM(
+              CASE WHEN pay_type = 'monthly' THEN base_pay ELSE 0 END
+            ), 0) AS monthly_total
+          FROM owner_drivers
+          WHERE owner_id = $1 AND is_active = true
+        `, [ownerId]);
+        driverPayroll = parseFloat(drRows[0]?.monthly_total) || 0;
+      } catch (_) {}
 
-      // 罰款（從 fleet_penalties，可加 driver_id 或暫以 fleet 維度）
-      const { rows: penRows } = await pool.query(`
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM fleet_penalties
-        WHERE fleet_id = $1 AND period = $2
-          AND (order_no IS NULL OR order_no IN (
-            SELECT fo.order_no FROM fleet_orders fo
-            JOIN dispatch_order_routes dr2 ON dr2.id = fo.id
-            JOIN fleet_drivers fd2 ON fd2.id = dr2.assigned_driver_id
-            WHERE fd2.vehicle_plate = $3
-          ))
-      `, [owner.fleet_id, period, owner.vehicle_plate]).catch(() => [{ rows: [{ total: "0" }] }] as any);
-      const penalties = parseFloat(penRows[0]?.total ?? "0") || 0;
+      // 車輛成本（fleet_vehicle_costs 暫無 owner 維度，預留為 0）
+      const vehicleCost = 0;
 
-      const monthlyFee  = parseFloat(owner.monthly_affiliation_fee) || 0;
-      const ownerNetPay = fusingaoIncome - monthlyFee - penalties;
+      const affiliationFee = parseFloat(owner.affiliation_fee) || 0;
+      const platformFee    = parseFloat(owner.platform_fee)    || 0;
 
-      // UPSERT 月結快照
-      const { rows: payout } = await pool.query(`
-        INSERT INTO affiliated_owner_payouts (
-          owner_id, fleet_id, period, trip_count,
-          shopee_gross, fusingao_commission_amt, fuying_commission_amt,
-          fusingao_income, monthly_affiliation_fee, penalties, owner_net_pay
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      const totalDeduct = affiliationFee + platformFee + driverPayroll + vehicleCost + penaltyDeduct;
+      const netPayout   = Math.round((totalIncome - totalDeduct) * 100) / 100;
+
+      const { rows: stmt } = await pool.query(`
+        INSERT INTO owner_monthly_statements
+          (owner_id, period, total_income, affiliation_fee, platform_fee,
+           driver_payroll, vehicle_cost, penalty_deduct, total_deduct, net_payout, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft')
         ON CONFLICT (owner_id, period) DO UPDATE SET
-          trip_count              = EXCLUDED.trip_count,
-          shopee_gross            = EXCLUDED.shopee_gross,
-          fusingao_commission_amt = EXCLUDED.fusingao_commission_amt,
-          fuying_commission_amt   = EXCLUDED.fuying_commission_amt,
-          fusingao_income         = EXCLUDED.fusingao_income,
-          monthly_affiliation_fee = EXCLUDED.monthly_affiliation_fee,
-          penalties               = EXCLUDED.penalties,
-          owner_net_pay           = EXCLUDED.owner_net_pay,
-          created_at              = NOW()
+          total_income    = EXCLUDED.total_income,
+          affiliation_fee = EXCLUDED.affiliation_fee,
+          platform_fee    = EXCLUDED.platform_fee,
+          driver_payroll  = EXCLUDED.driver_payroll,
+          vehicle_cost    = EXCLUDED.vehicle_cost,
+          penalty_deduct  = EXCLUDED.penalty_deduct,
+          total_deduct    = EXCLUDED.total_deduct,
+          net_payout      = EXCLUDED.net_payout
+        WHERE owner_monthly_statements.status = 'draft'
         RETURNING *
-      `, [
-        owner.id, owner.fleet_id, period, tripCount,
-        shopeeGross, fusingaoCommAmt, fuyingCommAmt,
-        fusingaoIncome, monthlyFee, penalties, ownerNetPay,
-      ]);
-      res.json(payout[0]);
+      `, [ownerId, period, totalIncome, affiliationFee, platformFee,
+          driverPayroll, vehicleCost, penaltyDeduct, totalDeduct, netPayout]);
+
+      res.json(stmt[0] ?? { message: "月結已鎖定，無法重算" });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // GET /affiliated-owners/:id/payout — 歷史月結列表
-  router.get("/:id/payout", async (req: Request, res: Response) => {
+  // GET /affiliated-owners/:ownerId/statement — 查詢月結單
+  router.get("/:ownerId/statement", async (req: Request, res: Response) => {
     try {
+      const { period } = req.query;
+      const params: any[] = [req.params.ownerId];
+      const cond = period ? `AND period = $2` : "";
+      if (period) params.push(period);
+
       const { rows } = await pool.query(`
-        SELECT * FROM affiliated_owner_payouts
-        WHERE owner_id = $1
+        SELECT * FROM owner_monthly_statements
+        WHERE owner_id = $1 ${cond}
         ORDER BY period DESC LIMIT 24
-      `, [req.params.id]);
+      `, params);
       res.json(rows);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // PATCH /affiliated-owners/:id/payout/:period/lock — 鎖定月結
-  router.patch("/:id/payout/:period/lock", async (req: Request, res: Response) => {
+  // PATCH /affiliated-owners/:ownerId/statement/:stmtId/pay — 標記已撥款
+  router.patch("/:ownerId/statement/:stmtId/pay", async (req: Request, res: Response) => {
     try {
-      const { locked } = req.body;
+      const { payment_ref, paid_at } = req.body;
       const { rows } = await pool.query(`
-        UPDATE affiliated_owner_payouts
-        SET locked = $1
-        WHERE owner_id = $2 AND period = $3
+        UPDATE owner_monthly_statements SET
+          status      = 'paid',
+          paid_at     = $1,
+          payment_ref = $2
+        WHERE id = $3 AND owner_id = $4
         RETURNING *
-      `, [locked ?? true, req.params.id, req.params.period]);
-      if (!rows.length) return res.status(404).json({ error: "找不到月結記錄" });
+      `, [paid_at ?? new Date().toISOString(), payment_ref ?? null,
+          req.params.stmtId, req.params.ownerId]);
+      if (!rows.length) return res.status(404).json({ error: "找不到月結單" });
       res.json(rows[0]);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // GET /affiliated-owners/payout/summary?fleet_id=&period=
-  router.get("/payout/summary", async (req: Request, res: Response) => {
+  // PATCH /affiliated-owners/:ownerId/statement/:stmtId/confirm — 車主確認月結
+  router.patch("/:ownerId/statement/:stmtId/confirm", async (_req: Request, res: Response) => {
     try {
-      const { fleet_id, period } = req.query;
-      const params: any[] = [];
-      const conds: string[] = [];
-      if (fleet_id) { params.push(fleet_id); conds.push(`p.fleet_id = $${params.length}`); }
-      if (period)   { params.push(period);   conds.push(`p.period = $${params.length}`); }
-      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const { rows } = await pool.query(`
-        SELECT
-          o.name, o.vehicle_plate, o.vehicle_type,
-          f.fleet_name,
-          p.period, p.trip_count,
-          p.shopee_gross, p.fusingao_commission_amt, p.fuying_commission_amt,
-          p.fusingao_income, p.monthly_affiliation_fee, p.penalties,
-          p.owner_net_pay, p.locked
-        FROM affiliated_owner_payouts p
-        JOIN affiliated_vehicle_owners o ON o.id = p.owner_id
-        JOIN fusingao_fleets f ON f.id = p.fleet_id
-        ${where}
-        ORDER BY p.period DESC, p.owner_net_pay DESC
-      `, params);
-      res.json(rows);
+        UPDATE owner_monthly_statements SET
+          status       = 'confirmed',
+          confirmed_at = NOW()
+        WHERE id = $1 AND owner_id = $2 AND status = 'draft'
+        RETURNING *
+      `, [_req.params.stmtId, _req.params.ownerId]);
+      if (!rows.length) return res.status(404).json({ error: "找不到草稿月結單" });
+      res.json(rows[0]);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
