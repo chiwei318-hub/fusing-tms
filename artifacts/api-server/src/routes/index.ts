@@ -102,6 +102,7 @@ import { driverPositionsRouter } from "./driverPositions";
 import { dispatchSuggestEnhancedRouter } from "./dispatchSuggestEnhanced";
 import { taxPayrollRouter } from "./taxPayroll";
 import { createFleetSystemRouter } from "./fleetSystem";
+import { createAffiliatedOwnerRouter } from "./affiliatedOwner";
 
 const router: IRouter = Router();
 
@@ -223,5 +224,6 @@ router.use(vehicleSurchargeRouter);                                // 車型附�
 router.use(dispatchSuggestEnhancedRouter);                         // AI 智慧派車建議
 router.use("/tax", taxPayrollRouter);                              // 稅務合規薪資引擎
 router.use("/fleet-system", createFleetSystemRouter());             // 車隊分類 + 損益系統
+router.use("/affiliated-owners", createAffiliatedOwnerRouter());    // 靠行車主管理
 
 export default router;
