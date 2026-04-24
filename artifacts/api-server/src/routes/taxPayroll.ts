@@ -154,7 +154,7 @@ taxPayrollRouter.get("/driver-payroll/preview", async (req, res) => {
         o.shopee_driver_id                                         AS shopee_id,
         sd.name                                                    AS driver_name,
         COUNT(*)                                                   AS total_trips,
-        COALESCE(SUM(COALESCE(pr.driver_pay_rate, pr.rate_per_trip, 0)), 0) AS gross_pay
+        COALESCE(SUM(COALESCE(NULLIF(pr.driver_pay_rate, 0), pr.rate_per_trip, 0)), 0) AS gross_pay
       FROM orders o
       JOIN  shopee_drivers      sd ON sd.shopee_id = o.shopee_driver_id
       LEFT JOIN route_prefix_rates pr ON pr.prefix   = o.route_prefix
@@ -253,7 +253,7 @@ taxPayrollRouter.post("/driver-payroll/generate", async (req, res) => {
         o.shopee_driver_id                                         AS shopee_id,
         sd.name                                                    AS driver_name,
         COUNT(*)                                                   AS total_trips,
-        COALESCE(SUM(COALESCE(pr.driver_pay_rate, pr.rate_per_trip, 0)), 0) AS gross_pay
+        COALESCE(SUM(COALESCE(NULLIF(pr.driver_pay_rate, 0), pr.rate_per_trip, 0)), 0) AS gross_pay
       FROM orders o
       JOIN  shopee_drivers      sd ON sd.shopee_id = o.shopee_driver_id
       LEFT JOIN route_prefix_rates pr ON pr.prefix   = o.route_prefix
@@ -261,7 +261,7 @@ taxPayrollRouter.post("/driver-payroll/generate", async (req, res) => {
         AND o.shopee_driver_id IS NOT NULL
         AND TO_CHAR(o.created_at, 'YYYY-MM') = ${period}
       GROUP BY o.shopee_driver_id, sd.name
-      HAVING COALESCE(SUM(COALESCE(pr.driver_pay_rate, pr.rate_per_trip, 0)), 0) > 0
+      HAVING COALESCE(SUM(COALESCE(NULLIF(pr.driver_pay_rate, 0), pr.rate_per_trip, 0)), 0) > 0
       ORDER BY gross_pay DESC
     `);
 
@@ -333,7 +333,7 @@ taxPayrollRouter.get("/driver-payroll/:shopeeId/:period", async (req, res) => {
         SELECT
           o.id, o.route_id, o.route_prefix AS prefix,
           pr.route_od, pr.service_type,
-          COALESCE(pr.driver_pay_rate, pr.rate_per_trip, 0) AS pay_per_trip,
+          COALESCE(NULLIF(pr.driver_pay_rate, 0), pr.rate_per_trip, 0) AS pay_per_trip,
           o.driver_payment_status, o.created_at
         FROM orders o
         LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
