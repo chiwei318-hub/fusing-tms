@@ -41,7 +41,7 @@ dispatchSuggestEnhancedRouter.post("/dispatch-suggest/auto", async (req, res) =>
     );
 
     const { rows: driverRows } = await pool.query(`
-      SELECT d.id, d.name, d.vehicle_type, d.vehicle_plate, d.rating,
+      SELECT d.id, d.name, d.vehicle_type, d.license_plate, d.rating,
              CAST(dp.lat AS FLOAT) AS lat, CAST(dp.lng AS FLOAT) AS lng,
              COALESCE(today.cnt, 0)::int AS today_routes
       FROM drivers d
