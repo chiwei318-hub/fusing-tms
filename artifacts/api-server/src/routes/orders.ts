@@ -3,6 +3,7 @@ import { db, ordersTable, driversTable } from "@workspace/db";
 import { pool } from "@workspace/db";
 import { customerNotificationsTable } from "@workspace/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { verifyJwt, extractBearerToken } from "../lib/jwt.js";
 import { sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -345,11 +346,23 @@ router.get("/orders", async (req, res) => {
   try {
     const query = ListOrdersQueryParams.parse(req.query);
     const q = req.query as Record<string, string>;
+
+    // ── JWT 解析：driver 角色自動限縮到自身訂單 ─────────────────
+    let jwtDriverId: number | null = null;
+    const rawToken = extractBearerToken(req.headers.authorization);
+    if (rawToken) {
+      try {
+        const payload = verifyJwt(rawToken) as any;
+        if (payload?.role === "driver" && payload?.id) {
+          jwtDriverId = parseInt(payload.id, 10);
+        }
+      } catch (_) {}
+    }
+
     let qb = db
       .select({
         orders: ordersTable,
         drivers: driversTable,
-        // atoms 欄位（ALTER TABLE 加的，不在 Drizzle schema）
         atomsSyncedAt:    sql<string | null>`orders.atoms_synced_at`,
         atomsAcceptedAt:  sql<string | null>`orders.atoms_accepted_at`,
         atomsDriverName:  sql<string | null>`orders.atoms_driver_name`,
@@ -362,9 +375,20 @@ router.get("/orders", async (req, res) => {
 
     const conditions: any[] = [];
 
-    if (query.status) conditions.push(eq(ordersTable.status, query.status));
+    // ── status：支援單一值或逗號分隔多值 ─────────────────────────
+    if (query.status) {
+      const statuses = query.status.split(",").map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        conditions.push(eq(ordersTable.status, statuses[0]));
+      } else if (statuses.length > 1) {
+        conditions.push(inArray(ordersTable.status, statuses));
+      }
+    }
 
-    if (q.driverId) {
+    // ── driverId：driver JWT 優先（防止跨帳號查詢）───────────────
+    if (jwtDriverId !== null) {
+      conditions.push(eq(ordersTable.driverId, jwtDriverId));
+    } else if (q.driverId) {
       const driverId = parseInt(q.driverId, 10);
       if (!isNaN(driverId)) conditions.push(eq(ordersTable.driverId, driverId));
     }
