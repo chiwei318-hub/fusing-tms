@@ -53,6 +53,111 @@ async function ensureOrderColumns() {
 }
 ensureOrderColumns().catch(console.error);
 
+// ─── DB Trigger: auto-calculate order finance fields ──────────────────────────
+// cost_amount   = rate_per_trip（司機實領）
+// vat_amount    = total_fee / 1.05 × 0.05
+// profit_amount = total_fee - cost_amount - vat_amount
+// fleet_payout  = rate_per_trip × (1 - commission_rate / 100)  [車隊單才計算]
+async function ensureOrderFinanceTrigger() {
+  // 1. 觸發器函式
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION calc_order_finance()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      v_rate   NUMERIC := 0;
+      v_comm   NUMERIC := 0;
+      v_vat    NUMERIC;
+    BEGIN
+      -- 從 route_prefix_rates 取得費率（優先 driver_pay_rate，fallback rate_per_trip）
+      SELECT COALESCE(NULLIF(driver_pay_rate, 0), rate_per_trip, 0)
+        INTO v_rate
+        FROM route_prefix_rates
+       WHERE prefix = NEW.route_prefix
+       LIMIT 1;
+
+      v_rate := COALESCE(v_rate, 0);
+
+      -- 含稅反推銷項稅額（5%）；total_fee 為 NULL 時跳過損益計算
+      IF NEW.total_fee IS NOT NULL AND NEW.total_fee > 0 THEN
+        v_vat := ROUND((NEW.total_fee / 1.05 * 0.05)::NUMERIC, 2);
+        NEW.vat_amount    := v_vat;
+        NEW.cost_amount   := v_rate;
+        NEW.profit_amount := ROUND((NEW.total_fee - v_rate - v_vat)::NUMERIC, 2);
+      ELSE
+        -- 無收費（蝦皮外包單）：只記成本，不算損益
+        NEW.vat_amount    := 0;
+        NEW.cost_amount   := v_rate;
+        NEW.profit_amount := NULL;
+      END IF;
+
+      -- 車隊結算（有 fusingao_fleet_id 才計算）
+      IF NEW.fusingao_fleet_id IS NOT NULL THEN
+        SELECT COALESCE(commission_rate, 0)
+          INTO v_comm
+          FROM fusingao_fleets
+         WHERE id = NEW.fusingao_fleet_id
+         LIMIT 1;
+
+        NEW.fleet_payout := ROUND(
+          (v_rate * (1 - COALESCE(v_comm, 0) / 100))::NUMERIC, 2
+        );
+      ELSE
+        NEW.fleet_payout := 0;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  // 2. 掛載觸發器（INSERT 或異動關鍵欄位時觸發）
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_order_finance ON orders;
+    CREATE TRIGGER trg_order_finance
+      BEFORE INSERT OR UPDATE OF total_fee, route_prefix, fusingao_fleet_id
+      ON orders
+      FOR EACH ROW EXECUTE FUNCTION calc_order_finance();
+  `);
+
+  // 3. 回填現有訂單（冪等；每次重啟執行，不覆蓋 invoice_no 等手動欄位）
+  const { rowCount } = await pool.query(`
+    UPDATE orders o
+       SET cost_amount   = COALESCE(
+                             (SELECT COALESCE(NULLIF(pr.driver_pay_rate,0), pr.rate_per_trip, 0)
+                                FROM route_prefix_rates pr
+                               WHERE pr.prefix = o.route_prefix
+                               LIMIT 1), 0),
+           -- 有 total_fee 才計算損益；蝦皮外包單無收費設 NULL
+           vat_amount    = CASE
+                             WHEN o.total_fee > 0
+                             THEN ROUND((o.total_fee / 1.05 * 0.05)::NUMERIC, 2)
+                             ELSE 0
+                           END,
+           profit_amount = CASE
+                             WHEN o.total_fee > 0
+                             THEN ROUND((
+                               o.total_fee
+                               - COALESCE((SELECT COALESCE(NULLIF(pr.driver_pay_rate,0), pr.rate_per_trip, 0)
+                                             FROM route_prefix_rates pr WHERE pr.prefix = o.route_prefix LIMIT 1), 0)
+                               - ROUND((o.total_fee / 1.05 * 0.05)::NUMERIC, 2)
+                             )::NUMERIC, 2)
+                             ELSE NULL
+                           END,
+           fleet_payout  = CASE
+                             WHEN o.fusingao_fleet_id IS NOT NULL THEN
+                               ROUND((
+                                 COALESCE((SELECT COALESCE(NULLIF(pr.driver_pay_rate,0), pr.rate_per_trip, 0)
+                                             FROM route_prefix_rates pr WHERE pr.prefix = o.route_prefix LIMIT 1), 0)
+                                 * (1 - COALESCE((SELECT commission_rate FROM fusingao_fleets f WHERE f.id = o.fusingao_fleet_id LIMIT 1), 0) / 100)
+                               )::NUMERIC, 2)
+                             ELSE 0
+                           END
+     WHERE o.route_prefix IS NOT NULL OR o.total_fee > 0
+  `);
+  console.log(`[OrderFinance] trigger installed; ${rowCount} existing orders backfilled`);
+}
+ensureOrderFinanceTrigger().catch(console.error);
+
 async function fetchOrderWithDriver(id: number) {
   const rows = await db
     .select()
