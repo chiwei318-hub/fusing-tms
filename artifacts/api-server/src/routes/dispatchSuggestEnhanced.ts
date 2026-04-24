@@ -32,7 +32,8 @@ dispatchSuggestEnhancedRouter.post("/dispatch-suggest/auto", async (req, res) =>
 
     const { rows: routeItems } = await pool.query(
       `SELECT dr.id, dr.route_label, dr.route_date, dr.assigned_driver_id,
-              o.pickup_lat, o.pickup_lng, o.cargo_weight
+              dr.pickup_lat, dr.pickup_lng,
+              o.cargo_weight
        FROM dispatch_order_routes dr
        LEFT JOIN orders o ON o.id = dr.order_id
        WHERE dr.id = ANY($1)`,
