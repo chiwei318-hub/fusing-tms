@@ -73,9 +73,9 @@ fuelCardsRouter.post("/fuel-cards/cards", async (req, res) => {
     monthly_limit?: number; issued_at?: string; note?: string;
   };
 
-  if (!fleet_id || !vehicle_plate || !card_no) {
+  if (!fleet_id || !vehicle_plate) {
     return res.status(400).json({
-      error: "必填欄位：fleet_id, vehicle_plate, card_no",
+      error: "必填欄位：fleet_id, vehicle_plate（card_no 可留空，之後補填）",
     });
   }
 
@@ -101,27 +101,34 @@ fuelCardsRouter.post("/fuel-cards/cards", async (req, res) => {
       driverName = dRow[0]?.name ?? null;
     }
 
-    const { rows } = await pool.query(`
-      INSERT INTO fuel_cards
-        (fleet_id, fleet_name, vehicle_plate, driver_id, driver_name,
-         card_no, card_type, monthly_limit, issued_at, note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT (card_no) DO UPDATE SET
-        fleet_id      = EXCLUDED.fleet_id,
-        fleet_name    = EXCLUDED.fleet_name,
-        vehicle_plate = EXCLUDED.vehicle_plate,
-        driver_id     = EXCLUDED.driver_id,
-        driver_name   = EXCLUDED.driver_name,
-        card_type     = EXCLUDED.card_type,
-        monthly_limit = EXCLUDED.monthly_limit,
-        note          = EXCLUDED.note
-      RETURNING *
-    `, [
+    // card_no 有值時做 UPSERT；為 NULL 時直接 INSERT（UNIQUE 不比對 NULL）
+    const params = [
       fleet_id, fleetRow[0]?.fleet_name ?? null,
       vehicle_plate, driver_id ?? null, driverName,
-      card_no, card_type,
+      card_no ?? null, card_type,
       monthly_limit ?? null, issued_at ?? null, note ?? null,
-    ]);
+    ];
+    const sql = card_no
+      ? `INSERT INTO fuel_cards
+           (fleet_id, fleet_name, vehicle_plate, driver_id, driver_name,
+            card_no, card_type, monthly_limit, issued_at, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (card_no) DO UPDATE SET
+           fleet_id      = EXCLUDED.fleet_id,
+           fleet_name    = EXCLUDED.fleet_name,
+           vehicle_plate = EXCLUDED.vehicle_plate,
+           driver_id     = EXCLUDED.driver_id,
+           driver_name   = EXCLUDED.driver_name,
+           card_type     = EXCLUDED.card_type,
+           monthly_limit = EXCLUDED.monthly_limit,
+           note          = EXCLUDED.note
+         RETURNING *`
+      : `INSERT INTO fuel_cards
+           (fleet_id, fleet_name, vehicle_plate, driver_id, driver_name,
+            card_no, card_type, monthly_limit, issued_at, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         RETURNING *`;
+    const { rows } = await pool.query(sql, params);
 
     return res.status(201).json({ ok: true, card: rows[0] });
   } catch (err: any) {
@@ -136,10 +143,10 @@ fuelCardsRouter.patch("/fuel-cards/cards/:cardId", async (req, res) => {
   if (!cardId) return res.status(400).json({ error: "無效的 cardId" });
 
   const {
-    driver_id, card_type, monthly_limit,
+    card_no, driver_id, card_type, monthly_limit,
     is_active, issued_at, note,
   } = req.body as {
-    driver_id?: number | null; card_type?: string;
+    card_no?: string | null; driver_id?: number | null; card_type?: string;
     monthly_limit?: number | null; is_active?: boolean;
     issued_at?: string; note?: string;
   };
@@ -164,17 +171,19 @@ fuelCardsRouter.patch("/fuel-cards/cards/:cardId", async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE fuel_cards SET
-        driver_id     = COALESCE($2, driver_id),
-        driver_name   = $3,
-        card_type     = COALESCE($4, card_type),
-        monthly_limit = CASE WHEN $5::numeric IS NOT NULL THEN $5 ELSE monthly_limit END,
-        is_active     = COALESCE($6, is_active),
-        issued_at     = COALESCE($7::date, issued_at),
-        note          = COALESCE($8, note)
+        card_no       = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE card_no END,
+        driver_id     = CASE WHEN $3::integer IS NOT NULL THEN $3 ELSE driver_id END,
+        driver_name   = $4,
+        card_type     = COALESCE($5, card_type),
+        monthly_limit = CASE WHEN $6::numeric IS NOT NULL THEN $6 ELSE monthly_limit END,
+        is_active     = COALESCE($7, is_active),
+        issued_at     = COALESCE($8::date, issued_at),
+        note          = COALESCE($9, note)
       WHERE id = $1
       RETURNING *
     `, [
       cardId,
+      card_no !== undefined ? (card_no ?? null) : null,
       driver_id !== undefined ? (driver_id ?? null) : null,
       driverName,
       card_type ?? null,
