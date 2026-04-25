@@ -29,6 +29,7 @@ import FuelTab from "./fusingao/FuelTab";
 import DriverBonusTab from "./fusingao/DriverBonusTab";
 import AutoDispatchTab from "./fusingao/AutoDispatchTab";
 import TownshipTab from "./fusingao/TownshipTab";
+import DriverDispatchStatsTab from "./fusingao/DriverDispatchStatsTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +60,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "autodispatch";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "autodispatch" | "dispatchref";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -500,7 +501,8 @@ export default function FusingaoPortal() {
               { id:"notify",      label:"🔔 完成通知",    group:1 },
               { id:"monthly",     label:"📋 月度對帳",    group:1 },
               { id:"fleets",      label:"🚚 車隊管理",    group:1 },
-              { id:"drivers",     label:"👤 司機管理",    group:1 },
+              { id:"drivers",      label:"👤 司機管理",    group:1 },
+              { id:"dispatchref",  label:"📊 派遣參考",    group:1 },
             ] as { id: PortalTab; label: string; group: number }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -1112,6 +1114,7 @@ export default function FusingaoPortal() {
         {/* ═══════════════ 試算表同步 ═══════════════════════════════════════ */}
         {tab === "sheetsync" && <SheetSyncTab />}
         {tab === "drivers" && <ShopeeDriversTab />}
+        {tab === "dispatchref" && <DriverDispatchStatsTab />}
 
         {/* ═══════════════ 班表地址 ═══════════════════════════════════════════ */}
         {tab === "schedule" && <FusingaoScheduleTab />}

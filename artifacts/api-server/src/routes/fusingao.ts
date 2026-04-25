@@ -806,6 +806,73 @@ fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
   }
 });
 
+// GET /fusingao/fleets/:id/driver-dispatch-stats
+// 每位司機：本月/本週/今日趟數、累計休息天數、平均每日趟數 → 車主派遣參考
+fusingaoRouter.get("/fleets/:id/driver-dispatch-stats", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await pool.query(`
+      WITH tw_params AS (
+        SELECT
+          (NOW() AT TIME ZONE 'Asia/Taipei')::date                          AS today_tw,
+          date_trunc('week',  NOW() AT TIME ZONE 'Asia/Taipei')::date       AS week_start,
+          date_trunc('month', NOW() AT TIME ZONE 'Asia/Taipei')::date       AS month_start,
+          EXTRACT(DAY FROM (NOW() AT TIME ZONE 'Asia/Taipei'))::int         AS elapsed_days
+      ),
+      trip_agg AS (
+        SELECT
+          o.fleet_driver_id                                          AS driver_id,
+          COUNT(*) FILTER (
+            WHERE (o.fleet_completed_at AT TIME ZONE 'Asia/Taipei')::date
+                  = (SELECT today_tw FROM tw_params)
+          )                                                          AS trips_today,
+          COUNT(*) FILTER (
+            WHERE (o.fleet_completed_at AT TIME ZONE 'Asia/Taipei')::date
+                  >= (SELECT week_start FROM tw_params)
+          )                                                          AS trips_this_week,
+          COUNT(*) FILTER (
+            WHERE (o.fleet_completed_at AT TIME ZONE 'Asia/Taipei')::date
+                  >= (SELECT month_start FROM tw_params)
+          )                                                          AS trips_this_month,
+          COUNT(DISTINCT (o.fleet_completed_at AT TIME ZONE 'Asia/Taipei')::date) FILTER (
+            WHERE (o.fleet_completed_at AT TIME ZONE 'Asia/Taipei')::date
+                  >= (SELECT month_start FROM tw_params)
+          )                                                          AS working_days
+        FROM orders o
+        WHERE o.fleet_driver_id IS NOT NULL
+          AND o.fleet_completed_at IS NOT NULL
+        GROUP BY o.fleet_driver_id
+      )
+      SELECT
+        fd.id,
+        fd.name,
+        fd.employee_id,
+        fd.vehicle_plate,
+        fd.vehicle_type,
+        fd.phone,
+        fd.is_active,
+        COALESCE(ta.trips_today,      0)                       AS trips_today,
+        COALESCE(ta.trips_this_week,  0)                       AS trips_this_week,
+        COALESCE(ta.trips_this_month, 0)                       AS trips_this_month,
+        COALESCE(ta.working_days,     0)                       AS working_days,
+        (SELECT elapsed_days FROM tw_params)
+          - COALESCE(ta.working_days, 0)                       AS rest_days,
+        CASE
+          WHEN COALESCE(ta.working_days, 0) > 0
+          THEN ROUND(ta.trips_this_month::numeric / ta.working_days, 1)
+          ELSE 0
+        END                                                    AS avg_daily_trips
+      FROM fleet_drivers fd
+      LEFT JOIN trip_agg ta ON ta.driver_id = fd.id
+      WHERE fd.fleet_id = $1
+      ORDER BY fd.is_active DESC, trips_today DESC, trips_this_month DESC, fd.name
+    `, [Number(id)]);
+    res.json({ ok: true, drivers: rows.rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Helper: push a single route to ATOMS after fleet assigns a driver ──────
 async function pushFleetRouteToAtoms(orderId: number, driverName: string | null, driverPhone: string | null, atomsAccount: string | null) {
   const atomsUrl = process.env.ATOMS_WEBHOOK_URL;
