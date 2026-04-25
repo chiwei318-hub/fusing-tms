@@ -1,0 +1,79 @@
+請建立加油卡代墊結算系統：
+
+資料表 1：fuel_card_records（加油記錄）
+  id, fleet_id, fleet_name
+  driver_id, driver_name
+  vehicle_plate
+  fuel_date DATE
+  fuel_station TEXT        -- 加油站名稱
+  liters NUMERIC(8,2)      -- 公升數
+  amount NUMERIC(10,2)     -- 金額（富詠代墊）
+  receipt_no TEXT          -- 油單號碼
+  cpc_rebate NUMERIC(10,2) -- 中油退 1%（amount × 0.01）
+  period TEXT              -- YYYY-MM
+  is_deducted BOOLEAN DEFAULT FALSE  -- 是否已從月結扣除
+  note TEXT
+  created_at TIMESTAMPTZ DEFAULT NOW()
+
+資料表 2：owner_cash_settlements（車主現金結算單）
+  id, fleet_id, fleet_name, period
+  
+  收入：
+  shopee_income NUMERIC    -- 蝦皮趟次收入
+  trip_count INTEGER       -- 趟次數
+  
+  扣款：
+  affiliation_deduct NUMERIC  -- 靠行費（shopee_income × commission_rate%）
+  fuel_deduct NUMERIC         -- 油錢（從 fuel_card_records 加總）
+  fuel_rebate NUMERIC         -- 中油退款 1%（富詠自留，不退給車主）
+  driver_payroll NUMERIC      -- 司機薪資
+  misc_deductions JSONB       -- 雜項 [{label:"罰款",amount:500}]
+  misc_total NUMERIC          -- 雜項合計
+  
+  結算：
+  total_deduction NUMERIC     -- 所有扣款合計
+  net_cash NUMERIC            -- 現金給車主
+  
+  付款：
+  payment_method TEXT DEFAULT 'cash'
+  status TEXT DEFAULT 'draft'   -- draft/confirmed/paid
+  paid_at TIMESTAMPTZ
+  paid_by TEXT                  -- 經手人
+  receipt_note TEXT
+  created_at, updated_at TIMESTAMPTZ
+
+API endpoints：
+
+POST /api/fuel-cards/record
+Body: { fleet_id, driver_id, vehicle_plate, fuel_date, 
+        fuel_station, liters, amount, receipt_no, period }
+自動計算：cpc_rebate = amount × 0.01
+
+GET /api/fuel-cards?fleet_id=&period=
+查詢加油記錄
+
+GET /api/fuel-cards/summary?period=
+所有車隊加油彙總 + 中油退款合計
+
+POST /api/owner-settlement/calculate
+Body: { fleet_id, period }
+自動計算：
+  1. 從 dispatch_order_routes 抓趟次收入
+  2. 套用 commission_rate% 算靠行費
+  3. 從 fuel_card_records 加總油錢
+  4. 從 driver_payroll 拿司機薪資
+  5. 計算 net_cash
+
+GET /api/owner-settlement/:fleetId?period=
+查詢結算單
+
+PATCH /api/owner-settlement/:id/misc
+Body: { misc_deductions: [{label,amount}] }
+新增雜項扣款（罰款/保險/維修等）
+
+PATCH /api/owner-settlement/:id/pay
+Body: { paid_by, receipt_note }
+標記現金已付
+
+GET /api/owner-settlement/summary?period=
+富詠看所有車主月結彙總（含中油退款總計）
