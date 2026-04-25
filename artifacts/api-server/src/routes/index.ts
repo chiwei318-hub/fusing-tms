@@ -107,6 +107,7 @@ import { createAffiliatedOwnerRouter } from "./affiliatedOwner";
 import { fourLayerSettlementRouter } from "./fourLayerSettlement";
 import { ownerCashSettlementRouter } from "./ownerCashSettlement";
 import { fuelCardsRouter } from "./fuelCards";
+import { notificationsRouter } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -233,5 +234,6 @@ router.use("/affiliated-owners", createAffiliatedOwnerRouter());    // 靠行車
 router.use(fourLayerSettlementRouter);                              // 四層財務結算系統
 router.use(fuelCardsRouter);                                        // 加油卡代墊記錄系統
 router.use(ownerCashSettlementRouter);                              // 車主現金結算系統
+router.use("/notifications", notificationsRouter);                  // 雙推播通知系統
 
 export default router;

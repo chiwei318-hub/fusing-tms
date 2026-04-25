@@ -19,6 +19,7 @@ import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "
 import { ensureAutoDispatchTables, startAutoDispatchScheduler } from "./routes/fusingaoAutoDispatch";
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { startSettlementReminderScheduler } from "./lib/settlementReminder";
+import { startScheduledNotifications } from "./lib/scheduledNotifications";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
 import { ensureVehicleProfitTables } from "./routes/vehicleProfit";
@@ -219,6 +220,7 @@ ensureFleetSheetSyncTables()
   .then(() => startFleetSheetSyncScheduler())
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
 startSettlementReminderScheduler();
+startScheduledNotifications();
 
 // 確保 drivers.is_active 欄位存在（離職狀態管理）
 _migPool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`)
@@ -716,6 +718,50 @@ _migPool.query(`
     console.log("[LoanMgmt] tables ensured");
   } catch (e) {
     console.warn("[LoanMgmt] table ensure failed:", String(e).slice(0, 200));
+  }
+})();
+
+// ─── 雙推播通知系統 — push_notifications 資料表 + 到期欄位 ────────────────────
+(async () => {
+  try {
+    await _migPool.query(`
+      CREATE TABLE IF NOT EXISTS push_notifications (
+        id            SERIAL PRIMARY KEY,
+        driver_id     INTEGER,
+        driver_name   TEXT,
+        fleet_id      INTEGER,
+        channel       TEXT NOT NULL DEFAULT 'both',
+        type          TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        body          TEXT NOT NULL,
+        data          JSONB,
+        line_user_id  TEXT,
+        atoms_account TEXT,
+        sent_at       TIMESTAMPTZ,
+        read_at       TIMESTAMPTZ,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        line_status   TEXT NOT NULL DEFAULT 'pending',
+        atoms_status  TEXT NOT NULL DEFAULT 'pending',
+        error         TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_driver_id ON push_notifications(driver_id)`);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_sent_at   ON push_notifications(sent_at DESC)`);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_type      ON push_notifications(type)`);
+    await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_status    ON push_notifications(status)`);
+
+    // fleet_drivers — 驗車/保險到期欄位
+    await _migPool.query(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS inspection_expire_date DATE`);
+    await _migPool.query(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS insurance_expire_date  DATE`);
+
+    // fusingao_fleets — 合約到期日 + 車主 LINE ID
+    await _migPool.query(`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS contract_expire_date DATE`);
+    await _migPool.query(`ALTER TABLE fusingao_fleets ADD COLUMN IF NOT EXISTS line_id TEXT`);
+
+    console.log("[PushNotif] 推播通知資料表及欄位已確認");
+  } catch (e) {
+    console.warn("[PushNotif] schema 建立失敗:", String(e).slice(0, 200));
   }
 })();
 

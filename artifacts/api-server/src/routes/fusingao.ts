@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "crypto";
 import { signJwt } from "../lib/jwt.js";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import { pushSettlementComplete, pushTaskAssigned } from "../lib/scheduledNotifications";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -1427,10 +1428,23 @@ fusingaoRouter.put("/routes/:id/assign-driver", async (req, res) => {
     let atomsResult: any = { skipped: true };
     if (driverId) {
       const dRow = await db.execute(sql`
-        SELECT name, phone, atoms_account FROM fleet_drivers WHERE id = ${driverId}
+        SELECT fd.id, fd.name, fd.phone, fd.atoms_account, fd.line_id,
+               o.route_id, o.order_no,
+               TO_CHAR(o.pickup_date AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS route_date
+        FROM fleet_drivers fd
+        JOIN orders o ON o.id = ${Number(id)}
+        WHERE fd.id = ${driverId}
+        LIMIT 1
       `).then(r => (r.rows as any[])[0]);
       if (dRow && (dRow.atoms_account || dRow.name)) {
         atomsResult = await pushFleetRouteToAtoms(Number(id), dRow.name, dRow.phone ?? null, dRow.atoms_account ?? null);
+      }
+      // 觸發 3：新任務指派 LINE 推播
+      if (dRow) {
+        const routeLabel = dRow.route_id ?? dRow.order_no ?? `訂單#${id}`;
+        const routeDate  = dRow.route_date ?? new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+        pushTaskAssigned(driverId, routeLabel, routeDate)
+          .catch(e => console.warn("[assign-driver] 任務推播失敗:", e.message));
       }
     }
     res.json({ ok: true, atoms: atomsResult });
@@ -3039,6 +3053,15 @@ fusingaoRouter.post("/admin/cash-settlements/:id/mark-paid", async (req, res) =>
     const { paid_by } = req.body as { paid_by?: string };
     if (!paid_by?.trim()) return res.status(400).json({ ok: false, error: "付款人必填" });
 
+    // Fetch settlement + fleet info before update (for push notification)
+    const settlementInfo = await pool.query(
+      `SELECT s.fleet_id, s.month, s.total_salary, s.net_salary, f.fleet_name, f.line_id AS fleet_line_id
+       FROM fleet_cash_settlements s
+       JOIN fusingao_fleets f ON f.id = s.fleet_id
+       WHERE s.id = $1 LIMIT 1`,
+      [id]
+    );
+
     const r = await pool.query(
       `UPDATE fleet_cash_settlements SET status='paid', paid_at=NOW(), paid_by=$2, updated_at=NOW()
        WHERE id=$1 AND status != 'paid' RETURNING id, paid_at`,
@@ -3046,6 +3069,15 @@ fusingaoRouter.post("/admin/cash-settlements/:id/mark-paid", async (req, res) =>
     );
     if (r.rowCount === 0) return res.status(400).json({ ok: false, error: "找不到結算單或已付款" });
     res.json({ ok: true, paid_at: r.rows[0].paid_at });
+
+    // 觸發 4：月結完成推播（非同步，不影響回應）
+    if (settlementInfo.rows.length > 0) {
+      const s = settlementInfo.rows[0] as any;
+      const amount = Number(s.net_salary ?? s.total_salary ?? 0);
+      pushSettlementComplete(
+        id, s.fleet_id, s.fleet_name, s.month, amount, s.fleet_line_id ?? null
+      ).catch(e => console.warn("[mark-paid] 結算推播失敗:", e.message));
+    }
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
