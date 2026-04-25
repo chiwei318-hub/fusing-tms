@@ -27,6 +27,7 @@ import { customersTable } from "@workspace/db";
 import { broadcastWebhook } from "./webhooks.js";
 import { autoCalculateSettlement } from "./franchiseSettlements.js";
 import { ensureOrderFinanceColumns, calcOrderFinance } from "./orderFinanceColumns.js";
+import { syncOrderToLocationHistory } from "../lib/ensureLocationTables.js";
 
 const router: IRouter = Router();
 
@@ -525,7 +526,21 @@ router.post("/orders", async (req, res) => {
     res.status(201).json({ ...order, driver: null });
 
     setImmediate(async () => {
-      // 0. 自動建立客戶名單 — 若電話不存在則新增，已存在則跳過
+      // 0a. 同步地點歷史資料庫
+      try {
+        await syncOrderToLocationHistory({
+          pickupAddress:    order.pickupAddress   ?? undefined,
+          pickupCity:       (order as any).pickupCity    ?? undefined,
+          pickupDistrict:   (order as any).pickupDistrict ?? undefined,
+          deliveryAddress:  order.deliveryAddress  ?? undefined,
+          deliveryCity:     (order as any).deliveryCity   ?? undefined,
+          deliveryDistrict: (order as any).deliveryDistrict ?? undefined,
+          customerId:       (order as any).customerId    ?? undefined,
+          driverId:         (order as any).driverId      ?? undefined,
+        });
+      } catch { /* silent */ }
+
+      // 0b. 自動建立客戶名單 — 若電話不存在則新增，已存在則跳過
       try {
         const phone = (order.customerPhone ?? "").trim();
         const name  = (order.customerName  ?? "").trim();

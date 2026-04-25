@@ -32,6 +32,7 @@ import { ensurePlatformRequirementsTable } from "./routes/platformRequirements";
 import { ensureGoogleAuthColumns } from "./routes/googleAuth";
 import { ensureInvitationsTable } from "./routes/invitations";
 import { ensureOAuthAccountsTable } from "./routes/oauthAccounts";
+import { ensureLocationTables, importLocationHistory } from "./lib/ensureLocationTables";
 import { pool as _migPool, db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -204,6 +205,9 @@ ensurePlatformRequirementsTable().catch((e) => console.error("[PlatformReq] tabl
 ensureGoogleAuthColumns().catch((e) => console.error("[GoogleAuth] column setup failed:", e));
 ensureInvitationsTable().catch((e) => console.error("[Invitations] table setup failed:", e));
 ensureOAuthAccountsTable().catch((e) => console.error("[OAuthAccounts] table setup failed:", e));
+ensureLocationTables()
+  .then(() => importLocationHistory())
+  .catch((e) => console.error("[LocationHistory] init failed:", e));
 ensureFreightRateTables().catch((e) => console.error("[FreightQuote] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {

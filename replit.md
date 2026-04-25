@@ -62,6 +62,12 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
     - **API** `routes/notifications.ts`（掛載 `/api/notifications`）：POST `/send`（批次推播，支援 driver_ids / line_user_ids / 廣播）、POST `/trigger-daily`（手動觸發今日班表）、POST `/trigger-expiry`（手動觸發到期提醒）、GET `/driver/:id`（司機推播記錄）、PATCH `/:id/read`（標記已讀）、GET `/stats`（發送數/已讀率/各通道統計，支援 1d/7d/30d）、GET `/`（全部列表）。
     - **環境變數**：使用既有 `LINE_CHANNEL_ACCESS_TOKEN` 和 `ATOMS_WEBHOOK_URL`，無需新增。
 
+*   **地點智慧系統 (Location Intelligence DB):** 持久化 `location_history` + `customer_addresses` 資料表，實現地址智能自動完成、智慧定價建議、司機熟悉度查詢。
+    - **DB 資料表：** `location_history`（UNIQUE address, visit_count, customer_ids JSONB, driver_ids JSONB, place_name/type, city/district, lat/lng）；`customer_addresses`（UNIQUE customer_id+address, use_count, is_favorite, label）。GIN index on address text search。
+    - **自動匯入（冪等）：** `ensureLocationTables.ts` 首次啟動時從 orders（pickup+delivery）、dispatch_order_routes（含 GPS 座標）、shopee_route_stops/shopee_week_route_stops（店鋪地址）批次匯入，並自動從地址字串解析縣市（台北市/新北市/桃園市等 22 縣市）。保護機制：table 已有資料時跳過，避免重啟後計數疊加。
+    - **即時同步：** POST /orders 建立訂單後，`setImmediate` 內呼叫 `syncOrderToLocationHistory()`，自動 upsert location_history + customer_addresses，並自動從地址解析縣市。
+    - **API 端點（掛載 /api/locations）：** GET `/search`（ILIKE 查 location_history）、GET `/autocomplete`（向後兼容，查 orders 含 avg_price）、GET `/frequent`（visit_count 排行）、GET `/popular`（orders 即時聚合）、GET `/route-stats`（常跑路線 O-D 對）、GET `/suggest-price`（同路線歷史均價）、GET `/driver-familiarity`（熟悉司機排行）、GET `/customer-history`（客戶歷史路線）、GET `/customer/:id`（customer_addresses + location_history join）、PATCH `/customer/:id/favorite`（收藏切換）、GET `/stats`（總覽+城市分佈+TOP10）、GET `/address-detail`（單地址完整資訊）、POST `/import`（批次匯入 JSON）、PATCH `/:id`（編輯商業資訊）。
+
 *   **Bug Fixes & Enhancements (2026-04):**
     - **Bug 1 進入管理按鈕：** `FleetAutoLogin` 由 `loginTemp`（僅 React state）改為 `login`（寫入 localStorage），修復 `window.location.href` 全頁重載後 session 遺失導致跳至 /login/fleet 的問題。
     - **Bug 2 司機匯入 CSV/Excel：** `import-file` INSERT 加入 `vehicle_type`（預設 '一般'），解決因缺少欄位被 catch 靜默跳過的 bug；CSV/Excel 兩個 branch 均已補齊 `車型` 欄位解析。
