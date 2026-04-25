@@ -1763,7 +1763,8 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
         SELECT
           COALESCE(SUM(income), 0)                               AS shopee_income,
           COALESCE(SUM(income * (1 - ${commRate}::numeric / 100.0)), 0) AS fleet_receive,
-          ${commRate}                                            AS commission_rate
+          ${commRate}                                            AS commission_rate,
+          COUNT(*)                                               AS trip_count
         FROM billing
       `).then(r => r.rows as any[]);
 
@@ -1804,7 +1805,26 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
         ? await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${m}`).then(r => r.rows as any[])
         : [null];
 
-      return res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "billing_trips" });
+      const [flInfo] = await db.execute(sql`SELECT fleet_name, contact_name FROM fusingao_fleets WHERE id=${Number(id)}`).then(r => r.rows as any[]);
+      const fuelBreakdown = m ? (await pool.query(
+        `SELECT vehicle_plate, SUM(amount)::numeric AS total FROM fuel_card_records WHERE fleet_id=$1 AND period=$2 GROUP BY vehicle_plate ORDER BY total DESC`,
+        [Number(id), m]
+      )).rows : [];
+      const driverSalaries = m ? (await pool.query(
+        `SELECT fd.id, fd.name, fd.employee_id, fd.base_salary::numeric, fd.per_trip_bonus::numeric, fd.meal_allowance::numeric, fd.other_deduction::numeric,
+          COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'), 0)::int AS completed_trips,
+          (fd.base_salary + COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'), 0) * fd.per_trip_bonus + fd.meal_allowance - fd.other_deduction)::numeric AS total_salary
+         FROM fleet_drivers fd LEFT JOIN fleet_orders fo ON fo.assigned_driver_id=fd.id AND to_char(fo.pickup_date,'YYYY-MM')=$2
+         WHERE fd.fleet_id=$1 AND fd.is_active=true
+         GROUP BY fd.id, fd.name, fd.employee_id, fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction ORDER BY fd.name`,
+        [Number(id), m]
+      )).rows : [];
+      const penaltiesDetail = m ? (await pool.query(
+        `SELECT id, reason, amount::numeric, order_no FROM fleet_penalties WHERE fleet_id=$1 AND period=$2 ORDER BY created_at`,
+        [Number(id), m]
+      )).rows : [];
+
+      return res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "billing_trips", fleet_name: flInfo?.fleet_name, contact_name: flInfo?.contact_name, fuel_breakdown: fuelBreakdown, driver_salaries: driverSalaries, penalties_detail: penaltiesDetail });
     }
 
     // ── Fallback: route_prefix_rates ─────────────────────────────────────────
@@ -1814,7 +1834,8 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
       SELECT
         COALESCE(SUM(pr.rate_per_trip),0)  AS shopee_income,
         COALESCE(SUM(COALESCE(fl.rate_override, pr.rate_per_trip * (1 - COALESCE(fl.commission_rate,15)/100.0))),0) AS fleet_receive,
-        COALESCE(MAX(fl.commission_rate), 15) AS commission_rate
+        COALESCE(MAX(fl.commission_rate), 15) AS commission_rate,
+        COUNT(o.id) AS trip_count
       FROM orders o
       LEFT JOIN fusingao_fleets fl ON fl.id = ${Number(id)}
       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
@@ -1842,7 +1863,26 @@ fusingaoRouter.get("/fleets/:id/settlement", async (req, res) => {
       ? await db.execute(sql`SELECT * FROM fusingao_fleet_adjustments WHERE fleet_id=${Number(id)} AND month=${m}`).then(r => r.rows as any[])
       : [null];
 
-    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "prefix_rates" });
+    const [flInfo2] = await db.execute(sql`SELECT fleet_name, contact_name FROM fusingao_fleets WHERE id=${Number(id)}`).then(r => r.rows as any[]);
+    const fuelBreakdown2 = m ? (await pool.query(
+      `SELECT vehicle_plate, SUM(amount)::numeric AS total FROM fuel_card_records WHERE fleet_id=$1 AND period=$2 GROUP BY vehicle_plate ORDER BY total DESC`,
+      [Number(id), m]
+    )).rows : [];
+    const driverSalaries2 = m ? (await pool.query(
+      `SELECT fd.id, fd.name, fd.employee_id, fd.base_salary::numeric, fd.per_trip_bonus::numeric, fd.meal_allowance::numeric, fd.other_deduction::numeric,
+        COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'), 0)::int AS completed_trips,
+        (fd.base_salary + COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'), 0) * fd.per_trip_bonus + fd.meal_allowance - fd.other_deduction)::numeric AS total_salary
+       FROM fleet_drivers fd LEFT JOIN fleet_orders fo ON fo.assigned_driver_id=fd.id AND to_char(fo.pickup_date,'YYYY-MM')=$2
+       WHERE fd.fleet_id=$1 AND fd.is_active=true
+       GROUP BY fd.id, fd.name, fd.employee_id, fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction ORDER BY fd.name`,
+      [Number(id), m]
+    )).rows : [];
+    const penaltiesDetail2 = m ? (await pool.query(
+      `SELECT id, reason, amount::numeric, order_no FROM fleet_penalties WHERE fleet_id=$1 AND period=$2 ORDER BY created_at`,
+      [Number(id), m]
+    )).rows : [];
+
+    res.json({ ok: true, summary: summary ?? {}, drivers: drivers.rows, adjustment: adj ?? null, source: "prefix_rates", fleet_name: flInfo2?.fleet_name, contact_name: flInfo2?.contact_name, fuel_breakdown: fuelBreakdown2, driver_salaries: driverSalaries2, penalties_detail: penaltiesDetail2 });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

@@ -4,7 +4,7 @@ import {
   DollarSign, ChevronDown, ChevronRight, Zap, Download,
   CheckSquare, Square, AlertCircle, UserPlus, User, Edit2, Save, X,
   TrendingUp, ArrowRight, ClipboardList, Send, Bell, Shield, Key, Trash2, UserCheck, Eye, EyeOff,
-  Link, Copy, Check, Fuel, Settings2,
+  Link, Copy, Check, Fuel, Settings2, Printer, FileText,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,8 +42,15 @@ interface FleetDriver {
   base_salary?: number; per_trip_bonus?: number; meal_allowance?: number; other_deduction?: number;
 }
 interface SettlementSummary {
-  shopee_income: string; fleet_receive: string; commission_rate: string;
+  shopee_income: string; fleet_receive: string; commission_rate: string; trip_count?: string;
 }
+interface FuelBreakdownItem { vehicle_plate: string; total: string; }
+interface DriverSalaryItem {
+  id: number; name: string; employee_id: string | null;
+  base_salary: string; per_trip_bonus: string; meal_allowance: string; other_deduction: string;
+  completed_trips: number; total_salary: string;
+}
+interface PenaltyItem { id: number; reason: string; amount: string; order_no: string | null; }
 interface DriverSettlement {
   driver_name: string; vehicle_plate: string | null;
   route_count: string; completed_count: string; earnings: string;
@@ -354,6 +361,15 @@ export default function FusingaoFleetPortal() {
   const [shareLink, setShareLink] = useState("");
   const [shareLinkLoading, setShareLinkLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [fuelBreakdown, setFuelBreakdown]   = useState<FuelBreakdownItem[]>([]);
+  const [driverSalaries, setDriverSalaries] = useState<DriverSalaryItem[]>([]);
+  const [penaltiesDetail, setPenaltiesDetail] = useState<PenaltyItem[]>([]);
+  const [settlementFleetName, setSettlementFleetName] = useState("");
+  const [settlementContactName, setSettlementContactName] = useState("");
+  const [printSlipOpen, setPrintSlipOpen] = useState(false);
+  const [printPayDate, setPrintPayDate]   = useState("");
+  const [printHandler, setPrintHandler]   = useState("");
+  const [printOwnerSig, setPrintOwnerSig] = useState("");
 
   // ── Dispatch orders state ──────────────────────────────────────────────────
   const [dispatchOrders, setDispatchOrders]   = useState<DispatchOrder[]>([]);
@@ -504,6 +520,11 @@ export default function FusingaoFleetPortal() {
     if (d.ok) {
       setSettlement(d.summary);
       setDriverSettlements(d.drivers ?? []);
+      setFuelBreakdown(d.fuel_breakdown ?? []);
+      setDriverSalaries(d.driver_salaries ?? []);
+      setPenaltiesDetail(d.penalties_detail ?? []);
+      setSettlementFleetName(d.fleet_name ?? "");
+      setSettlementContactName(d.contact_name ?? "");
       if (d.adjustment) {
         setAdjustment({
           extra_deduct_rate: Number(d.adjustment.extra_deduct_rate ?? 0),
@@ -1695,6 +1716,15 @@ export default function FusingaoFleetPortal() {
                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadSettlement}>
                   <RefreshCw className="h-3.5 w-3.5 mr-1" />重新整理
                 </Button>
+                {settlement && settlementMonth && (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs bg-gray-800 hover:bg-gray-900 text-white"
+                    onClick={() => setPrintSlipOpen(true)}
+                  >
+                    <Printer className="h-3.5 w-3.5 mr-1" />列印結算單
+                  </Button>
+                )}
               </div>
 
               {settlement && (
@@ -1914,6 +1944,268 @@ export default function FusingaoFleetPortal() {
                   尚無結算資料
                 </div>
               )}
+
+              {/* ── Print Settlement Slip Modal ── */}
+              {printSlipOpen && settlement && (() => {
+                const shopeeIncome2 = Number(settlement.shopee_income ?? 0);
+                const commRate2     = Number(settlement.commission_rate ?? 15);
+                const commAmt2      = shopeeIncome2 * commRate2 / 100;
+                const fleetReceive2 = shopeeIncome2 - commAmt2;
+                const fuelTotal     = fuelBreakdown.reduce((s, r) => s + Number(r.total ?? 0), 0);
+                const salaryTotal   = driverSalaries.reduce((s, r) => s + Number(r.total_salary ?? 0), 0);
+                const penaltyTotal  = penaltiesDetail.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+                const cashDue       = fleetReceive2 - fuelTotal - salaryTotal - penaltyTotal;
+                const tripCount     = Number(settlement.trip_count ?? 0);
+                const monthLabel    = settlementMonth
+                  ? `${settlementMonth.slice(0, 4)} 年 ${settlementMonth.slice(5, 7)} 月`
+                  : "—";
+
+                return (
+                  <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-6 px-4">
+                    <style>{`
+                      @media print {
+                        body > * { display: none !important; }
+                        #cash-settlement-slip { display: block !important; position: static !important; }
+                        .no-print { display: none !important; }
+                      }
+                    `}</style>
+                    <div id="cash-settlement-slip" className="bg-white w-full max-w-2xl rounded-lg shadow-2xl overflow-hidden">
+                      {/* Modal action bar — hidden when printing */}
+                      <div className="no-print flex items-center justify-between px-5 py-3 bg-gray-100 border-b">
+                        <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <FileText className="h-4 w-4" />車主現金結算單預覽
+                        </span>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="h-8 text-xs bg-gray-800 hover:bg-gray-900 text-white" onClick={() => window.print()}>
+                            <Printer className="h-3.5 w-3.5 mr-1" />列印 / 存PDF
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setPrintSlipOpen(false)}>
+                            <X className="h-3.5 w-3.5 mr-1" />關閉
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* ── Slip content ── */}
+                      <div className="p-8 space-y-5 text-sm text-gray-800" style={{ fontFamily: "'Noto Sans TC', 'Microsoft JhengHei', sans-serif" }}>
+                        {/* Header */}
+                        <div className="text-center border-b pb-4">
+                          <p className="text-xs text-gray-400 mb-0.5">富詠運輸股份有限公司</p>
+                          <h1 className="text-xl font-bold tracking-wide">車 主 現 金 結 算 單</h1>
+                          <p className="text-xs text-gray-500 mt-1">結算月份：{monthLabel}</p>
+                        </div>
+
+                        {/* Basic info */}
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                          <div className="flex gap-2">
+                            <span className="text-gray-500 shrink-0">車隊名稱：</span>
+                            <span className="font-semibold">{settlementFleetName || "—"}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-gray-500 shrink-0">聯絡人：</span>
+                            <span className="font-semibold">{settlementContactName || "—"}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-gray-500 shrink-0">結算期間：</span>
+                            <span className="font-semibold">{monthLabel}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-gray-500 shrink-0">總趟次：</span>
+                            <span className="font-semibold">{tripCount.toLocaleString()} 趟</span>
+                          </div>
+                        </div>
+
+                        {/* ① Shopee income */}
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-blue-50 px-4 py-2 font-semibold text-blue-800 text-xs uppercase tracking-wide">① 蝦皮收入</div>
+                          <table className="w-full text-sm">
+                            <tbody>
+                              <tr className="border-b">
+                                <td className="px-4 py-2 text-gray-600">蝦皮運費總額</td>
+                                <td className="px-4 py-2 text-right font-mono font-semibold text-blue-700">{fmt(shopeeIncome2)}</td>
+                              </tr>
+                              <tr className="border-b">
+                                <td className="px-4 py-2 text-gray-600">− 平台服務費（{commRate2}%）</td>
+                                <td className="px-4 py-2 text-right font-mono text-red-600">− {fmt(commAmt2)}</td>
+                              </tr>
+                              <tr className="bg-blue-50/60">
+                                <td className="px-4 py-2 font-semibold">車隊實際收款</td>
+                                <td className="px-4 py-2 text-right font-mono font-bold text-blue-800">{fmt(fleetReceive2)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* ② Fuel cost */}
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-orange-50 px-4 py-2 font-semibold text-orange-800 text-xs uppercase tracking-wide flex justify-between">
+                            <span>② 油費支出（依車牌）</span>
+                            <span className="font-mono">合計：{fmt(fuelTotal)}</span>
+                          </div>
+                          {fuelBreakdown.length > 0 ? (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50 text-gray-500 text-xs">
+                                  <th className="px-4 py-1.5 text-left">車牌號碼</th>
+                                  <th className="px-4 py-1.5 text-right">油費金額</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {fuelBreakdown.map((r, i) => (
+                                  <tr key={i} className="border-b last:border-0">
+                                    <td className="px-4 py-2 font-mono">{r.vehicle_plate}</td>
+                                    <td className="px-4 py-2 text-right font-mono">{fmt(Number(r.total))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="px-4 py-3 text-gray-400 text-xs">本月無油費記錄</p>
+                          )}
+                        </div>
+
+                        {/* ③ Driver salaries */}
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-purple-50 px-4 py-2 font-semibold text-purple-800 text-xs uppercase tracking-wide flex justify-between">
+                            <span>③ 司機薪資</span>
+                            <span className="font-mono">合計：{fmt(salaryTotal)}</span>
+                          </div>
+                          {driverSalaries.length > 0 ? (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50 text-gray-500 text-xs">
+                                  <th className="px-4 py-1.5 text-left">司機</th>
+                                  <th className="px-4 py-1.5 text-right">底薪</th>
+                                  <th className="px-4 py-1.5 text-right">趟次獎金</th>
+                                  <th className="px-4 py-1.5 text-right">餐補</th>
+                                  <th className="px-4 py-1.5 text-right">扣款</th>
+                                  <th className="px-4 py-1.5 text-right">應付薪資</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {driverSalaries.map((r, i) => (
+                                  <tr key={i} className="border-b last:border-0">
+                                    <td className="px-4 py-2">
+                                      {r.name}
+                                      {r.employee_id && <span className="text-gray-400 font-mono text-xs ml-1">#{r.employee_id}</span>}
+                                    </td>
+                                    <td className="px-4 py-2 text-right font-mono text-xs">{fmt(Number(r.base_salary))}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-xs">{r.completed_trips} × {fmt(Number(r.per_trip_bonus))}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-xs">{fmt(Number(r.meal_allowance))}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-xs text-red-600">− {fmt(Number(r.other_deduction))}</td>
+                                    <td className="px-4 py-2 text-right font-mono font-semibold">{fmt(Number(r.total_salary))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="px-4 py-3 text-gray-400 text-xs">本月無司機薪資記錄</p>
+                          )}
+                        </div>
+
+                        {/* ④ Penalties */}
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-red-50 px-4 py-2 font-semibold text-red-800 text-xs uppercase tracking-wide flex justify-between">
+                            <span>④ 罰款 / 扣款明細</span>
+                            <span className="font-mono">合計：{fmt(penaltyTotal)}</span>
+                          </div>
+                          {penaltiesDetail.length > 0 ? (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50 text-gray-500 text-xs">
+                                  <th className="px-4 py-1.5 text-left">原因</th>
+                                  <th className="px-4 py-1.5 text-left">訂單號</th>
+                                  <th className="px-4 py-1.5 text-right">金額</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {penaltiesDetail.map((r, i) => (
+                                  <tr key={i} className="border-b last:border-0">
+                                    <td className="px-4 py-2">{r.reason}</td>
+                                    <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.order_no || "—"}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-red-600">{fmt(Number(r.amount))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="px-4 py-3 text-gray-400 text-xs">本月無罰款記錄</p>
+                          )}
+                        </div>
+
+                        {/* ⑤ Cash settlement total */}
+                        <div className="border-2 border-green-400 rounded-lg overflow-hidden">
+                          <div className="bg-green-50 px-4 py-2 font-semibold text-green-800 text-xs uppercase tracking-wide">⑤ 現金結算</div>
+                          <table className="w-full text-sm">
+                            <tbody>
+                              <tr className="border-b">
+                                <td className="px-4 py-2 text-gray-600">車隊實際收款</td>
+                                <td className="px-4 py-2 text-right font-mono">{fmt(fleetReceive2)}</td>
+                              </tr>
+                              {fuelTotal > 0 && (
+                                <tr className="border-b">
+                                  <td className="px-4 py-2 text-gray-600">− 油費</td>
+                                  <td className="px-4 py-2 text-right font-mono text-red-600">− {fmt(fuelTotal)}</td>
+                                </tr>
+                              )}
+                              {salaryTotal > 0 && (
+                                <tr className="border-b">
+                                  <td className="px-4 py-2 text-gray-600">− 司機薪資</td>
+                                  <td className="px-4 py-2 text-right font-mono text-red-600">− {fmt(salaryTotal)}</td>
+                                </tr>
+                              )}
+                              {penaltyTotal > 0 && (
+                                <tr className="border-b">
+                                  <td className="px-4 py-2 text-gray-600">− 罰款扣款</td>
+                                  <td className="px-4 py-2 text-right font-mono text-red-600">− {fmt(penaltyTotal)}</td>
+                                </tr>
+                              )}
+                              <tr className="bg-green-100">
+                                <td className="px-4 py-3 font-bold text-green-800 text-base">應付車主現金</td>
+                                <td className="px-4 py-3 text-right font-mono font-bold text-green-800 text-xl">{fmt(cashDue)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* ⑥ Signature fields */}
+                        <div className="border rounded-lg p-4 space-y-3">
+                          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">⑥ 確認簽署</p>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">付款日期</p>
+                              <input
+                                type="date"
+                                className="no-print w-full border rounded px-2 py-1.5 text-sm"
+                                value={printPayDate}
+                                onChange={e => setPrintPayDate(e.target.value)}
+                              />
+                              <div className="hidden print:block border-b border-gray-400 h-7 text-sm px-1 pt-1">{printPayDate || " "}</div>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">經手人</p>
+                              <input
+                                type="text"
+                                className="no-print w-full border rounded px-2 py-1.5 text-sm"
+                                value={printHandler}
+                                onChange={e => setPrintHandler(e.target.value)}
+                                placeholder="姓名"
+                              />
+                              <div className="hidden print:block border-b border-gray-400 h-7 text-sm px-1 pt-1">{printHandler || " "}</div>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">車主簽名</p>
+                              <div className="border-b border-gray-400 h-8" />
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-gray-400 pt-1">
+                            本結算單由系統自動生成，如有疑問請聯繫富詠運輸管理部門。
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
