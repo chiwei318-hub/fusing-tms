@@ -28,14 +28,17 @@ export async function ensureGoogleAuthColumns() {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS franchisees_google_id_uidx     ON franchisees(google_id)      WHERE google_id IS NOT NULL`);
 }
 
-// GET /auth/google/url?role=customer|fleet|owner
+// GET /auth/google/url?role=customer|fleet|owner[&invite_token=xxx]
 router.get("/auth/google/url", (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) return res.status(503).json({ error: "Google Login 未設定" });
 
   const role = String(req.query.role ?? "customer");
+  const inviteToken = req.query.invite_token ? String(req.query.invite_token) : undefined;
   const callbackUri = getCallbackUrl();
-  const state = Buffer.from(JSON.stringify({ role })).toString("base64url");
+  const statePayload: Record<string, string> = { role };
+  if (inviteToken) statePayload.invite_token = inviteToken;
+  const state = Buffer.from(JSON.stringify(statePayload)).toString("base64url");
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -62,10 +65,27 @@ router.get("/auth/google/callback", async (req, res) => {
   if (gErr || !code) return res.redirect(`${appBase}/login?error=google_cancelled`);
 
   let role = "customer";
+  let inviteToken: string | null = null;
   try {
     const parsed = JSON.parse(Buffer.from(state ?? "", "base64url").toString());
     role = parsed.role ?? "customer";
+    inviteToken = parsed.invite_token ?? null;
   } catch {}
+
+  // Helper: validate + consume an invitation token, returns the invited email or null
+  async function consumeInvite(token: string, expectedRole: string): Promise<string | null> {
+    const { rows } = await pool.query(
+      `SELECT id, email, role, expires_at, used_at FROM invitations WHERE token=$1 LIMIT 1`,
+      [token],
+    );
+    const inv = rows[0];
+    if (!inv) return null;
+    if (inv.used_at) return null;
+    if (new Date(inv.expires_at) < new Date()) return null;
+    if (inv.role !== expectedRole) return null;
+    await pool.query(`UPDATE invitations SET used_at=NOW() WHERE id=$1`, [inv.id]);
+    return inv.email as string;
+  }
 
   try {
     const callbackUri = getCallbackUrl();
@@ -106,25 +126,39 @@ router.get("/auth/google/callback", async (req, res) => {
         [googleId],
       )).rows[0];
 
+      if (!row && inviteToken) {
+        const invitedEmail = await consumeInvite(inviteToken, "customer");
+        if (invitedEmail) {
+          const byInvite = (await pool.query(
+            `SELECT id, name, phone, is_active FROM customers WHERE email = $1 LIMIT 1`,
+            [invitedEmail],
+          )).rows[0];
+          if (byInvite) {
+            await pool.query(`UPDATE customers SET google_id=$1, avatar_url=$2 WHERE id=$3`, [googleId, avatarUrl, byInvite.id]);
+            row = byInvite;
+          } else {
+            row = (await pool.query(
+              `INSERT INTO customers (name, email, google_id, avatar_url, is_active) VALUES ($1,$2,$3,$4,true) RETURNING id, name, phone, is_active`,
+              [name, invitedEmail, googleId, avatarUrl],
+            )).rows[0];
+          }
+        }
+      }
+
       if (!row && email) {
         const byEmail = (await pool.query(
           `SELECT id, name, phone, is_active FROM customers WHERE email = $1 LIMIT 1`,
           [email],
         )).rows[0];
         if (byEmail) {
-          await pool.query(
-            `UPDATE customers SET google_id=$1, avatar_url=$2 WHERE id=$3`,
-            [googleId, avatarUrl, byEmail.id],
-          );
+          await pool.query(`UPDATE customers SET google_id=$1, avatar_url=$2 WHERE id=$3`, [googleId, avatarUrl, byEmail.id]);
           row = byEmail;
         }
       }
 
       if (!row) {
         row = (await pool.query(
-          `INSERT INTO customers (name, email, google_id, avatar_url, is_active)
-           VALUES ($1, $2, $3, $4, true)
-           RETURNING id, name, phone, is_active`,
+          `INSERT INTO customers (name, email, google_id, avatar_url, is_active) VALUES ($1,$2,$3,$4,true) RETURNING id, name, phone, is_active`,
           [name, email, googleId, avatarUrl],
         )).rows[0];
       }
@@ -136,10 +170,24 @@ router.get("/auth/google/callback", async (req, res) => {
 
     // ── 福興高車隊（fusingao_fleet）────────────────────────────────────────────
     if (role === "fleet") {
-      const row = (await pool.query(
+      let row = (await pool.query(
         `SELECT id, fleet_name, username, is_active FROM fusingao_fleets WHERE google_id = $1 LIMIT 1`,
         [googleId],
       )).rows[0];
+
+      if (!row && inviteToken) {
+        const invitedEmail = await consumeInvite(inviteToken, "fusingao_fleet");
+        if (invitedEmail) {
+          const byInvite = (await pool.query(
+            `SELECT id, fleet_name, username, is_active FROM fusingao_fleets WHERE email = $1 LIMIT 1`,
+            [invitedEmail],
+          )).rows[0];
+          if (byInvite) {
+            await pool.query(`UPDATE fusingao_fleets SET google_id=$1, avatar_url=$2 WHERE id=$3`, [googleId, avatarUrl, byInvite.id]);
+            row = byInvite;
+          }
+        }
+      }
 
       if (!row) {
         const hint = email ? encodeURIComponent(email) : "";
@@ -147,10 +195,7 @@ router.get("/auth/google/callback", async (req, res) => {
       }
       if (!row.is_active) return res.redirect(`${appBase}/login/fleet?error=account_inactive`);
 
-      await pool.query(
-        `UPDATE fusingao_fleets SET avatar_url=$1 WHERE id=$2`,
-        [avatarUrl, row.id],
-      );
+      await pool.query(`UPDATE fusingao_fleets SET avatar_url=$1 WHERE id=$2`, [avatarUrl, row.id]);
       const token = signJwt({
         role: "fusingao_fleet" as any,
         id: row.id, name: row.fleet_name, username: row.username, fleetId: row.id,
@@ -165,16 +210,27 @@ router.get("/auth/google/callback", async (req, res) => {
         [googleId],
       )).rows[0];
 
+      if (!row && inviteToken) {
+        const invitedEmail = await consumeInvite(inviteToken, "fleet_owner");
+        if (invitedEmail) {
+          const byInvite = (await pool.query(
+            `SELECT id, name, owner_name, username, status FROM franchisees WHERE email = $1 LIMIT 1`,
+            [invitedEmail],
+          )).rows[0];
+          if (byInvite) {
+            await pool.query(`UPDATE franchisees SET google_id=$1, avatar_url=$2 WHERE id=$3`, [googleId, avatarUrl, byInvite.id]);
+            row = byInvite;
+          }
+        }
+      }
+
       if (!row && email) {
         const byEmail = (await pool.query(
           `SELECT id, name, owner_name, username, status FROM franchisees WHERE email = $1 LIMIT 1`,
           [email],
         )).rows[0];
         if (byEmail) {
-          await pool.query(
-            `UPDATE franchisees SET google_id=$1, avatar_url=$2 WHERE id=$3`,
-            [googleId, avatarUrl, byEmail.id],
-          );
+          await pool.query(`UPDATE franchisees SET google_id=$1, avatar_url=$2 WHERE id=$3`, [googleId, avatarUrl, byEmail.id]);
           row = byEmail;
         }
       }

@@ -109,6 +109,7 @@ import { fourLayerSettlementRouter } from "./fourLayerSettlement";
 import { ownerCashSettlementRouter } from "./ownerCashSettlement";
 import { fuelCardsRouter } from "./fuelCards";
 import { notificationsRouter } from "./notifications";
+import invitationsRouter from "./invitations";
 
 const router: IRouter = Router();
 
@@ -146,6 +147,8 @@ router.use(permissionsRouter);
 router.use(aiChatRouter);
 router.use(authRouter);
 router.use(googleAuthRouter);
+router.use("/admin/invitations", invitationsRouter);
+router.use("/auth/invite", invitationsRouter);
 router.use(routePricesRouter);
 router.use(vehicleCostsRouter);
 router.use(smartOrderRouter);

@@ -22,6 +22,7 @@ import AdminLogin from "@/pages/login/AdminLogin";
 import FleetLogin from "@/pages/fleet/FleetLogin";
 import FranchiseFleetLogin from "@/pages/franchiseFleet/FranchiseFleetLogin";
 import LineCallback from "@/pages/login/LineCallback";
+import InvitePage from "@/pages/login/InvitePage";
 
 // ─── Lazy imports (code-split by portal) ─────────────────────────────────────
 const PageFallback = () => (
@@ -248,6 +249,9 @@ function AppRouter() {
   }
   if (location === "/login/callback") {
     return <LineCallback />;
+  }
+  if (location.startsWith("/invite/")) {
+    return <InvitePage />;
   }
   if (location === "/register/customer") {
     return <CustomerRegister />;

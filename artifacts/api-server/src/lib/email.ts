@@ -260,6 +260,79 @@ export async function sendInvoiceEmail(params: InvoiceEmailParams): Promise<bool
   }
 }
 
+// ─── Invite Email ─────────────────────────────────────────────────────────────
+
+export interface InviteEmailParams {
+  to: string;
+  role: string;
+  roleLabel: string;
+  inviteUrl: string;
+}
+
+export async function sendInviteEmail(params: InviteEmailParams): Promise<boolean> {
+  const transporter = await getTransporter();
+  const from = await getFrom();
+
+  const html = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;min-height:100vh;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1e40af,#3b82f6);border-radius:16px 16px 0 0;padding:32px 40px;text-align:center;">
+            <div style="font-size:13px;color:rgba(255,255,255,0.7);letter-spacing:1px;margin-bottom:8px;">帳號邀請</div>
+            <div style="font-size:26px;font-weight:800;color:#fff;">富詠運輸</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#fff;padding:36px 40px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none;">
+            <p style="margin:0 0 12px;color:#374151;font-size:15px;">您好，</p>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.7;">
+              您已受邀加入 <strong style="color:#1d4ed8;">富詠運輸</strong> 系統，身份為
+              <strong style="color:#111827;">【${params.roleLabel}】</strong>。<br>
+              請點下方按鈕，使用您的 Google 帳號完成登入設定。
+            </p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${params.inviteUrl}"
+                 style="display:inline-block;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;">
+                接受邀請並登入
+              </a>
+            </div>
+            <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;text-align:center;line-height:1.6;">
+              此連結 7 天內有效，且只能使用一次。<br>
+              如非本人申請，請忽略此郵件。
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  if (!transporter) {
+    console.log(`[email] SMTP not configured — invite to ${params.to} (${params.roleLabel}) NOT sent. URL: ${params.inviteUrl}`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from,
+      to: params.to,
+      subject: `【富詠運輸】您已受邀加入系統（${params.roleLabel}）`,
+      html,
+      text: `您好，\n\n您已受邀加入富詠運輸系統，身份為【${params.roleLabel}】。\n\n請開啟以下連結完成登入設定（7天內有效）：\n${params.inviteUrl}\n\n富詠運輸`,
+    });
+    console.log(`[email] Invite sent to ${params.to} (${params.roleLabel})`);
+    return true;
+  } catch (e: any) {
+    console.error(`[email] Failed to send invite to ${params.to}:`, e?.message ?? e);
+    return false;
+  }
+}
+
 /**
  * 傳送測試信（管理員用，驗證 SMTP 設定是否正確）
  */

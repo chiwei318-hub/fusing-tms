@@ -30,6 +30,7 @@ import { ensureCargoPackagingTable } from "./routes/cargoPackaging";
 import { ensureFreightRateTables } from "./routes/freightQuote";
 import { ensurePlatformRequirementsTable } from "./routes/platformRequirements";
 import { ensureGoogleAuthColumns } from "./routes/googleAuth";
+import { ensureInvitationsTable } from "./routes/invitations";
 import { pool as _migPool, db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -200,6 +201,7 @@ ensurePayrollCostTables().catch((e) => console.error("[PayrollCost] table setup 
 ensureCargoPackagingTable().catch((e) => console.error("[CargoPackaging] table setup failed:", e));
 ensurePlatformRequirementsTable().catch((e) => console.error("[PlatformReq] table setup failed:", e));
 ensureGoogleAuthColumns().catch((e) => console.error("[GoogleAuth] column setup failed:", e));
+ensureInvitationsTable().catch((e) => console.error("[Invitations] table setup failed:", e));
 ensureFreightRateTables().catch((e) => console.error("[FreightQuote] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {
