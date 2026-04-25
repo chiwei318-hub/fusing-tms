@@ -1704,16 +1704,12 @@ export default function Admin() {
                   { value: "approval",      icon: <Shield className="w-3.5 h-3.5 text-amber-500" />,              label: "審批" },
                   { value: "contractquote", icon: <span className="text-sm leading-none">📝</span>,               label: "合約報價" },
                   { value: "driverbonus",   icon: <span className="text-sm leading-none">💰</span>,               label: "司機獎金" },
-                  { value: "vehicleprofit", icon: <span className="text-sm leading-none">📊</span>,               label: "盈虧分析" },
+                  { value: "vehicleprofit", icon: <span className="text-sm leading-none">📊</span>,               label: "車輛盈虧" },
                   { value: "payrollcost",   icon: <span className="text-sm leading-none">💼</span>,               label: "薪資結算" },
                   { value: "laborpension",  icon: <span className="text-sm leading-none">🏦</span>,               label: "勞退提撥" },
                 ] as { value: string; icon: React.ReactNode; label: string }[],
                 extra: (
                   <>
-                    <a href="/finance"
-                      className="flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium transition-colors">
-                      <span className="text-sm leading-none">💹</span><span>財務結算</span>
-                    </a>
                     <a href="/calculator" target="_blank" rel="noopener noreferrer"
                       className="flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium transition-colors">
                       <span className="text-sm leading-none">🧮</span><span>麒巍精算器</span>
