@@ -75,6 +75,7 @@ import { shopeeBillingRouter } from "./shopeeBillingImport";
 import { fusingaoScheduleRouter } from "./fusingaoScheduleImport";
 import { fusingaoBillingDetailRouter } from "./fusingaoBillingDetailImport";
 import { fusingaoSheetSyncRouter } from "./fusingaoSheetSync";
+import { fusingaoAutoDispatchRouter } from "./fusingaoAutoDispatch";
 import { platformFleetsRouter } from "./platformFleets";
 import { fleetOwnerRouter } from "./fleetOwner";
 import { fleetDriverRouter } from "./fleetDriver";
@@ -200,6 +201,7 @@ router.use(shopeeBillingRouter);
 router.use("/fusingao", fusingaoScheduleRouter);
 router.use("/fusingao", fusingaoBillingDetailRouter);
 router.use("/fusingao", fusingaoSheetSyncRouter);
+router.use("/fusingao", fusingaoAutoDispatchRouter);
 
 // ── 富詠加盟車行管理平台 ──────────────────────────────────────────────────────
 router.use(platformFleetsRouter);                        // 平台管理端：/platform/fleets

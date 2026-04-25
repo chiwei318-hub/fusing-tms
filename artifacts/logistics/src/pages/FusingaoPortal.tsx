@@ -27,6 +27,7 @@ import SupplierTab from "./fusingao/SupplierTab";
 import VehicleTab from "./fusingao/VehicleTab";
 import FuelTab from "./fusingao/FuelTab";
 import DriverBonusTab from "./fusingao/DriverBonusTab";
+import AutoDispatchTab from "./fusingao/AutoDispatchTab";
 import TownshipTab from "./fusingao/TownshipTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "autodispatch";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -520,6 +521,7 @@ export default function FusingaoPortal() {
               { id:"schedule",      label:"🗺️ 班表地址",    group:2 },
               { id:"billingdetail", label:"💹 對帳明細",    group:2 },
               { id:"dbsync",        label:"💾 DB同步設定",  group:2 },
+              { id:"autodispatch",  label:"🚀 自動派車",    group:2 },
             ] as { id: PortalTab; label: string; group: number }[]).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -1110,6 +1112,13 @@ export default function FusingaoPortal() {
 
         {/* ═══════════════ DB同步設定 ══════════════════════════════════════════ */}
         {tab === "dbsync" && <FusingaoSheetSyncTab />}
+
+        {/* ═══════════════ 自動派車 ═════════════════════════════════════════════ */}
+        {tab === "autodispatch" && (
+          <div className="p-4">
+            <AutoDispatchTab />
+          </div>
+        )}
 
         {/* ═══════════════ 合約報價維護 ════════════════════════════════════════ */}
         {tab === "contractquote" && (

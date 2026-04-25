@@ -16,6 +16,7 @@ import { ensureDispatchOrdersTable } from "./routes/dispatchOrders";
 import { ensureScheduleTables } from "./routes/fusingaoScheduleImport";
 import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport";
 import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "./routes/fusingaoSheetSync";
+import { ensureAutoDispatchTables, startAutoDispatchScheduler } from "./routes/fusingaoAutoDispatch";
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
@@ -210,6 +211,9 @@ ensureBillingDetailTables().catch((e) => console.error("[BillingDetailTables] se
 ensureFusingaoSheetSyncTables()
   .then(() => startFusingaoSheetSyncScheduler())
   .catch((e) => console.error("[FusingaoSheetSync] setup failed:", e));
+ensureAutoDispatchTables()
+  .then(() => startAutoDispatchScheduler())
+  .catch((e) => console.error("[AutoDispatch] setup failed:", e));
 ensureFleetSheetSyncTables()
   .then(() => startFleetSheetSyncScheduler())
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
