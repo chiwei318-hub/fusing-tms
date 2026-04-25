@@ -308,7 +308,7 @@ export default function ShopeeDriversTab() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 style={{ display: "none" }}
                 onChange={e => {
                   const f = e.target.files?.[0];
@@ -324,7 +324,7 @@ export default function ShopeeDriversTab() {
                 disabled={importing}
               >
                 <Upload className="w-3.5 h-3.5 mr-1" />
-                {importing ? "匯入中…" : "匯入 Excel"}
+                {importing ? "匯入中…" : "匯入 Excel / CSV"}
               </Button>
               <Button size="sm" className="h-8" onClick={openCreate}>
                 <Plus className="w-3.5 h-3.5 mr-1" />新增司機

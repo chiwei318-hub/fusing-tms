@@ -205,13 +205,18 @@ export default function FusingaoPortal() {
     setFleetDetails(prev => ({ ...prev, [id]: { ...prev[id], tab: t } }));
 
   const enterFleetManagement = async (id: number) => {
+    // Open window synchronously first — mobile browsers block window.open() after async calls
+    const newWin = window.open("about:blank", "_blank");
     try {
       const r = await fetch(apiUrl(`/fusingao/fleets/${id}/admin-access-token`), { method: "POST" });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error);
       const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ token: d.token, user: d.user }))));
-      window.open(`/fleet/auto-login?t=${payload}`, "_blank");
+      const url = `/fleet/auto-login?t=${payload}`;
+      if (newWin) { newWin.location.href = url; }
+      else { window.open(url, "_blank"); }
     } catch {
+      if (newWin) newWin.close();
       toast({ title: "無法取得車隊存取憑證", variant: "destructive" });
     }
   };

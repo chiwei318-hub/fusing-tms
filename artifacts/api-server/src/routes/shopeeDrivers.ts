@@ -147,7 +147,7 @@ shopeeDriversRouter.post("/shopee-drivers/bulk", async (req, res) => {
 });
 
 // ── POST /api/shopee-drivers/import-excel ───────────────────────────────────
-// 支援上傳 .xlsx 或讀取預設 attached_assets 路徑（不帶檔案時）
+// 支援上傳 .xlsx / .xls / .csv，或讀取預設 attached_assets 路徑（不帶檔案時）
 shopeeDriversRouter.post(
   "/shopee-drivers/import-excel",
   upload.single("file"),
@@ -155,69 +155,166 @@ shopeeDriversRouter.post(
     let xlsx: any;
     try { xlsx = require("xlsx"); } catch { return res.status(500).json({ error: "xlsx 模組未安裝" }); }
 
-    let wb: any;
+    const drivers: any[] = [];
+
+    // ── 判斷是否為 CSV 格式 ──
+    const filename: string = req.file?.originalname ?? "";
+    const isCsv = filename.toLowerCase().endsWith(".csv") || (req.file?.mimetype ?? "").includes("csv");
+
     try {
-      if (req.file?.buffer) {
-        // 瀏覽器上傳檔案
-        wb = xlsx.read(req.file.buffer, { type: "buffer" });
+      if (isCsv && req.file?.buffer) {
+        // ── CSV 模式：純文字解析（避免 xlsx 把生日/日期欄自動轉序列數） ──
+        // 欄位：工號, 姓名, 身分證, 生日, 手機, 戶籍地址, 車牌, 車型, 車隊, 備注, 身份
+        const text = req.file.buffer.toString("utf-8").replace(/^\uFEFF/, ""); // 去 BOM
+        const parseCSVLine = (line: string): string[] => {
+          const result: string[] = [];
+          let cur = "", inQ = false;
+          for (let i = 0; i < line.length; i++) {
+            if (line[i] === '"') { inQ = !inQ; }
+            else if (line[i] === "," && !inQ) { result.push(cur); cur = ""; }
+            else { cur += line[i]; }
+          }
+          result.push(cur);
+          return result.map(s => s.trim());
+        };
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) return res.json({ ok: true, inserted: 0, updated: 0, errors: 0, total: 0, drivers: [] });
+        const header = parseCSVLine(lines[0]);
+        const rows = lines.slice(1).map(parseCSVLine);
+        const col = (name: string) => header.indexOf(name);
+
+        const iShopeeId    = col("工號");
+        const iName        = col("姓名");
+        const iIdNumber    = col("身分證");
+        const iBirthday    = col("生日");
+        const iPhone       = col("手機");
+        const iAddress     = col("戶籍地址");
+        const iPlate       = col("車牌");
+        const iVehicleType = col("車型");
+        const iFleet       = col("車隊");
+        const iNotes       = col("備注");
+        const iStatus      = col("身份");
+
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i] as any[];
+          const shopee_id = String(r[iShopeeId] ?? "").trim();
+          if (!shopee_id) continue;
+
+          const status       = String(r[iStatus] ?? "").trim();
+          const notesRaw     = String(r[iNotes] ?? "").trim();
+          const is_own_driver = status !== "外包" && status !== "外車" && !notesRaw.includes("外車") && !notesRaw.includes("外包");
+          const fleet_name   = (iFleet >= 0 ? String(r[iFleet] ?? "").trim() : "") || "蝦皮小楊";
+
+          drivers.push({
+            shopee_id,
+            name:          iName        >= 0 ? (String(r[iName]        ?? "").trim() || null) : null,
+            id_number:     iIdNumber    >= 0 ? (String(r[iIdNumber]    ?? "").trim() || null) : null,
+            birthday:      iBirthday    >= 0 ? (String(r[iBirthday]    ?? "").trim() || null) : null,
+            phone:         iPhone       >= 0 ? (String(r[iPhone]       ?? "").replace(/[\s\-]/g, "") || null) : null,
+            address:       iAddress     >= 0 ? (String(r[iAddress]     ?? "").trim() || null) : null,
+            vehicle_plate: iPlate       >= 0 ? (String(r[iPlate]       ?? "").trim() || null) : null,
+            vehicle_type:  iVehicleType >= 0 ? (String(r[iVehicleType] ?? "").trim() || null) : null,
+            fleet_name,
+            notes:         notesRaw || null,
+            is_own_driver,
+          });
+        }
       } else {
-        // 讀取預設附件
-        const path = require("path");
-        const p = path.resolve(__dirname, "../../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
-        wb = xlsx.readFile(p);
+        // ── Excel 模式（.xlsx / .xls 或預設附件）──
+        let wb: any;
+        if (req.file?.buffer) {
+          wb = xlsx.read(req.file.buffer, { type: "buffer" });
+        } else {
+          const path = require("path");
+          const p = path.resolve(__dirname, "../../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
+          wb = xlsx.readFile(p);
+        }
+
+        // 先嘗試找「蝦皮小楊司機聯絡資料」工作表；若不存在則用第一張
+        const sheetName = wb.SheetNames.includes("蝦皮小楊司機聯絡資料")
+          ? "蝦皮小楊司機聯絡資料"
+          : wb.SheetNames[0];
+        const driverSheet = wb.Sheets[sheetName];
+        if (!driverSheet) return res.status(400).json({ error: `找不到工作表：${sheetName}` });
+
+        const rows: any[][] = xlsx.utils.sheet_to_json(driverSheet, { header: 1, defval: "" });
+
+        // 自動偵測標題列 vs. 固定格式
+        const firstRow = (rows[0] as any[]).map(c => String(c).trim());
+        if (firstRow.includes("工號") || firstRow.includes("蝦皮工號")) {
+          // 標題式 CSV-like Excel
+          const header = firstRow;
+          const col = (name: string) => header.findIndex(h => h.includes(name));
+          const iShopeeId = col("工號"); const iName = col("姓名"); const iId = col("身分證");
+          const iBday = col("生日"); const iPhone = col("手機"); const iAddr = col("戶籍");
+          const iPlate = col("車牌"); const iType = col("車型"); const iFleet = col("車隊");
+          const iNotes = col("備注"); const iStatus = col("身份");
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i] as any[];
+            const shopee_id = String(r[iShopeeId] ?? "").trim();
+            if (!shopee_id) continue;
+            const status = String(r[iStatus] ?? "").trim();
+            const notesRaw = String(r[iNotes] ?? "").trim();
+            drivers.push({
+              shopee_id,
+              name: iName >= 0 ? (String(r[iName] ?? "").trim() || null) : null,
+              id_number: iId >= 0 ? (String(r[iId] ?? "").trim() || null) : null,
+              birthday: iBday >= 0 ? (String(r[iBday] ?? "").trim() || null) : null,
+              phone: iPhone >= 0 ? (String(r[iPhone] ?? "").replace(/[\s\-]/g, "") || null) : null,
+              address: iAddr >= 0 ? (String(r[iAddr] ?? "").trim() || null) : null,
+              vehicle_plate: iPlate >= 0 ? (String(r[iPlate] ?? "").trim() || null) : null,
+              vehicle_type: iType >= 0 ? (String(r[iType] ?? "").trim() || null) : null,
+              fleet_name: (iFleet >= 0 ? String(r[iFleet] ?? "").trim() : "") || "蝦皮小楊",
+              notes: notesRaw || null,
+              is_own_driver: status !== "外包" && status !== "外車" && !notesRaw.includes("外車"),
+            });
+          }
+        } else {
+          // 舊版固定欄位格式：[項次, 蝦皮工號, 司機姓名, 車號, 身分證, 生日, 戶籍地址, 手機, 備註]
+          for (let i = 2; i < rows.length; i++) {
+            const r = rows[i];
+            const shopee_id = String(r[1] ?? "").trim();
+            if (!shopee_id || shopee_id === "0") continue;
+            const notesRaw = String(r[8] ?? "").trim();
+            drivers.push({
+              shopee_id,
+              name:          String(r[2] ?? "").trim() || null,
+              vehicle_plate: String(r[3] ?? "").trim() || null,
+              id_number:     String(r[4] ?? "").trim() || null,
+              birthday:      String(r[5] ?? "").trim() || null,
+              address:       String(r[6] ?? "").trim() || null,
+              phone:         String(r[7] ?? "").replace(/\s/g, "") || null,
+              notes:         notesRaw || null,
+              fleet_name:    "蝦皮小楊",
+              is_own_driver: !notesRaw.includes("外車") && !notesRaw.includes("外包"),
+            });
+          }
+        }
       }
     } catch (e: any) {
-      return res.status(400).json({ error: `無法開啟 Excel: ${e.message}` });
+      return res.status(400).json({ error: `無法解析檔案: ${e.message}` });
     }
 
-    // ── 解析「蝦皮小楊司機聯絡資料」工作表 ──
-    const driverSheet = wb.Sheets["蝦皮小楊司機聯絡資料"];
-    if (!driverSheet) return res.status(400).json({ error: "找不到工作表：蝦皮小楊司機聯絡資料" });
-
-    const rows: any[][] = xlsx.utils.sheet_to_json(driverSheet, { header: 1, defval: "" });
-    // Row 0 = 標題列, Row 1 = 欄位名稱, Row 2+ = 資料
-    // 欄位：[項次, 蝦皮工號, 司機姓名, 車號, 身分證字號, 生日, 戶籍地址, 手機, 備註]
-
-    const drivers: any[] = [];
-    for (let i = 2; i < rows.length; i++) {
-      const r = rows[i];
-      const shopee_id = String(r[1] ?? "").trim();
-      if (!shopee_id || shopee_id === "0") continue;
-
-      const notesRaw = String(r[8] ?? "").trim();
-      const is_own_driver = !notesRaw.includes("外車") && !notesRaw.includes("外包");
-
-      drivers.push({
-        shopee_id,
-        name:          String(r[2] ?? "").trim() || null,
-        vehicle_plate: String(r[3] ?? "").trim() || null,
-        id_number:     String(r[4] ?? "").trim() || null,
-        birthday:      String(r[5] ?? "").trim() || null,
-        address:       String(r[6] ?? "").trim() || null,
-        phone:         String(r[7] ?? "").replace(/\s/g, "") || null,
-        notes:         notesRaw || null,
-        fleet_name:    "蝦皮小楊",
-        is_own_driver,
-      });
-    }
+    if (drivers.length === 0) return res.json({ ok: true, inserted: 0, updated: 0, errors: 0, total: 0, drivers: [] });
 
     let inserted = 0, updated = 0, errors = 0;
     for (const d of drivers) {
       try {
         const result = await pool.query(
           `INSERT INTO shopee_drivers
-             (shopee_id, name, vehicle_plate, fleet_name, notes, is_own_driver,
+             (shopee_id, name, vehicle_plate, vehicle_type, fleet_name, notes, is_own_driver,
               id_number, birthday, address, phone)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            ON CONFLICT (shopee_id) DO UPDATE SET
              name=EXCLUDED.name, vehicle_plate=EXCLUDED.vehicle_plate,
+             vehicle_type=EXCLUDED.vehicle_type,
              fleet_name=EXCLUDED.fleet_name, notes=EXCLUDED.notes,
              is_own_driver=EXCLUDED.is_own_driver,
              id_number=EXCLUDED.id_number, birthday=EXCLUDED.birthday,
              address=EXCLUDED.address, phone=EXCLUDED.phone,
              updated_at=NOW()
            RETURNING (xmax = 0) AS was_inserted`,
-          [d.shopee_id, d.name, d.vehicle_plate, d.fleet_name, d.notes,
+          [d.shopee_id, d.name, d.vehicle_plate, d.vehicle_type ?? null, d.fleet_name, d.notes,
            d.is_own_driver, d.id_number, d.birthday, d.address, d.phone]
         );
         if (result.rows[0]?.was_inserted) inserted++; else updated++;
