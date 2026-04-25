@@ -43,6 +43,7 @@ const RoutePriceTab        = lazy(() => import("./admin/RoutePriceTab"));
 const VehicleCostTab       = lazy(() => import("./admin/VehicleCostTab"));
 const PermissionTab        = lazy(() => import("./admin/PermissionTab"));
 const AccountInviteTab     = lazy(() => import("./admin/AccountInviteTab"));
+const OAuthAccountsTab     = lazy(() => import("./admin/OAuthAccountsTab"));
 const LineManagementTab    = lazy(() => import("./admin/LineManagementTab"));
 const SystemSettingsTab    = lazy(() => import("./admin/SystemSettingsTab"));
 const InvoiceManagementTab = lazy(() => import("./admin/InvoiceManagementTab"));
@@ -1728,6 +1729,7 @@ export default function Admin() {
                   { value: "atoms",          icon: <span className="text-sm leading-none">🚚</span>,              label: "Atoms 診斷" },
                   { value: "perm",           icon: <span className="text-sm leading-none">🔐</span>,              label: "權限" },
                   { value: "invite",         icon: <span className="text-sm leading-none">📧</span>,              label: "帳號邀請" },
+                  { value: "oauth-accounts", icon: <span className="text-sm leading-none">🔑</span>,              label: "OAuth 帳號" },
                   { value: "line",           icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,      label: "LINE" },
                   { value: "commission",     icon: <Percent className="w-3.5 h-3.5 text-slate-500" />,            label: "抽成管理" },
                   { value: "commissiontiers",icon: <span className="text-sm leading-none">📊</span>,              label: "階梯抽成" },
@@ -3909,6 +3911,11 @@ export default function Admin() {
         {/* ===== 帳號邀請 TAB ===== */}
         <TabsContent value="invite" className="outline-none">
           <AccountInviteTab />
+        </TabsContent>
+
+        {/* ===== OAuth 帳號管理 TAB ===== */}
+        <TabsContent value="oauth-accounts" className="outline-none">
+          <OAuthAccountsTab />
         </TabsContent>
 
         {/* ===== LINE 接單整合 TAB ===== */}

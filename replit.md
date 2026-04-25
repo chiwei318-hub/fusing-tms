@@ -25,7 +25,8 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Backend:** Express 5 handles API requests, integrated with Drizzle ORM.
 *   **Database:** PostgreSQL, managed by Drizzle ORM.
 *   **API Design:** OpenAPI 3.1 specifications; `Orval` generates client-side API code (React Query hooks) and Zod schemas.
-*   **Authentication:** JWT-based system with multiple user roles, supporting SMS OTP, username/password, and LINE OAuth.
+*   **Authentication:** JWT-based system with multiple user roles, supporting SMS OTP, username/password, LINE OAuth, and centralized Google OAuth (invite-based, via `oauth_accounts` table). Yahoo/Apple OAuth reserved for future use.
+*   **OAuth Account Management:** Admin can invite users by email+role at `/admin` → 🔑 OAuth 帳號 tab. API: `POST /api/auth/oauth/invite`, `GET /api/auth/oauth/accounts`, `PATCH /api/auth/oauth/accounts/:id/disable`. Requires `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` secrets.
 *   **Type Safety:** Extensive TypeScript usage across the monorepo.
 *   **Build System:** `esbuild` for CJS bundle generation.
 *   **Error Handling:** Zod for request validation.

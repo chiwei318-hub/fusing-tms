@@ -22,6 +22,7 @@ import AdminLogin from "@/pages/login/AdminLogin";
 import FleetLogin from "@/pages/fleet/FleetLogin";
 import FranchiseFleetLogin from "@/pages/franchiseFleet/FranchiseFleetLogin";
 import LineCallback from "@/pages/login/LineCallback";
+import OAuthCallback from "@/pages/login/OAuthCallback";
 import InvitePage from "@/pages/login/InvitePage";
 
 // ─── Lazy imports (code-split by portal) ─────────────────────────────────────
@@ -249,6 +250,9 @@ function AppRouter() {
   }
   if (location === "/login/callback") {
     return <LineCallback />;
+  }
+  if (location === "/login/oauth/callback") {
+    return <OAuthCallback />;
   }
   if (location.startsWith("/invite/")) {
     return <InvitePage />;

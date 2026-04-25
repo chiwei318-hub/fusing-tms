@@ -110,6 +110,7 @@ import { ownerCashSettlementRouter } from "./ownerCashSettlement";
 import { fuelCardsRouter } from "./fuelCards";
 import { notificationsRouter } from "./notifications";
 import invitationsRouter from "./invitations";
+import oauthAccountsRouter from "./oauthAccounts";
 
 const router: IRouter = Router();
 
@@ -149,6 +150,7 @@ router.use(authRouter);
 router.use(googleAuthRouter);
 router.use("/admin/invitations", invitationsRouter);
 router.use("/auth/invite", invitationsRouter);
+router.use("/auth/oauth", oauthAccountsRouter);
 router.use(routePricesRouter);
 router.use(vehicleCostsRouter);
 router.use(smartOrderRouter);
