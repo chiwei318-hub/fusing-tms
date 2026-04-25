@@ -292,11 +292,28 @@ router.post("/sync-sheets", async (req, res) => {
   setImmediate(async () => {
     try {
       const { google } = await import("googleapis");
-      const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-      if (!raw) { console.error("[SheetsSync] No GOOGLE_SERVICE_ACCOUNT_KEY"); return; }
-      const creds = JSON.parse(raw);
-      const auth  = new google.auth.GoogleAuth({ credentials: creds, scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
-      const sheets = google.sheets({ version: "v4", auth });
+
+      // 驗證優先順序：
+      // 1. GOOGLE_SERVICE_ACCOUNT_KEY（服務帳號，可存取私有試算表）
+      // 2. GOOGLE_API_KEY / GOOGLE_SHEETS_API_KEY（API Key，僅限公開試算表）
+      const serviceAccountRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+      const apiKey = process.env.GOOGLE_SHEETS_API_KEY ?? process.env.GOOGLE_API_KEY;
+
+      if (!serviceAccountRaw && !apiKey) {
+        console.error("[SheetsSync] 未設定 GOOGLE_SERVICE_ACCOUNT_KEY 或 GOOGLE_API_KEY");
+        return;
+      }
+
+      let sheets: any;
+      if (serviceAccountRaw) {
+        const creds = JSON.parse(serviceAccountRaw);
+        const auth  = new google.auth.GoogleAuth({ credentials: creds, scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
+        sheets = google.sheets({ version: "v4", auth });
+        console.log("[SheetsSync] 使用 Service Account 驗證");
+      } else {
+        sheets = google.sheets({ version: "v4", auth: apiKey });
+        console.log("[SheetsSync] 使用 API Key 驗證（試算表需設為公開）");
+      }
 
       const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: "sheets.properties.title" });
       const titles = (meta.data.sheets ?? []).map((s: any) => s.properties.title as string).filter((t: string) => !SKIP_SHEETS.has(t));

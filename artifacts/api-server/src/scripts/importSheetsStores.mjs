@@ -66,12 +66,27 @@ async function batchGetWithRetry(sheets, ranges, attempt = 1) {
 }
 
 async function main() {
-  const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-  const auth  = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-  });
-  const sheets = google.sheets({ version: "v4", auth });
+  // 驗證優先順序：1. Service Account  2. API Key (公開試算表)
+  const serviceAccountRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  const apiKey = process.env.GOOGLE_SHEETS_API_KEY ?? process.env.GOOGLE_API_KEY;
+
+  if (!serviceAccountRaw && !apiKey) {
+    throw new Error("請設定 GOOGLE_SERVICE_ACCOUNT_KEY 或 GOOGLE_API_KEY");
+  }
+
+  let sheets;
+  if (serviceAccountRaw) {
+    const creds = JSON.parse(serviceAccountRaw);
+    const auth  = new google.auth.GoogleAuth({
+      credentials: creds,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    sheets = google.sheets({ version: "v4", auth });
+    console.log("驗證方式：Service Account");
+  } else {
+    sheets = google.sheets({ version: "v4", auth: apiKey });
+    console.log("驗證方式：API Key（試算表需設為公開）");
+  }
 
   // 1. 取得所有分頁清單
   const meta = await sheets.spreadsheets.get({
