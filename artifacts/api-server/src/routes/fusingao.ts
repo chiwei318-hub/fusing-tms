@@ -2836,6 +2836,181 @@ fusingaoRouter.post("/admin/cash-settlements/:id/mark-paid", async (req, res) =>
   }
 });
 
+// GET /fusingao/admin/four-layer-summary?month=YYYY-MM&fusingao_rate=7&cpc_rebate_rate=1
+fusingaoRouter.get("/admin/four-layer-summary", async (req, res) => {
+  try {
+    const { month } = req.query as Record<string, string>;
+    const fusingaoRate   = Number((req.query.fusingao_rate   as string) ?? 7);
+    const cpcRebateRate  = Number((req.query.cpc_rebate_rate as string) ?? 1);
+    if (!month) return res.status(400).json({ ok: false, error: "month 必填" });
+
+    // ── All active fleets ────────────────────────────────────────────────────
+    const allFleets = (await pool.query(
+      `SELECT id, fleet_name, contact_name, commission_rate FROM fusingao_fleets WHERE is_active=true ORDER BY fleet_name`
+    )).rows as any[];
+
+    // ── Layer 1: Fusingao → Fuying ────────────────────────────────────────────
+    // Prefer billing_trips; fallback to prefix_rates
+    const billingRows = (await pool.query(
+      `SELECT bt.route_no,
+              COALESCE(SUM(bt.amount::numeric), 0) AS income,
+              pr.service_type
+       FROM fusingao_billing_trips bt
+       JOIN (
+         SELECT DISTINCT ON (route_id) route_id, route_prefix
+         FROM orders WHERE route_id IS NOT NULL
+         ORDER BY route_id, created_at DESC
+       ) o ON o.route_id = bt.route_no
+       LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+       WHERE bt.billing_month = $1
+       GROUP BY bt.route_no, pr.service_type`,
+      [month]
+    )).rows as any[];
+
+    let layer1ServiceTypes: any[] = [];
+    let layer1TotalGross = 0;
+
+    if (billingRows.length > 0) {
+      const byType: Record<string, { trip_count: number; amount: number }> = {};
+      for (const r of billingRows) {
+        const st = r.service_type || "other";
+        if (!byType[st]) byType[st] = { trip_count: 0, amount: 0 };
+        byType[st].trip_count++;
+        byType[st].amount += Number(r.income);
+        layer1TotalGross += Number(r.income);
+      }
+      layer1ServiceTypes = Object.entries(byType).map(([service_type, v]) => ({ service_type, ...v }));
+    } else {
+      // Fallback: prefix_rates
+      const pfx = (await pool.query(
+        `SELECT COALESCE(pr.service_type, 'other') AS service_type,
+                COUNT(o.id) AS trip_count,
+                COALESCE(SUM(pr.rate_per_trip), 0) AS amount
+         FROM orders o
+         LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+         WHERE o.route_id IS NOT NULL AND to_char(o.created_at,'YYYY-MM')=$1
+         GROUP BY pr.service_type`,
+        [month]
+      )).rows as any[];
+      for (const r of pfx) layer1TotalGross += Number(r.amount);
+      layer1ServiceTypes = pfx;
+    }
+
+    const fusingaoCommAmt = layer1TotalGross * fusingaoRate / 100;
+
+    // Fuel total for CPC rebate
+    const fuelTotalRow = (await pool.query(
+      `SELECT COALESCE(SUM(amount::numeric), 0) AS total FROM fuel_card_records WHERE period=$1`, [month]
+    )).rows[0] as any;
+    const fuelCardTotal  = Number(fuelTotalRow?.total ?? 0);
+    const cpcRebateAmt   = fuelCardTotal * cpcRebateRate / 100;
+    const fuyingReceive  = layer1TotalGross - fusingaoCommAmt + cpcRebateAmt;
+
+    // ── Layer 2: Fuying → Fleets ─────────────────────────────────────────────
+    let totalFleetReceive = 0;
+    let totalCommRetained = 0;
+    const layer2Fleets: any[] = [];
+
+    for (const fl of allFleets) {
+      const commRate = Number(fl.commission_rate ?? 15);
+      const [billingCk] = (await pool.query(
+        `SELECT COUNT(*) AS cnt FROM fusingao_billing_trips bt
+         JOIN (SELECT DISTINCT ON (route_id) route_id FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id=$1 ORDER BY route_id, created_at DESC) o ON o.route_id=bt.route_no
+         WHERE bt.billing_month=$2`,
+        [fl.id, month]
+      )).rows as any[];
+
+      let shopeeIncome = 0, fleetReceive = 0, tripCount = 0;
+      if (Number(billingCk?.cnt ?? 0) > 0) {
+        const [s] = (await pool.query(
+          `WITH b AS (
+            SELECT COALESCE(SUM(bt.amount::numeric),0) AS income
+            FROM fusingao_billing_trips bt
+            JOIN (SELECT DISTINCT ON (route_id) route_id FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id=$1 ORDER BY route_id, created_at DESC) o ON o.route_id=bt.route_no
+            WHERE bt.billing_month=$2
+          ) SELECT income AS shopee_income, income*(1-$3/100.0) AS fleet_receive,
+            (SELECT COUNT(DISTINCT bt2.route_no) FROM fusingao_billing_trips bt2
+             JOIN (SELECT DISTINCT ON (route_id) route_id FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id=$1 ORDER BY route_id, created_at DESC) o2 ON o2.route_id=bt2.route_no
+             WHERE bt2.billing_month=$2) AS trip_count
+          FROM b`,
+          [fl.id, month, commRate]
+        )).rows as any[];
+        shopeeIncome = Number(s?.shopee_income ?? 0);
+        fleetReceive = Number(s?.fleet_receive ?? 0);
+        tripCount    = Number(s?.trip_count ?? 0);
+      } else {
+        const [s] = (await pool.query(
+          `SELECT COALESCE(SUM(pr.rate_per_trip),0) AS shopee_income,
+                  COALESCE(SUM(COALESCE(fl2.rate_override,pr.rate_per_trip*(1-COALESCE(fl2.commission_rate,15)/100.0))),0) AS fleet_receive,
+                  COUNT(o.id) AS trip_count
+           FROM orders o
+           LEFT JOIN fusingao_fleets fl2 ON fl2.id=$1
+           LEFT JOIN route_prefix_rates pr ON pr.prefix=o.route_prefix
+           WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id=$1 AND to_char(o.created_at,'YYYY-MM')=$2`,
+          [fl.id, month]
+        )).rows as any[];
+        shopeeIncome = Number(s?.shopee_income ?? 0);
+        fleetReceive = Number(s?.fleet_receive ?? 0);
+        tripCount    = Number(s?.trip_count ?? 0);
+      }
+
+      totalFleetReceive += fleetReceive;
+      totalCommRetained += (shopeeIncome - fleetReceive);
+      layer2Fleets.push({ fleet_id: fl.id, fleet_name: fl.fleet_name, contact_name: fl.contact_name, commission_rate: commRate, trip_count: tripCount, shopee_income: shopeeIncome, fleet_receive: fleetReceive, commission_retained: shopeeIncome - fleetReceive });
+    }
+
+    // ── Layer 3: Fleet → Drivers ──────────────────────────────────────────────
+    let totalSalary = 0;
+    const layer3ByFleet: any[] = [];
+
+    for (const fl of allFleets) {
+      const drivers = (await pool.query(
+        `SELECT fd.id, fd.name, fd.employee_id,
+                COALESCE(p.completed_trips, 0) AS trip_count,
+                COALESCE(p.base_salary, fd.base_salary)::numeric AS base_salary,
+                COALESCE(p.per_trip_bonus, fd.per_trip_bonus)::numeric AS per_trip_bonus,
+                COALESCE(p.meal_allowance, fd.meal_allowance)::numeric AS meal_allowance,
+                COALESCE(p.other_deduction, fd.other_deduction)::numeric AS other_deduction,
+                COALESCE(p.net_salary,
+                  fd.base_salary + COALESCE(p.completed_trips,0)*fd.per_trip_bonus + fd.meal_allowance - fd.other_deduction
+                )::numeric AS net_salary
+         FROM fleet_drivers fd
+         LEFT JOIN fleet_driver_payroll p ON p.driver_id=fd.id AND p.month=$2
+         WHERE fd.fleet_id=$1 AND fd.is_active=true
+         ORDER BY fd.name`,
+        [fl.id, month]
+      )).rows as any[];
+
+      const fleetSalaryTotal = drivers.reduce((s: number, r: any) => s + Number(r.net_salary ?? 0), 0);
+      totalSalary += fleetSalaryTotal;
+      if (drivers.length > 0) {
+        layer3ByFleet.push({ fleet_id: fl.id, fleet_name: fl.fleet_name, drivers, total_salary: fleetSalaryTotal });
+      }
+    }
+
+    // ── Layer 4: P&L ──────────────────────────────────────────────────────────
+    const grossProfit        = fuyingReceive - totalFleetReceive - fuelCardTotal;
+    const grossMargin        = fuyingReceive > 0 ? grossProfit / fuyingReceive : 0;
+    const estimatedTax       = Math.max(0, grossProfit) * 0.05;
+    const estimatedNetProfit = grossProfit - estimatedTax;
+
+    res.json({
+      ok: true, month,
+      layer1: {
+        total_gross: layer1TotalGross, by_service_type: layer1ServiceTypes,
+        fusingao_commission_rate: fusingaoRate, fusingao_commission_amt: fusingaoCommAmt,
+        cpc_rebate_rate: cpcRebateRate, cpc_rebate_amt: cpcRebateAmt,
+        fuel_card_total: fuelCardTotal, fuying_receive: fuyingReceive,
+      },
+      layer2: { fleets: layer2Fleets, total_fleet_receive: totalFleetReceive, total_commission_retained: totalCommRetained },
+      layer3: { by_fleet: layer3ByFleet, total_salary: totalSalary },
+      layer4: { total_income: fuyingReceive, total_fleet_cost: totalFleetReceive, total_fuel_advance: fuelCardTotal, cpc_rebate: cpcRebateAmt, gross_profit: grossProfit, gross_margin: grossMargin, estimated_tax: estimatedTax, estimated_net_profit: estimatedNetProfit },
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // GET /fusingao/admin/cash-settlements/list — list all settlements (admin overview)
 fusingaoRouter.get("/admin/cash-settlements/list", async (_req, res) => {
   try {

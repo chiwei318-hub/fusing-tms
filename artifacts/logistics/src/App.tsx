@@ -33,6 +33,7 @@ const DispatchCenter     = lazy(() => import("@/pages/admin/DispatchCenter"));
 const FinanceDashboard   = lazy(() => import("@/pages/admin/FinanceDashboard"));
 const FuelCardManager    = lazy(() => import("@/pages/admin/FuelCardManager"));
 const CashSettlement     = lazy(() => import("@/pages/admin/CashSettlement"));
+const FourLayerSummary   = lazy(() => import("@/pages/admin/FourLayerSummary"));
 const EnterprisePortal   = lazy(() => import("@/pages/enterprise/EnterprisePortal"));
 const FusingaoPortal     = lazy(() => import("@/pages/FusingaoPortal"));
 const FusingaoFleetPortal= lazy(() => import("@/pages/fleet/FusingaoFleetPortal"));
@@ -170,6 +171,7 @@ function AdminPortal() {
             <Route path="/fusingao" component={FusingaoPortal} />
             <Route path="/fuel-cards" component={FuelCardManager} />
             <Route path="/cash-settlement" component={CashSettlement} />
+            <Route path="/four-layer-summary" component={FourLayerSummary} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>
@@ -308,7 +310,8 @@ function AppRouter() {
     location.startsWith("/dispatch") ||
     location.startsWith("/finance") ||
     location.startsWith("/fuel-cards") ||
-    location.startsWith("/cash-settlement")
+    location.startsWith("/cash-settlement") ||
+    location.startsWith("/four-layer-summary")
   ) {
     return <AdminPortal />;
   }

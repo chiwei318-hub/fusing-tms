@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Home,
   BarChart2,
+  BarChart3,
   Fuel,
   Banknote,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const navigation = [
   { name: "費用管理",    href: "/fees",              icon: DollarSign },
   { name: "⛽ 加油管理", href: "/fuel-cards",        icon: Fuel },
   { name: "💰 現金結算", href: "/cash-settlement",   icon: Banknote },
+  { name: "📊 四層結算", href: "/four-layer-summary", icon: BarChart3 },
   { name: "後台管理",    href: "/admin",             icon: LayoutDashboard },
 ];
 
