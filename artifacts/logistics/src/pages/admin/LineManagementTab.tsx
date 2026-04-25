@@ -357,14 +357,14 @@ function DriverBindings() {
   });
 
   const deleteDriverMutation = useMutation({
-    mutationFn: (id: number) =>
-      fetch(`/api/drivers/${id}`, { method: "DELETE" }).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).error ?? "Failed");
-        return r.json();
-      }),
-    onSuccess: () => {
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/drivers/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) ?? `HTTP ${r.status}`);
+      return r.status === 204 ? null : r.json().catch(() => null);
+    },
+    onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["line-driver-bindings"] });
-      toast({ title: "✅ 司機資料已刪除" });
+      toast({ title: data?.softDeleted ? "✅ 司機已停用" : "✅ 司機資料已刪除" });
     },
     onError: (e: Error) => toast({ title: `刪除失敗：${e.message}`, variant: "destructive" }),
   });

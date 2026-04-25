@@ -845,9 +845,18 @@ function DriversAccountSection() {
   const handleDelete = async (d: FleetDriverRow) => {
     if (!confirm(`確定移除司機「${d.name}」？`)) return;
     try {
-      await fetch(getApiUrl(`/api/drivers/${d.id}`), { method: "DELETE", headers: authFleetHeaders() });
-      toast({ title: "已移除", description: d.name });
-      refetchDrivers();
+      const res = await fetch(getApiUrl(`/api/drivers/${d.id}`), { method: "DELETE", headers: authFleetHeaders() });
+      if (res.status === 204 || res.status === 200) {
+        const data = res.status === 200 ? await res.json() : null;
+        toast({
+          title: data?.softDeleted ? "司機已停用" : "已移除",
+          description: data?.softDeleted ? `${d.name}（有關聯訂單，改為停用並隱藏）` : d.name,
+        });
+        refetchDrivers();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "移除失敗", description: err?.error ?? `HTTP ${res.status}`, variant: "destructive" });
+      }
     } catch { toast({ title: "移除失敗", variant: "destructive" }); }
   };
 

@@ -59,22 +59,29 @@ ensureDriverColumns().catch(console.error);
 
 router.get("/drivers", async (req, res) => {
   try {
-    const { franchisee_id } = req.query;
-    let query = `SELECT id, name, phone, vehicle_type, license_plate, status,
-                        driver_type, username, line_user_id, engine_cc, vehicle_year,
-                        vehicle_brand, vehicle_tonnage, vehicle_body_type, has_tailgate,
-                        max_load_kg, max_volume_cbm, bank_name, bank_branch, bank_account,
-                        bank_account_name, credit_score, rating, rating_count,
-                        can_cold_chain, franchisee_id, is_franchisee, employee_id,
-                        is_active, created_at,
-                        CASE WHEN password IS NOT NULL THEN true ELSE false END AS has_password
-                 FROM drivers`;
+    const { franchisee_id, include_inactive } = req.query;
+    const conditions: string[] = [];
     const params: any[] = [];
-    if (franchisee_id) {
-      query += ` WHERE franchisee_id = $1`;
-      params.push(parseInt(franchisee_id as string));
+
+    // By default, exclude soft-deleted / inactive drivers
+    if (include_inactive !== "true" && include_inactive !== "1") {
+      conditions.push(`is_active = true`);
     }
-    query += ` ORDER BY created_at`;
+    if (franchisee_id) {
+      params.push(parseInt(franchisee_id as string));
+      conditions.push(`franchisee_id = $${params.length}`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const query = `SELECT id, name, phone, vehicle_type, license_plate, status,
+                          driver_type, username, line_user_id, engine_cc, vehicle_year,
+                          vehicle_brand, vehicle_tonnage, vehicle_body_type, has_tailgate,
+                          max_load_kg, max_volume_cbm, bank_name, bank_branch, bank_account,
+                          bank_account_name, credit_score, rating, rating_count,
+                          can_cold_chain, franchisee_id, is_franchisee, employee_id,
+                          is_active, created_at,
+                          CASE WHEN password IS NOT NULL THEN true ELSE false END AS has_password
+                   FROM drivers ${where} ORDER BY created_at`;
     const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
@@ -344,8 +351,22 @@ router.delete("/drivers/:id", async (req, res) => {
     if (!existing.length) {
       return res.status(404).json({ error: "Driver not found" });
     }
-    await db.delete(driversTable).where(eq(driversTable.id, id));
-    res.status(204).send();
+    try {
+      await pool.query(`DELETE FROM drivers WHERE id = $1`, [id]);
+      return res.status(204).send();
+    } catch (deleteErr: any) {
+      // PostgreSQL FK violation code 23503 — fall back to soft-delete
+      const pgCode: string = deleteErr?.code ?? deleteErr?.cause?.code ?? "";
+      const msg: string = String(deleteErr?.message ?? deleteErr?.cause?.message ?? "");
+      const isFk = pgCode === "23503" || msg.includes("foreign key") || msg.includes("violates foreign key");
+      if (!isFk) throw deleteErr;
+
+      await pool.query(
+        `UPDATE drivers SET is_active = false, name = CONCAT('[已刪除]', name) WHERE id = $1`,
+        [id],
+      );
+      return res.status(200).json({ softDeleted: true, message: "司機已停用（有關聯訂單，改為停用）" });
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to delete driver");
     res.status(500).json({ error: "Failed to delete driver" });

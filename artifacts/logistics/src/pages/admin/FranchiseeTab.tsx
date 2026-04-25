@@ -324,14 +324,23 @@ export default function FranchiseeTab() {
   const handleDeleteDriver = async (franchiseeId: number, driverId: number, name: string) => {
     if (!confirm(`確定要移除司機「${name}」？`)) return;
     try {
-      await fetch(getApiUrl(`/api/drivers/${driverId}`), {
+      const res = await fetch(getApiUrl(`/api/drivers/${driverId}`), {
         method: "DELETE", headers: authHeaders(),
       });
-      toast({ title: "已移除", description: name });
-      setFranchiseeDrivers(prev => ({
-        ...prev,
-        [franchiseeId]: (prev[franchiseeId] ?? []).filter(d => d.id !== driverId),
-      }));
+      if (res.status === 204 || res.status === 200) {
+        const data = res.status === 200 ? await res.json() : null;
+        toast({
+          title: data?.softDeleted ? "司機已停用" : "已移除",
+          description: data?.softDeleted ? `${name}（有關聯訂單，改為停用並隱藏）` : name,
+        });
+        setFranchiseeDrivers(prev => ({
+          ...prev,
+          [franchiseeId]: (prev[franchiseeId] ?? []).filter(d => d.id !== driverId),
+        }));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "移除失敗", description: err?.error ?? `HTTP ${res.status}`, variant: "destructive" });
+      }
     } catch {
       toast({ title: "移除失敗", variant: "destructive" });
     }
