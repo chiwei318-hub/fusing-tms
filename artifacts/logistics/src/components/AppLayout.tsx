@@ -9,6 +9,8 @@ import {
   BarChart3,
   Fuel,
   Banknote,
+  TrendingUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,56 +24,102 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
-const navigation = [
-  { name: "客戶下單",    href: "/order-form",       icon: Package },
-  { name: "訂單列表",    href: "/orders",            icon: ClipboardList },
-  { name: "訂單報表",    href: "/report",            icon: BarChart2 },
-  { name: "費用管理",    href: "/fees",              icon: DollarSign },
-  { name: "⛽ 加油管理", href: "/fuel-cards",        icon: Fuel },
-  { name: "💰 現金結算", href: "/cash-settlement",   icon: Banknote },
-  { name: "📊 四層結算", href: "/four-layer-summary", icon: BarChart3 },
-  { name: "後台管理",    href: "/admin",             icon: LayoutDashboard },
+const mainNav = [
+  { name: "客戶下單", href: "/order-form",  icon: Package },
+  { name: "訂單列表", href: "/orders",       icon: ClipboardList },
+  { name: "訂單報表", href: "/report",       icon: BarChart2 },
+  { name: "費用管理", href: "/fees",         icon: DollarSign },
+  { name: "後台管理", href: "/admin",        icon: LayoutDashboard },
+];
+
+const financeNav = [
+  { name: "⛽ 加油管理", href: "/fuel-cards",          icon: Fuel },
+  { name: "💰 現金結算", href: "/cash-settlement",      icon: Banknote },
+  { name: "📊 四層結算", href: "/four-layer-summary",   icon: BarChart3 },
+  { name: "💹 財務結算", href: "/finance",              icon: TrendingUp },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
 
+  const isActive = (href: string) =>
+    location === href || (href !== "/" && location.startsWith(href));
+
+  const financeActive = financeNav.some((item) => isActive(item.href));
+
   return (
     <Sidebar>
       {/* pt-11 offsets the fixed GlobalHeader */}
       <SidebarContent className="pt-11">
+
+        {/* ── 主選單 ── */}
         <SidebarGroup className="mt-3">
           <SidebarGroupLabel className="text-xs uppercase tracking-wide text-sidebar-foreground/40 font-semibold px-3 mb-1">
-            功能選單
+            主選單
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigation.map((item) => {
-                const isActive =
-                  location === item.href ||
-                  (item.href !== "/" && location.startsWith(item.href));
-                return (
-                  <SidebarMenuItem key={item.name}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      tooltip={item.name}
+              {mainNav.map((item) => (
+                <SidebarMenuItem key={item.name}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.href)}
+                    tooltip={item.name}
+                  >
+                    <Link
+                      href={item.href}
+                      className="flex items-center gap-2 px-3 py-2 transition-colors"
                     >
-                      <Link
-                        href={item.href}
-                        className="flex items-center gap-2 px-3 py-2 transition-colors"
-                      >
-                        <item.icon className="w-4 h-4" />
-                        <span className="font-medium text-sm">{item.name}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+                      <item.icon className="w-4 h-4 shrink-0" />
+                      <span className="font-medium text-sm">{item.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* ── 財務（收合群組）── */}
+        <Collapsible defaultOpen={financeActive} className="group/finance">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-1 text-xs uppercase tracking-wide text-sidebar-foreground/40 font-semibold hover:text-sidebar-foreground/70 transition-colors">
+                財務
+                <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200 group-data-[state=open]/finance:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {financeNav.map((item) => (
+                    <SidebarMenuItem key={item.name}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive(item.href)}
+                        tooltip={item.name}
+                      >
+                        <Link
+                          href={item.href}
+                          className="flex items-center gap-2 px-3 py-2 transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 shrink-0" />
+                          <span className="font-medium text-sm">{item.name}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
 
         {/* Footer — back to landing */}
         <div className="mt-auto border-t border-sidebar-border">
