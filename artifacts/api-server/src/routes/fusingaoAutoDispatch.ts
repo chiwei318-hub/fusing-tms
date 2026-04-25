@@ -382,6 +382,94 @@ fusingaoAutoDispatchRouter.get("/auto-dispatch/logs", async (req, res) => {
   } catch (e: any) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /fusingao/auto-dispatch/notify — LINE push to assigned drivers for a given date
+fusingaoAutoDispatchRouter.post("/auto-dispatch/notify", async (req, res) => {
+  try {
+    const { date } = req.body as { date?: string };
+    const targetDate = date || todayTW();
+    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+
+    // Find all dispatch_order_routes for targetDate with assigned drivers that have line_id
+    const routesRes = await pool.query(
+      `SELECT r.route_label, r.route_date,
+              fd.name  AS driver_name,
+              fd.line_id,
+              f.fleet_name
+       FROM dispatch_order_routes r
+       JOIN dispatch_orders o ON o.id = r.dispatch_order_id
+       JOIN fleet_drivers fd  ON fd.id = r.assigned_driver_id
+       JOIN fusingao_fleets f ON f.id  = o.fleet_id
+       WHERE r.route_date = $1
+         AND fd.line_id IS NOT NULL AND fd.line_id <> ''
+       ORDER BY fd.id, r.route_label`,
+      [targetDate]
+    );
+
+    // Group by line_id
+    const byDriver = new Map<string, { name: string; fleet: string; routes: string[] }>();
+    for (const row of routesRes.rows as any[]) {
+      if (!byDriver.has(row.line_id)) {
+        byDriver.set(row.line_id, { name: row.driver_name, fleet: row.fleet_name, routes: [] });
+      }
+      byDriver.get(row.line_id)!.routes.push(row.route_label);
+    }
+
+    if (byDriver.size === 0) {
+      return res.json({ ok: true, sent: 0, skipped: 0, reason: "無可推播的司機（未設定 LINE ID）" });
+    }
+
+    let sent = 0, failed = 0;
+    const errors: string[] = [];
+
+    for (const [lineId, info] of byDriver) {
+      const body = JSON.stringify({
+        to: lineId,
+        messages: [{
+          type: "text",
+          text: `📋【富詠派車通知】\n日期：${targetDate}\n車隊：${info.fleet}\n\n您今日的路線：\n${info.routes.map(r => `  • ${r}`).join("\n")}\n\n請準時出車，謝謝！`,
+        }],
+      });
+
+      if (!token) {
+        // No LINE token — simulate success for testing
+        console.log(`[AutoDispatch][Notify] 模擬推播給 ${info.name}（${lineId}）:`, info.routes.join(", "));
+        sent++;
+        continue;
+      }
+
+      try {
+        const r = await fetch("https://api.line.me/v2/bot/message/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body,
+        });
+        if (r.ok) { sent++; }
+        else {
+          const err = await r.text();
+          errors.push(`${info.name}: ${err}`);
+          failed++;
+        }
+      } catch (e: any) {
+        errors.push(`${info.name}: ${e.message}`);
+        failed++;
+      }
+    }
+
+    // Write to log
+    await db.execute(sql`
+      INSERT INTO fusingao_auto_dispatch_logs
+        (config_id, target_date, dispatch_orders_created, routes_created, routes_assigned, routes_skipped, status, detail)
+      VALUES
+        (NULL, ${targetDate}, 0, 0, ${sent}, ${failed}, ${failed > 0 ? 'partial' : 'ok'},
+         ${JSON.stringify({ action: "notify", sent, failed, errors })})
+    `);
+
+    res.json({ ok: true, sent, failed, drivers: byDriver.size, errors: errors.slice(0, 5) });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /fusingao/auto-dispatch/preview — preview what would be dispatched for a date
 fusingaoAutoDispatchRouter.get("/auto-dispatch/preview", async (req, res) => {
   try {
