@@ -31,7 +31,15 @@ export default function LineCallback() {
       const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
       const user = { id: payload.id, role: payload.role, name: payload.name, phone: payload.phone };
       login(token, user);
-      navigate(`/${payload.role}`);
+      const rolePathMap: Record<string, string> = {
+        customer:       "/customer",
+        driver:         "/driver",
+        fusingao_fleet: "/fleet",
+        fleet_sub:      "/fleet",
+        fleet_owner:    "/franchise-fleet",
+        admin:          "/admin",
+      };
+      navigate(rolePathMap[payload.role] ?? `/${payload.role}`);
     } catch {
       setError("Token 解析失敗");
       setTimeout(() => navigate("/login"), 2000);
