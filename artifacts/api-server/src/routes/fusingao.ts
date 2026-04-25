@@ -107,6 +107,39 @@ async function ensureFusingaoFleetColumns() {
       UNIQUE(fleet_id, month)
     )
   `);
+  // Admin cash settlement records
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fleet_cash_settlements (
+      id              SERIAL PRIMARY KEY,
+      fleet_id        INTEGER NOT NULL,
+      month           VARCHAR(7) NOT NULL,
+      shopee_income   NUMERIC(12,2) NOT NULL DEFAULT 0,
+      commission_rate NUMERIC(5,2)  NOT NULL DEFAULT 15,
+      fleet_receive   NUMERIC(12,2) NOT NULL DEFAULT 0,
+      trip_count      INTEGER       NOT NULL DEFAULT 0,
+      fuel_total      NUMERIC(12,2) NOT NULL DEFAULT 0,
+      salary_total    NUMERIC(12,2) NOT NULL DEFAULT 0,
+      penalty_total   NUMERIC(12,2) NOT NULL DEFAULT 0,
+      misc_total      NUMERIC(12,2) NOT NULL DEFAULT 0,
+      cash_due        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      status          VARCHAR(20)   NOT NULL DEFAULT 'draft',
+      paid_at         TIMESTAMPTZ,
+      paid_by         VARCHAR(100),
+      note            TEXT,
+      created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      UNIQUE(fleet_id, month)
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fleet_settlement_misc (
+      id             SERIAL PRIMARY KEY,
+      settlement_id  INTEGER NOT NULL REFERENCES fleet_cash_settlements(id) ON DELETE CASCADE,
+      label          VARCHAR(200) NOT NULL,
+      amount         NUMERIC(12,2) NOT NULL DEFAULT 0,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
   // Order events timeline table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS fusingao_order_events (
@@ -2605,6 +2638,214 @@ fusingaoRouter.post("/order-manage/:id/events", async (req, res) => {
     `);
     const evId = (evRow.rows[0] as any)?.id;
     res.json({ ok: true, id: evId });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Admin Cash Settlement ────────────────────────────────────────────────────
+
+// GET /fusingao/admin/cash-settlements/load?fleet_id=X&month=YYYY-MM
+fusingaoRouter.get("/admin/cash-settlements/load", async (req, res) => {
+  try {
+    const { fleet_id, month } = req.query as Record<string, string>;
+    if (!fleet_id || !month) return res.status(400).json({ ok: false, error: "fleet_id 和 month 必填" });
+    const fid = Number(fleet_id);
+
+    // Fleet info
+    const [fleetInfo] = await db.execute(sql`
+      SELECT id, fleet_name, contact_name, contact_phone, commission_rate
+      FROM fusingao_fleets WHERE id = ${fid}
+    `).then(r => r.rows as any[]);
+    if (!fleetInfo) return res.status(404).json({ ok: false, error: "車隊不存在" });
+
+    // Shopee income (same logic as settlement endpoint)
+    const [billingCheck] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM fusingao_billing_trips bt
+       JOIN (SELECT DISTINCT ON (route_id) route_id FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id=$1 ORDER BY route_id, created_at DESC) o ON o.route_id = bt.route_no
+       WHERE bt.billing_month=$2`,
+      [fid, month]
+    ).then(r => r.rows as any[]);
+    const hasBilling = Number(billingCheck?.cnt ?? 0) > 0;
+    const commRate = Number(fleetInfo.commission_rate ?? 15);
+
+    let shopeeIncome = 0, fleetReceive = 0, tripCount = 0;
+    if (hasBilling) {
+      const [s] = await pool.query(
+        `WITH b AS (
+          SELECT bt.route_no, COALESCE(SUM(bt.amount::numeric),0) AS income
+          FROM fusingao_billing_trips bt
+          JOIN (SELECT DISTINCT ON (route_id) route_id FROM orders WHERE route_id IS NOT NULL AND fusingao_fleet_id=$1 ORDER BY route_id, created_at DESC) o ON o.route_id=bt.route_no
+          WHERE bt.billing_month=$2 GROUP BY bt.route_no
+        ) SELECT COALESCE(SUM(income),0) AS shopee_income, COALESCE(SUM(income*(1-$3/100.0)),0) AS fleet_receive, COUNT(*) AS trip_count FROM b`,
+        [fid, month, commRate]
+      ).then(r => r.rows as any[]);
+      shopeeIncome = Number(s?.shopee_income ?? 0);
+      fleetReceive = Number(s?.fleet_receive ?? 0);
+      tripCount    = Number(s?.trip_count ?? 0);
+    } else {
+      const [s] = await pool.query(
+        `SELECT COALESCE(SUM(pr.rate_per_trip),0) AS shopee_income,
+                COALESCE(SUM(COALESCE(fl.rate_override, pr.rate_per_trip*(1-COALESCE(fl.commission_rate,15)/100.0))),0) AS fleet_receive,
+                COUNT(o.id) AS trip_count
+         FROM orders o
+         LEFT JOIN fusingao_fleets fl ON fl.id=$1
+         LEFT JOIN route_prefix_rates pr ON pr.prefix=o.route_prefix
+         WHERE o.route_id IS NOT NULL AND o.fusingao_fleet_id=$1 AND to_char(o.created_at,'YYYY-MM')=$2`,
+        [fid, month]
+      ).then(r => r.rows as any[]);
+      shopeeIncome = Number(s?.shopee_income ?? 0);
+      fleetReceive = Number(s?.fleet_receive ?? 0);
+      tripCount    = Number(s?.trip_count ?? 0);
+    }
+
+    // Fuel breakdown from fuel_card_records
+    const fuelRows = (await pool.query(
+      `SELECT vehicle_plate, SUM(amount)::numeric AS total FROM fuel_card_records WHERE fleet_id=$1 AND period=$2 GROUP BY vehicle_plate ORDER BY total DESC`,
+      [fid, month]
+    )).rows as any[];
+    const fuelTotal = fuelRows.reduce((s: number, r: any) => s + Number(r.total), 0);
+
+    // Driver salaries from fleet_driver_payroll (if exists) or compute from fleet_drivers defaults
+    const payrollRows = (await pool.query(
+      `SELECT p.id, p.driver_id, fd.name, fd.employee_id, p.completed_trips,
+              p.base_salary::numeric, p.per_trip_bonus::numeric, p.meal_allowance::numeric, p.other_deduction::numeric, p.net_salary::numeric, p.locked
+       FROM fleet_driver_payroll p
+       JOIN fleet_drivers fd ON fd.id = p.driver_id
+       WHERE p.fleet_id=$1 AND p.month=$2
+       ORDER BY fd.name`,
+      [fid, month]
+    )).rows as any[];
+
+    // If no payroll locked records, fall back to live computation from fleet_drivers
+    const driverRows = payrollRows.length > 0 ? payrollRows : (await pool.query(
+      `SELECT fd.id AS driver_id, fd.name, fd.employee_id,
+              fd.base_salary::numeric, fd.per_trip_bonus::numeric, fd.meal_allowance::numeric, fd.other_deduction::numeric,
+              COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'),0)::int AS completed_trips,
+              (fd.base_salary + COALESCE(COUNT(fo.id) FILTER (WHERE fo.status='delivered'),0)*fd.per_trip_bonus + fd.meal_allowance - fd.other_deduction)::numeric AS net_salary,
+              false AS locked
+       FROM fleet_drivers fd
+       LEFT JOIN fleet_orders fo ON fo.assigned_driver_id=fd.id AND to_char(fo.pickup_date,'YYYY-MM')=$2
+       WHERE fd.fleet_id=$1 AND fd.is_active=true
+       GROUP BY fd.id, fd.name, fd.employee_id, fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction
+       ORDER BY fd.name`,
+      [fid, month]
+    )).rows as any[];
+
+    const salaryTotal = driverRows.reduce((s: number, r: any) => s + Number(r.net_salary ?? 0), 0);
+
+    // Penalties from fleet_penalties
+    const penaltyRows = (await pool.query(
+      `SELECT id, reason, amount::numeric, order_no FROM fleet_penalties WHERE fleet_id=$1 AND period=$2 ORDER BY created_at`,
+      [fid, month]
+    )).rows as any[];
+    const penaltyTotal = penaltyRows.reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0);
+
+    // Existing settlement record (draft/confirmed/paid)
+    const [existing] = (await pool.query(
+      `SELECT * FROM fleet_cash_settlements WHERE fleet_id=$1 AND month=$2`, [fid, month]
+    )).rows as any[];
+
+    // Misc deductions
+    const miscRows = existing ? (await pool.query(
+      `SELECT id, label, amount::numeric FROM fleet_settlement_misc WHERE settlement_id=$1 ORDER BY created_at`, [existing.id]
+    )).rows as any[] : [];
+    const miscTotal = miscRows.reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0);
+
+    const cashDue = fleetReceive - fuelTotal - salaryTotal - penaltyTotal - miscTotal;
+
+    res.json({
+      ok: true,
+      fleet: { id: fid, fleet_name: fleetInfo.fleet_name, contact_name: fleetInfo.contact_name, contact_phone: fleetInfo.contact_phone, commission_rate: commRate },
+      month,
+      income: { shopee_income: shopeeIncome, fleet_receive: fleetReceive, commission_rate: commRate, trip_count: tripCount },
+      fuel_breakdown: fuelRows,
+      fuel_total: fuelTotal,
+      driver_salaries: driverRows,
+      salary_total: salaryTotal,
+      penalties: penaltyRows,
+      penalty_total: penaltyTotal,
+      misc_deductions: miscRows,
+      misc_total: miscTotal,
+      cash_due: cashDue,
+      record: existing ?? null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/admin/cash-settlements/save
+fusingaoRouter.post("/admin/cash-settlements/save", async (req, res) => {
+  try {
+    const { fleet_id, month, shopee_income, fleet_receive, commission_rate, trip_count,
+            fuel_total, salary_total, penalty_total, misc_total, cash_due, note, misc_deductions } = req.body as any;
+    if (!fleet_id || !month) return res.status(400).json({ ok: false, error: "fleet_id 和 month 必填" });
+
+    // Upsert main record
+    const upsert = await pool.query(
+      `INSERT INTO fleet_cash_settlements
+        (fleet_id, month, shopee_income, commission_rate, fleet_receive, trip_count, fuel_total, salary_total, penalty_total, misc_total, cash_due, note, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+       ON CONFLICT (fleet_id, month) DO UPDATE SET
+         shopee_income=$3, commission_rate=$4, fleet_receive=$5, trip_count=$6,
+         fuel_total=$7, salary_total=$8, penalty_total=$9, misc_total=$10, cash_due=$11, note=$12, updated_at=NOW()
+       RETURNING id, status`,
+      [fleet_id, month, shopee_income??0, commission_rate??15, fleet_receive??0, trip_count??0, fuel_total??0, salary_total??0, penalty_total??0, misc_total??0, cash_due??0, note??null]
+    );
+    const recId = upsert.rows[0].id;
+    const status = upsert.rows[0].status;
+
+    // If already paid, reject misc changes
+    if (status === 'paid') return res.status(400).json({ ok: false, error: "已付款結算單不可修改" });
+
+    // Replace misc deductions
+    await pool.query(`DELETE FROM fleet_settlement_misc WHERE settlement_id=$1`, [recId]);
+    if (Array.isArray(misc_deductions)) {
+      for (const d of misc_deductions) {
+        if (d.label?.trim() && Number(d.amount) >= 0) {
+          await pool.query(
+            `INSERT INTO fleet_settlement_misc (settlement_id, label, amount) VALUES ($1,$2,$3)`,
+            [recId, d.label.trim(), Number(d.amount)]
+          );
+        }
+      }
+    }
+    res.json({ ok: true, id: recId, status });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/admin/cash-settlements/:id/mark-paid
+fusingaoRouter.post("/admin/cash-settlements/:id/mark-paid", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { paid_by } = req.body as { paid_by?: string };
+    if (!paid_by?.trim()) return res.status(400).json({ ok: false, error: "付款人必填" });
+
+    const r = await pool.query(
+      `UPDATE fleet_cash_settlements SET status='paid', paid_at=NOW(), paid_by=$2, updated_at=NOW()
+       WHERE id=$1 AND status != 'paid' RETURNING id, paid_at`,
+      [id, paid_by.trim()]
+    );
+    if (r.rowCount === 0) return res.status(400).json({ ok: false, error: "找不到結算單或已付款" });
+    res.json({ ok: true, paid_at: r.rows[0].paid_at });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /fusingao/admin/cash-settlements/list — list all settlements (admin overview)
+fusingaoRouter.get("/admin/cash-settlements/list", async (_req, res) => {
+  try {
+    const rows = (await pool.query(
+      `SELECT s.*, f.fleet_name, f.contact_name
+       FROM fleet_cash_settlements s
+       JOIN fusingao_fleets f ON f.id = s.fleet_id
+       ORDER BY s.month DESC, f.fleet_name`
+    )).rows;
+    res.json({ ok: true, settlements: rows });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
