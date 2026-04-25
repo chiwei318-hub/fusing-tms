@@ -1650,7 +1650,7 @@ export default function Admin() {
                 extra: null as React.ReactNode,
               },
               {
-                label: "調度\n車隊",
+                label: "車隊\n派遣",
                 accent: "bg-cyan-50 border-cyan-100",
                 labelColor: "text-cyan-700",
                 items: [
@@ -1686,7 +1686,6 @@ export default function Admin() {
                 accent: "bg-emerald-50 border-emerald-100",
                 labelColor: "text-emerald-700",
                 items: [
-                  { value: "finance",         icon: <span className="text-sm leading-none">💹</span>,             label: "財務結算" },
                   { value: "finance-reports", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,      label: "財務報表" },
                   { value: "shopeebilling",   icon: <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />,   label: "月結對帳匯入" },
                   { value: "pnl",             icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />,       label: "盈虧分析" },
