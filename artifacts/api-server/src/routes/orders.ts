@@ -203,6 +203,62 @@ router.get("/orders/track", async (req, res) => {
   }
 });
 
+// ─── GET /orders/public-track — no-auth public tracking by order ID or token ──
+router.get("/orders/public-track", async (req, res) => {
+  try {
+    const schema = z.object({
+      q: z.string().min(1),
+    });
+    const { q } = schema.parse(req.query);
+
+    // Try numeric order ID first, then UUID token
+    const isNumeric = /^\d+$/.test(q.trim());
+    let row: typeof ordersTable.$inferSelect | null = null;
+    let driverRow: typeof driversTable.$inferSelect | null = null;
+
+    if (isNumeric) {
+      const id = parseInt(q.trim(), 10);
+      const rows = await db
+        .select()
+        .from(ordersTable)
+        .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
+        .where(eq(ordersTable.id, id))
+        .limit(1);
+      if (rows.length) { row = rows[0].orders; driverRow = rows[0].drivers ?? null; }
+    } else {
+      const rows = await db
+        .select()
+        .from(ordersTable)
+        .leftJoin(driversTable, eq(ordersTable.driverId, driversTable.id))
+        .where(eq(ordersTable.quickOrderToken, q.trim()))
+        .limit(1);
+      if (rows.length) { row = rows[0].orders; driverRow = rows[0].drivers ?? null; }
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: "找不到此訂單，請確認訂單號碼是否正確" });
+    }
+
+    // Return only safe public fields (no customer phone, no payment amounts)
+    res.json({
+      order_id:         row.id,
+      status:           row.status,
+      pickup_address:   row.pickupAddress,
+      delivery_address: row.deliveryAddress,
+      pickup_date:      row.pickupDate,
+      cargo_description: row.cargoDescription,
+      created_at:       row.createdAt,
+      driver: driverRow ? {
+        name:  driverRow.name,
+        plate: driverRow.plateNumber ?? null,
+      } : null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to public-track order");
+    res.status(400).json({ error: "查詢失敗，請稍後再試" });
+  }
+});
+
 // ─── GET /orders/suggestions — autocomplete for cargo descriptions & notes ────
 router.get("/orders/suggestions", async (req, res) => {
   try {

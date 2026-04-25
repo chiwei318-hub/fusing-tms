@@ -41,6 +41,7 @@ const QuotePage          = lazy(() => import("@/pages/QuotePage"));
 const InvoicePrint       = lazy(() => import("@/pages/InvoicePrint"));
 const QuickOrder         = lazy(() => import("@/pages/QuickOrder"));
 const QuickTrack         = lazy(() => import("@/pages/QuickTrack"));
+const PublicTrack        = lazy(() => import("@/pages/PublicTrack"));
 const Landing            = lazy(() => import("@/pages/Landing"));
 const DriverJoinPage     = lazy(() => import("@/pages/DriverJoinPage"));
 const FleetJoinPage      = lazy(() => import("@/pages/FleetJoinPage"));
@@ -259,6 +260,9 @@ function AppRouter() {
   }
   if (location === "/fleet-join") {
     return <FleetJoinPage />;
+  }
+  if (location === "/track" || location.startsWith("/track?")) {
+    return <div className="h-dvh overflow-y-auto"><PublicTrack /></div>;
   }
   if (location === "/quick" || location.startsWith("/quick/")) {
     if (location.startsWith("/quick/track/")) {
