@@ -260,6 +260,90 @@ router.post("/import", async (req, res) => {
   res.json({ inserted, updated, total: inserted + updated });
 });
 
+// ─── POST /api/locations/sync-sheets ─────────────────────────────────────────
+// Admin 觸發從 Google Sheets 重新匯入門市地址（非同步，立即回應）
+router.post("/sync-sheets", async (req, res) => {
+  const SPREADSHEET_ID = "1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI";
+  const BATCH_SIZE = 30;
+  const SKIP_SHEETS = new Set([
+    "司機回填表","主線過刷異常","NDD過刷異常",
+    "罰款統計2026年01月","7月罰款統計","8月罰款統計",
+    "9月罰款統計","10月罰款統計","11月罰款統計","2月份罰款",
+  ]);
+  const TW_CITIES_LIST = [
+    "台北市","新北市","桃園市","台中市","台南市","高雄市",
+    "基隆市","新竹市","嘉義市","新竹縣","苗栗縣","彰化縣",
+    "南投縣","雲林縣","嘉義縣","屏東縣","宜蘭縣","花蓮縣",
+    "台東縣","澎湖縣","金門縣","連江縣",
+  ];
+  const exCity = (addr: string) => { for (const c of TW_CITIES_LIST) if (addr.includes(c)) return c; return null; };
+  const findHdr = (rows: string[][]) => {
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      const r = rows[i] ?? [];
+      const nc = r.findIndex((c) => String(c).includes("門市名稱"));
+      const ac = r.findIndex((c) => String(c).includes("門市地址"));
+      if (nc >= 0) return { hi: i, nc, ac };
+    }
+    return null;
+  };
+
+  res.json({ status: "started", message: "Sheets 同步已在背景啟動，請稍後查看 /api/locations/stats" });
+
+  setImmediate(async () => {
+    try {
+      const { google } = await import("googleapis");
+      const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+      if (!raw) { console.error("[SheetsSync] No GOOGLE_SERVICE_ACCOUNT_KEY"); return; }
+      const creds = JSON.parse(raw);
+      const auth  = new google.auth.GoogleAuth({ credentials: creds, scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
+      const sheets = google.sheets({ version: "v4", auth });
+
+      const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID, fields: "sheets.properties.title" });
+      const titles = (meta.data.sheets ?? []).map((s: any) => s.properties.title as string).filter((t: string) => !SKIP_SHEETS.has(t));
+
+      const storeMap = new Map<string, string | null>();
+      for (let start = 0; start < titles.length; start += BATCH_SIZE) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const batch = titles.slice(start, start + BATCH_SIZE);
+        let vr: any[];
+        try {
+          const resp = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SPREADSHEET_ID, ranges: batch.map((t) => `'${t}'!A1:K400`), majorDimension: "ROWS" });
+          vr = resp.data.valueRanges ?? [];
+        } catch { continue; }
+        for (let i = 0; i < batch.length; i++) {
+          const rows = (vr[i]?.values ?? []) as string[][];
+          const hdr  = findHdr(rows);
+          if (!hdr || hdr.ac < 0) continue;
+          for (let ri = hdr.hi + 1; ri < rows.length; ri++) {
+            const r = rows[ri] ?? [];
+            const nm = String(r[hdr.nc] ?? "").trim();
+            const ad = String(r[hdr.ac] ?? "").trim();
+            if (!ad || ad.length < 5) continue;
+            if (!storeMap.has(ad)) storeMap.set(ad, nm || null);
+          }
+        }
+      }
+
+      let inserted = 0, updated = 0;
+      for (const [address, placeName] of storeMap) {
+        const city = exCity(address);
+        const r = await pool.query(
+          `INSERT INTO location_history (address,place_name,place_type,location_type,city,visit_count,first_visited_at,last_visited_at)
+           VALUES ($1,$2,'store','delivery',$3,1,NOW(),NOW())
+           ON CONFLICT (address) DO UPDATE SET
+             place_name=COALESCE(EXCLUDED.place_name,location_history.place_name),
+             city=COALESCE(EXCLUDED.city,location_history.city),
+             updated_at=NOW()
+           RETURNING (xmax=0) AS is_new`,
+          [address, placeName || null, city],
+        );
+        if (r.rows[0]?.is_new) inserted++; else updated++;
+      }
+      console.log(`[SheetsSync] ✅ 完成 新增${inserted} 更新${updated}`);
+    } catch (e: any) { console.error("[SheetsSync] 失敗:", e.message); }
+  });
+});
+
 // ─── PATCH /api/locations/:id ─────────────────────────────────────────────────
 // 更新地點商業資訊
 router.patch("/:id", async (req, res) => {
