@@ -31,6 +31,7 @@ const PageFallback = () => (
 const Admin              = lazy(() => import("@/pages/Admin"));
 const DispatchCenter     = lazy(() => import("@/pages/admin/DispatchCenter"));
 const FinanceDashboard   = lazy(() => import("@/pages/admin/FinanceDashboard"));
+const FuelCardManager    = lazy(() => import("@/pages/admin/FuelCardManager"));
 const EnterprisePortal   = lazy(() => import("@/pages/enterprise/EnterprisePortal"));
 const FusingaoPortal     = lazy(() => import("@/pages/FusingaoPortal"));
 const FusingaoFleetPortal= lazy(() => import("@/pages/fleet/FusingaoFleetPortal"));
@@ -166,6 +167,7 @@ function AdminPortal() {
             <Route path="/dispatch" component={DispatchCenter} />
             <Route path="/finance" component={FinanceDashboard} />
             <Route path="/fusingao" component={FusingaoPortal} />
+            <Route path="/fuel-cards" component={FuelCardManager} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>
@@ -302,7 +304,8 @@ function AppRouter() {
     location.startsWith("/order") ||
     location.startsWith("/fees") ||
     location.startsWith("/dispatch") ||
-    location.startsWith("/finance")
+    location.startsWith("/finance") ||
+    location.startsWith("/fuel-cards")
   ) {
     return <AdminPortal />;
   }

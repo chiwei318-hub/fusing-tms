@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Home,
   BarChart2,
+  Fuel,
 } from "lucide-react";
 import {
   Sidebar,
@@ -21,11 +22,12 @@ import {
 } from "@/components/ui/sidebar";
 
 const navigation = [
-  { name: "客戶下單", href: "/order-form", icon: Package },
-  { name: "訂單列表", href: "/orders", icon: ClipboardList },
-  { name: "訂單報表", href: "/report", icon: BarChart2 },
-  { name: "費用管理", href: "/fees", icon: DollarSign },
-  { name: "後台管理", href: "/admin", icon: LayoutDashboard },
+  { name: "客戶下單",  href: "/order-form",   icon: Package },
+  { name: "訂單列表",  href: "/orders",        icon: ClipboardList },
+  { name: "訂單報表",  href: "/report",        icon: BarChart2 },
+  { name: "費用管理",  href: "/fees",          icon: DollarSign },
+  { name: "⛽ 加油管理", href: "/fuel-cards",  icon: Fuel },
+  { name: "後台管理",  href: "/admin",         icon: LayoutDashboard },
 ];
 
 export function AppSidebar() {
