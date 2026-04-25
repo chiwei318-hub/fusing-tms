@@ -77,66 +77,138 @@ function toExportCsvUrl(raw: string): string {
 }
 
 // ── CSV parser for billing trips ───────────────────────────────────────────────
-// Expected columns: 月份,類型,車隊名稱,倉別,區域,路線號碼,車型,司機工號,出車日期,金額
+// Flexible: auto-detects delimiter, scans first 10 rows for header, handles quoted fields.
+// Expected columns (any order): 月份,類型,車隊名稱,倉別,區域,路線號碼,車型,司機工號,出車日期,金額
 interface CsvTripRow {
   billing_month: string; billing_type: string; fleet_name: string;
   warehouse: string; area: string; route_no: string; vehicle_size: string;
   driver_id: string; trip_date: string; amount: number;
 }
 
-function parseBillingCsv(text: string): CsvTripRow[] {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
+function parseBillingCsv(text: string): { rows: CsvTripRow[]; headerFound: boolean; warning: string | null } {
+  // Strip BOM
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const rawLines = cleaned.split(/\r?\n/).filter(l => l.trim());
+  if (rawLines.length < 2) return { rows: [], headerFound: false, warning: "試算表內容為空" };
 
-  const header = lines[0].split(",").map(h => h.trim().toLowerCase());
-  const colIdx = (names: string[]): number => {
-    for (const n of names) {
-      const i = header.findIndex(h => h.includes(n));
-      if (i >= 0) return i;
+  // Auto-detect delimiter from first non-empty line
+  const firstLine = rawLines[0] ?? "";
+  const delimiter = firstLine.split("\t").length > firstLine.split(",").length ? "\t" : ",";
+
+  function splitRow(line: string): string[] {
+    if (delimiter === "\t") return line.split("\t").map(c => c.trim().replace(/^"|"$/g, ""));
+    const result: string[] = [];
+    let cur = ""; let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === "," && !inQ) { result.push(cur.trim()); cur = ""; continue; }
+      cur += ch;
     }
-    return -1;
+    result.push(cur.trim());
+    return result;
+  }
+
+  const ALIASES: Record<string, string[]> = {
+    billing_month:  ["月份", "帳款月份", "帳務月份", "結帳月份", "期別", "month", "billing_month"],
+    billing_type:   ["類型", "服務類型", "配送類型", "業務類型", "type", "billing_type"],
+    fleet_name:     ["車隊名稱", "車隊", "配送商", "承攬商", "fleet"],
+    warehouse:      ["倉別", "倉庫", "發貨倉", "warehouse"],
+    area:           ["區域", "配送區域", "服務區域", "area"],
+    route_no:       ["路線號碼", "路線編號", "路線", "線號", "route"],
+    vehicle_size:   ["車型", "車輛類型", "車種", "vehicle"],
+    driver_id:      ["司機工號", "司機ID", "司機id", "工號", "司機編號", "員工編號", "driver"],
+    trip_date:      ["出車日期", "日期", "配送日期", "出勤日期", "趟次日期", "date", "trip_date"],
+    amount:         ["金額", "費用", "費率金額", "趟次金額", "應付金額", "實付金額", "amount"],
   };
 
-  const monthCol   = colIdx(["月份", "month", "billing_month"]);
-  const typeCol    = colIdx(["類型", "type", "billing_type"]);
-  const fleetCol   = colIdx(["車隊", "fleet"]);
-  const warehCol   = colIdx(["倉別", "warehouse"]);
-  const areaCol    = colIdx(["區域", "area"]);
-  const routeCol   = colIdx(["路線號碼", "route"]);
-  const vehicleCol = colIdx(["車型", "vehicle"]);
-  const driverCol  = colIdx(["司機", "driver"]);
-  const dateCol    = colIdx(["日期", "date", "trip_date"]);
-  const amtCol     = colIdx(["金額", "amount"]);
+  // Validation: a real billing header must have at least "金額" + ("日期" or "路線")
+  const AMOUNT_KW = ["金額", "費用", "應付", "實付", "amount"];
+  const DATE_KW   = ["日期", "月份", "date", "trip_date", "出車", "month"];
+  const ROUTE_KW  = ["路線", "線號", "route"];
+
+  function isHeaderRow(cols: string[]): boolean {
+    const joined = cols.join(",").replace(/\s/g, "");
+    const hasAmt   = AMOUNT_KW.some(k => joined.includes(k));
+    const hasDate  = DATE_KW.some(k => joined.includes(k));
+    const hasRoute = ROUTE_KW.some(k => joined.includes(k));
+    return hasAmt && (hasDate || hasRoute);
+  }
+
+  function findColIdx(headers: string[], aliases: string[]): number {
+    for (const alias of aliases) {
+      const idx = headers.findIndex(h => h.replace(/\s/g, "").includes(alias));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
+  // Scan first 10 rows for header
+  let headerRowIdx = -1;
+  let colMap: Record<string, number> = {};
+  for (let i = 0; i < Math.min(rawLines.length, 10); i++) {
+    const cols = splitRow(rawLines[i]);
+    if (isHeaderRow(cols)) {
+      headerRowIdx = i;
+      for (const [field, aliases] of Object.entries(ALIASES)) {
+        colMap[field] = findColIdx(cols, aliases);
+      }
+      break;
+    }
+  }
+
+  if (headerRowIdx < 0) {
+    return { rows: [], headerFound: false, warning: "找不到帳務標題列（需包含「金額」及「日期」或「路線號碼」欄位）" };
+  }
 
   const rows: CsvTripRow[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(",").map(c => c.trim().replace(/^"|"$/g, ""));
-    const routeNo = routeCol >= 0 ? cols[routeCol] : "";
-    const dateStr = dateCol >= 0 ? cols[dateCol] : "";
-    const amtStr  = amtCol >= 0 ? cols[amtCol] : "";
-    if (!routeNo || !dateStr) continue;
+  for (let i = headerRowIdx + 1; i < rawLines.length; i++) {
+    const cols = splitRow(rawLines[i]);
+    const firstCell = cols[0]?.trim() ?? "";
+    // Skip summary rows
+    if (["合計", "小計", "總計", "Total", "SUM"].includes(firstCell)) continue;
+
+    const get = (field: string): string => {
+      const idx = colMap[field];
+      if (idx === undefined || idx < 0 || idx >= cols.length) return "";
+      return cols[idx]?.trim() ?? "";
+    };
+
+    const routeNo = get("route_no");
+    const dateStr = get("trip_date");
+    const amtStr  = get("amount").replace(/[,，]/g, "");
+    // Need at minimum a date and an amount
+    if (!dateStr && !routeNo) continue;
     const amount = parseFloat(amtStr.replace(/[^0-9.-]/g, ""));
     if (isNaN(amount) || amount <= 0) continue;
 
+    // Derive billing_month from date if not present
+    let billing_month = get("billing_month");
+    if (!billing_month && dateStr) {
+      const m = dateStr.match(/^(\d{4})[\/\-](\d{1,2})/) || dateStr.match(/^(\d{3,4})年(\d{1,2})月/);
+      if (m) billing_month = `${m[1]}-${m[2].padStart(2, "0")}`;
+      else billing_month = dateStr.slice(0, 7);
+    }
+
     rows.push({
-      billing_month: monthCol >= 0 ? cols[monthCol] : dateStr.substring(0, 7),
-      billing_type:  typeCol >= 0 ? cols[typeCol] : "NDD",
-      fleet_name:    fleetCol >= 0 ? cols[fleetCol] : "",
-      warehouse:     warehCol >= 0 ? cols[warehCol] : "",
-      area:          areaCol >= 0 ? cols[areaCol] : "",
+      billing_month,
+      billing_type:  get("billing_type") || "NDD",
+      fleet_name:    get("fleet_name"),
+      warehouse:     get("warehouse"),
+      area:          get("area"),
       route_no:      routeNo,
-      vehicle_size:  vehicleCol >= 0 ? cols[vehicleCol] : "",
-      driver_id:     driverCol >= 0 ? cols[driverCol] : "",
-      trip_date:     dateStr,
+      vehicle_size:  get("vehicle_size"),
+      driver_id:     get("driver_id"),
+      trip_date:     dateStr || billing_month,
       amount,
     });
   }
-  return rows;
+
+  return { rows, headerFound: true, warning: null };
 }
 
 // ── Core sync function ────────────────────────────────────────────────────────
 export async function runFusingaoSheetSync(configId: number): Promise<{
-  upserted: number; skipped: number; errors: number;
+  inserted: number; updated: number; skipped: number; errors: number; warning: string | null;
 }> {
   const configs = await db.execute(sql`SELECT * FROM fusingao_sheet_configs WHERE id = ${configId}`);
   const cfg = (configs.rows as any[])[0];
@@ -144,65 +216,84 @@ export async function runFusingaoSheetSync(configId: number): Promise<{
 
   const csvUrl = toExportCsvUrl(cfg.sheet_url);
   const resp = await fetch(csvUrl);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} when fetching sheet`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} — 無法取得試算表，請確認 URL 正確且試算表已公開分享`);
   const text = await resp.text();
   if (text.trim().startsWith("<!DOCTYPE")) {
-    throw new Error("無法讀取試算表，請確認已設為「知道連結的人可查看」");
+    throw new Error("試算表尚未公開 — 請在 Google Sheets 共用設定中選擇「知道連結的人可查看」");
   }
 
-  const rows = parseBillingCsv(text);
-  let upserted = 0; let skipped = 0; let errors = 0;
+  const { rows, headerFound, warning } = parseBillingCsv(text);
 
-  // Parallel upserts — all rows sent concurrently instead of sequentially
+  if (!headerFound) {
+    const errMsg = warning ?? "找不到帳務標題列";
+    await db.execute(sql`
+      UPDATE fusingao_sheet_configs SET
+        last_sync_at = NOW(), last_sync_status = 'warning',
+        last_sync_count = 0, last_sync_skipped = 0,
+        last_sync_errors = 0, last_sync_error = ${errMsg}
+      WHERE id = ${configId}
+    `);
+    return { inserted: 0, updated: 0, skipped: 0, errors: 0, warning: errMsg };
+  }
+
+  let inserted = 0; let updated = 0; let skipped = 0; let errors = 0;
+
+  // Parallel upserts using xmax trick to detect INSERT vs UPDATE
   const settled = await Promise.allSettled(rows.map(async (r) => {
-    const driverId = r.driver_id || ''; // store '' not NULL for unique index
+    const driverId = r.driver_id || ''; // '' not NULL for unique index
     const result = await db.execute(sql`
       INSERT INTO fusingao_billing_trips
         (billing_month, billing_type, fleet_name, warehouse, area, route_no, vehicle_size,
          driver_id, trip_date, amount, import_source, last_updated_at)
       VALUES (
         ${r.billing_month}, ${r.billing_type}, ${r.fleet_name||null}, ${r.warehouse||null},
-        ${r.area||null}, ${r.route_no}, ${r.vehicle_size||null}, ${driverId},
+        ${r.area||null}, ${r.route_no||''}, ${r.vehicle_size||null}, ${driverId},
         ${r.trip_date}, ${r.amount}, 'sheet', NOW()
       )
       ON CONFLICT (billing_month, billing_type, route_no, driver_id, trip_date)
       DO UPDATE SET
         amount = EXCLUDED.amount,
-        fleet_name = EXCLUDED.fleet_name,
-        vehicle_size = EXCLUDED.vehicle_size,
+        fleet_name = COALESCE(EXCLUDED.fleet_name, fusingao_billing_trips.fleet_name),
+        vehicle_size = COALESCE(EXCLUDED.vehicle_size, fusingao_billing_trips.vehicle_size),
+        warehouse = COALESCE(EXCLUDED.warehouse, fusingao_billing_trips.warehouse),
+        area = COALESCE(EXCLUDED.area, fusingao_billing_trips.area),
         import_source = 'sheet',
         last_updated_at = NOW()
-      RETURNING id
+      RETURNING id, (xmax = 0) AS was_inserted
     `);
-    return (result.rows as any[]).length > 0 ? 'upserted' : 'skipped';
+    const row = (result.rows as any[])[0];
+    if (!row) return 'skipped';
+    return row.was_inserted ? 'inserted' : 'updated';
   }));
 
   for (const s of settled) {
     if (s.status === 'fulfilled') {
-      if (s.value === 'upserted') upserted++; else skipped++;
+      if (s.value === 'inserted') inserted++;
+      else if (s.value === 'updated') updated++;
+      else skipped++;
     } else {
       console.warn("[FusingaoSheetSync] row error:", s.reason?.message);
       errors++;
     }
   }
 
-  // Update sync status — 'warning' when some rows errored, 'success' when clean
+  // Update sync status
   const syncStatus = errors > 0 ? 'warning' : 'success';
   const syncError = errors > 0
-    ? `同步完成但有 ${errors} 筆資料格式錯誤（新增 ${upserted} 筆，略過重複 ${skipped} 筆）`
+    ? `同步完成但有 ${errors} 筆格式錯誤（新增 ${inserted} 筆，更新 ${updated} 筆）`
     : null;
   await db.execute(sql`
     UPDATE fusingao_sheet_configs SET
       last_sync_at = NOW(),
       last_sync_status = ${syncStatus},
-      last_sync_count = ${upserted},
-      last_sync_skipped = ${skipped},
+      last_sync_count = ${inserted},
+      last_sync_skipped = ${updated},
       last_sync_errors = ${errors},
       last_sync_error = ${syncError}
     WHERE id = ${configId}
   `);
 
-  return { upserted, skipped, errors };
+  return { inserted, updated, skipped, errors, warning: null };
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -222,7 +313,7 @@ export function startFusingaoSheetSyncScheduler() {
       for (const cfg of configs.rows as any[]) {
         try {
           const result = await runFusingaoSheetSync(cfg.id);
-          console.log(`[FusingaoSheetSync] ${cfg.sync_name}: upserted ${result.upserted}`);
+          console.log(`[FusingaoSheetSync] ${cfg.sync_name}: inserted=${result.inserted} updated=${result.updated} errors=${result.errors}`);
         } catch (e: any) {
           console.error(`[FusingaoSheetSync] ${cfg.sync_name} failed:`, e.message);
           await db.execute(sql`

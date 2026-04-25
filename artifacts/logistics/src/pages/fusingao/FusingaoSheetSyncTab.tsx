@@ -86,7 +86,12 @@ export default function FusingaoSheetSyncTab() {
     const data = await api(`sheet-sync/configs/${id}/run`, { method: "POST" }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
     setRunning(r => ({ ...r, [id]: false }));
     if (data.ok) {
-      toast({ title: `✅ ${name} 同步完成`, description: `更新 ${data.upserted} 筆資料` });
+      const newRows = data.inserted ?? 0;
+      const updRows = data.updated ?? 0;
+      const desc = newRows > 0 || updRows > 0
+        ? `新增 ${newRows} 筆${updRows > 0 ? `，更新 ${updRows} 筆` : ""}`
+        : data.warning ? `⚠️ ${data.warning}` : "無新資料";
+      toast({ title: `✅ ${name} 同步完成`, description: desc });
     } else {
       toast({ title: `${name} 同步失敗`, description: data.error, variant: "destructive" });
     }
@@ -271,11 +276,11 @@ export default function FusingaoSheetSyncTab() {
                         <span className="text-gray-400">上次同步：{cfg.last_sync_at ? fmtDate(cfg.last_sync_at) : "從未"}</span>
                         {(cfg.last_sync_status === "success" || cfg.last_sync_status === "warning") && (
                           <>
-                            <span className="text-green-600 flex items-center gap-1">
+                            <span className={`flex items-center gap-1 ${(cfg.last_sync_count ?? 0) > 0 ? "text-green-600" : "text-gray-400"}`}>
                               <CheckCircle2 className="w-3 h-3" /> 新增 {cfg.last_sync_count ?? 0} 筆
                             </span>
                             {(cfg.last_sync_skipped ?? 0) > 0 && (
-                              <span className="text-gray-500 flex items-center gap-1">略過重複 {cfg.last_sync_skipped}</span>
+                              <span className="text-blue-500 flex items-center gap-1">更新 {cfg.last_sync_skipped} 筆</span>
                             )}
                           </>
                         )}
