@@ -756,6 +756,12 @@ _migPool.query(`
     // push_notifications — 司機確認時間欄位
     await _migPool.query(`ALTER TABLE push_notifications ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ`);
 
+    // fleet_cash_settlements — 計算完成日 + LINE 提醒時間戳
+    await _migPool.query(`ALTER TABLE fleet_cash_settlements ADD COLUMN IF NOT EXISTS calc_complete_date DATE`);
+    await _migPool.query(`ALTER TABLE fleet_cash_settlements ADD COLUMN IF NOT EXISTS line_remind_5d_at TIMESTAMPTZ`);
+    await _migPool.query(`ALTER TABLE fleet_cash_settlements ADD COLUMN IF NOT EXISTS line_remind_1d_at TIMESTAMPTZ`);
+    await _migPool.query(`ALTER TABLE fleet_cash_settlements ADD COLUMN IF NOT EXISTS line_overdue_notified_at TIMESTAMPTZ`);
+
     // fleet_drivers — 驗車/保險到期欄位
     await _migPool.query(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS inspection_expire_date DATE`);
     await _migPool.query(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS insurance_expire_date  DATE`);

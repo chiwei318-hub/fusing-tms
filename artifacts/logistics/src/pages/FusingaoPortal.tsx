@@ -31,6 +31,7 @@ import AutoDispatchTab from "./fusingao/AutoDispatchTab";
 import TownshipTab from "./fusingao/TownshipTab";
 import DriverDispatchStatsTab from "./fusingao/DriverDispatchStatsTab";
 import NotificationConfirmTab from "./fusingao/NotificationConfirmTab";
+import SettlementDeadlineTab from "./fusingao/SettlementDeadlineTab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,7 +62,7 @@ interface MonthRow {
   routes: RouteItem[];
 }
 
-type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "autodispatch" | "dispatchref" | "confirmations";
+type PortalTab = "control" | "dispatch" | "invoice" | "notify" | "monthly" | "rates" | "fleets" | "settlement" | "penalties" | "routeimport" | "sheetsync" | "pnl" | "earnings" | "drivers" | "schedule" | "billingdetail" | "dbsync" | "ordermanage" | "contractquote" | "supplier" | "glory" | "vehicles" | "fuel" | "driverbonus" | "township" | "autodispatch" | "dispatchref" | "confirmations" | "deadlines";
 
 interface FleetRow {
   id: number; fleet_name: string; contact_name: string | null; contact_phone: string | null;
@@ -516,6 +517,7 @@ export default function FusingaoPortal() {
             <div className="border-r border-gray-200 mx-1 my-1" />
             {([
               { id:"settlement",  label:"📊 結算總覽",    group:2 },
+              { id:"deadlines",  label:"📅 結算到期",    group:2 },
               { id:"rates",       label:"🏷️ Shopee費率",  group:2 },
               { id:"penalties",   label:"⚠️ Shopee罰款",  group:2 },
               { id:"earnings",    label:"💰 運費試算",    group:2 },
@@ -1118,6 +1120,7 @@ export default function FusingaoPortal() {
         {tab === "drivers" && <ShopeeDriversTab />}
         {tab === "dispatchref"   && <DriverDispatchStatsTab />}
         {tab === "confirmations" && <NotificationConfirmTab />}
+        {tab === "deadlines"    && <SettlementDeadlineTab />}
 
         {/* ═══════════════ 班表地址 ═══════════════════════════════════════════ */}
         {tab === "schedule" && <FusingaoScheduleTab />}

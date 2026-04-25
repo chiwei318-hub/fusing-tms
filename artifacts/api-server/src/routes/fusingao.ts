@@ -2995,7 +2995,7 @@ fusingaoRouter.post("/admin/cash-settlements/save", async (req, res) => {
   try {
     const { fleet_id, month, shopee_income, fleet_receive, commission_rate, trip_count,
             fuel_total, salary_total, penalty_total, misc_total, cash_due, note, misc_deductions,
-            due_date, payment_method } = req.body as any;
+            due_date, payment_method, calc_complete_date } = req.body as any;
     if (!fleet_id || !month) return res.status(400).json({ ok: false, error: "fleet_id 和 month 必填" });
 
     // Auto-compute due_date: month N → month N+2, day 15
@@ -3008,19 +3008,30 @@ fusingaoRouter.post("/admin/cash-settlements/save", async (req, res) => {
       resolvedDueDate = `${dueYear}-${String(dueMonth).padStart(2, "0")}-15`;
     }
 
+    // Auto-compute calc_complete_date: month N → month N+2, day 1
+    let resolvedCalcDate = calc_complete_date || null;
+    if (!resolvedCalcDate && month) {
+      const [yr, mo] = month.split("-").map(Number);
+      const raw = mo + 2;
+      const y2  = raw > 12 ? yr + 1 : yr;
+      const m2  = raw > 12 ? raw - 12 : raw;
+      resolvedCalcDate = `${y2}-${String(m2).padStart(2, "0")}-01`;
+    }
+
     // Upsert main record
     const upsert = await pool.query(
       `INSERT INTO fleet_cash_settlements
-        (fleet_id, month, shopee_income, commission_rate, fleet_receive, trip_count, fuel_total, salary_total, penalty_total, misc_total, cash_due, note, due_date, payment_method, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+        (fleet_id, month, shopee_income, commission_rate, fleet_receive, trip_count, fuel_total, salary_total, penalty_total, misc_total, cash_due, note, due_date, payment_method, calc_complete_date, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
        ON CONFLICT (fleet_id, month) DO UPDATE SET
          shopee_income=$3, commission_rate=$4, fleet_receive=$5, trip_count=$6,
          fuel_total=$7, salary_total=$8, penalty_total=$9, misc_total=$10, cash_due=$11, note=$12,
          due_date=COALESCE($13, fleet_cash_settlements.due_date),
          payment_method=COALESCE($14, fleet_cash_settlements.payment_method),
+         calc_complete_date=COALESCE($15, fleet_cash_settlements.calc_complete_date),
          updated_at=NOW()
        RETURNING id, status`,
-      [fleet_id, month, shopee_income??0, commission_rate??15, fleet_receive??0, trip_count??0, fuel_total??0, salary_total??0, penalty_total??0, misc_total??0, cash_due??0, note??null, resolvedDueDate, payment_method??null]
+      [fleet_id, month, shopee_income??0, commission_rate??15, fleet_receive??0, trip_count??0, fuel_total??0, salary_total??0, penalty_total??0, misc_total??0, cash_due??0, note??null, resolvedDueDate, payment_method??null, resolvedCalcDate]
     );
     const recId = upsert.rows[0].id;
     const status = upsert.rows[0].status;
@@ -3297,17 +3308,42 @@ fusingaoRouter.patch("/admin/cash-settlements/:id/deadline", async (req, res) =>
 fusingaoRouter.get("/admin/cash-settlements/upcoming", async (_req, res) => {
   try {
     const rows = (await pool.query(
-      `SELECT s.id, s.fleet_id, s.month, s.status, s.cash_due::numeric, s.due_date, s.payment_method, s.reminder_sent_at, s.paid_at,
-              f.fleet_name, f.contact_name, f.contact_phone,
-              (s.due_date - (NOW() AT TIME ZONE 'Asia/Taipei')::date)::int AS days_remaining
+      `SELECT
+         s.id, s.fleet_id, s.month, s.status, s.cash_due::numeric, s.note,
+         s.due_date, s.calc_complete_date, s.payment_method,
+         s.reminder_sent_at, s.paid_at, s.paid_by,
+         s.line_remind_5d_at, s.line_remind_1d_at, s.line_overdue_notified_at,
+         f.fleet_name, f.contact_name, f.contact_phone, f.line_id AS fleet_line_id,
+         (s.due_date - (NOW() AT TIME ZONE 'Asia/Taipei')::date)::int AS days_remaining
        FROM fleet_cash_settlements s
        JOIN fusingao_fleets f ON f.id = s.fleet_id
        WHERE s.due_date IS NOT NULL
        ORDER BY
-         CASE WHEN s.status='draft' THEN 0 ELSE 1 END,
+         CASE WHEN s.status NOT IN ('paid') THEN 0 ELSE 1 END,
          s.due_date ASC`
     )).rows;
     res.json({ ok: true, settlements: rows });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PATCH /fusingao/admin/cash-settlements/:id/dates — update calc_complete_date / due_date
+fusingaoRouter.patch("/admin/cash-settlements/:id/dates", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { calc_complete_date, due_date } = req.body as { calc_complete_date?: string; due_date?: string };
+    const { rows } = await pool.query(
+      `UPDATE fleet_cash_settlements
+       SET calc_complete_date = COALESCE($2, calc_complete_date),
+           due_date           = COALESCE($3, due_date),
+           updated_at         = NOW()
+       WHERE id = $1
+       RETURNING id, calc_complete_date, due_date`,
+      [id, calc_complete_date ?? null, due_date ?? null],
+    );
+    if (!rows.length) return res.status(404).json({ ok: false, error: "找不到結算單" });
+    res.json({ ok: true, ...rows[0] });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
