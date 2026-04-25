@@ -19,10 +19,12 @@
   },
   "devDependencies": {
     "prettier": "^3.8.1",
+    "tsx": "catalog:",
     "typescript": "~5.9.2"
   },
   "dependencies": {
     "@types/pdfkit": "^0.17.5",
-    "pdfkit": "^0.18.0"
+    "pdfkit": "^0.18.0",
+    "pg": "^8.20.0"
   }
 }
