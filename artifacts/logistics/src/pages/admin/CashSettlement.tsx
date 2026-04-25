@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import {
   Printer, RefreshCw, Save, CheckCircle2, AlertCircle, Plus, Trash2,
-  DollarSign, Fuel, Users, FileText, X, ChevronRight, Lock, Clock,
+  DollarSign, Fuel, Users, FileText, X, ChevronRight, Lock, Clock, ArrowLeft,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ interface LoadedData {
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function CashSettlement() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const printRef = useRef<HTMLDivElement>(null);
 
   const [fleets, setFleets] = useState<Fleet[]>([]);
@@ -207,6 +209,10 @@ export default function CashSettlement() {
     <div className="min-h-screen bg-gray-50">
       {/* ── Header toolbar ── */}
       <div className="bg-white border-b px-6 py-3 flex flex-wrap items-center gap-3 sticky top-0 z-30 no-print">
+        <button onClick={() => navigate("/fusingao")}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-600 transition-colors mr-1">
+          <ArrowLeft className="h-3.5 w-3.5" />返回
+        </button>
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-orange-500" />
           <span className="text-base font-bold text-gray-800">現金結算管理</span>

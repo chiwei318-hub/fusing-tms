@@ -82,7 +82,7 @@ const KIND_LABEL: Record<string, { label: string; color: string; bg: string; ico
   removed:        { label: "已從班表移除", color: "text-red-600",   bg: "bg-red-50    border-red-200",    icon: "✕" },
 };
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function todayStr() { return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" }); }
 
 export default function AutoDispatchTab() {
   const { toast } = useToast();

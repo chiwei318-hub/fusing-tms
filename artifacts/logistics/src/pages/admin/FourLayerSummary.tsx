@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import {
   ChevronDown, ChevronUp, RefreshCw, Printer, TrendingUp, TrendingDown,
-  Building2, Truck, Users, BarChart3, Download, AlertCircle,
+  Building2, Truck, Users, BarChart3, Download, AlertCircle, ArrowLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
@@ -143,6 +144,7 @@ function StatRow({ label, value, sub, accent = false, deduct = false }: { label:
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function FourLayerSummary() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const slipRef = useRef<HTMLDivElement>(null);
 
   const [month, setMonth]           = useState(nowPeriod());
@@ -187,6 +189,10 @@ export default function FourLayerSummary() {
       {/* ── Toolbar ── */}
       <div className="no-print sticky top-0 z-30 border-b border-gray-800/80 backdrop-blur-sm" style={{ background: "rgba(10,15,26,0.95)" }}>
         <div className="max-w-6xl mx-auto px-6 py-3 flex flex-wrap items-center gap-3">
+          <button onClick={() => navigate("/fusingao")}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-300 transition-colors mr-1">
+            <ArrowLeft className="h-3.5 w-3.5" />返回
+          </button>
           <div className="flex items-center gap-2.5 shrink-0">
             <BarChart3 className="h-5 w-5 text-blue-400" />
             <span className="font-bold text-base text-white">四層財務結算彙總</span>

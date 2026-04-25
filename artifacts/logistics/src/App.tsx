@@ -182,7 +182,7 @@ function AdminPortal() {
 
 // Auto-login for admin "進入管理" — reads token from URL query param ?t=<base64>
 function FleetAutoLogin() {
-  const { loginTemp } = useAuth();
+  const { login } = useAuth();
   const [, navigate] = useLocation();
   const [done, setDone] = useState(false);
 
@@ -193,7 +193,7 @@ function FleetAutoLogin() {
       try {
         const raw = decodeURIComponent(escape(atob(t)));
         const { token, user: fleetUser } = JSON.parse(raw);
-        loginTemp(token, fleetUser);
+        login(token, fleetUser);
       } catch { /* bad payload, will fall through to login */ }
     }
     // Clear the token from the URL then go to fleet portal

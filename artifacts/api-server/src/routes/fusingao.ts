@@ -1112,7 +1112,7 @@ fusingaoRouter.post("/fleets/:id/import-file", upload.single("file"), async (req
     const buf = req.file.buffer;
     const fn  = req.file.originalname.toLowerCase();
 
-    type DR = { employee_id?: string; name?: string; phone?: string; vehicle_plate?: string; notes?: string };
+    type DR = { employee_id?: string; name?: string; phone?: string; vehicle_plate?: string; notes?: string; vehicle_type?: string };
     const drivers: DR[] = [];
 
     if (fn.endsWith(".csv")) {
@@ -1131,6 +1131,7 @@ fusingaoRouter.post("/fleets/:id/import-file", upload.single("file"), async (req
           name:         name ?? undefined,
           phone:        col("手機") >= 0 ? r[col("手機")].replace(/[\s\-]/g, "") || undefined : undefined,
           vehicle_plate: col("車牌") >= 0 ? r[col("車牌")].trim() || undefined : undefined,
+          vehicle_type: col("車型") >= 0 ? r[col("車型")].trim() || undefined : undefined,
           notes:        col("備註") >= 0 ? r[col("備註")].trim() || undefined : undefined,
         });
       }
@@ -1152,6 +1153,7 @@ fusingaoRouter.post("/fleets/:id/import-file", upload.single("file"), async (req
           name:         name ?? undefined,
           phone:        col("手機") >= 0 ? String(r[col("手機")] ?? "").replace(/[\s\-]/g, "") || undefined : undefined,
           vehicle_plate: col("車牌") >= 0 ? String(r[col("車牌")] ?? "").trim() || undefined : undefined,
+          vehicle_type: col("車型") >= 0 ? String(r[col("車型")] ?? "").trim() || undefined : undefined,
           notes:        col("備註") >= 0 ? String(r[col("備註")] ?? "").trim() || undefined : undefined,
         });
       }
@@ -1175,9 +1177,9 @@ fusingaoRouter.post("/fleets/:id/import-file", upload.single("file"), async (req
           if (ex.rows.length > 0) { skipped++; continue; }
         }
         await pool.query(
-          `INSERT INTO fleet_drivers (fleet_id, name, phone, vehicle_plate, employee_id, notes, is_active)
-           VALUES ($1,$2,$3,$4,$5,$6,true)`,
-          [fleetId, d.name ?? null, d.phone ?? null, d.vehicle_plate ?? null, d.employee_id ?? null, d.notes ?? null]
+          `INSERT INTO fleet_drivers (fleet_id, name, phone, vehicle_plate, employee_id, notes, vehicle_type, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,true)`,
+          [fleetId, d.name ?? null, d.phone ?? null, d.vehicle_plate ?? null, d.employee_id ?? null, d.notes ?? null, d.vehicle_type ?? "一般"]
         );
         inserted++;
       } catch { skipped++; }

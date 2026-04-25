@@ -12,7 +12,7 @@ import {
 const BASE = import.meta.env.BASE_URL ?? "/";
 const api = (path: string, opts?: RequestInit) =>
   fetch(`${BASE}api/fusingao/${path}`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "application/json", ...opts?.headers },
+    headers: { Authorization: `Bearer ${localStorage.getItem("auth-jwt")}`, "Content-Type": "application/json", ...opts?.headers },
     ...opts,
   });
 

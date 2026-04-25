@@ -54,6 +54,13 @@ The frontend for the logistics system (`artifacts/logistics`) is built with Reac
 *   **Firebase 雲端金庫同步:** Admin 系統管理 tab 新增「🔥 雲端金庫」頁面 (`FirebaseSyncTab.tsx`)，可批次推送派車單至 Firebase Firestore 的 `orders`（完整派車資訊）和 `accounting`（帳務備份）兩個 collection。後端 `firebaseSync.ts` 提供：GET `/api/firebase-sync/config-status`（確認連線）、GET `/api/firebase-sync/preview`（預覽訂單）、POST `/api/firebase-sync/push`（批次推送，支援 upsert / new_only 模式）、POST `/api/firebase-sync/push-single`（單筆即時推送）。需設定環境變數 `FIREBASE_SERVICE_ACCOUNT`（Firebase service account JSON 全文）。Firestore 文件 ID 使用 order_no，accounting 文件 ID 為 `{order_no}_acc`。
 *   **加油卡代墊管理系統 (小楊車隊 fleet_id=170):** 完整的中油公司卡代墊追蹤系統。DB 表：`fuel_cards`（車牌對應加油卡主檔，card_no 可為 NULL 待補）、`fuel_card_records`（每筆加油記錄含 cpc_rebate 1% 計算、is_deducted 月結扣款狀態）。API (`artifacts/api-server/src/routes/fuelCards.ts`)：GET/POST `/api/fuel-cards/cards`、PATCH `/api/fuel-cards/cards/:cardId`、POST `/api/fuel-cards/record`、GET `/api/fuel-cards/monthly-report`。前端 (`artifacts/logistics/src/pages/admin/FuelCardManager.tsx`)：三個分頁 — 加油卡清單（KPI 卡、表格含編輯 dialog）、新增記錄（含 1% 退款即時預覽）、月用油報表（月份導航 + CSV 匯出）。側欄新增「⛽ 加油管理」連結（路由 `/fuel-cards`）。owner_cash_settlements 自動從 fuel_card_records 拉取油費扣款。注意：前端 API 呼叫必須使用 `apiUrl()` 而非 `getApiUrl()`，前者加 `/api` 前綴，後者不加。
 *   **Google Sheets 財務備份匯出:** Admin 系統管理 tab 新增「Sheets備份」頁面 (`SheetsBackupTab.tsx`)，可將已完成訂單的財務資料（日期、訂單號、客戶名稱、客戶應付 total_fee、司機應得 driver_pay、平台利潤 profit_amount）匯出至指定 Google 試算表。後端 `sheetsExport.ts` 提供三個 API：GET `/api/sheets-export/config-status`（確認憑證狀態）、GET `/api/sheets-export/preview`（預覽資料）、POST `/api/sheets-export/backup`（執行匯出）。需設定環境變數 `GOOGLE_SHEETS_CREDENTIALS`（service account JSON 全文）和 `GOOGLE_BACKUP_SHEET_ID`（試算表 ID），並將服務帳號 email 加為試算表編輯者。
+*   **Bug Fixes & Enhancements (2026-04):**
+    - **Bug 1 進入管理按鈕：** `FleetAutoLogin` 由 `loginTemp`（僅 React state）改為 `login`（寫入 localStorage），修復 `window.location.href` 全頁重載後 session 遺失導致跳至 /login/fleet 的問題。
+    - **Bug 2 司機匯入 CSV/Excel：** `import-file` INSERT 加入 `vehicle_type`（預設 '一般'），解決因缺少欄位被 catch 靜默跳過的 bug；CSV/Excel 兩個 branch 均已補齊 `車型` 欄位解析。
+    - **authHeaders 補全：** `artifacts/logistics/src/lib/api.ts` 新增 `authHeaders()` export（使用 `auth-jwt` key），AutoDispatchTab 等 import 此函數的元件現在可正確帶 JWT。
+    - **FusingaoSheetSyncTab auth key：** 由錯誤的 `token` 改為正確的 `auth-jwt`。
+    - **AutoDispatchTab 日期時區：** `todayStr()` 改用台灣時區（`sv-SE` locale + `Asia/Taipei`），避免 UTC 凌晨顯示昨日日期。
+    - **CashSettlement & FourLayerSummary 導覽：** FusingaoPortal tab bar 末端新增「💵 現金結算」和「📊 四層總覽」連結按鈕（紫色區分，點擊 navigate 至獨立路由）；兩個頁面 header 均新增「← 返回」按鈕回到 /fusingao。
 
 # External Dependencies
 

@@ -530,6 +530,15 @@ export default function FusingaoPortal() {
                 {t.label}
               </button>
             ))}
+            <div className="border-r border-gray-200 mx-1 my-1" />
+            <button onClick={() => setLocation("/cash-settlement")}
+              className="px-3 py-1.5 text-xs font-medium border-b-2 border-transparent transition-colors whitespace-nowrap text-purple-600 hover:text-purple-700 hover:bg-purple-50">
+              💵 現金結算
+            </button>
+            <button onClick={() => setLocation("/four-layer-summary")}
+              className="px-3 py-1.5 text-xs font-medium border-b-2 border-transparent transition-colors whitespace-nowrap text-purple-600 hover:text-purple-700 hover:bg-purple-50">
+              📊 四層總覽
+            </button>
           </div>
         </div>
 
