@@ -234,8 +234,8 @@ export default function FinanceDashboard() {
               <FR label="車隊應付成本"   value={`－${fmt(totalFleet)}`}    color="#94a3b8" small />
               <Arrow />
               <FR label="平台淨利" value={fmt(totalProfit)} color="#10b981" bold />
-              <div style={{ marginTop:10, padding:"8px 12px", background:"#0a1628",
-                borderRadius:8, fontSize:12, color:"#64748b" }}>
+              <div style={{ marginTop:12, padding:"10px 14px", background:"#0a1628",
+                borderRadius:8, fontSize:14, color:"#64748b" }}>
                 預估營所稅（20%）：{fmt(toNum((ledger as any)?.income_tax_payable))}
               </div>
             </div>
@@ -247,12 +247,12 @@ export default function FinanceDashboard() {
                 ["次年1月底","扣繳憑單申報","#10b981"],
                 ["次年5月底","營利事業所得稅","#8b5cf6"],
               ].map(([date,label,color],i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:12,
-                  padding:"10px 0", borderBottom:"1px solid #0f172a" }}>
-                  <div style={{ width:3, height:32, borderRadius:2, background:color, flexShrink:0 }} />
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:14,
+                  padding:"13px 0", borderBottom:"1px solid #0f172a" }}>
+                  <div style={{ width:4, height:36, borderRadius:2, background:color, flexShrink:0 }} />
                   <div>
-                    <div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{label}</div>
-                    <div style={{ fontSize:11, color:"#475569", marginTop:1 }}>{date}</div>
+                    <div style={{ fontSize:15, fontWeight:700, color:"#e2e8f0" }}>{label}</div>
+                    <div style={{ fontSize:13, color:"#64748b", marginTop:2 }}>{date}</div>
                   </div>
                 </div>
               ))}
@@ -268,7 +268,7 @@ export default function FinanceDashboard() {
                   label={`${unpaidFleet} 筆車隊款項未付（${fmt(totalFleet)}）`}
                   onClick={() => setTab("fleet")} />}
                 {unpaidPayroll===0 && unpaidFleet===0 &&
-                  <div style={{ fontSize:13, color:"#10b981" }}>✅ 本期無待處理事項</div>}
+                  <div style={{ fontSize:15, color:"#10b981" }}>✅ 本期無待處理事項</div>}
               </div>
             </div>
           </div>
@@ -295,7 +295,7 @@ export default function FinanceDashboard() {
                 !p.paid_at
                   ? <Btn size="sm" color="#064e3b" textColor="#4ade80"
                       onClick={() => openPay("payroll", p.id, p.driver_name || `ID:${p.driver_shopee_id}`, toNum(p.net_pay))}>付款</Btn>
-                  : <span style={{ fontSize:11, color:"#10b981" }}>
+                  : <span style={{ fontSize:13, color:"#10b981" }}>
                       ✅ {format(new Date(p.paid_at),"M/d")}
                     </span>,
               ])}
@@ -325,7 +325,7 @@ export default function FinanceDashboard() {
                 !f.paid_at
                   ? <Btn size="sm" color="#064e3b" textColor="#4ade80"
                       onClick={() => openPay("fleet", f.id, f.fleet_name, toNum(f.net_payable))}>付款</Btn>
-                  : <span style={{ fontSize:11, color:"#10b981" }}>
+                  : <span style={{ fontSize:13, color:"#10b981" }}>
                       ✅ {format(new Date(f.paid_at),"M/d")}
                     </span>,
               ])}
@@ -339,7 +339,7 @@ export default function FinanceDashboard() {
           <div>
             <div style={{ display:"flex", gap:8, marginBottom:14, alignItems:"center" }}>
               <Btn color="#6366f1" onClick={() => setInvoiceModal(true)}>＋ 開立發票</Btn>
-              <div style={{ fontSize:12, color:"#475569" }}>
+              <div style={{ fontSize:14, color:"#64748b" }}>
                 本期 {invoices.length} 張 · 總額 {fmt(invoices.reduce((s:number,i:any)=>
                   s+toNum(i.total_amount||i.amount),0))}
               </div>
@@ -347,7 +347,7 @@ export default function FinanceDashboard() {
             <Tbl
               headers={["發票號碼","客戶","統編","未稅","稅額","含稅","狀態","操作"]}
               rows={invoices.map((inv: any) => [
-                <span style={{ fontFamily:"monospace", fontSize:12 }}>
+                <span style={{ fontFamily:"monospace", fontSize:14 }}>
                   {inv.invoice_no || inv.invoice_number}
                 </span>,
                 inv.customer_name || inv.buyer_name || "—",
@@ -366,7 +366,7 @@ export default function FinanceDashboard() {
                         if (confirm("確定作廢？"))
                           voidInvoiceMut.mutate({ id: inv.id });
                       }}>作廢</Btn>
-                  : <span style={{ fontSize:11, color:"#334155" }}>已作廢</span>,
+                  : <span style={{ fontSize:13, color:"#475569" }}>已作廢</span>,
               ])}
               empty="本期尚無發票記錄"
             />
@@ -398,10 +398,10 @@ export default function FinanceDashboard() {
               ])}
               empty="尚無扣繳憑單資料"
             />
-            <div style={{ marginTop:14, padding:"14px 16px", background:"#0a1628",
-              border:"1px solid #1e293b", borderRadius:10, fontSize:12,
-              color:"#64748b", lineHeight:1.9 }}>
-              <div style={{ fontWeight:700, color:"#94a3b8", marginBottom:4 }}>📋 台灣扣繳法規</div>
+            <div style={{ marginTop:16, padding:"16px 20px", background:"#0a1628",
+              border:"1px solid #1e293b", borderRadius:10, fontSize:14,
+              color:"#64748b", lineHeight:2 }}>
+              <div style={{ fontWeight:700, color:"#94a3b8", marginBottom:6, fontSize:15 }}>📋 台灣扣繳法規</div>
               <div>• 執行業務所得（9A）：月累計 &gt; NT$20,010 → 扣繳 10%</div>
               <div>• 二代健保：單次 &gt; NT$24,000 → 扣 2.11%</div>
               <div>• 車隊公司戶：10%；有統編：1.9%</div>
@@ -415,8 +415,8 @@ export default function FinanceDashboard() {
       {payModal && (
         <div style={S.overlay}>
           <div style={S.modal}>
-            <div style={{ fontWeight:800, fontSize:16, marginBottom:4 }}>💳 標記付款</div>
-            <div style={{ fontSize:13, color:"#64748b", marginBottom:18 }}>
+            <div style={{ fontWeight:800, fontSize:19, marginBottom:6 }}>💳 標記付款</div>
+            <div style={{ fontSize:15, color:"#64748b", marginBottom:20 }}>
               {payModal.name} · {fmt(payModal.amount)}
             </div>
             <FLabel>付款日期</FLabel>
@@ -443,7 +443,7 @@ export default function FinanceDashboard() {
       {invoiceModal && (
         <div style={S.overlay}>
           <div style={{ ...S.modal, maxWidth:460 }}>
-            <div style={{ fontWeight:800, fontSize:16, marginBottom:18 }}>🧾 開立電子發票</div>
+            <div style={{ fontWeight:800, fontSize:19, marginBottom:20 }}>🧾 開立電子發票</div>
             <FLabel>訂單編號（選填）</FLabel>
             <input placeholder="FY2026..." value={invForm.order_no}
               onChange={e=>setInvForm(p=>({...p,order_no:e.target.value}))}
@@ -467,7 +467,7 @@ export default function FinanceDashboard() {
               </div>
             </div>
             {invForm.amount && (
-              <div style={{ fontSize:12, color:"#64748b", marginBottom:14 }}>
+              <div style={{ fontSize:14, color:"#64748b", marginBottom:14 }}>
                 稅額 {fmt(parseFloat(invForm.amount||"0")*0.05)} · 含稅 {fmt(parseFloat(invForm.amount||"0")*1.05)}
               </div>
             )}
@@ -491,44 +491,44 @@ export default function FinanceDashboard() {
 function KpiCard({ label, value, sub, color, icon }: any) {
   return (
     <div style={{ background:"#08111f", border:"1px solid #1e293b",
-      padding:"16px 20px", borderTop:`3px solid ${color}` }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-        <span style={{ fontSize:18 }}>{icon}</span>
-        <span style={{ fontSize:10, color:"#475569", textTransform:"uppercase" as const,
-          letterSpacing:"0.1em" }}>{label}</span>
+      padding:"20px 24px", borderTop:`3px solid ${color}` }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+        <span style={{ fontSize:22 }}>{icon}</span>
+        <span style={{ fontSize:13, color:"#64748b", textTransform:"uppercase" as const,
+          letterSpacing:"0.08em", fontWeight:700 }}>{label}</span>
       </div>
-      <div style={{ fontSize:22, fontWeight:900, color, fontVariantNumeric:"tabular-nums" }}>{value}</div>
-      <div style={{ fontSize:11, color:"#334155", marginTop:3 }}>{sub}</div>
+      <div style={{ fontSize:28, fontWeight:900, color, fontVariantNumeric:"tabular-nums" }}>{value}</div>
+      <div style={{ fontSize:13, color:"#475569", marginTop:4 }}>{sub}</div>
     </div>
   );
 }
 function CardTitle({ children }: any) {
-  return <div style={{ fontSize:11, fontWeight:700, color:"#475569",
-    textTransform:"uppercase" as const, letterSpacing:"0.1em",
-    marginBottom:12, paddingBottom:10, borderBottom:"1px solid #1e293b" }}>{children}</div>;
+  return <div style={{ fontSize:13, fontWeight:700, color:"#64748b",
+    textTransform:"uppercase" as const, letterSpacing:"0.08em",
+    marginBottom:14, paddingBottom:12, borderBottom:"1px solid #1e293b" }}>{children}</div>;
 }
 function FLabel({ children }: any) {
-  return <div style={{ fontSize:11, color:"#64748b", marginBottom:5, fontWeight:600 }}>{children}</div>;
+  return <div style={{ fontSize:13, color:"#64748b", marginBottom:6, fontWeight:600 }}>{children}</div>;
 }
 function FR({ label, value, color, small, bold }: any) {
   return (
-    <div style={{ display:"flex", justifyContent:"space-between", padding: small?"3px 0":"7px 0" }}>
-      <span style={{ fontSize: small?12:13, color: small?"#475569":"#94a3b8" }}>{label}</span>
-      <span style={{ fontSize: small?12:13, fontWeight: bold?900:600,
+    <div style={{ display:"flex", justifyContent:"space-between", padding: small?"4px 0":"9px 0" }}>
+      <span style={{ fontSize: small?13:15, color: small?"#64748b":"#94a3b8" }}>{label}</span>
+      <span style={{ fontSize: small?13:15, fontWeight: bold?900:600,
         color, fontVariantNumeric:"tabular-nums" }}>{value}</span>
     </div>
   );
 }
 function Arrow() {
-  return <div style={{ textAlign:"center" as const, color:"#1e293b", fontSize:14, margin:"3px 0" }}>▼</div>;
+  return <div style={{ textAlign:"center" as const, color:"#334155", fontSize:16, margin:"4px 0" }}>▼</div>;
 }
 function Chip({ label, color, onClick }: any) {
   return (
-    <div onClick={onClick} style={{ display:"inline-flex", alignItems:"center", gap:6,
-      padding:"5px 12px", borderRadius:20, cursor:"pointer",
+    <div onClick={onClick} style={{ display:"inline-flex", alignItems:"center", gap:7,
+      padding:"7px 16px", borderRadius:20, cursor:"pointer",
       background:`${color}18`, border:`1px solid ${color}40`,
-      fontSize:12, color, fontWeight:600 }}>
-      <span style={{ width:5, height:5, borderRadius:"50%", background:color, flexShrink:0 }} />
+      fontSize:14, color, fontWeight:600 }}>
+      <span style={{ width:6, height:6, borderRadius:"50%", background:color, flexShrink:0 }} />
       {label}
     </div>
   );
@@ -540,7 +540,7 @@ function SBadge({ status }: { status: string }) {
     issued: ["已開","#10b981"], void:   ["已廢","#ef4444"],
   };
   const [label,color] = M[status] ?? [status,"#475569"];
-  return <span style={{ fontSize:11, padding:"2px 8px", borderRadius:20,
+  return <span style={{ fontSize:13, padding:"3px 10px", borderRadius:20,
     background:`${color}18`, color, fontWeight:700 }}>{label}</span>;
 }
 function Tbl({ headers, rows, empty }: any) {
@@ -551,21 +551,21 @@ function Tbl({ headers, rows, empty }: any) {
         <thead>
           <tr style={{ background:"#0a1628" }}>
             {headers.map((h:string,i:number) => (
-              <th key={i} style={{ padding:"9px 14px", textAlign:"left" as const,
-                fontSize:10, color:"#475569", fontWeight:700,
-                textTransform:"uppercase" as const, letterSpacing:"0.08em",
+              <th key={i} style={{ padding:"12px 16px", textAlign:"left" as const,
+                fontSize:13, color:"#64748b", fontWeight:700,
+                textTransform:"uppercase" as const, letterSpacing:"0.06em",
                 borderBottom:"1px solid #1e293b" }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.length===0
-            ? <tr><td colSpan={headers.length} style={{ padding:"32px",
-                textAlign:"center" as const, color:"#334155", fontSize:13 }}>{empty}</td></tr>
+            ? <tr><td colSpan={headers.length} style={{ padding:"36px",
+                textAlign:"center" as const, color:"#475569", fontSize:14 }}>{empty}</td></tr>
             : rows.map((row:any[],i:number) => (
               <tr key={i} style={{ borderBottom:"1px solid #0c1523" }}>
                 {row.map((cell:any,j:number) => (
-                  <td key={j} style={{ padding:"9px 14px", fontSize:13, color:"#94a3b8" }}>{cell}</td>
+                  <td key={j} style={{ padding:"12px 16px", fontSize:14, color:"#94a3b8" }}>{cell}</td>
                 ))}
               </tr>
             ))}
@@ -577,9 +577,9 @@ function Tbl({ headers, rows, empty }: any) {
 function Btn({ children, color, textColor="#fff", disabled, onClick, size="md", style:sx }: any) {
   return (
     <button disabled={disabled} onClick={onClick} style={{
-      padding: size==="sm" ? "4px 10px" : "8px 16px",
+      padding: size==="sm" ? "6px 14px" : "10px 20px",
       borderRadius:8, border:"none", background:color, color:textColor,
-      fontSize: size==="sm" ? 11 : 13, fontWeight:700,
+      fontSize: size==="sm" ? 13 : 14, fontWeight:700,
       cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.4 : 1, fontFamily:"inherit",
       transition:"opacity .15s", ...sx,
@@ -590,35 +590,36 @@ function Btn({ children, color, textColor="#fff", disabled, onClick, size="md", 
 const S: Record<string, React.CSSProperties> = {
   root:    { display:"flex", flexDirection:"column", height:"100%",
              background:"#060d1a", color:"#e2e8f0",
-             fontFamily:"'Noto Sans TC','PingFang TC',sans-serif" },
+             fontFamily:"'Noto Sans TC','PingFang TC',sans-serif",
+             fontSize:15 },
   header:  { display:"flex", alignItems:"center", justifyContent:"space-between",
-             padding:"0 24px", height:56, flexShrink:0,
+             padding:"0 28px", height:66, flexShrink:0,
              background:"#08111f", borderBottom:"1px solid #1e293b" },
-  title:   { fontSize:15, fontWeight:900, letterSpacing:"0.05em", color:"#f8fafc" },
-  sub:     { fontSize:11, color:"#334155", marginTop:2 },
+  title:   { fontSize:20, fontWeight:900, letterSpacing:"0.03em", color:"#f8fafc" },
+  sub:     { fontSize:13, color:"#475569", marginTop:3 },
   kpiRow:  { display:"grid", gridTemplateColumns:"repeat(5,1fr)",
              gap:1, background:"#1e293b", flexShrink:0 },
   tabBar:  { display:"flex", background:"#08111f",
              borderBottom:"1px solid #1e293b", flexShrink:0 },
-  tab:     { padding:"10px 18px", fontSize:12, fontWeight:600,
+  tab:     { padding:"13px 22px", fontSize:14, fontWeight:600,
              cursor:"pointer", transition:"color .15s" },
-  content: { flex:1, overflowY:"auto", padding:"18px 24px" },
-  grid2:   { display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 },
+  content: { flex:1, overflowY:"auto", padding:"22px 28px" },
+  grid2:   { display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 },
   card:    { background:"#08111f", border:"1px solid #1e293b",
-             borderRadius:12, padding:"16px 20px" },
+             borderRadius:12, padding:"20px 24px" },
   overlay: { position:"fixed", inset:0, zIndex:500,
              background:"rgba(0,0,0,.7)", backdropFilter:"blur(6px)",
              display:"flex", alignItems:"center", justifyContent:"center" },
   modal:   { background:"#0d1626", border:"1px solid #1e293b", borderRadius:14,
-             padding:24, width:"90%", maxWidth:400,
+             padding:28, width:"90%", maxWidth:420,
              boxShadow:"0 32px 80px rgba(0,0,0,.7)" },
   input:   { width:"100%", background:"#0a1628", border:"1px solid #1e293b",
-             color:"#e2e8f0", padding:"8px 12px", borderRadius:8,
-             fontSize:13, fontFamily:"inherit", boxSizing:"border-box" },
+             color:"#e2e8f0", padding:"10px 14px", borderRadius:8,
+             fontSize:14, fontFamily:"inherit", boxSizing:"border-box" },
   pBtn:    { background:"#1e293b", color:"#94a3b8", border:"none",
-             width:28, height:28, borderRadius:6, cursor:"pointer", fontSize:15 },
-  pLabel:  { fontSize:14, fontWeight:700, color:"#e2e8f0",
-             minWidth:100, textAlign:"center" },
+             width:32, height:32, borderRadius:6, cursor:"pointer", fontSize:17 },
+  pLabel:  { fontSize:16, fontWeight:700, color:"#e2e8f0",
+             minWidth:110, textAlign:"center" },
   select:  { background:"#1e293b", color:"#e2e8f0", border:"1px solid #334155",
-             borderRadius:8, padding:"7px 12px", fontSize:13, fontFamily:"inherit" },
+             borderRadius:8, padding:"8px 14px", fontSize:14, fontFamily:"inherit" },
 };
