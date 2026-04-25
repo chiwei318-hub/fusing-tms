@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, RefreshCw, CheckCircle2, Clock, FileText,
   Truck, AlertTriangle, DollarSign, ChevronDown, ChevronRight,
   Download, Tag, Package, MapPin, CheckSquare, Square,
   Users, Plus, Edit2, Save, X, ShieldCheck, ShieldOff, ExternalLink,
-  LayoutDashboard,
+  LayoutDashboard, Upload,
 } from "lucide-react";
 import ControlTowerTab from "./fusingao/ControlTowerTab";
 import DispatchTab from "./fusingao/DispatchTab";
@@ -123,6 +123,9 @@ export default function FusingaoPortal() {
   const [resetPwValue, setResetPwValue]   = useState("");
   const [addDriverFleet, setAddDriverFleet] = useState<number | null>(null);
   const [addDriverForm, setAddDriverForm]   = useState({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" });
+  const [importDriverFleet, setImportDriverFleet] = useState<number | null>(null);
+  const [importDriverLoading, setImportDriverLoading] = useState(false);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,18 +208,13 @@ export default function FusingaoPortal() {
     setFleetDetails(prev => ({ ...prev, [id]: { ...prev[id], tab: t } }));
 
   const enterFleetManagement = async (id: number) => {
-    // Open window synchronously first — mobile browsers block window.open() after async calls
-    const newWin = window.open("about:blank", "_blank");
     try {
       const r = await fetch(apiUrl(`/fusingao/fleets/${id}/admin-access-token`), { method: "POST" });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error);
       const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ token: d.token, user: d.user }))));
-      const url = `/fleet/auto-login?t=${payload}`;
-      if (newWin) { newWin.location.href = url; }
-      else { window.open(url, "_blank"); }
+      window.location.href = `/fleet/auto-login?t=${payload}`;
     } catch {
-      if (newWin) newWin.close();
       toast({ title: "無法取得車隊存取憑證", variant: "destructive" });
     }
   };
@@ -253,6 +251,31 @@ export default function FusingaoPortal() {
       }));
     } catch {
       toast({ title: "移除失敗", variant: "destructive" });
+    }
+  };
+
+  const doImportDriverFile = async (fleetId: number, file: File) => {
+    setImportDriverLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(apiUrl(`/fusingao/fleets/${fleetId}/import-file`), {
+        method: "POST",
+        body: fd,
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      toast({ title: `已匯入 ${d.inserted} 位司機${d.skipped > 0 ? `（跳過重複 ${d.skipped} 位）` : ""}` });
+      setFleetDetails(prev => ({
+        ...prev,
+        [fleetId]: { ...prev[fleetId], drivers: d.drivers ?? [] },
+      }));
+    } catch (err: any) {
+      toast({ title: `匯入失敗：${err.message}`, variant: "destructive" });
+    } finally {
+      setImportDriverLoading(false);
+      setImportDriverFleet(null);
+      if (importFileRef.current) importFileRef.current.value = "";
     }
   };
 
@@ -864,10 +887,10 @@ export default function FusingaoPortal() {
                         </div>
                         <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                           <Button size="sm"
-                            className="h-7 px-2 text-xs gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                            className="h-11 px-4 text-sm gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
                             onClick={() => enterFleetManagement(f.id)}
                             title="以管理員身份進入車隊操作介面">
-                            <LayoutDashboard className="h-3 w-3" />進入管理
+                            <LayoutDashboard className="h-4 w-4" />進入管理
                           </Button>
                           <Button variant="ghost" size="sm"
                             className={`h-7 px-2 text-xs gap-1 ${fleetDetails[f.id] ? "text-orange-600 bg-orange-50" : "text-gray-400 hover:text-orange-500"}`}
@@ -959,13 +982,35 @@ export default function FusingaoPortal() {
                             {/* Drivers list */}
                             {fleetDetails[f.id].tab === "drivers" && (
                               <div>
-                                {/* Add driver button */}
+                                {/* Hidden global file input */}
+                                <input
+                                  ref={importFileRef}
+                                  type="file"
+                                  accept=".csv,.xlsx,.xls"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file && importDriverFleet != null) doImportDriverFile(importDriverFleet, file);
+                                  }}
+                                />
+                                {/* Add / Import driver buttons */}
                                 {addDriverFleet !== f.id && (
-                                  <button
-                                    onClick={() => { setAddDriverFleet(f.id); setAddDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" }); }}
-                                    className="mb-2 flex items-center gap-1 text-xs px-3 py-1.5 rounded border border-dashed border-orange-300 text-orange-500 hover:bg-orange-50 transition-colors">
-                                    <Plus className="h-3 w-3" />新增司機
-                                  </button>
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    <button
+                                      onClick={() => { setAddDriverFleet(f.id); setAddDriverForm({ name: "", phone: "", vehicle_plate: "", vehicle_type: "一般" }); }}
+                                      className="flex items-center gap-1.5 text-sm px-4 h-11 rounded border border-dashed border-orange-300 text-orange-500 hover:bg-orange-50 transition-colors">
+                                      <Plus className="h-4 w-4" />新增司機
+                                    </button>
+                                    <button
+                                      disabled={importDriverLoading}
+                                      onClick={() => { setImportDriverFleet(f.id); importFileRef.current?.click(); }}
+                                      className="flex items-center gap-1.5 text-sm px-4 h-11 rounded border border-dashed border-blue-300 text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50">
+                                      {importDriverLoading && importDriverFleet === f.id
+                                        ? <RefreshCw className="h-4 w-4 animate-spin" />
+                                        : <Upload className="h-4 w-4" />}
+                                      匯入司機
+                                    </button>
+                                  </div>
                                 )}
                                 {/* Inline add form */}
                                 {addDriverFleet === f.id && (

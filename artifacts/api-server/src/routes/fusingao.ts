@@ -3,6 +3,22 @@ import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import { signJwt } from "../lib/jwt.js";
+import multer from "multer";
+import * as XLSX from "xlsx";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQ = !inQ; }
+    else if (line[i] === "," && !inQ) { result.push(cur); cur = ""; }
+    else { cur += line[i]; }
+  }
+  result.push(cur);
+  return result.map(s => s.trim());
+}
 
 function hashPw(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -1082,6 +1098,105 @@ fusingaoRouter.put("/fleets/:id/drivers/import", async (req, res) => {
     const notFound = shopee_ids.filter(sid => !driverRows.rows.find((r: any) => r.shopee_id === sid));
     notFound.forEach(sid => results.push({ shopee_id: sid, status: "not_found" }));
     res.json({ ok: true, inserted, skipped, not_found: notFound.length, results });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /fusingao/fleets/:id/import-file — CSV/Excel batch driver import into fleet_drivers
+fusingaoRouter.post("/fleets/:id/import-file", upload.single("file"), async (req, res) => {
+  try {
+    const fleetId = Number(req.params.id);
+    if (!req.file) return res.status(400).json({ ok: false, error: "未收到檔案" });
+
+    const buf = req.file.buffer;
+    const fn  = req.file.originalname.toLowerCase();
+
+    type DR = { employee_id?: string; name?: string; phone?: string; vehicle_plate?: string; notes?: string };
+    const drivers: DR[] = [];
+
+    if (fn.endsWith(".csv")) {
+      const text = buf.toString("utf-8").replace(/^\uFEFF/, "");
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      const header = parseCSVLine(lines[0]);
+      const col = (n: string) => header.indexOf(n);
+      const rows = lines.slice(1).map(parseCSVLine);
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const name        = col("姓名")   >= 0 ? r[col("姓名")].trim()   || null : null;
+        const employee_id = col("蝦皮工號") >= 0 ? r[col("蝦皮工號")].trim() || null : null;
+        if (!name && !employee_id) continue;
+        drivers.push({
+          employee_id: employee_id ?? undefined,
+          name:         name ?? undefined,
+          phone:        col("手機") >= 0 ? r[col("手機")].replace(/[\s\-]/g, "") || undefined : undefined,
+          vehicle_plate: col("車牌") >= 0 ? r[col("車牌")].trim() || undefined : undefined,
+          notes:        col("備註") >= 0 ? r[col("備註")].trim() || undefined : undefined,
+        });
+      }
+    } else {
+      const wb = XLSX.read(buf, { type: "buffer", cellText: true, cellDates: false, raw: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+      const hIdx = rows.findIndex(r => r.some((c: any) => String(c).includes("姓名") || String(c).includes("蝦皮工號")));
+      if (hIdx < 0) return res.status(400).json({ ok: false, error: "找不到標題列（需含「姓名」或「蝦皮工號」欄）" });
+      const header = rows[hIdx].map((c: any) => String(c).trim());
+      const col = (n: string) => header.indexOf(n);
+      for (let i = hIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const name        = col("姓名")   >= 0 ? String(r[col("姓名")]   ?? "").trim() || null : null;
+        const employee_id = col("蝦皮工號") >= 0 ? String(r[col("蝦皮工號")] ?? "").trim() || null : null;
+        if (!name && !employee_id) continue;
+        drivers.push({
+          employee_id: employee_id ?? undefined,
+          name:         name ?? undefined,
+          phone:        col("手機") >= 0 ? String(r[col("手機")] ?? "").replace(/[\s\-]/g, "") || undefined : undefined,
+          vehicle_plate: col("車牌") >= 0 ? String(r[col("車牌")] ?? "").trim() || undefined : undefined,
+          notes:        col("備註") >= 0 ? String(r[col("備註")] ?? "").trim() || undefined : undefined,
+        });
+      }
+    }
+
+    let inserted = 0, skipped = 0;
+    for (const d of drivers) {
+      try {
+        // Skip duplicates: match by employee_id or by name within fleet
+        if (d.employee_id) {
+          const ex = await pool.query(
+            `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND employee_id=$2 LIMIT 1`,
+            [fleetId, d.employee_id]
+          );
+          if (ex.rows.length > 0) { skipped++; continue; }
+        } else if (d.name) {
+          const ex = await pool.query(
+            `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND name=$2 LIMIT 1`,
+            [fleetId, d.name]
+          );
+          if (ex.rows.length > 0) { skipped++; continue; }
+        }
+        await pool.query(
+          `INSERT INTO fleet_drivers (fleet_id, name, phone, vehicle_plate, employee_id, notes, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,true)`,
+          [fleetId, d.name ?? null, d.phone ?? null, d.vehicle_plate ?? null, d.employee_id ?? null, d.notes ?? null]
+        );
+        inserted++;
+      } catch { skipped++; }
+    }
+
+    // Return fresh driver list (same shape as GET /fleets/:id/drivers)
+    const fresh = await pool.query(`
+      SELECT fd.id, fd.fleet_id, fd.name, fd.phone, fd.vehicle_plate, fd.vehicle_type,
+             fd.notes, fd.is_active, fd.employee_id, fd.atoms_account,
+             COUNT(o.id) AS total_routes,
+             COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL) AS completed_routes
+      FROM fleet_drivers fd
+      LEFT JOIN orders o ON o.fleet_driver_id = fd.id
+      WHERE fd.fleet_id = $1
+      GROUP BY fd.id
+      ORDER BY fd.name
+    `, [fleetId]);
+
+    res.json({ ok: true, inserted, skipped, total: drivers.length, drivers: fresh.rows });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
