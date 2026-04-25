@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import { signJwt } from "../lib/jwt.js";
@@ -706,28 +706,52 @@ fusingaoRouter.put("/fleets/:id/monthly/:month/bill-all", async (req, res) => {
 fusingaoRouter.get("/fleets/:id/drivers", async (req, res) => {
   try {
     const { id } = req.params;
-    const rows = await db.execute(sql`
+    const { month } = req.query as Record<string, string>;
+    // 預設本月
+    const targetMonth = month ?? new Date().toISOString().slice(0, 7);
+    const [yr, mo] = targetMonth.split("-").map(Number);
+    const monthStart = `${yr}-${String(mo).padStart(2,"0")}-01`;
+    const monthEnd   = new Date(yr, mo, 1).toISOString().slice(0, 10); // 下個月1號
+
+    const rows = await pool.query(`
       SELECT
         fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
         fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
         fd.atoms_account, fd.employee_id,
         fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction,
+
+        -- 全部趟次
         COUNT(o.id)                                                  AS total_routes,
         COUNT(o.id) FILTER (WHERE o.fleet_completed_at IS NOT NULL)  AS completed_routes,
-        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings
+        COALESCE(SUM(COALESCE(f.rate_override, pr.rate_per_trip) * (1 - COALESCE(f.commission_rate,15)/100.0)), 0) AS total_earnings,
+
+        -- 本月趟次
+        COUNT(o.id) FILTER (
+          WHERE o.created_at >= $2 AND o.created_at < $3
+        ) AS monthly_routes,
+        COUNT(o.id) FILTER (
+          WHERE o.fleet_completed_at IS NOT NULL AND o.created_at >= $2 AND o.created_at < $3
+        ) AS monthly_completed,
+
+        -- 本月預估薪資
+        (
+          fd.base_salary
+          + fd.per_trip_bonus * COUNT(o.id) FILTER (
+              WHERE o.fleet_completed_at IS NOT NULL AND o.created_at >= $2 AND o.created_at < $3
+            )
+          + fd.meal_allowance
+          - fd.other_deduction
+        ) AS monthly_salary_estimate
+
       FROM fleet_drivers fd
-      LEFT JOIN fusingao_fleets f ON f.id = ${Number(id)}
+      LEFT JOIN fusingao_fleets f ON f.id = $1
       LEFT JOIN orders o ON o.fleet_driver_id = fd.id
-      LEFT JOIN route_prefix_rates pr
-        ON pr.prefix = o.route_prefix
-      WHERE fd.fleet_id = ${Number(id)}
-      GROUP BY fd.id, fd.fleet_id, fd.name, fd.phone, fd.id_number, fd.vehicle_plate,
-               fd.vehicle_type, fd.line_id, fd.notes, fd.is_active, fd.created_at, fd.updated_at,
-               fd.atoms_account, fd.employee_id,
-               fd.base_salary, fd.per_trip_bonus, fd.meal_allowance, fd.other_deduction
+      LEFT JOIN route_prefix_rates pr ON pr.prefix = o.route_prefix
+      WHERE fd.fleet_id = $1
+      GROUP BY fd.id, f.rate_override, f.commission_rate
       ORDER BY fd.is_active DESC, fd.employee_id NULLS LAST, fd.name
-    `);
-    res.json({ ok: true, drivers: rows.rows });
+    `, [Number(id), monthStart, monthEnd]);
+    res.json({ ok: true, drivers: rows.rows, month: targetMonth });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -990,6 +1014,41 @@ fusingaoRouter.post("/fleets/:id/import-shopee-drivers", async (req, res) => {
       inserted++;
     }
     res.json({ ok: true, inserted });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /fusingao/fleets/:id/drivers/import — 以蝦皮工號批次匯入司機（含電話）
+fusingaoRouter.put("/fleets/:id/drivers/import", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { shopee_ids } = req.body as { shopee_ids: string[] };
+    if (!shopee_ids?.length) return res.status(400).json({ ok: false, error: "shopee_ids 不可為空" });
+
+    const driverRows = await pool.query(
+      `SELECT shopee_id, name, phone, vehicle_plate, vehicle_type
+       FROM shopee_drivers WHERE shopee_id = ANY($1::text[])`,
+      [shopee_ids]
+    );
+    let inserted = 0; let skipped = 0;
+    const results: any[] = [];
+    for (const d of driverRows.rows as any[]) {
+      const exists = await pool.query(
+        `SELECT id FROM fleet_drivers WHERE fleet_id=$1 AND employee_id=$2`,
+        [Number(id), d.shopee_id]
+      );
+      if (exists.rows.length > 0) { skipped++; results.push({ name: d.name, shopee_id: d.shopee_id, status: "already_exists" }); continue; }
+      await pool.query(`
+        INSERT INTO fleet_drivers (fleet_id, name, phone, vehicle_plate, vehicle_type, employee_id, is_active)
+        VALUES ($1,$2,$3,$4,$5,$6,true)
+      `, [Number(id), d.name ?? null, d.phone ?? null, d.vehicle_plate ?? null, d.vehicle_type ?? "一般", d.shopee_id]);
+      inserted++;
+      results.push({ name: d.name, shopee_id: d.shopee_id, status: "inserted" });
+    }
+    const notFound = shopee_ids.filter(sid => !driverRows.rows.find((r: any) => r.shopee_id === sid));
+    notFound.forEach(sid => results.push({ shopee_id: sid, status: "not_found" }));
+    res.json({ ok: true, inserted, skipped, not_found: notFound.length, results });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

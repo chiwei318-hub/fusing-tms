@@ -37,6 +37,7 @@ interface FleetDriver {
   id: number; fleet_id: number; name: string; phone: string | null;
   vehicle_plate: string | null; vehicle_type: string; is_active: boolean;
   total_routes: string; completed_routes: string; total_earnings: string;
+  monthly_routes: string; monthly_completed: string; monthly_salary_estimate: string;
   atoms_account: string | null; employee_id: string | null;
   base_salary?: number; per_trip_bonus?: number; meal_allowance?: number; other_deduction?: number;
 }
@@ -334,6 +335,12 @@ export default function FusingaoFleetPortal() {
   const [editingDriver, setEditingDriver]   = useState<FleetDriver | null>(null);
   const [driverForm, setDriverForm]         = useState({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" });
   const [assigningRoute, setAssigningRoute] = useState<number | null>(null);
+  // ── 蝦皮工號匯入 dialog ────────────────────────────────────────────────────
+  const [showIdImport, setShowIdImport]     = useState(false);
+  const [idImportText, setIdImportText]     = useState("");
+  const [idImporting, setIdImporting]       = useState(false);
+  const [idImportResult, setIdImportResult] = useState<{inserted:number;skipped:number;not_found:number;results:any[]} | null>(null);
+  const idImportFileRef = useRef<HTMLInputElement>(null);
 
   // ── Settlement state ───────────────────────────────────────────────────────
   const [settlement, setSettlement]         = useState<SettlementSummary | null>(null);
@@ -454,6 +461,41 @@ export default function FusingaoFleetPortal() {
 
   // Load drivers when tab changes to "drivers", or on mount for grab modal
   useEffect(() => { if (tab === "drivers" || !isSubAccount) loadDrivers(); }, [tab]); // eslint-disable-line
+
+  // ── 蝦皮工號匯入 ─────────────────────────────────────────────────────────
+  const importByShopeeIds = async (ids: string[]) => {
+    if (!fleetId || !ids.length) return;
+    setIdImporting(true); setIdImportResult(null);
+    try {
+      const resp = await fetch(fapi(`/fusingao/fleets/${fleetId}/drivers/import`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopee_ids: ids }),
+      });
+      const d = await resp.json();
+      if (d.ok) { setIdImportResult(d); await loadDrivers(); }
+      else toast({ title: `匯入失敗：${d.error}`, variant: "destructive" });
+    } catch (e: any) { toast({ title: `匯入失敗：${e.message}`, variant: "destructive" }); }
+    finally { setIdImporting(false); }
+  };
+
+  const handleIdImportExcel = async (file: File) => {
+    const XLSX = await import("xlsx");
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const ids: string[] = [];
+    for (const row of rows) {
+      for (const cell of row) {
+        const s = String(cell ?? "").trim();
+        if (/^\d{4,6}$/.test(s)) ids.push(s);
+      }
+    }
+    if (!ids.length) { toast({ title: "Excel 中未找到有效工號（4-6位數字）", variant: "destructive" }); return; }
+    setIdImportText(ids.join(", "));
+    await importByShopeeIds(ids);
+  };
 
   const loadSettlement = useCallback(async () => {
     if (!fleetId) return;
@@ -1122,6 +1164,10 @@ export default function FusingaoFleetPortal() {
                   onClick={() => { setEditingDriver(null); setDriverForm({ name:"", phone:"", vehicle_plate:"", vehicle_type:"一般", atoms_account:"", atoms_password:"", employee_id:"", base_salary:"", per_trip_bonus:"", meal_allowance:"", other_deduction:"" }); setShowDriverForm(true); }}>
                   <UserPlus className="h-3.5 w-3.5 mr-1" />新增司機
                 </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs border-sky-400 text-sky-700 hover:bg-sky-50"
+                  onClick={() => { setShowIdImport(true); setIdImportText(""); setIdImportResult(null); }}>
+                  🔢 從蝦皮工號匯入
+                </Button>
                 <Button size="sm" variant="outline" className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
                   onClick={openMainImportModal}>
                   👥 從司機名單匯入
@@ -1135,73 +1181,127 @@ export default function FusingaoFleetPortal() {
               </div>
             )}
 
-            {/* Driver list */}
+            {/* ── 蝦皮工號匯入 dialog ─────────────────────────────────────────── */}
+            {showIdImport && (
+              <Card className="border-sky-200 bg-sky-50">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-sky-800">🔢 從蝦皮工號匯入司機</span>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowIdImport(false)}><X className="h-3.5 w-3.5" /></Button>
+                  </div>
+                  <div>
+                    <label className="text-xs text-sky-700 font-medium">輸入蝦皮工號（逗號或換行分隔）</label>
+                    <textarea
+                      className="w-full mt-1 rounded border border-sky-200 bg-white px-2 py-1.5 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-sky-400"
+                      rows={3}
+                      placeholder="例：14681, 14774, 15079, 15080..."
+                      value={idImportText}
+                      onChange={e => setIdImportText(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" className="h-7 text-xs bg-sky-600 hover:bg-sky-700 text-white"
+                      disabled={idImporting || !idImportText.trim()}
+                      onClick={() => {
+                        const ids = idImportText.split(/[\s,，\n]+/).map(s => s.trim()).filter(s => /^\d+$/.test(s));
+                        importByShopeeIds(ids);
+                      }}>
+                      {idImporting ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : null}
+                      {idImporting ? "匯入中…" : "確認匯入"}
+                    </Button>
+                    <span className="text-xs text-sky-600">或</span>
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-sky-300 text-sky-700"
+                      onClick={() => idImportFileRef.current?.click()} disabled={idImporting}>
+                      <Download className="h-3 w-3 mr-1" />上傳 Excel
+                    </Button>
+                    <input ref={idImportFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                      onChange={e => { const f=e.target.files?.[0]; if(f) handleIdImportExcel(f); e.target.value=""; }} />
+                  </div>
+                  {idImportResult && (
+                    <div className="rounded bg-white border border-sky-200 p-2.5 space-y-1.5">
+                      <div className="flex gap-3 text-xs">
+                        <span className="text-green-700 font-semibold">✅ 新增：{idImportResult.inserted} 人</span>
+                        <span className="text-gray-500">已存在：{idImportResult.skipped} 人</span>
+                        {idImportResult.not_found > 0 && <span className="text-red-600">找不到：{idImportResult.not_found} 個工號</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {idImportResult.results.map((r: any, i: number) => (
+                          <span key={i} className={`text-xs px-1.5 py-0.5 rounded font-mono ${
+                            r.status === "inserted" ? "bg-green-100 text-green-700" :
+                            r.status === "already_exists" ? "bg-gray-100 text-gray-500" :
+                            "bg-red-100 text-red-600"
+                          }`}>
+                            {r.shopee_id}{r.name ? ` ${r.name}` : ""}
+                            {r.status === "inserted" ? " ✓" : r.status === "not_found" ? " ✗" : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Driver list ── 表格式顯示 */}
             {drivers.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <User className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                 尚未新增旗下司機
               </div>
             ) : (
-              <div className="space-y-2">
-                {drivers.map(d => (
-                  <Card key={d.id} className={`overflow-hidden ${!d.is_active ? "opacity-60" : ""}`}>
-                    <div className="flex items-center gap-3 p-3">
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                        <User className="h-4 w-4 text-orange-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {d.employee_id && (
-                            <span className="text-xs font-mono font-semibold text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{d.employee_id}</span>
-                          )}
-                          <span className="font-semibold text-sm text-gray-800">{d.name}</span>
-                          {d.vehicle_plate && <span className="text-xs text-gray-400 font-mono">{d.vehicle_plate}</span>}
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                      <th className="text-left px-3 py-2.5">姓名</th>
+                      <th className="text-left px-3 py-2.5">蝦皮工號</th>
+                      <th className="text-left px-3 py-2.5">電話</th>
+                      <th className="text-left px-3 py-2.5">車型</th>
+                      <th className="text-right px-3 py-2.5">本月趟次</th>
+                      <th className="text-right px-3 py-2.5">本月薪資（預估）</th>
+                      <th className="text-center px-3 py-2.5">狀態</th>
+                      <th className="text-center px-3 py-2.5">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drivers.map(d => (
+                      <tr key={d.id} className={`border-b border-gray-100 hover:bg-orange-50/40 transition-colors ${!d.is_active ? "opacity-60" : ""}`}>
+                        <td className="px-3 py-2.5 font-semibold text-gray-800">{d.name}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-sky-700 font-semibold">
+                          {d.employee_id ?? <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500">{d.phone ?? "—"}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-600">{d.vehicle_type}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          <span className="font-semibold text-gray-800">{d.monthly_completed ?? d.completed_routes}</span>
+                          <span className="text-gray-400 text-xs">/{d.monthly_routes ?? d.total_routes}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          {Number(d.monthly_salary_estimate ?? 0) > 0
+                            ? <span className="text-green-700 font-semibold text-xs">{fmt(d.monthly_salary_estimate)}</span>
+                            : <span className="text-gray-300 text-xs">未設定</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
                           <Badge className={`text-xs ${d.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                             {d.is_active ? "在職" : "停用"}
                           </Badge>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {d.phone ?? "—"} ・{d.vehicle_type}
-                          ・完成 <span className="font-semibold text-gray-700">{d.completed_routes}</span>/{d.total_routes} 趟
-                          {Number(d.total_earnings) > 0 && ` ・ ${fmt(d.total_earnings)}`}
-                        </p>
-                        {/* Salary preview if configured */}
-                        {Number(d.base_salary||0) > 0 || Number(d.per_trip_bonus||0) > 0 ? (
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5 font-semibold">
-                              💰 預估實領：{fmt(
-                                Number(d.base_salary||0) +
-                                Number(d.completed_routes||0) * Number(d.per_trip_bonus||0) +
-                                Number(d.meal_allowance||0) -
-                                Number(d.other_deduction||0)
-                              )}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              底薪{fmt(d.base_salary||0)} ＋{d.completed_routes}趟×{fmt(d.per_trip_bonus||0)}
-                              {Number(d.meal_allowance||0)>0 && ` ＋餐費${fmt(d.meal_allowance||0)}`}
-                              {Number(d.other_deduction||0)>0 && ` −扣${fmt(d.other_deduction||0)}`}
-                            </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-gray-400 hover:text-orange-500"
+                              onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"", employee_id:d.employee_id??"", base_salary:String(d.base_salary??0), per_trip_bonus:String(d.per_trip_bonus??0), meal_allowance:String(d.meal_allowance??0), other_deduction:String(d.other_deduction??0) }); setShowDriverForm(true); }}>
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-gray-400 hover:text-gray-600"
+                              onClick={() => toggleDriverActive(d)}>
+                              {d.is_active ? "停用" : "啟用"}
+                            </Button>
                           </div>
-                        ) : null}
-                        {d.atoms_account && (
-                          <span className="inline-flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 mt-1">
-                            <span className="font-semibold">ATOMS</span> {d.atoms_account}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-orange-500"
-                          onClick={() => { setEditingDriver(d); setDriverForm({ name:d.name, phone:d.phone??"", vehicle_plate:d.vehicle_plate??"", vehicle_type:d.vehicle_type, atoms_account:d.atoms_account??"", atoms_password:"", employee_id:d.employee_id??"", base_salary:String(d.base_salary??0), per_trip_bonus:String(d.per_trip_bonus??0), meal_allowance:String(d.meal_allowance??0), other_deduction:String(d.other_deduction??0) }); setShowDriverForm(true); }}>
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-gray-400 hover:text-gray-600"
-                          onClick={() => toggleDriverActive(d)}>
-                          {d.is_active ? "停用" : "啟用"}
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 
