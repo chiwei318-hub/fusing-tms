@@ -303,6 +303,7 @@ export default function DispatchCenter() {
           {availableDrivers.length === 0 && <Muted>目前無待命司機</Muted>}
           {availableDrivers.map(d => (
             <DriverCard key={d.id} driver={d} selectable={isSelectingDriver}
+              hasPosition={driverPositions.some(p => p.driverId === d.id)}
               onClick={() => handleDriverClick(d)} />
           ))}
 
@@ -311,7 +312,8 @@ export default function DispatchCenter() {
               <div style={{ height: 1, background: "#0c1523", margin: "8px 0" }} />
               <Label>出勤中 · {busyDrivers.length}</Label>
               {busyDrivers.map(d => (
-                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}} />
+                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}}
+                  hasPosition={driverPositions.some(p => p.driverId === d.id)} />
               ))}
             </>
           )}
@@ -321,7 +323,8 @@ export default function DispatchCenter() {
               <div style={{ height: 1, background: "#0c1523", margin: "8px 0" }} />
               <Label>離線 · {offlineDrivers.length}</Label>
               {offlineDrivers.map(d => (
-                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}} />
+                <DriverCard key={d.id} driver={d} selectable={false} onClick={() => {}}
+                  hasPosition={driverPositions.some(p => p.driverId === d.id)} />
               ))}
             </>
           )}
@@ -521,8 +524,8 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-function DriverCard({ driver, selectable, onClick }: {
-  driver: Driver; selectable: boolean; onClick: () => void;
+function DriverCard({ driver, selectable, onClick, hasPosition }: {
+  driver: Driver; selectable: boolean; onClick: () => void; hasPosition?: boolean;
 }) {
   const meta = driverStatusMeta[driver.status ?? "off"];
   return (
@@ -576,6 +579,16 @@ function DriverCard({ driver, selectable, onClick }: {
           <div style={{ width: 5, height: 5, borderRadius: "50%", background: meta.dot }} />
           <span style={{ fontSize: 10, color: meta.dot }}>{meta.label}</span>
         </div>
+        {hasPosition && (
+          <span title="已回報 GPS 位置" style={{
+            fontSize: 9, background: "#1c2a10", color: "#f59e0b",
+            borderRadius: 4, padding: "1px 5px", border: "1px solid #f59e0b44",
+            display: "flex", alignItems: "center", gap: 2,
+          }}>
+            <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
+            GPS
+          </span>
+        )}
         {driver.rating != null && (
           <span style={{ fontSize: 10, color: "#334155" }}>★ {Number(driver.rating).toFixed(1)}</span>
         )}
