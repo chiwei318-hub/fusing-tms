@@ -224,8 +224,8 @@ export default function OrderForm() {
           cargoWidthM:           data.cargoWidthCm  ? parseFloat(data.cargoWidthCm)  / 100 : null,
           cargoHeightM:          data.cargoHeightCm ? parseFloat(data.cargoHeightCm) / 100 : null,
           requiredVehicleType:   vehicleType,
-          needTailgate:          data.needTailgate          || false,
-          needHydraulicPallet:   data.needHydraulicPallet   || false,
+          needTailgate:          data.needTailgate ? "true" : "false",
+          needHydraulicPallet:   data.needHydraulicPallet ? "true" : "false",
           customerEmail:         data.customerEmail || null,
           notes:                 data.notes || null,
           specialRequirements: [
