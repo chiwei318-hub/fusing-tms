@@ -18,6 +18,7 @@ import { ensureBillingDetailTables } from "./routes/fusingaoBillingDetailImport"
 import { ensureFusingaoSheetSyncTables, startFusingaoSheetSyncScheduler } from "./routes/fusingaoSheetSync";
 import { ensureAutoDispatchTables, startAutoDispatchScheduler } from "./routes/fusingaoAutoDispatch";
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
+import { startSettlementReminderScheduler } from "./lib/settlementReminder";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
 import { ensureVehicleProfitTables } from "./routes/vehicleProfit";
@@ -217,6 +218,7 @@ ensureAutoDispatchTables()
 ensureFleetSheetSyncTables()
   .then(() => startFleetSheetSyncScheduler())
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
+startSettlementReminderScheduler();
 
 // 確保 drivers.is_active 欄位存在（離職狀態管理）
 _migPool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`)

@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import {
   Printer, RefreshCw, Save, CheckCircle2, AlertCircle, Plus, Trash2,
   DollarSign, Fuel, Users, FileText, X, ChevronRight, Lock, Clock, ArrowLeft,
+  Bell, CalendarDays, CreditCard, Banknote,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,25 @@ function recentMonths(n = 18): string[] {
   }
   return res;
 }
+function defaultDueDate(month: string): string {
+  const [yr, mo] = month.split("-").map(Number);
+  const raw = mo + 2;
+  const y = raw > 12 ? yr + 1 : yr;
+  const m = raw > 12 ? raw - 12 : raw;
+  return `${y}-${String(m).padStart(2, "0")}-15`;
+}
+function dueDateLabel(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const [y, m, d] = dateStr.split("-");
+  return `${y} 年 ${Number(m)} 月 ${Number(d)} 日`;
+}
+function daysUntilDue(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const due = new Date(dateStr + "T00:00:00+08:00");
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+  now.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - now.getTime()) / 86400000);
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Fleet { id: number; fleet_name: string; contact_name: string | null; }
@@ -61,6 +81,7 @@ interface SettlementRecord {
   shopee_income: string; fleet_receive: string; commission_rate: string;
   trip_count: number; fuel_total: string; salary_total: string;
   penalty_total: string; misc_total: string; cash_due: string;
+  due_date: string | null; payment_method: string | null; reminder_sent_at: string | null;
 }
 interface LoadedData {
   fleet: { id: number; fleet_name: string; contact_name: string; contact_phone: string | null; commission_rate: number };
@@ -107,6 +128,10 @@ export default function CashSettlement() {
   // Note
   const [note, setNote] = useState("");
 
+  // Deadline & payment method
+  const [dueDate, setDueDate] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
+
   // ── Load fleets ──────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(fapi("/fusingao/fleets"), { headers: authHeaders() })
@@ -126,6 +151,8 @@ export default function CashSettlement() {
       setData(d);
       setMiscRows(d.misc_deductions ?? []);
       setNote(d.record?.note ?? "");
+      setDueDate(d.record?.due_date ? d.record.due_date.slice(0, 10) : defaultDueDate(selectedMonth));
+      setPaymentMethod(d.record?.payment_method ?? "");
     } catch (err: any) {
       toast({ title: "載入失敗", description: err.message, variant: "destructive" });
       setData(null);
@@ -161,6 +188,8 @@ export default function CashSettlement() {
         cash_due: cashDue,
         note: note || null,
         misc_deductions: miscRows,
+        due_date: dueDate || defaultDueDate(selectedMonth),
+        payment_method: paymentMethod || null,
       };
       const r = await fetch(fapi("/fusingao/admin/cash-settlements/save"), {
         method: "POST", headers: authHeaders(), body: JSON.stringify(body),
@@ -328,6 +357,95 @@ export default function CashSettlement() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* ── Deadline & payment method ── */}
+            {(() => {
+              const days = daysUntilDue(dueDate || null);
+              const overdue = days !== null && days < 0;
+              const urgent  = days !== null && days >= 0 && days <= 3;
+              const soon    = days !== null && days > 3  && days <= 7;
+              const badgeClass = overdue ? "bg-red-100 text-red-700 border-red-300"
+                : urgent ? "bg-orange-100 text-orange-700 border-orange-300"
+                : soon   ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                : "bg-green-100 text-green-700 border-green-200";
+              const badgeText = overdue ? `逾期 ${Math.abs(days!)} 天`
+                : days === 0 ? "今日到期"
+                : days !== null ? `距截止 ${days} 天`
+                : "";
+              return (
+                <Card className={`${overdue ? "border-red-300" : urgent ? "border-orange-300" : "border-teal-200"}`}>
+                  <CardContent className="px-5 py-4">
+                    <div className="flex flex-wrap items-start gap-4">
+                      {/* Due date */}
+                      <div className="flex-1 min-w-[200px]">
+                        <label className="text-xs text-gray-500 flex items-center gap-1 mb-1.5">
+                          <CalendarDays className="h-3.5 w-3.5" />截止計算日期
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={dueDate}
+                            onChange={e => setDueDate(e.target.value)}
+                            disabled={isPaid}
+                            className="text-sm border border-gray-200 rounded px-2.5 py-1.5 focus:outline-none focus:border-teal-400 disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                          {days !== null && (
+                            <Badge className={`text-xs border ${badgeClass}`}>
+                              {badgeText}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">預設：結算月 +2 個月的 15 日（例：4月 → 6月15日）</p>
+                      </div>
+
+                      {/* Payment method */}
+                      <div className="flex-1 min-w-[180px]">
+                        <label className="text-xs text-gray-500 flex items-center gap-1 mb-1.5">
+                          <Banknote className="h-3.5 w-3.5" />付款方式
+                        </label>
+                        <div className="flex gap-2">
+                          {[
+                            { val: "wire",  label: "匯款", icon: <CreditCard className="h-3.5 w-3.5" /> },
+                            { val: "cash",  label: "現金", icon: <Banknote className="h-3.5 w-3.5" /> },
+                          ].map(opt => (
+                            <button
+                              key={opt.val}
+                              disabled={isPaid}
+                              onClick={() => setPaymentMethod(p => p === opt.val ? "" : opt.val)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-colors ${
+                                paymentMethod === opt.val
+                                  ? "bg-teal-500 text-white border-teal-500"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-teal-300 disabled:opacity-50"
+                              }`}
+                            >
+                              {opt.icon}{opt.label}
+                            </button>
+                          ))}
+                          {paymentMethod && (
+                            <button onClick={() => setPaymentMethod("")} className="text-gray-400 hover:text-gray-600 ml-1">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Reminder status */}
+                      {data?.record?.reminder_sent_at && (
+                        <div className="flex-1 min-w-[160px]">
+                          <label className="text-xs text-gray-500 flex items-center gap-1 mb-1.5">
+                            <Bell className="h-3.5 w-3.5" />最後提醒時間
+                          </label>
+                          <p className="text-xs text-gray-600">
+                            {new Date(data.record.reminder_sent_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">系統每 4 小時自動檢查</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* ① Shopee income */}
             <Card className="border-blue-200">
