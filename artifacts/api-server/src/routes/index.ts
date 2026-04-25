@@ -104,6 +104,7 @@ import { taxPayrollRouter } from "./taxPayroll";
 import { createFleetSystemRouter } from "./fleetSystem";
 import { createAffiliatedOwnerRouter } from "./affiliatedOwner";
 import { fourLayerSettlementRouter } from "./fourLayerSettlement";
+import { ownerCashSettlementRouter } from "./ownerCashSettlement";
 
 const router: IRouter = Router();
 
@@ -227,5 +228,6 @@ router.use("/tax", taxPayrollRouter);                              // 稅務合�
 router.use("/fleet-system", createFleetSystemRouter());             // 車隊分類 + 損益系統
 router.use("/affiliated-owners", createAffiliatedOwnerRouter());    // 靠行車主管理
 router.use(fourLayerSettlementRouter);                              // 四層財務結算系統
+router.use(ownerCashSettlementRouter);                              // 車主現金結算系統
 
 export default router;
