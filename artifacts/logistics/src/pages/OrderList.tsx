@@ -253,7 +253,7 @@ export default function OrderList() {
             補發 ATOMS
           </Button>
           <Button asChild size="sm" className="h-9 gap-1.5">
-            <Link href="/orders/new">
+            <Link href="/order-form">
               <Plus className="w-4 h-4" />
               新增訂單
             </Link>
