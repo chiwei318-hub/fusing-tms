@@ -176,28 +176,24 @@ async function main() {
     }
   }
 
-  // ── 5. 匯入車輛 ───────────────────────────────────────────────
+  // ── 5. 匯入車輛（fleet_vehicles 實際欄位：plate, brand_model, fleet_reg_id）───
   console.log("\n🚛 匯入車輛...");
   let vehicleCount = 0;
   for (const v of VEHICLES) {
     try {
       await pool.query(`
         INSERT INTO fleet_vehicles
-          (fleet_id, fleet_name, plate_no, brand, model, manufactured,
-           max_load_kg, gross_weight_kg, insurance_expiry, inspection_expiry,
-           color, is_external, note)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        ON CONFLICT (plate_no) DO UPDATE SET
-          fleet_id          = EXCLUDED.fleet_id,
-          fleet_name        = EXCLUDED.fleet_name,
-          insurance_expiry  = EXCLUDED.insurance_expiry,
-          inspection_expiry = EXCLUDED.inspection_expiry,
-          note              = EXCLUDED.note
+          (fleet_reg_id, plate, vehicle_type, brand_model,
+           capacity_kg, inspection_expires, insurance_expires, status)
+        VALUES ($1,$2,'小貨車',$3,$4,$5,$6,'active')
+        ON CONFLICT DO NOTHING
       `, [
-        fleetId, fleetName, v.plate_no, v.brand, v.model, v.manufactured,
-        v.max_load_t * 1000, v.gross_weight_t * 1000,
-        v.insurance_expiry, v.inspection_expiry,
-        v.color, v.is_external, (v as any).note ?? null,
+        fleetId,
+        v.plate_no,
+        `${v.brand} ${v.model}`,
+        Math.round(v.max_load_t * 1000),
+        v.inspection_expiry,
+        v.insurance_expiry,
       ]);
 
       const expired = v.inspection_expiry && new Date(v.inspection_expiry) < new Date()
