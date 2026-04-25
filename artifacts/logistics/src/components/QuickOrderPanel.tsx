@@ -8,7 +8,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import {
   Phone, Package, Truck, ChevronDown, ChevronUp,
-  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar,
+  Zap, UserCheck, X, Check, Clock, Plus, User, Calendar, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -161,6 +161,35 @@ function ExtraDeliveryStops({ stops, onChange }: DeliveryStopsProps) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── 智慧報價提示橫幅 ─────────────────────────────────── */
+function SmartPricingBanner({ pickup, delivery }: { pickup: string; delivery: string }) {
+  const { data } = useQuery<{
+    avg_price: number | null; min_price: number | null; max_price: number | null; sample_count: number;
+  } | null>({
+    queryKey: ["smart-price", pickup, delivery],
+    queryFn: async () => {
+      if (!pickup.trim() || !delivery.trim()) return null;
+      const p = new URLSearchParams({ pickup, delivery });
+      const r = await fetch(getApiUrl(`/api/locations/suggest-price?${p}`));
+      return r.ok ? r.json() : null;
+    },
+    enabled: pickup.trim().length > 3 && delivery.trim().length > 3,
+    staleTime: 5 * 60 * 1000,
+  });
+  if (!data || !data.avg_price) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-sm">
+      <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+      <span className="text-emerald-800 font-medium">智慧報價建議：</span>
+      <span className="font-bold text-emerald-700">${Number(data.avg_price).toLocaleString()}</span>
+      {data.min_price !== data.max_price && data.min_price && data.max_price && (
+        <span className="text-emerald-600 text-xs">（區間 ${Number(data.min_price).toLocaleString()}–${Number(data.max_price).toLocaleString()}）</span>
+      )}
+      <span className="text-emerald-600 text-xs ml-auto shrink-0">參考 {data.sample_count} 筆同路線訂單</span>
     </div>
   );
 }
@@ -364,6 +393,7 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                   value={pickupAddress}
                   onChange={setPickupAddress}
                   historyKey="qop-pickup"
+                  addressType="pickup"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                   <div>
@@ -382,6 +412,9 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                 </div>
               </div>
 
+              {/* ─ 智慧報價提示 ─ */}
+              <SmartPricingBanner pickup={pickupAddress} delivery={deliveryAddress} />
+
               {/* ─ 送達地址 + 日期時間 ─ */}
               <div className="space-y-2 bg-blue-50/50 border border-blue-100 rounded-xl p-3">
                 <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wide flex items-center gap-1">
@@ -392,6 +425,7 @@ export function QuickOrderPanel({ onCreated }: QuickOrderPanelProps) {
                   value={deliveryAddress}
                   onChange={setDeliveryAddress}
                   historyKey="qop-delivery"
+                  addressType="delivery"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                   <div>

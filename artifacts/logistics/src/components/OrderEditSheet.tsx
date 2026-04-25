@@ -10,6 +10,7 @@ import { getListOrdersQueryKey, getGetOrderQueryKey } from "@workspace/api-clien
 import { useToast } from "@/hooks/use-toast";
 import { OrderStatusBadge } from "@/components/StatusBadge";
 import { Loader2, Save, X, MapPin, Calendar, Clock, FileText, Truck, Receipt, Package, User } from "lucide-react";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 
 const STATUS_OPTIONS = [
   { value: "pending",    label: "待派車" },
@@ -323,7 +324,12 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           <SectionLabel icon={MapPin} label="提貨資訊" />
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">提貨地址</Label>
-            <Input className="h-9 text-sm" value={form.pickupAddress} onChange={set("pickupAddress")} placeholder="提貨地址" />
+            <AddressAutocomplete
+              value={form.pickupAddress ?? ""}
+              onChange={v => setForm(f => ({ ...f, pickupAddress: v }))}
+              placeholder="提貨地址"
+              type="pickup"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -348,7 +354,12 @@ export default function OrderEditSheet({ order, open, onClose }: Props) {
           <SectionLabel icon={Truck} label="到貨資訊" />
           <div>
             <Label className="text-xs text-muted-foreground mb-1.5 block">到貨地址</Label>
-            <Input className="h-9 text-sm" value={form.deliveryAddress} onChange={set("deliveryAddress")} placeholder="到貨地址" />
+            <AddressAutocomplete
+              value={form.deliveryAddress ?? ""}
+              onChange={v => setForm(f => ({ ...f, deliveryAddress: v }))}
+              placeholder="到貨地址"
+              type="delivery"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

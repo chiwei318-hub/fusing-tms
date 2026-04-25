@@ -43,7 +43,8 @@ const RoutePriceTab        = lazy(() => import("./admin/RoutePriceTab"));
 const VehicleCostTab       = lazy(() => import("./admin/VehicleCostTab"));
 const PermissionTab        = lazy(() => import("./admin/PermissionTab"));
 const AccountInviteTab     = lazy(() => import("./admin/AccountInviteTab"));
-const OAuthAccountsTab     = lazy(() => import("./admin/OAuthAccountsTab"));
+const OAuthAccountsTab          = lazy(() => import("./admin/OAuthAccountsTab"));
+const LocationIntelligenceTab   = lazy(() => import("./admin/LocationIntelligenceTab"));
 const LineManagementTab    = lazy(() => import("./admin/LineManagementTab"));
 const SystemSettingsTab    = lazy(() => import("./admin/SystemSettingsTab"));
 const InvoiceManagementTab = lazy(() => import("./admin/InvoiceManagementTab"));
@@ -1730,6 +1731,7 @@ export default function Admin() {
                   { value: "perm",           icon: <span className="text-sm leading-none">🔐</span>,              label: "權限" },
                   { value: "invite",         icon: <span className="text-sm leading-none">📧</span>,              label: "帳號邀請" },
                   { value: "oauth-accounts", icon: <span className="text-sm leading-none">🔑</span>,              label: "OAuth 帳號" },
+                  { value: "location-intel", icon: <MapPin className="w-3.5 h-3.5 text-emerald-600" />,           label: "地點智慧" },
                   { value: "line",           icon: <MessageCircle className="w-3.5 h-3.5 text-green-500" />,      label: "LINE" },
                   { value: "commission",     icon: <Percent className="w-3.5 h-3.5 text-slate-500" />,            label: "抽成管理" },
                   { value: "commissiontiers",icon: <span className="text-sm leading-none">📊</span>,              label: "階梯抽成" },
@@ -3916,6 +3918,11 @@ export default function Admin() {
         {/* ===== OAuth 帳號管理 TAB ===== */}
         <TabsContent value="oauth-accounts" className="outline-none">
           <OAuthAccountsTab />
+        </TabsContent>
+
+        {/* ===== 地點智慧分析 TAB ===== */}
+        <TabsContent value="location-intel" className="outline-none">
+          <LocationIntelligenceTab />
         </TabsContent>
 
         {/* ===== LINE 接單整合 TAB ===== */}

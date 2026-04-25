@@ -41,6 +41,30 @@ async function fetchRoads(city: string, district: string, q = ""): Promise<strin
   } catch { return []; }
 }
 
+// ── Order history suggestions ─────────────────────────────────────────────────
+interface OrderSuggestion {
+  address: string;
+  frequency: number;
+  avg_price: number | null;
+  last_used: string | null;
+}
+
+let orderSugAbort: AbortController | null = null;
+
+async function fetchOrderSuggestions(type: "pickup" | "delivery" | "both"): Promise<OrderSuggestion[]> {
+  if (orderSugAbort) orderSugAbort.abort();
+  orderSugAbort = new AbortController();
+  try {
+    const res = await fetch(
+      getApiUrl(`/api/locations/autocomplete?q=&type=${type}&limit=6`),
+      { signal: orderSugAbort.signal },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch { return []; }
+}
+
 // ── Saved address search ───────────────────────────────────────────────────────
 interface SavedAddress {
   id: number;
@@ -118,13 +142,14 @@ interface Props {
   onChange: (value: string) => void;
   onLocationChange?: (loc: AddressLocation) => void;
   historyKey?: string;
+  addressType?: "pickup" | "delivery" | "both";
   className?: string;
   error?: string;
   onBlur?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function TaiwanAddressInput({ value, onChange, historyKey = "default", className, error, onBlur }: Props) {
+export function TaiwanAddressInput({ value, onChange, historyKey = "default", addressType = "both", className, error, onBlur }: Props) {
   const init = useMemo(() => parseAddress(value), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [city, setCity]         = useState(init.city);
   const [district, setDistrict] = useState(init.district);
@@ -138,8 +163,9 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
   const [preloaded, setPreloaded]     = useState<string[]>([]);
 
   // History
-  const [hist, setHist]       = useState<string[]>([]);
+  const [hist, setHist]         = useState<string[]>([]);
   const [histOpen, setHistOpen] = useState(false);
+  const [orderSugs, setOrderSugs] = useState<OrderSuggestion[]>([]);
 
   // Saved address search
   const [searchOpen, setSearchOpen]   = useState(false);
@@ -254,6 +280,10 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
   // ── History ──
   const openHist = () => {
     const h = loadHist(historyKey); setHist(h);
+    fetchOrderSuggestions(addressType).then(sug => {
+      setOrderSugs(sug);
+      if (h.length > 0 || sug.length > 0) { setHistOpen(true); setRoadOpen(false); }
+    });
     if (h.length > 0) { setHistOpen(true); setRoadOpen(false); }
   };
 
@@ -506,30 +536,57 @@ export function TaiwanAddressInput({ value, onChange, historyKey = "default", cl
       )}
 
       {/* ── History dropdown ────────────────────── */}
-      {histOpen && hist.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden">
-          <div className="px-3 py-1.5 border-b bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-            <Clock className="w-3 h-3" /> 最近使用
-          </div>
-          {hist.map((addr, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/40 border-b last:border-0 group">
-              <button type="button" onPointerDown={e => { e.preventDefault(); pickHist(addr); }}
-                className="flex-1 flex items-center gap-2 text-left min-w-0">
-                <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
-                <span className="text-sm truncate">{addr}</span>
-              </button>
-              <button type="button"
-                onPointerDown={e => {
-                  e.preventDefault();
-                  delHist(historyKey, addr);
-                  setHist(h => h.filter(a => a !== addr));
-                  if (hist.length === 1) setHistOpen(false);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+      {histOpen && (hist.length > 0 || orderSugs.length > 0) && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-background border rounded-xl shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+          {hist.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 border-b bg-muted/40 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <Clock className="w-3 h-3" /> 最近使用
+              </div>
+              {hist.map((addr, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/40 border-b last:border-0 group">
+                  <button type="button" onPointerDown={e => { e.preventDefault(); pickHist(addr); }}
+                    className="flex-1 flex items-center gap-2 text-left min-w-0">
+                    <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-sm truncate">{addr}</span>
+                  </button>
+                  <button type="button"
+                    onPointerDown={e => {
+                      e.preventDefault();
+                      delHist(historyKey, addr);
+                      setHist(h => h.filter(a => a !== addr));
+                      if (hist.length === 1 && orderSugs.length === 0) setHistOpen(false);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+          {orderSugs.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 border-b bg-primary/5 text-[10px] font-semibold text-primary uppercase tracking-wide flex items-center gap-1">
+                <MapPin className="w-3 h-3" /> 歷史訂單常用地點
+              </div>
+              {orderSugs.map((s, i) => (
+                <button key={i} type="button"
+                  onPointerDown={e => { e.preventDefault(); pickHist(s.address); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent text-left border-b last:border-0 group">
+                  <MapPin className="w-3 h-3 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{s.address}</p>
+                    <p className="text-[11px] text-muted-foreground">共 {s.frequency} 次</p>
+                  </div>
+                  {s.avg_price && Number(s.avg_price) > 0 && (
+                    <span className="text-[11px] text-primary font-semibold bg-primary/10 px-2 py-0.5 rounded-full shrink-0">
+                      均 ${Number(s.avg_price).toLocaleString()}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
 

@@ -111,6 +111,7 @@ import { fuelCardsRouter } from "./fuelCards";
 import { notificationsRouter } from "./notifications";
 import invitationsRouter from "./invitations";
 import oauthAccountsRouter from "./oauthAccounts";
+import locationIntelligenceRouter from "./locationIntelligence";
 
 const router: IRouter = Router();
 
@@ -242,5 +243,6 @@ router.use(fourLayerSettlementRouter);                              // 四層財
 router.use(fuelCardsRouter);                                        // 加油卡代墊記錄系統
 router.use(ownerCashSettlementRouter);                              // 車主現金結算系統
 router.use("/notifications", notificationsRouter);                  // 雙推播通知系統
+router.use("/locations", locationIntelligenceRouter);               // 地點智慧系統
 
 export default router;
