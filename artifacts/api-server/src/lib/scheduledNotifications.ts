@@ -1,10 +1,12 @@
 /**
  * 定時推播排程
+ * - 每天 06:00 TW  → 蝦皮班表地址同步（location_history），完成後推播管理員
  * - 每天 07:00 TW  → 今日班表推播給所有有班的司機
  * - 每天 09:00 TW  → 到期提醒（驗車/保險 30天、合約 5天前）
  */
 import { pool } from "@workspace/db";
 import { sendBatchPush, PushPayload } from "./pushNotification";
+import { syncShopeeLocations } from "./syncShopeeLocations";
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,104 @@ function msUntilTWHour(targetHour: number, targetMin = 0): number {
   let diff = targetSec - nowSec;
   if (diff <= 0) diff += 24 * 3600;
   return diff * 1000;
+}
+
+// ─── 工具：LINE 推播管理員（個人 or 群組） ───────────────────────────────────
+async function pushAdminLine(title: string, body: string): Promise<void> {
+  const token   = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
+  const targets = [
+    process.env.LINE_ADMIN_GROUP_ID,  // 管理群組 ID（優先）
+    process.env.LINE_ADMIN_USER_ID,   // 或個人 LINE user ID
+  ].filter(Boolean) as string[];
+
+  if (!token || targets.length === 0) {
+    console.log(`[AdminPush] 未設定 LINE_ADMIN_GROUP_ID 或 LINE_ADMIN_USER_ID，跳過推播`);
+    console.log(`[AdminPush] ${title}: ${body}`);
+    return;
+  }
+
+  for (const to of targets) {
+    try {
+      const r = await fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to,
+          messages: [{ type: "text", text: `【${title}】\n${body}` }],
+        }),
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        console.warn(`[AdminPush] LINE push 失敗 (${to}): ${r.status} ${txt}`);
+      } else {
+        console.log(`[AdminPush] LINE push 成功 → ${to}`);
+      }
+    } catch (e: any) {
+      console.error(`[AdminPush] LINE push 例外 (${to}):`, e.message);
+    }
+  }
+}
+
+// ─── 觸發 0：每天 06:00 蝦皮班表地址同步 ─────────────────────────────────────
+
+let lastLocationSyncDate = "";
+
+export async function runDailyLocationSync(): Promise<void> {
+  const today = todayTW();
+  if (lastLocationSyncDate === today) return;
+  lastLocationSyncDate = today;
+
+  console.log(`[ScheduledNotif] 06:00 蝦皮地址同步啟動 → ${today}`);
+  try {
+    const result = await syncShopeeLocations();
+
+    // 寫入同步日誌
+    await pool.query(
+      `INSERT INTO shopee_location_sync_log
+         (trigger, inserted, updated, total, sheet_count, address_count, duration_ms)
+       VALUES ('scheduled', $1, $2, $3, $4, $5, $6)
+       ON CONFLICT DO NOTHING`,
+      [result.inserted, result.updated, result.total,
+       result.sheetCount, result.addressCount, result.durationMs],
+    ).catch(() =>
+      pool.query(
+        `INSERT INTO shopee_location_sync_log
+           (trigger, inserted, updated, total, sheet_count, address_count, duration_ms)
+         VALUES ('scheduled', $1, $2, $3, $4, $5, $6)`,
+        [result.inserted, result.updated, result.total,
+         result.sheetCount, result.addressCount, result.durationMs],
+      )
+    );
+
+    const durSec = Math.round(result.durationMs / 1000);
+    const msg = [
+      `📅 日期：${today}`,
+      `📍 新增地址：${result.inserted} 筆`,
+      `🔄 更新地址：${result.updated} 筆`,
+      `📂 掃描分頁：${result.sheetCount} 個`,
+      `⏱ 耗時：${durSec} 秒`,
+    ].join("\n");
+
+    await pushAdminLine("蝦皮地址同步完成", msg);
+    console.log(`[ScheduledNotif] 06:00 地址同步完成 — 新增 ${result.inserted} 更新 ${result.updated}`);
+  } catch (err: any) {
+    console.error("[ScheduledNotif] 06:00 地址同步失敗:", err.message);
+
+    // 同步失敗也通知管理員
+    await pushAdminLine(
+      "蝦皮地址同步失敗",
+      `📅 日期：${today}\n❌ 錯誤：${err.message.slice(0, 200)}`,
+    );
+
+    // 寫入失敗記錄
+    await pool.query(
+      `INSERT INTO shopee_location_sync_log (trigger, error) VALUES ('scheduled', $1)`,
+      [err.message.slice(0, 500)],
+    ).catch(() => {});
+  }
 }
 
 // ─── 觸發 1：每天 07:00 今日班表推播 ─────────────────────────────────────────
@@ -322,22 +422,32 @@ export async function runExpiryReminders(): Promise<void> {
 // ─── 啟動排程 ─────────────────────────────────────────────────────────────────
 
 export function startScheduledNotifications(): void {
+  const ms06 = msUntilTWHour(6, 0);
   const ms07 = msUntilTWHour(7, 0);
   const ms09 = msUntilTWHour(9, 0);
   const DAY  = 24 * 60 * 60 * 1000;
 
+  console.log(`[ScheduledNotif] 06:00 地址同步將於 ${Math.round(ms06 / 60000)} 分鐘後首次啟動`);
   console.log(`[ScheduledNotif] 07:00 班表推播將於 ${Math.round(ms07 / 60000)} 分鐘後首次啟動`);
   console.log(`[ScheduledNotif] 09:00 到期提醒將於 ${Math.round(ms09 / 60000)} 分鐘後首次啟動`);
 
+  // 06:00 — 蝦皮班表地址同步 + 管理員推播
+  setTimeout(() => {
+    runDailyLocationSync();
+    setInterval(runDailyLocationSync, DAY);
+  }, ms06);
+
+  // 07:00 — 今日班表推播（司機）
   setTimeout(() => {
     runDailySchedulePush();
     setInterval(runDailySchedulePush, DAY);
   }, ms07);
 
+  // 09:00 — 到期提醒（驗車/保險/合約）
   setTimeout(() => {
     runExpiryReminders();
     setInterval(runExpiryReminders, DAY);
   }, ms09);
 
-  console.log("[ScheduledNotif] scheduler 已啟動 (07:00 班表 + 09:00 到期提醒)");
+  console.log("[ScheduledNotif] scheduler 已啟動 (06:00 地址同步 + 07:00 班表 + 09:00 到期提醒)");
 }

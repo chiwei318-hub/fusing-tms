@@ -112,6 +112,7 @@ import { notificationsRouter } from "./notifications";
 import invitationsRouter from "./invitations";
 import oauthAccountsRouter from "./oauthAccounts";
 import locationIntelligenceRouter from "./locationIntelligence";
+import { shopeeScheduleSyncRouter } from "./shopeeScheduleSync";
 
 const router: IRouter = Router();
 
@@ -244,5 +245,6 @@ router.use(fuelCardsRouter);                                        // 加油卡
 router.use(ownerCashSettlementRouter);                              // 車主現金結算系統
 router.use("/notifications", notificationsRouter);                  // 雙推播通知系統
 router.use("/locations", locationIntelligenceRouter);               // 地點智慧系統
+router.use(shopeeScheduleSyncRouter);                               // 蝦皮地址同步（06:00 排程）
 
 export default router;

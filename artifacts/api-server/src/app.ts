@@ -20,6 +20,7 @@ import { ensureAutoDispatchTables, startAutoDispatchScheduler } from "./routes/f
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { startSettlementReminderScheduler } from "./lib/settlementReminder";
 import { startScheduledNotifications } from "./lib/scheduledNotifications";
+import { ensureSyncStatusTable } from "./routes/shopeeScheduleSync";
 import { startSheetChangeWatcher } from "./lib/sheetChangeWatcher";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
@@ -232,6 +233,7 @@ ensureFleetSheetSyncTables()
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
 startSettlementReminderScheduler();
 startScheduledNotifications();
+ensureSyncStatusTable().catch((e) => console.error("[ShopeeLocationSync] table setup failed:", e));
 startSheetChangeWatcher();
 
 // 確保 drivers.is_active 欄位存在（離職狀態管理）
