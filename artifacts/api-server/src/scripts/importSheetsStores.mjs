@@ -11,7 +11,7 @@ import { google } from "googleapis";
 import pkg from "pg";
 const { Pool } = pkg;
 
-const SPREADSHEET_ID = "1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI";
+const SPREADSHEET_ID = process.env.SHOPEE_SCHEDULE_SHEET_ID ?? "1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI";
 const BATCH_SIZE = 30;   // 每次 batchGet 讀幾個分頁
 const PAUSE_MS   = 1200; // 每批之間暫停（Sheets API: 60 reqs/min/user → 1req/sec safe）
 

@@ -263,7 +263,7 @@ router.post("/import", async (req, res) => {
 // ─── POST /api/locations/sync-sheets ─────────────────────────────────────────
 // Admin 觸發從 Google Sheets 重新匯入門市地址（非同步，立即回應）
 router.post("/sync-sheets", async (req, res) => {
-  const SPREADSHEET_ID = "1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI";
+  const SPREADSHEET_ID = process.env.SHOPEE_SCHEDULE_SHEET_ID ?? "1JQR9RUtxmMt6VhxG_3on-1ftiQKzKQpFI8GO6JuBLvI";
   const BATCH_SIZE = 30;
   const SKIP_SHEETS = new Set([
     "司機回填表","主線過刷異常","NDD過刷異常",
