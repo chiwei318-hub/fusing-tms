@@ -20,6 +20,7 @@ import { ensureAutoDispatchTables, startAutoDispatchScheduler } from "./routes/f
 import { ensureFleetSheetSyncTables, startFleetSheetSyncScheduler } from "./lib/fleetSheetSync";
 import { startSettlementReminderScheduler } from "./lib/settlementReminder";
 import { startScheduledNotifications } from "./lib/scheduledNotifications";
+import { startSheetChangeWatcher } from "./lib/sheetChangeWatcher";
 import { ensureDbIndexes } from "./lib/dbIndexes";
 import { ensureCreditSchema } from "./routes/line.js";
 import { ensureVehicleProfitTables } from "./routes/vehicleProfit";
@@ -221,6 +222,7 @@ ensureFleetSheetSyncTables()
   .catch((e) => console.error("[FleetSheetSync] setup failed:", e));
 startSettlementReminderScheduler();
 startScheduledNotifications();
+startSheetChangeWatcher();
 
 // 確保 drivers.is_active 欄位存在（離職狀態管理）
 _migPool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`)
@@ -750,6 +752,9 @@ _migPool.query(`
     await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_sent_at   ON push_notifications(sent_at DESC)`);
     await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_type      ON push_notifications(type)`);
     await _migPool.query(`CREATE INDEX IF NOT EXISTS idx_push_notif_status    ON push_notifications(status)`);
+
+    // push_notifications — 司機確認時間欄位
+    await _migPool.query(`ALTER TABLE push_notifications ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ`);
 
     // fleet_drivers — 驗車/保險到期欄位
     await _migPool.query(`ALTER TABLE fleet_drivers ADD COLUMN IF NOT EXISTS inspection_expire_date DATE`);

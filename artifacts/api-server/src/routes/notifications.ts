@@ -12,6 +12,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { sendBatchPush, PushPayload } from "../lib/pushNotification";
 import { runDailySchedulePush, runExpiryReminders } from "../lib/scheduledNotifications";
+import { triggerSheetCheck } from "../lib/sheetChangeWatcher";
 
 export const notificationsRouter = Router();
 
@@ -105,6 +106,81 @@ notificationsRouter.post("/trigger-expiry", async (_req, res) => {
   try {
     await runExpiryReminders();
     res.json({ ok: true, message: "到期提醒推播已觸發" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── POST /trigger-sheet-check — 手動觸發班表異動偵測 ─────────────────────────
+notificationsRouter.post("/trigger-sheet-check", async (_req, res) => {
+  try {
+    const result = await triggerSheetCheck();
+    res.json({ ok: true, message: "班表異動偵測已觸發", ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── GET /route-confirmations — 路線確認狀態（車主查看） ─────────────────────
+notificationsRouter.get("/route-confirmations", async (req, res) => {
+  try {
+    const { date, fleet_id } = req.query as Record<string, string>;
+    if (!date) return res.status(400).json({ ok: false, error: "date 必填（YYYY-MM-DD）" });
+
+    const fleetFilter = fleet_id ? `AND fd.fleet_id = ${Number(fleet_id)}` : "";
+
+    // Get all drivers in the fleet(s) and their confirmation status for the date
+    const { rows } = await pool.query(`
+      SELECT
+        fd.id            AS driver_id,
+        fd.name          AS driver_name,
+        fd.employee_id,
+        fd.vehicle_plate,
+        fd.line_id,
+        f.fleet_name,
+        -- Latest push notification for this driver on this date
+        n.id             AS notification_id,
+        n.type           AS notification_type,
+        n.title,
+        n.sent_at,
+        n.confirmed_at,
+        n.read_at,
+        n.status         AS notification_status,
+        n.line_status,
+        n.atoms_status,
+        -- Route info from dispatch
+        r.route_label,
+        r.assigned_at
+      FROM fleet_drivers fd
+      JOIN fusingao_fleets f ON f.id = fd.fleet_id
+      LEFT JOIN LATERAL (
+        SELECT * FROM push_notifications pn
+        WHERE pn.driver_id = fd.id
+          AND pn.type IN ('task', 'schedule_change')
+          AND pn.sent_at::date >= ($1::date - INTERVAL '1 day')
+          AND pn.sent_at::date <= $1::date
+        ORDER BY pn.sent_at DESC
+        LIMIT 1
+      ) n ON TRUE
+      LEFT JOIN dispatch_order_routes r
+        ON r.assigned_driver_id = fd.id AND r.route_date = $1
+      WHERE fd.is_active = TRUE
+        ${fleetFilter}
+      ORDER BY f.fleet_name, fd.name
+    `, [date]);
+
+    // Compute summary
+    const total       = rows.length;
+    const pushed      = rows.filter((r: any) => r.notification_id).length;
+    const confirmed   = rows.filter((r: any) => r.confirmed_at).length;
+    const unconfirmed = pushed - confirmed;
+
+    res.json({
+      ok: true,
+      date,
+      summary: { total, pushed, confirmed, unconfirmed },
+      drivers: rows,
+    });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }

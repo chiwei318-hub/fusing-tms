@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
 import * as lineLib from "@line/bot-sdk";
-import { db, ordersTable, customersTable, driversTable } from "@workspace/db";
+import { db, pool, ordersTable, customersTable, driversTable } from "@workspace/db";
 import { lineAccountsTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getQueueStats } from "../lib/notificationQueue";
@@ -390,6 +390,54 @@ router.post("/line/webhook", async (req, res) => {
             }
           } catch {
             await replyTextMessage(replyToken, "查詢失敗，請稍後再試。");
+          }
+          continue;
+        }
+
+        // ── 確認接單 / 確認 (push 通知確認) ────────────────────────────────────
+        // 司機收到 Flex 推播後點「確認接單」→ 傳送此文字 → 系統記錄已讀
+        if (text === "確認接單" || text === "確認") {
+          try {
+            // Find fleet driver by LINE user ID
+            const { rows: fdRows } = await pool.query(
+              `SELECT fd.id, fd.name
+               FROM fleet_drivers fd
+               WHERE fd.line_id = $1 AND fd.is_active = TRUE
+               LIMIT 1`,
+              [userId],
+            );
+            if (!fdRows.length) {
+              await replyTextMessage(replyToken,
+                `❌ 找不到您的司機資料。\n請確認已在系統中設定 LINE 帳號。`);
+              continue;
+            }
+            const fd = fdRows[0] as any;
+
+            // Mark their latest unconfirmed push notification today as confirmed
+            const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+            const { rows: updated } = await pool.query(
+              `UPDATE push_notifications
+               SET confirmed_at = NOW(), read_at = COALESCE(read_at, NOW()), status = 'read'
+               WHERE driver_id = $1
+                 AND type IN ('task', 'schedule_change')
+                 AND confirmed_at IS NULL
+                 AND sent_at::date >= ($2::date - INTERVAL '1 day')
+               RETURNING id, title`,
+              [fd.id, today],
+            );
+
+            if (updated.length > 0) {
+              const titles = updated.map((r: any) => r.title).join("、");
+              await replyTextMessage(replyToken,
+                `✅ 確認成功！\n${fd.name} 已確認接單。\n\n通知：${titles}\n\n車主已收到您的確認，請準時出車。`);
+              console.log(`[LINE 確認接單] ${fd.name} 確認了 ${updated.length} 筆通知`);
+            } else {
+              await replyTextMessage(replyToken,
+                `ℹ️ ${fd.name}，您今日的推播通知已是確認狀態，無需重複操作。\n\n如有問題請聯繫調度人員。`);
+            }
+          } catch (err: any) {
+            console.error("[LINE 確認接單] error:", err.message);
+            await replyTextMessage(replyToken, "系統處理中，請稍後再試。");
           }
           continue;
         }

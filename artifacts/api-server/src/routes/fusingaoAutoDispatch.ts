@@ -81,14 +81,14 @@ export async function ensureAutoDispatchTables() {
 }
 
 // ── CSV helpers ────────────────────────────────────────────────────────────────
-function toExportCsvUrl(raw: string): string {
+export function toExportCsvUrl(raw: string): string {
   const m = raw.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   if (!m) return raw;
   const gidM = raw.match(/gid=(\d+)/);
   return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gidM ? gidM[1] : "0"}`;
 }
 
-interface ScheduleRow {
+export interface ScheduleRow {
   trip_date: string;
   route_no: string;
   driver_id: string;
@@ -104,7 +104,7 @@ function colIdx(header: string[], keywords: string[]): number {
   return -1;
 }
 
-function parseScheduleCsv(text: string): ScheduleRow[] {
+export function parseScheduleCsv(text: string): ScheduleRow[] {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return [];
   const raw = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
@@ -166,7 +166,7 @@ export interface DiffResult {
  *   (a) existing dispatch_order_routes in DB  ← primary truth
  *   (b) last_snapshot in config               ← fallback when no routes exist yet
  */
-async function computeDiff(
+export async function computeDiff(
   configId: number,
   dateRows: ScheduleRow[],
   date: string
