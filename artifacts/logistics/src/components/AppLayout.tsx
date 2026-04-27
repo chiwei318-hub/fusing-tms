@@ -11,6 +11,9 @@ import {
   Banknote,
   TrendingUp,
   ChevronDown,
+  Building2,
+  FileSpreadsheet,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +39,7 @@ const mainNav = [
   { name: "訂單報表", href: "/report",       icon: BarChart2 },
   { name: "費用管理", href: "/fees",         icon: DollarSign },
   { name: "後台管理", href: "/admin",        icon: LayoutDashboard },
+  { name: "🏢 廠商管理", href: "/partners",  icon: Building2 },
 ];
 
 const financeNav = [
@@ -43,6 +47,7 @@ const financeNav = [
   { name: "💰 現金結算", href: "/cash-settlement",      icon: Banknote },
   { name: "📊 四層結算", href: "/four-layer-summary",   icon: BarChart3 },
   { name: "💹 財務結算", href: "/finance",              icon: TrendingUp },
+  { name: "💹 財務清算", href: "/financials",           icon: Zap },
 ];
 
 export function AppSidebar() {

@@ -44,8 +44,10 @@ const FranchiseFleetPortal= lazy(() => import("@/pages/franchiseFleet/FranchiseF
 const AIChat             = lazy(() => import("@/pages/AIChat"));
 const QuotePage          = lazy(() => import("@/pages/QuotePage"));
 const PartnerQuotePage   = lazy(() => import("@/pages/PartnerQuotePage"));
+const QuotePortal        = lazy(() => import("@/pages/QuotePortal"));
 const PartnerManagement  = lazy(() => import("@/pages/admin/PartnerManagement"));
 const ArApDashboard      = lazy(() => import("@/pages/admin/ArApDashboard"));
+const FinancialsDashboard= lazy(() => import("@/pages/admin/FinancialsDashboard"));
 const InvoicePrint       = lazy(() => import("@/pages/InvoicePrint"));
 const QuickOrder         = lazy(() => import("@/pages/QuickOrder"));
 const QuickTrack         = lazy(() => import("@/pages/QuickTrack"));
@@ -179,6 +181,7 @@ function AdminPortal() {
             <Route path="/four-layer-summary" component={FourLayerSummary} />
             <Route path="/partners" component={PartnerManagement} />
             <Route path="/ar-ap" component={ArApDashboard} />
+            <Route path="/financials" component={FinancialsDashboard} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>
@@ -292,7 +295,10 @@ function AppRouter() {
   if (location.startsWith("/invoice-print/")) {
     return <InvoicePrint />;
   }
-  if (location === "/quote" || location.startsWith("/quote/")) {
+  if (location.startsWith("/quote/")) {
+    return <div className="h-dvh overflow-y-auto"><QuotePortal /></div>;
+  }
+  if (location === "/quote") {
     return <div className="h-dvh overflow-y-auto"><QuotePage /></div>;
   }
   if (location === "/partner-quote" || location.startsWith("/partner-quote/")) {
@@ -329,7 +335,8 @@ function AppRouter() {
     location.startsWith("/cash-settlement") ||
     location.startsWith("/four-layer-summary") ||
     location.startsWith("/partners") ||
-    location.startsWith("/ar-ap")
+    location.startsWith("/ar-ap") ||
+    location.startsWith("/financials")
   ) {
     return <AdminPortal />;
   }

@@ -113,6 +113,12 @@ import invitationsRouter from "./invitations";
 import oauthAccountsRouter from "./oauthAccounts";
 import locationIntelligenceRouter from "./locationIntelligence";
 import { shopeeScheduleSyncRouter } from "./shopeeScheduleSync";
+import { partnersRouter } from "./partners";
+import { vehicleMatrixRouter } from "./vehicleMatrix";
+import { smartQuoteRouter } from "./smartQuote";
+import { financialsRouter } from "./financials";
+import { quotePortalRouter } from "./quotePortal";
+import { arApRouter } from "./arApLedger";
 
 const router: IRouter = Router();
 
@@ -246,5 +252,13 @@ router.use(ownerCashSettlementRouter);                              // 車主現
 router.use("/notifications", notificationsRouter);                  // 雙推播通知系統
 router.use("/locations", locationIntelligenceRouter);               // 地點智慧系統
 router.use(shopeeScheduleSyncRouter);                               // 蝦皮地址同步（06:00 排程）
+
+// ── 富詠全智慧物流清算平台 六大模組 ─────────────────────────────────────────
+router.use(partnersRouter);          // 模組1：廠商檔案管理
+router.use(vehicleMatrixRouter);     // 模組2：車型定義矩陣
+router.use(smartQuoteRouter);        // 模組3：智慧報價引擎
+router.use(financialsRouter);        // 模組4+6：財務清算 + 月結導出
+router.use(quotePortalRouter);       // 模組5：廠商查價入口
+router.use(arApRouter);              // AR/AP 清算輔助
 
 export default router;

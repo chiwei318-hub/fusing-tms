@@ -29,6 +29,10 @@ import { ensureLaborPensionTables } from "./routes/laborPension";
 import { ensurePayrollCostTables } from "./routes/payrollCost";
 import { ensureCargoPackagingTable } from "./routes/cargoPackaging";
 import { ensureFreightRateTables } from "./routes/freightQuote";
+import { ensurePartnersTable } from "./routes/partners";
+import { ensureVehicleMatrixTables } from "./routes/vehicleMatrix";
+import { ensureFinancialsTables } from "./routes/financials";
+import { ensureArApTables } from "./routes/arApLedger";
 import { ensurePlatformRequirementsTable } from "./routes/platformRequirements";
 import { ensureGoogleAuthColumns } from "./routes/googleAuth";
 import { ensureInvitationsTable } from "./routes/invitations";
@@ -210,6 +214,10 @@ ensureLocationTables()
   .then(() => importLocationHistory())
   .catch((e) => console.error("[LocationHistory] init failed:", e));
 ensureFreightRateTables().catch((e) => console.error("[FreightQuote] table setup failed:", e));
+ensurePartnersTable().catch((e) => console.error("[Partners] table setup failed:", e));
+ensureVehicleMatrixTables().catch((e) => console.error("[VehicleMatrix] table setup failed:", e));
+ensureFinancialsTables().catch((e) => console.error("[Financials] table setup failed:", e));
+ensureArApTables().catch((e) => console.error("[ArAp] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {
     const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
