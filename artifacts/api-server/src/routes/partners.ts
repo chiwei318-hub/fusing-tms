@@ -13,21 +13,26 @@ export async function ensurePartnersTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS partners (
       id            SERIAL PRIMARY KEY,
-      name          TEXT NOT NULL,
-      contact_name  TEXT,
-      contact_phone TEXT,
-      email         TEXT,
-      tax_id        TEXT,
-      base_price    NUMERIC(10,2) DEFAULT 800,
-      km_rate       NUMERIC(8,2)  DEFAULT 25,
-      profit_margin NUMERIC(5,2)  DEFAULT 15,
-      contract_type TEXT DEFAULT 'standard',
-      is_active     BOOLEAN DEFAULT TRUE,
-      bank_name     TEXT,
-      bank_account  TEXT,
-      notes         TEXT,
-      created_at    TIMESTAMPTZ DEFAULT NOW(),
-      updated_at    TIMESTAMPTZ DEFAULT NOW()
+      name             TEXT NOT NULL,
+      contact_name     TEXT,
+      contact_phone    TEXT,
+      email            TEXT,
+      tax_id           TEXT,
+      base_price       NUMERIC(10,2) DEFAULT 800,
+      km_rate          NUMERIC(8,2)  DEFAULT 25,
+      profit_margin    NUMERIC(5,2)  DEFAULT 15,
+      contract_type    TEXT DEFAULT 'standard',
+      tier             TEXT DEFAULT 'standard',
+      park_fee         NUMERIC(8,0)  DEFAULT 300,
+      mountain_fee     NUMERIC(8,0)  DEFAULT 500,
+      special_zone_fee NUMERIC(8,0)  DEFAULT 500,
+      remote_fee       NUMERIC(8,0)  DEFAULT 1000,
+      is_active        BOOLEAN DEFAULT TRUE,
+      bank_name        TEXT,
+      bank_account     TEXT,
+      notes            TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ DEFAULT NOW()
     )
   `);
   // 初次啟動時從 partner_contract_config 匯入舊資料
@@ -43,6 +48,12 @@ export async function ensurePartnersTable(): Promise<void> {
     WHERE NOT EXISTS (SELECT 1 FROM partners LIMIT 1)
     ON CONFLICT DO NOTHING
   `).catch(() => { /* 若 partner_contract_config 不存在則跳過 */ });
+  // 補欄位（冪等，舊資料庫升級用）
+  await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS tier             TEXT         NOT NULL DEFAULT 'standard'`);
+  await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS park_fee         NUMERIC(8,0) NOT NULL DEFAULT 300`);
+  await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS mountain_fee     NUMERIC(8,0) NOT NULL DEFAULT 500`);
+  await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS special_zone_fee NUMERIC(8,0) NOT NULL DEFAULT 500`);
+  await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS remote_fee       NUMERIC(8,0) NOT NULL DEFAULT 1000`);
   console.log("[Partners] table ensured");
 }
 

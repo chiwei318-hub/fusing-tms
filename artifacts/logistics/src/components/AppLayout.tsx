@@ -46,7 +46,6 @@ const financeNav = [
   { name: "⛽ 加油管理", href: "/fuel-cards",          icon: Fuel },
   { name: "💰 現金結算", href: "/cash-settlement",      icon: Banknote },
   { name: "📊 四層結算", href: "/four-layer-summary",   icon: BarChart3 },
-  { name: "💹 財務結算", href: "/finance",              icon: TrendingUp },
   { name: "💹 財務清算", href: "/financials",           icon: Zap },
 ];
 

@@ -29,6 +29,11 @@ interface Partner {
   km_rate: number;
   profit_margin: number;
   contract_type: string;
+  tier: string;
+  park_fee: number;
+  mountain_fee: number;
+  special_zone_fee: number;
+  remote_fee: number;
   is_active: boolean;
   bank_name: string | null;
   bank_account: string | null;
@@ -38,8 +43,9 @@ interface Partner {
 const EMPTY: Omit<Partner, "id"> = {
   name: "", contact_name: "", contact_phone: "", email: "", tax_id: "",
   base_price: 800, km_rate: 25, profit_margin: 15,
-  contract_type: "standard", is_active: true,
-  bank_name: "", bank_account: "", notes: "",
+  contract_type: "standard", tier: "standard",
+  park_fee: 300, mountain_fee: 500, special_zone_fee: 500, remote_fee: 1000,
+  is_active: true, bank_name: "", bank_account: "", notes: "",
 };
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -270,6 +276,29 @@ export default function PartnerManagement() {
             <div>
               <Label>利潤率 (%)</Label>
               <Input type="number" step="0.1" value={form.profit_margin} onChange={e => setF("profit_margin", +e.target.value)} />
+            </div>
+            <div className="col-span-2">
+              <div className="border rounded-lg p-3 bg-amber-50 space-y-3">
+                <p className="text-xs font-semibold text-amber-800">特殊費率（用於智慧報價引擎）</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>進倉費 (NT$)</Label>
+                    <Input type="number" value={form.park_fee} onChange={e => setF("park_fee", +e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>山區費 (NT$)</Label>
+                    <Input type="number" value={form.mountain_fee} onChange={e => setF("mountain_fee", +e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>特殊地區費 (NT$)</Label>
+                    <Input type="number" value={form.special_zone_fee} onChange={e => setF("special_zone_fee", +e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>離島/偏遠費 (NT$)</Label>
+                    <Input type="number" value={form.remote_fee} onChange={e => setF("remote_fee", +e.target.value)} />
+                  </div>
+                </div>
+              </div>
             </div>
             <div>
               <Label>銀行名稱</Label>

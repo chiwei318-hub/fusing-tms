@@ -152,10 +152,15 @@ smartQuoteRouter.post("/smart-quote/calculate", async (req, res) => {
 
     const partner = partnerRow?.rows[0] ?? {
       name: "標準報價", base_price: 800, km_rate: 25, profit_margin: 15,
+      park_fee: 300, mountain_fee: 500, special_zone_fee: 500, remote_fee: 1000,
     };
-    const basePrice    = Number(partner.base_price ?? 800);
-    const kmRate       = Number(partner.km_rate ?? 25);
-    const profitMargin = Number(partner.profit_margin ?? 15);
+    const basePrice       = Number(partner.base_price       ?? 800);
+    const kmRate          = Number(partner.km_rate          ?? 25);
+    const profitMargin    = Number(partner.profit_margin    ?? 15);
+    const partnerParkFee  = Number(partner.park_fee         ?? 300);
+    const partnerMtnFee   = Number(partner.mountain_fee     ?? 500);
+    const partnerZoneFee  = Number(partner.special_zone_fee ?? 500);
+    const partnerRemoteFee= Number(partner.remote_fee       ?? 1000);
 
     // 2. Google Maps 距離
     const dist = await getDistanceKm(pickup_address, delivery_address);
@@ -197,22 +202,31 @@ smartQuoteRouter.post("/smart-quote/calculate", async (req, res) => {
     let areaFlat = 0;
     const appliedZones: typeof deliveryZones = [];
 
-    // 手動指定
+    // 手動指定（使用廠商個人費率）
     if (is_mountain) {
       areaMultiplier = Math.max(areaMultiplier, 1.3);
-      appliedZones.push({ zone: "mountain", label: "山區", multiplier: 1.3, flat: 0, keyword: "手動指定" });
+      appliedZones.push({ zone: "mountain", label: "山區", multiplier: 1.3, flat: partnerMtnFee, keyword: "手動指定" });
+      areaFlat += partnerMtnFee;
     }
     if (is_warehouse_in) {
-      areaFlat += 800;
-      appliedZones.push({ zone: "warehouse", label: "進倉", multiplier: 1.0, flat: 800, keyword: "手動指定" });
+      areaFlat += partnerParkFee;
+      appliedZones.push({ zone: "warehouse", label: "進倉", multiplier: 1.0, flat: partnerParkFee, keyword: "手動指定" });
     }
 
-    // 自動偵測
+    // 自動偵測（zone 乘數來自 ZONE_RULES，flat 替換為廠商費率）
+    const zoneFeeMap: Record<string, number> = {
+      mountain:     partnerMtnFee,
+      science_park: partnerZoneFee,
+      port:         partnerZoneFee,
+      remote_island:partnerRemoteFee,
+      warehouse:    partnerParkFee,
+    };
     for (const z of deliveryZones) {
       if (!appliedZones.find(a => a.zone === z.zone)) {
+        const flat = zoneFeeMap[z.zone] ?? z.flat;
         areaMultiplier = Math.max(areaMultiplier, z.multiplier);
-        areaFlat += z.flat;
-        appliedZones.push(z);
+        areaFlat += flat;
+        appliedZones.push({ ...z, flat });
       }
     }
 
