@@ -104,6 +104,42 @@ export async function ensureFreightRateTables() {
     ON CONFLICT (keyword) DO NOTHING
   `);
 
+  // ── 車型權重欄位（car_multiplier）補欄 + 全台車型定義矩陣 ──────────────────
+  await pool.query(`ALTER TABLE freight_rate_config ADD COLUMN IF NOT EXISTS car_multiplier NUMERIC NOT NULL DEFAULT 1.0`);
+
+  // 更新標準車型權重：3.5t×1.0, 8.5t×1.6, 17t×2.8, 35t×4.2
+  await pool.query(`
+    UPDATE freight_rate_config SET car_multiplier = 1.0 WHERE car_type = '3.5t';
+    UPDATE freight_rate_config SET car_multiplier = 1.6 WHERE car_type IN ('6.2t', '8.5t');
+    UPDATE freight_rate_config SET car_multiplier = 2.8 WHERE car_type = '17t';
+    UPDATE freight_rate_config SET car_multiplier = 4.2 WHERE car_type = '35t';
+  `);
+
+  // 新增 8.5t / 35t 車型
+  await pool.query(`
+    INSERT INTO freight_rate_config (car_type, label, base_price, km_rate, platform_pct, driver_pct, car_multiplier, sort_order)
+    VALUES
+      ('8.5t', '8.5噸貨車', 1200, 35, 10, 90, 1.6, 3),
+      ('35t',  '35噸聯結車', 5000, 80, 10, 90, 4.2, 6)
+    ON CONFLICT (car_type) DO UPDATE SET
+      car_multiplier = EXCLUDED.car_multiplier,
+      label          = EXCLUDED.label
+  `);
+
+  // 更新附加服務：新增鷗翼車門(+300)，冷凍改為×1.5倍乘算
+  await pool.query(`
+    INSERT INTO freight_surcharge_config (key, label, amount, pct_multiplier, description)
+    VALUES ('gull_wing', '鷗翼車門', 300, 0, '鷗翼門特殊車型加成 +300')
+    ON CONFLICT (key) DO NOTHING
+  `);
+  await pool.query(`
+    UPDATE freight_surcharge_config
+    SET amount = 0, pct_multiplier = 0.5, label = '冷凍車配送', description = '冷凍全艙配送 1.5倍加成'
+    WHERE key = 'cold_chain'
+  `);
+  // 尾門調整為 500
+  await pool.query(`UPDATE freight_surcharge_config SET amount = 500 WHERE key = 'tailgate'`);
+
   // 合約客戶費率表（對應 Python auto_quote_engine / generate_auto_quote 的 partner_config）
   await pool.query(`
     CREATE TABLE IF NOT EXISTS partner_contract_config (
