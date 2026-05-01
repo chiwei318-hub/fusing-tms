@@ -9,6 +9,44 @@ import crypto from "crypto";
 
 export const apiKeysRouter = Router();
 
+// ─── Auto-create tables (called at startup) ───────────────────────────────
+export async function ensureApiKeysTables(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id            SERIAL PRIMARY KEY,
+      name          TEXT        NOT NULL,
+      key_prefix    TEXT        NOT NULL DEFAULT 'fv1',
+      key_hash      TEXT        NOT NULL UNIQUE,
+      scope         TEXT[]      NOT NULL DEFAULT ARRAY['orders:read']::text[],
+      status        TEXT        NOT NULL DEFAULT 'active',
+      rate_limit    INTEGER     NOT NULL DEFAULT 1000,
+      note          TEXT,
+      expires_at    TIMESTAMPTZ,
+      last_used_at  TIMESTAMPTZ,
+      request_count INTEGER     NOT NULL DEFAULT 0,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS api_usage_logs (
+      id           BIGSERIAL   PRIMARY KEY,
+      api_key_id   INTEGER     REFERENCES api_keys(id) ON DELETE CASCADE,
+      endpoint     TEXT,
+      method       TEXT,
+      status_code  INTEGER,
+      ip_address   TEXT,
+      latency_ms   INTEGER,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_usage_key_time
+      ON api_usage_logs (api_key_id, created_at DESC)
+  `);
+  console.log("[ApiKeys] tables ensured");
+}
+
 function hashKey(rawKey: string) {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
 }

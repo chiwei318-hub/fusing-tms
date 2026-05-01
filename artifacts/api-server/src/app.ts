@@ -33,6 +33,7 @@ import { ensurePartnersTable } from "./routes/partners";
 import { ensureVehicleMatrixTables } from "./routes/vehicleMatrix";
 import { ensureFinancialsTables } from "./routes/financials";
 import { ensureArApTables } from "./routes/arApLedger";
+import { ensureApiKeysTables } from "./routes/apiKeys";
 import { ensurePlatformRequirementsTable } from "./routes/platformRequirements";
 import { ensureGoogleAuthColumns } from "./routes/googleAuth";
 import { ensureInvitationsTable } from "./routes/invitations";
@@ -218,6 +219,7 @@ ensurePartnersTable().catch((e) => console.error("[Partners] table setup failed:
 ensureVehicleMatrixTables().catch((e) => console.error("[VehicleMatrix] table setup failed:", e));
 ensureFinancialsTables().catch((e) => console.error("[Financials] table setup failed:", e));
 ensureArApTables().catch((e) => console.error("[ArAp] table setup failed:", e));
+ensureApiKeysTables().catch((e) => console.error("[ApiKeys] table setup failed:", e));
 ensureShopeeScheduleTables()
   .then(async () => {
     const { rows } = await _migPool.query(`SELECT COUNT(*) FROM shopee_week_routes`).catch(() => ({ rows: [{ count: "0" }] }));
