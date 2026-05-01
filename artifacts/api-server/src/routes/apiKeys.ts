@@ -79,13 +79,17 @@ apiKeysRouter.post("/api-keys", async (req, res) => {
     ? scope
     : ["orders:read", "orders:create", "quote"];
 
+  // Use PostgreSQL array literal string {a,b,c} so drizzle binds it as $N::text[]
+  // instead of expanding JS arrays into row-constructor syntax ($N,$M,...)::text[]
+  const scopeLiteral = `{${scopeArr.join(",")}}`;
+
   await db.execute(sql`
     INSERT INTO api_keys (name, key_prefix, key_hash, scope, rate_limit, note, expires_at)
     VALUES (
       ${name},
       ${prefix},
       ${hash},
-      ${scopeArr}::text[],
+      ${scopeLiteral}::text[],
       ${Number(rate_limit)},
       ${note ? String(note) : null},
       ${expires_at ?? null}
