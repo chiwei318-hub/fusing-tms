@@ -13,7 +13,7 @@
 
 import { Router } from "express";
 import { pool } from "@workspace/db";
-import * as path from "path";
+import { resolveReadableStoragePath } from "../lib/storagePaths";
 
 export const shopeeSchedulesRouter = Router();
 
@@ -210,7 +210,13 @@ shopeeSchedulesRouter.get("/shopee-schedules/:id/stops", async (req, res) => {
 
 // ── POST /api/shopee-schedules/import ────────────────────────────────────────
 shopeeSchedulesRouter.post("/shopee-schedules/import", async (_req, res) => {
-  const excelPath = path.resolve(__dirname, "../../../attached_assets/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx");
+  const excelPath = resolveReadableStoragePath([
+    "福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx",
+    "schedules/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx",
+    "data/schedules/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx",
+    "cache/schedules/福星高x富詠_-_蝦皮北倉班表_1776495896584.xlsx",
+  ]);
+  if (!excelPath) return res.status(404).json({ ok: false, error: "找不到預設班表 Excel（請放到 data/ 或 cache/）" });
   try {
     const result = await importShopeeScheduleFromExcel(excelPath);
     res.json({ ok: true, ...result });

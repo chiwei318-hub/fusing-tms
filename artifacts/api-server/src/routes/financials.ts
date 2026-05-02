@@ -9,6 +9,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import ExcelJS from "exceljs";
+import { taipeiMonth } from "../lib/timezone";
 
 export const financialsRouter = Router();
 
@@ -253,7 +254,7 @@ financialsRouter.patch("/financials/:id/status", async (req, res) => {
 financialsRouter.get("/financials/monthly-report", async (req, res) => {
   try {
     const { period } = req.query as { period?: string };
-    const target = period ?? new Date().toISOString().slice(0, 7);
+    const target = period ?? taipeiMonth();
 
     const [sumRow, byPartner, byDriver, byVehicle, arDetail, apDetail] = await Promise.all([
       pool.query(`
@@ -330,7 +331,7 @@ const numFmt = (n: number | string) => Number(n ?? 0).toLocaleString("zh-TW");
 financialsRouter.get("/financials/export-excel", async (req, res) => {
   try {
     const { period } = req.query as { period?: string };
-    const target = period ?? new Date().toISOString().slice(0, 7);
+    const target = period ?? taipeiMonth();
 
     // 取全部資料
     const [allRows, byPartner, byDriver, byVehicle] = await Promise.all([

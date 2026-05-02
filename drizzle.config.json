@@ -1,0 +1,8 @@
+﻿{
+  "schema": "./artifacts/api-server/src/db/schema.ts",
+  "out": "./drizzle",
+  "driver": "pg",
+  "dbCredentials": {
+    "connectionString": "postgresql://postgres:aiaimax415@localhost:5432/logistics_db"
+  }
+}

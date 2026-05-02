@@ -11,6 +11,7 @@
  */
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { taipeiDate } from "../lib/timezone";
 
 export const dailyOpsRouter = Router();
 
@@ -18,9 +19,8 @@ export const dailyOpsRouter = Router();
 type DateRange = { from: string; to: string };
 
 function buildDateRange(queryFrom: string | undefined, queryTo: string | undefined): DateRange {
-  const now = new Date();
-  const to   = queryTo   ?? now.toISOString().slice(0, 10);
-  const from = queryFrom ?? now.toISOString().slice(0, 10);
+  const to   = queryTo   ?? taipeiDate();
+  const from = queryFrom ?? taipeiDate();
   return { from, to };
 }
 
@@ -28,7 +28,7 @@ function buildDateRange(queryFrom: string | undefined, queryTo: string | undefin
 dailyOpsRouter.get("/ops/daily", async (req, res) => {
   try {
     const { date, zone_id } = req.query as Record<string, string>;
-    const day = date ?? new Date().toISOString().slice(0, 10);
+    const day = date ?? taipeiDate();
     const zoneFilter = zone_id ? `AND zone_id = ${Number(zone_id)}` : "";
 
     const [orderRes, driverRes, exceptionRes, delayRes] = await Promise.all([
@@ -319,7 +319,7 @@ dailyOpsRouter.get("/ops/driver-ranking", async (req, res) => {
 dailyOpsRouter.get("/ops/vehicle-utilization", async (req, res) => {
   try {
     const { date } = req.query as Record<string, string>;
-    const day = date ?? new Date().toISOString().slice(0, 10);
+    const day = date ?? taipeiDate();
 
     const { rows } = await pool.query(`
       SELECT
@@ -428,7 +428,7 @@ dailyOpsRouter.get("/ops/ar-aging", async (req, res) => {
 dailyOpsRouter.get("/ops/zone-summary", async (req, res) => {
   try {
     const { date } = req.query as Record<string, string>;
-    const day = date ?? new Date().toISOString().slice(0, 10);
+    const day = date ?? taipeiDate();
 
     const { rows } = await pool.query(`
       SELECT

@@ -1,5 +1,10 @@
-import app from "./app";
+import { loadEnvFiles } from "./lib/loadEnv";
+import { ensureProcessTimeZone } from "./lib/timezone";
 import { logger } from "./lib/logger";
+
+loadEnvFiles();
+ensureProcessTimeZone();
+const { default: app } = await import("./app");
 
 const rawPort = process.env["PORT"];
 

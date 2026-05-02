@@ -13,6 +13,8 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import multer from "multer";
+import { taipeiMonth } from "../lib/timezone";
+import { resolveReadableStoragePath } from "../lib/storagePaths";
 
 export const payrollCostRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -166,16 +168,20 @@ payrollCostRouter.post(
     try { xlsx = require("xlsx"); } catch { return res.status(500).json({ error: "xlsx 未安裝" }); }
 
     // 取得當月（由 body 傳入，或預設當月）
-    const report_month: string = req.body?.report_month ?? new Date().toISOString().slice(0, 7);
+    const report_month: string = req.body?.report_month ?? taipeiMonth();
 
     let wb: any;
     try {
       if (req.file?.buffer) {
         wb = xlsx.read(req.file.buffer, { type: "buffer" });
       } else {
-        const path = require("path");
-        const p = path.resolve(__dirname,
-          "../../../attached_assets/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx");
+        const p = resolveReadableStoragePath([
+          "貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx",
+          "payroll/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx",
+          "data/payroll/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx",
+          "cache/payroll/貨運自動化薪資成本結算表.xlsx_-_Sheet1_1776499935022.xlsx",
+        ]);
+        if (!p) return res.status(404).json({ error: "找不到預設薪資 Excel（請放到 data/ 或 cache/）" });
         wb = xlsx.readFile(p);
       }
     } catch (e: any) {

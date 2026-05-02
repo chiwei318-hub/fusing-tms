@@ -12,6 +12,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import multer from "multer";
+import { resolveReadableStoragePath } from "../lib/storagePaths";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -225,8 +226,13 @@ shopeeDriversRouter.post(
         if (req.file?.buffer) {
           wb = xlsx.read(req.file.buffer, { type: "buffer" });
         } else {
-          const path = require("path");
-          const p = path.resolve(__dirname, "../../../attached_assets/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx");
+          const p = resolveReadableStoragePath([
+            "富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx",
+            "drivers/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx",
+            "data/drivers/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx",
+            "cache/drivers/富詠運輸蝦皮車隊聯絡資料(小楊)115.1.14_1776498724304.xlsx",
+          ]);
+          if (!p) return res.status(404).json({ error: "找不到預設司機 Excel（請放到 data/ 或 cache/）" });
           wb = xlsx.readFile(p);
         }
 

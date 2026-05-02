@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { taipeiDate, taipeiMonth } from "../lib/timezone";
 
 export const loanManagementRouter = Router();
 
@@ -7,7 +8,7 @@ export const loanManagementRouter = Router();
 
 loanManagementRouter.get("/loans/stats", async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = taipeiDate();
     const [loans, payments] = await Promise.all([
       pool.query(`SELECT * FROM loan_accounts WHERE status='active'`),
       pool.query(`SELECT lp.*, la.loan_name, la.plate_no FROM loan_payments lp JOIN loan_accounts la ON la.id=lp.loan_id ORDER BY lp.due_date`),
@@ -18,7 +19,7 @@ loanManagementRouter.get("/loans/stats", async (req, res) => {
     const paidPmts      = payments.rows.filter((p: any) => p.status === "paid");
     const overduePmts   = pendingPmts.filter((p: any) => p.due_date <= today);
     const upcomingPmts  = pendingPmts.filter((p: any) => p.due_date > today);
-    const thisMonth     = new Date().toISOString().slice(0, 7);
+    const thisMonth     = taipeiMonth();
     const thisMonthPmts = pendingPmts.filter((p: any) => p.due_date.slice(0, 7) === thisMonth);
     const totalPaid     = paidPmts.reduce((s: number, p: any) => s + Number(p.paid_amount || p.total_amt), 0);
     const totalInterest = paidPmts.reduce((s: number, p: any) => s + Number(p.interest_amt), 0);
@@ -81,7 +82,7 @@ loanManagementRouter.post("/loans", async (req, res) => {
         const dueDate = new Date(start.getFullYear(), start.getMonth() + i, Number(loan.payment_day));
         await pool.query(
           `INSERT INTO loan_payments (loan_id,period_no,due_date,principal_amt,interest_amt,total_amt,remaining_bal,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')`,
-          [loan.id, i, dueDate.toISOString().slice(0,10), principalAmt.toFixed(2), interestAmt.toFixed(2), Number(loan.monthly_payment).toFixed(2), balance.toFixed(2)]
+          [loan.id, i, taipeiDate(dueDate), principalAmt.toFixed(2), interestAmt.toFixed(2), Number(loan.monthly_payment).toFixed(2), balance.toFixed(2)]
         );
       }
     }
@@ -157,7 +158,7 @@ loanManagementRouter.post("/loan-payments/:id/mark-paid", async (req, res) => {
     const { paidDate, paidAmount, receiptNo } = req.body;
     const r = await pool.query(
       `UPDATE loan_payments SET status='paid', paid_date=$1, paid_amount=$2, receipt_no=$3 WHERE id=$4 RETURNING *`,
-      [paidDate || new Date().toISOString().slice(0,10), paidAmount||null, receiptNo||null, req.params.id]
+      [paidDate || taipeiDate(), paidAmount||null, receiptNo||null, req.params.id]
     );
     res.json(r.rows[0]);
   } catch (e: any) { res.status(500).json({ error: e.message }); }

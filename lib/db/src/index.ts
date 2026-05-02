@@ -11,6 +11,9 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.on("connect", (client) => {
+  void client.query("SET TIME ZONE 'Asia/Taipei'");
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
