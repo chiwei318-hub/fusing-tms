@@ -37,6 +37,28 @@ class TestReplitLogisticsClient(unittest.TestCase):
         self.assertEqual(kwargs["timeout"], 10.0)
 
     @patch("replit_logistics.client.request.urlopen")
+    def test_get_uses_x_api_key_auth(self, mock_urlopen: MagicMock) -> None:
+        body = json.dumps({"ok": True}).encode("utf-8")
+        response = MagicMock()
+        response.read.return_value = body
+
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = response
+        mock_context.__exit__.return_value = False
+        mock_urlopen.return_value = mock_context
+
+        client = ReplitLogisticsClient(
+            base_url="https://api.example.com",
+            api_key="token",
+            auth_mode="x-api-key",
+        )
+        client.get("/health")
+
+        args, _ = mock_urlopen.call_args
+        req = args[0]
+        self.assertEqual(req.headers.get("X-api-key"), "token")
+
+    @patch("replit_logistics.client.request.urlopen")
     def test_http_error_is_wrapped(self, mock_urlopen: MagicMock) -> None:
         http_error = error.HTTPError(
             url="https://api.example.com/shipments",
@@ -95,6 +117,53 @@ class TestReplitLogisticsClient(unittest.TestCase):
         self.assertEqual(payload["recipient"], {"name": "A"})
         self.assertEqual(payload["address"], {"line1": "B"})
         self.assertEqual(payload["items"], [{"sku": "X", "qty": 1}])
+
+    @patch("replit_logistics.client.ReplitLogisticsClient.post")
+    def test_create_shipment_with_profile_mapping(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = {"id": "shp_1"}
+        client = ReplitLogisticsClient(
+            base_url="https://api.example.com",
+            profile={
+                "paths": {"create_shipment": "/orders"},
+                "fields": {
+                    "create_shipment": {
+                        "order_id": "orderNo",
+                        "recipient": "consignee",
+                        "address": "destination",
+                        "items": "products",
+                        "metadata": "extra",
+                    }
+                },
+            },
+        )
+        client.create_shipment(
+            order_id="ORD-1",
+            recipient={"name": "A"},
+            address={"line1": "B"},
+            items=[{"sku": "X", "qty": 1}],
+            metadata={},
+        )
+
+        self.assertEqual(mock_post.call_args.args[0], "/orders")
+        payload = mock_post.call_args.kwargs["payload"]
+        self.assertEqual(payload["orderNo"], "ORD-1")
+        self.assertEqual(payload["consignee"], {"name": "A"})
+        self.assertEqual(payload["destination"], {"line1": "B"})
+        self.assertEqual(payload["products"], [{"sku": "X", "qty": 1}])
+        self.assertEqual(payload["extra"], {})
+
+    def test_path_missing_param_raises_value_error(self) -> None:
+        client = ReplitLogisticsClient(base_url="https://api.example.com")
+        with self.assertRaises(ValueError):
+            client._path("get_shipment")
+
+    def test_invalid_auth_mode_raises_value_error(self) -> None:
+        with self.assertRaises(ValueError):
+            ReplitLogisticsClient(
+                base_url="https://api.example.com",
+                api_key="token",
+                auth_mode="invalid",
+            )
 
 
 if __name__ == "__main__":
