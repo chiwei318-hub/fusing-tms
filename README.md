@@ -12,6 +12,8 @@
   - 更新物流狀態 `update_shipment_status`
   - 建立取件需求 `create_pickup_request`
 - 統一錯誤型別 `ReplitLogisticsAPIError`（含 status code / error code / details）
+- 支援自訂認證模式：`bearer` / `x-api-key` / `none`
+- 支援 `profile` 做 endpoint 與欄位映射，方便對接非標準 API
 
 ## 專案結構
 
@@ -35,6 +37,7 @@ client = ReplitLogisticsClient(
     base_url="https://your-replit-app.replit.app/api/v1",
     api_key="YOUR_API_KEY",
     timeout=10.0,
+    auth_mode="bearer",  # 或 "x-api-key"
 )
 
 try:
@@ -56,6 +59,36 @@ try:
     print("Shipment created:", created)
 except ReplitLogisticsAPIError as exc:
     print("API error:", exc)
+```
+
+## 客製化 API 映射（orders 路由範例）
+
+```python
+from replit_logistics import ReplitLogisticsClient
+
+client = ReplitLogisticsClient(
+    base_url="https://your-replit-app.replit.app",
+    api_key="YOUR_API_KEY",
+    auth_mode="x-api-key",
+    profile={
+        "paths": {
+            "create_shipment": "/orders",
+            "get_shipment": "/orders/{shipment_id}",
+            "list_shipments": "/orders",
+            "update_shipment_status": "/orders/{shipment_id}",
+            "create_pickup_request": "/outsourcing",
+        },
+        "fields": {
+            "create_shipment": {
+                "order_id": "orderNo",
+                "recipient": "consignee",
+                "address": "destination",
+                "items": "products",
+                "metadata": "extra",
+            }
+        },
+    },
+)
 ```
 
 ## 測試
