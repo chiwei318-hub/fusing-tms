@@ -1,2 +1,7 @@
 __pycache__/
 *.py[cod]
+.env
+*.egg-info/
+node_modules/
+dist/
+.env.local
