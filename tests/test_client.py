@@ -5,7 +5,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 from urllib import error
 
-from replit_logistics import ReplitLogisticsAPIError, ReplitLogisticsClient
+from replit_logistics import (
+    ReplitLogisticsAPIError,
+    ReplitLogisticsClient,
+)
 
 
 class TestReplitLogisticsClient(unittest.TestCase):
@@ -95,6 +98,47 @@ class TestReplitLogisticsClient(unittest.TestCase):
         self.assertEqual(payload["recipient"], {"name": "A"})
         self.assertEqual(payload["address"], {"line1": "B"})
         self.assertEqual(payload["items"], [{"sku": "X", "qty": 1}])
+
+    @patch("replit_logistics.client.ReplitLogisticsClient.post")
+    def test_create_shipment_with_profile_mapping(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = {"id": "shipment_99"}
+        profile = {
+            "paths": {"create_shipment": "/v2/orders"},
+            "fields": {
+                "create_shipment": {
+                    "order_id": "orderNo",
+                    "recipient": "consignee",
+                    "address": "destination",
+                    "items": "products",
+                    "metadata": "extra",
+                }
+            },
+        }
+
+        client = ReplitLogisticsClient(
+            base_url="https://api.example.com",
+            profile=profile,
+        )
+        client.create_shipment(
+            order_id="ORD-777",
+            recipient={"name": "A"},
+            address={"line1": "B"},
+            items=[{"sku": "X", "qty": 1}],
+            metadata={"source": "mobile"},
+        )
+
+        self.assertEqual(mock_post.call_args.args[0], "/v2/orders")
+        payload = mock_post.call_args.kwargs["payload"]
+        self.assertEqual(payload["orderNo"], "ORD-777")
+        self.assertEqual(payload["consignee"], {"name": "A"})
+        self.assertEqual(payload["destination"], {"line1": "B"})
+        self.assertEqual(payload["products"], [{"sku": "X", "qty": 1}])
+        self.assertEqual(payload["extra"], {"source": "mobile"})
+
+    def test_path_missing_param_raises_value_error(self) -> None:
+        client = ReplitLogisticsClient(base_url="https://api.example.com")
+        with self.assertRaises(ValueError):
+            client._path("get_shipment")
 
 
 if __name__ == "__main__":

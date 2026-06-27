@@ -8,6 +8,40 @@ from urllib import error, parse, request
 
 from .exceptions import ReplitLogisticsAPIError
 
+DEFAULT_PROFILE: dict[str, Any] = {
+    "paths": {
+        "create_shipment": "/shipments",
+        "get_shipment": "/shipments/{shipment_id}",
+        "list_shipments": "/shipments",
+        "update_shipment_status": "/shipments/{shipment_id}/status",
+        "create_pickup_request": "/pickups",
+    },
+    "fields": {
+        "create_shipment": {
+            "order_id": "order_id",
+            "recipient": "recipient",
+            "address": "address",
+            "items": "items",
+            "metadata": "metadata",
+        },
+        "list_shipments": {
+            "status": "status",
+            "page": "page",
+            "page_size": "page_size",
+        },
+        "update_shipment_status": {
+            "status": "status",
+            "location": "location",
+            "note": "note",
+        },
+        "create_pickup_request": {
+            "warehouse_id": "warehouse_id",
+            "pickup_window": "pickup_window",
+            "shipments": "shipments",
+        },
+    },
+}
+
 
 class ReplitLogisticsClient:
     """Small API client wrapper for logistics endpoints."""
@@ -19,6 +53,7 @@ class ReplitLogisticsClient:
         api_key: str | None = None,
         timeout: float = 10.0,
         default_headers: dict[str, str] | None = None,
+        profile: dict[str, Any] | None = None,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required")
@@ -27,6 +62,7 @@ class ReplitLogisticsClient:
         self.api_key = api_key
         self.timeout = timeout
         self.default_headers = default_headers or {}
+        self.profile = self._deep_merge(DEFAULT_PROFILE, profile or {})
 
     def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         return self._request("GET", path, params=params)
@@ -53,17 +89,17 @@ class ReplitLogisticsClient:
         metadata: dict[str, Any] | None = None,
     ) -> Any:
         payload: dict[str, Any] = {
-            "order_id": order_id,
-            "recipient": recipient,
-            "address": address,
-            "items": items,
+            self._field("create_shipment", "order_id"): order_id,
+            self._field("create_shipment", "recipient"): recipient,
+            self._field("create_shipment", "address"): address,
+            self._field("create_shipment", "items"): items,
         }
-        if metadata:
-            payload["metadata"] = metadata
-        return self.post("/shipments", payload=payload)
+        if metadata is not None:
+            payload[self._field("create_shipment", "metadata")] = metadata
+        return self.post(self._path("create_shipment"), payload=payload)
 
     def get_shipment(self, shipment_id: str) -> Any:
-        return self.get(f"/shipments/{shipment_id}")
+        return self.get(self._path("get_shipment", shipment_id=shipment_id))
 
     def list_shipments(
         self,
@@ -72,10 +108,13 @@ class ReplitLogisticsClient:
         page: int = 1,
         page_size: int = 50,
     ) -> Any:
-        params: dict[str, Any] = {"page": page, "page_size": page_size}
+        params: dict[str, Any] = {
+            self._field("list_shipments", "page"): page,
+            self._field("list_shipments", "page_size"): page_size,
+        }
         if status:
-            params["status"] = status
-        return self.get("/shipments", params=params)
+            params[self._field("list_shipments", "status")] = status
+        return self.get(self._path("list_shipments"), params=params)
 
     def update_shipment_status(
         self,
@@ -85,12 +124,17 @@ class ReplitLogisticsClient:
         location: str | None = None,
         note: str | None = None,
     ) -> Any:
-        payload: dict[str, Any] = {"status": status}
+        payload: dict[str, Any] = {
+            self._field("update_shipment_status", "status"): status
+        }
         if location:
-            payload["location"] = location
+            payload[self._field("update_shipment_status", "location")] = location
         if note:
-            payload["note"] = note
-        return self.patch(f"/shipments/{shipment_id}/status", payload=payload)
+            payload[self._field("update_shipment_status", "note")] = note
+        return self.patch(
+            self._path("update_shipment_status", shipment_id=shipment_id),
+            payload=payload,
+        )
 
     def create_pickup_request(
         self,
@@ -100,11 +144,11 @@ class ReplitLogisticsClient:
         shipments: list[str],
     ) -> Any:
         payload = {
-            "warehouse_id": warehouse_id,
-            "pickup_window": pickup_window,
-            "shipments": shipments,
+            self._field("create_pickup_request", "warehouse_id"): warehouse_id,
+            self._field("create_pickup_request", "pickup_window"): pickup_window,
+            self._field("create_pickup_request", "shipments"): shipments,
         }
-        return self.post("/pickups", payload=payload)
+        return self.post(self._path("create_pickup_request"), payload=payload)
 
     def _request(
         self,
@@ -170,6 +214,22 @@ class ReplitLogisticsClient:
                 return f"{url}?{parse.urlencode(serialized, doseq=True)}"
         return url
 
+    def _path(self, operation: str, **path_params: str) -> str:
+        template = self.profile["paths"].get(operation)
+        if not template:
+            raise ValueError(f"Missing path for operation: {operation}")
+        try:
+            return str(template).format(**path_params)
+        except KeyError as exc:
+            raise ValueError(
+                f"Missing path param '{exc.args[0]}' for operation '{operation}'"
+            ) from exc
+
+    def _field(self, operation: str, key: str) -> str:
+        operation_map = self.profile["fields"].get(operation, {})
+        mapped = operation_map.get(key, key)
+        return str(mapped)
+
     @staticmethod
     def _safe_json_parse(text: str) -> Any:
         if not text:
@@ -187,3 +247,17 @@ class ReplitLogisticsClient:
                 if isinstance(value, str) and value.strip():
                     return value
         return default or "Logistics API request failed"
+
+    @staticmethod
+    def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        merged: dict[str, Any] = dict(base)
+        for key, value in override.items():
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = ReplitLogisticsClient._deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
